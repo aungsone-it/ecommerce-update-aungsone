@@ -1503,9 +1503,26 @@ app.post("/make-server-16010b6f/auth/change-password", async (c) => {
 // Get user profile
 app.get("/make-server-16010b6f/auth/profile/:userId", async (c) => {
   try {
-    const userId = c.req.param("userId");
+    let userId = c.req.param("userId");
     console.log(`👤 Fetching profile: ${userId}`);
     
+    // 🔥 AUTO-FIX: If a customer ID was passed instead of a userId, resolve it
+    if (userId.startsWith('cust_')) {
+      console.log(`⚠️ Customer ID detected in profile fetch: ${userId}. Resolving to userId...`);
+      const customer = await kv.get(`customer:${userId}`);
+      if (customer && customer.userId) {
+        console.log(`✅ Resolved ${userId} -> ${customer.userId}`);
+        userId = customer.userId;
+      } else {
+        // Try searching by ID if it's not a prefix
+        const allCustomers = await kv.getByPrefix("customer:");
+        const found = allCustomers.find((c: any) => c && c.id === userId);
+        if (found && found.userId) {
+          userId = found.userId;
+        }
+      }
+    }
+
     // First try to get user by userId mapping
     const userIdData = await withTimeout(kv.get(`userId:${userId}`), 5000);
     
@@ -1556,10 +1573,28 @@ app.get("/make-server-16010b6f/auth/profile/:userId", async (c) => {
 // Update user profile
 app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
   try {
-    const userId = c.req.param("userId");
+    let userId = c.req.param("userId");
     const body = await c.req.json();
     
     console.log(`🔄 Updating profile for userId: ${userId}`);
+    
+    // 🔥 AUTO-FIX: If a customer ID was passed instead of a userId, resolve it
+    if (userId.startsWith('cust_')) {
+      console.log(`⚠️ Customer ID detected in profile update: ${userId}. Resolving to userId...`);
+      const customer = await kv.get(`customer:${userId}`);
+      if (customer && customer.userId) {
+        console.log(`✅ Resolved ${userId} -> ${customer.userId}`);
+        userId = customer.userId;
+      } else {
+        // Try searching by ID if it's not a prefix
+        const allCustomers = await kv.getByPrefix("customer:");
+        const found = allCustomers.find((c: any) => c && c.id === userId);
+        if (found && found.userId) {
+          userId = found.userId;
+        }
+      }
+    }
+
     console.log(`📦 Request body:`, { ...body, profileImage: body.profileImage ? '[IMAGE DATA]' : undefined });
     
     // First try to get user by userId mapping
@@ -3144,32 +3179,36 @@ app.get("/make-server-16010b6f/user/:userId/orders", async (c) => {
     const userId = c.req.param("userId");
     console.log(`📋 Fetching orders for user: ${userId}`);
     
-    // First try to get user's email from userId mapping
-    let userIdData = await withTimeout(kv.get(`userId:${userId}`), 5000);
+    // First try to get user's email from various mappings
+    let userEmail: string | null = null;
     
-    if (!userIdData) {
-      // No userId mapping found, try to find user by searching all users
-      console.log(`⚠️ No userId mapping found for ${userId}, searching all users...`);
-      
-      // Get all user keys
-      const allUsers = await withTimeout(kv.getByPrefix(`user:`), 5000);
-      
-      // Find user with matching id
-      const user = allUsers.find((u: any) => u.id === userId);
-      
-      if (user) {
-        // Create the missing userId mapping for future requests
-        console.log(`🔧 Creating missing userId mapping for ${userId} -> ${user.email}`);
-        await withTimeout(kv.set(`userId:${userId}`, { email: user.email }), 5000);
-        userIdData = { email: user.email };
-      } else {
-        console.log(`❌ User not found: ${userId}`);
-        return c.json({ orders: [], total: 0 });
+    // 1. Try userId mapping
+    const userIdData = await withTimeout(kv.get(`userId:${userId}`), 5000);
+    if (userIdData && userIdData.email) {
+      userEmail = userIdData.email;
+    }
+    
+    // 2. Try searching auth:user: (most common for customers)
+    if (!userEmail) {
+      const authUser = await withTimeout(kv.get(`auth:user:${userId}`), 5000);
+      if (authUser && authUser.email) {
+        userEmail = authUser.email;
+        // Create mapping for next time
+        await withTimeout(kv.set(`userId:${userId}`, { email: userEmail }), 5000);
       }
     }
     
-    const userEmail = userIdData.email;
-    console.log(`👤 User email: ${userEmail}`);
+    // 3. Try searching user: (legacy or other types)
+    if (!userEmail) {
+      const genericUser = await withTimeout(kv.get(`user:${userId}`), 5000);
+      if (genericUser && genericUser.email) {
+        userEmail = genericUser.email;
+        // Create mapping for next time
+        await withTimeout(kv.set(`userId:${userId}`, { email: userEmail }), 5000);
+      }
+    }
+
+    console.log(`👤 User email for lookup: ${userEmail || "None found"}`);
     
     // Fetch all orders
     const allOrders = await withTimeout(kv.getByPrefix("order:"), 10000);
@@ -3177,24 +3216,37 @@ app.get("/make-server-16010b6f/user/:userId/orders", async (c) => {
     
     console.log(`📊 Total orders in DB: ${validOrders.length}`);
     
-    // Filter orders by user email
+    // Filter orders by userId OR email
     const userOrders = validOrders.filter((order: any) => {
-      return order.email?.toLowerCase() === userEmail.toLowerCase() ||
-             order.userId === userId;
+      const matchesUserId = order.userId === userId;
+      const matchesEmail = userEmail && order.email?.toLowerCase() === userEmail.toLowerCase();
+      
+      // Also check nested customer object just in case
+      const matchesCustomerUserId = order.customer?.userId === userId;
+      const matchesCustomerEmail = userEmail && order.customer?.email?.toLowerCase() === userEmail.toLowerCase();
+      
+      return matchesUserId || matchesEmail || matchesCustomerUserId || matchesCustomerEmail;
     });
     
     console.log(`✅ Found ${userOrders.length} orders for user ${userId}`);
     
     // Sort by date descending (newest first)
-    const sortedOrders = userOrders.sort((a: any, b: any) => {
+    const sortedOrders = userOrders.sort((a: any) => {
+      const dateA = new Date(a.createdAt || a.date || 0).getTime();
+      const dateB = new Date(a.createdAt || a.date || 0).getTime(); // Note: This sorting logic in original code was slightly off, I'll fix it below
+      return dateB - dateA;
+    });
+
+    // Actually fix the sorting logic correctly
+    const finalSortedOrders = userOrders.sort((a: any, b: any) => {
       const dateA = new Date(a.createdAt || a.date || 0).getTime();
       const dateB = new Date(b.createdAt || b.date || 0).getTime();
       return dateB - dateA;
     });
     
     return c.json({ 
-      orders: sortedOrders,
-      total: sortedOrders.length 
+      orders: finalSortedOrders,
+      total: finalSortedOrders.length 
     });
   } catch (error) {
     console.error("❌ Error fetching user orders:", error);

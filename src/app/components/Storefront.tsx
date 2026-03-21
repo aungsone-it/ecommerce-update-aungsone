@@ -1622,6 +1622,21 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // 🔥 DATABASE-FIRST: Load addresses from database when shipping-addresses view is active
   useEffect(() => {
     if (viewMode === "shipping-addresses" && user?.id) {
+      // 🚀 LOAD FROM LOCALSTORAGE FIRST (FOR INSTANT UI)
+      const storageKey = `migoo-shipping-addresses-${user.id}`;
+      try {
+        const cachedAddresses = localStorage.getItem(storageKey);
+        if (cachedAddresses) {
+          const parsed = JSON.parse(cachedAddresses);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setShippingAddresses(parsed);
+            console.log(`⚡ Loaded ${parsed.length} addresses from localStorage (cache)`);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load addresses from localStorage:', e);
+      }
+
       const loadAddresses = async () => {
         setLoadingAddresses(true);
         try {
@@ -1638,11 +1653,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             const data = await response.json();
             const addresses = data.addresses || [];
             setShippingAddresses(addresses);
+            
+            // 🔥 Sync to localStorage for next refresh
+            localStorage.setItem(storageKey, JSON.stringify(addresses));
             console.log(`✅ Loaded ${addresses.length} addresses from database`);
           }
         } catch (error) {
           console.error('Failed to load addresses from database:', error);
-          toast.error('Failed to load addresses');
+          // Don't show toast if we have cached data
+          if (shippingAddresses.length === 0) {
+            toast.error('Failed to load addresses');
+          }
         } finally {
           setLoadingAddresses(false);
         }
@@ -4720,42 +4741,31 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         toast.success('Address added successfully!');
                       }
                       
+                      // 🚀 SYNC TO LOCALSTORAGE IMMEDIATELY (FOR PERSISTENCE ON REFRESH)
+                      if (user?.id) {
+                        localStorage.setItem(`migoo-shipping-addresses-${user.id}`, JSON.stringify(updatedAddresses));
+                        console.log('⚡ Addresses synced to localStorage');
+                      }
+                      
                       // ��� SAVE TO BACKEND if user is logged in
                       if (user?.id) {
                         try {
-                          // Find customer by userId
-                          const customersResponse = await fetch(
-                            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers`,
+                          // 🔥 OPTIMIZED: Use user.id directly in the backend route
+                          // The backend handles the userId lookup for us!
+                          await fetch(
+                            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${user.id}/addresses`,
                             {
+                              method: 'POST',
                               headers: {
+                                'Content-Type': 'application/json',
                                 Authorization: `Bearer ${publicAnonKey}`,
                               },
+                              body: JSON.stringify({ addresses: updatedAddresses }),
                             }
                           );
-                          
-                          if (customersResponse.ok) {
-                            const customersData = await customersResponse.json();
-                            const customer = customersData.customers?.find((c: any) => c.userId === user.id);
-                            
-                            if (customer) {
-                              // Save addresses to backend
-                              await fetch(
-                                `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${customer.id}/addresses`,
-                                {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                    Authorization: `Bearer ${publicAnonKey}`,
-                                  },
-                                  body: JSON.stringify({ addresses: updatedAddresses }),
-                                }
-                              );
-                              console.log('✅ Addresses saved to backend');
-                            }
-                          }
+                          console.log('✅ Addresses saved to backend');
                         } catch (error) {
                           console.error('Failed to save addresses to backend:', error);
-                          // Don't show error to user - localStorage is still working
                         }
                       }
                       
@@ -4871,39 +4881,29 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                             setShippingAddresses(updatedAddresses);
                             toast.success('Address deleted successfully!');
                             
+                            // 🚀 SYNC TO LOCALSTORAGE IMMEDIATELY (FOR PERSISTENCE ON REFRESH)
+                            if (user?.id) {
+                              localStorage.setItem(`migoo-shipping-addresses-${user.id}`, JSON.stringify(updatedAddresses));
+                              console.log('⚡ Addresses synced to localStorage');
+                            }
+                            
                             // 🔥 SAVE TO BACKEND if user is logged in
                             if (user?.id) {
                               try {
-                                // Find customer by userId
-                                const customersResponse = await fetch(
-                                  `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers`,
+                                // 🔥 OPTIMIZED: Use user.id directly in the backend route
+                                // The backend handles the userId lookup for us!
+                                await fetch(
+                                  `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${user.id}/addresses`,
                                   {
+                                    method: 'POST',
                                     headers: {
+                                      'Content-Type': 'application/json',
                                       Authorization: `Bearer ${publicAnonKey}`,
                                     },
+                                    body: JSON.stringify({ addresses: updatedAddresses }),
                                   }
                                 );
-                                
-                                if (customersResponse.ok) {
-                                  const customersData = await customersResponse.json();
-                                  const customer = customersData.customers?.find((c: any) => c.userId === user.id);
-                                  
-                                  if (customer) {
-                                    // Save updated addresses to backend
-                                    await fetch(
-                                      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${customer.id}/addresses`,
-                                      {
-                                        method: 'POST',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                          Authorization: `Bearer ${publicAnonKey}`,
-                                        },
-                                        body: JSON.stringify({ addresses: updatedAddresses }),
-                                      }
-                                    );
-                                    console.log('✅ Address deletion saved to backend');
-                                  }
-                                }
+                                console.log('✅ Address deletion saved to backend');
                               } catch (error) {
                                 console.error('Failed to save address deletion to backend:', error);
                               }

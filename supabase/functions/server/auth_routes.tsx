@@ -221,9 +221,26 @@ authApp.post("/setup", async (c) => {
 // ============================================
 authApp.get("/profile/:userId", async (c) => {
   try {
-    const userId = c.req.param("userId");
+    let userId = c.req.param("userId");
     console.log(`📡 API Request: GET /auth/profile/${userId}`);
     
+    // 🔥 AUTO-FIX: If a customer ID was passed instead of a userId, resolve it
+    if (userId.startsWith('cust_')) {
+      console.log(`⚠️ Customer ID detected in profile fetch: ${userId}. Resolving to userId...`);
+      const customer = await kv.get(`customer:${userId}`);
+      if (customer && customer.userId) {
+        console.log(`✅ Resolved ${userId} -> ${customer.userId}`);
+        userId = customer.userId;
+      } else {
+        // Try searching by ID if it's not a prefix
+        const allCustomers = await kv.getByPrefix("customer:");
+        const found = allCustomers.find((c: any) => c && c.id === userId);
+        if (found && found.userId) {
+          userId = found.userId;
+        }
+      }
+    }
+
     const profile = await kv.get(`auth:user:${userId}`);
 
     if (!profile) {
@@ -920,9 +937,17 @@ authApp.post("/login", async (c) => {
       console.log(`✅ Customer record updated: ${customer.id}`);
     }
 
+    // Prepare user object for frontend - IMPORTANT: Ensure id is the Supabase userId (UUID)
+    // so profile fetching works correctly. Store the customerId separately.
+    const userResponse = {
+      ...customer,
+      id: data.user.id, // Always use UUID as the primary ID
+      customerId: customer.id, // Keep the original customerId just in case
+    };
+
     return c.json({
       success: true,
-      user: customer,
+      user: userResponse,
       session: {
         access_token: data.session?.access_token,
         refresh_token: data.session?.refresh_token,
@@ -1050,9 +1075,17 @@ authApp.post("/register", async (c) => {
     await withTimeout(kv.set(`customer:${customerId}`, customer), 5000);
     console.log(`✅ Customer record created: ${customerId}`);
 
+    // Prepare user object for frontend - IMPORTANT: Ensure id is the Supabase userId (UUID)
+    // so profile fetching works correctly. Store the customerId separately.
+    const userResponse = {
+      ...customer,
+      id: data.user.id, // Always use UUID as the primary ID
+      customerId: customer.id, // Keep the original customerId just in case
+    };
+
     return c.json({
       success: true,
-      user: customer,
+      user: userResponse,
     });
   } catch (error: any) {
     console.error("Registration error:", error);
