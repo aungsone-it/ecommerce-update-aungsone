@@ -1,0 +1,1070 @@
+ Running frontend commit b76162e144d1cea981c7927daa8501b7f3f696f6
+vendor-core-ade2edecaf4781c7.min.js.br:54 Statsig is not ready to log exposures, will retry in 1 seconds
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Livegraph] Connected 2026-03-13T07:26:08.646Z.
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Sprigma] Attempted to track event with sampling: Object
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Sprigma] Attempted to track event with sampling: Object
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Sprigma] Skipped tracking event due to sampling: enter_file_browser_sampled
+(index):1  Failed to load resource: net::ERR_FAILED
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:54 [import] git: bc0597a172c808f697b360fcd17ab5b385262d77, stamp: 624908676FF21C89
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:54 Loaded 96 scripts (8703424b), 95 from cache (8666981b)
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: <URL>
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=8efff9f6-d47d-4dcd-a8ec-680a5094f9a1&dd-evp-encoding=deflate&batch_time=1773386769709&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=bb05e10d-b3d1-4bbc-b088-9951d6b6e893&dd-evp-encoding=deflate&batch_time=1773386769746&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=3a42d4de-d167-430d-9738-c533a32e7940&dd-evp-encoding=deflate&batch_time=1773386769747&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=a3b1a3ba-7943-498b-b2b4-9a23127e8599&dd-evp-encoding=deflate&batch_time=1773386769748&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=6875bbe3-0866-4a2c-9e9a-7ffd3a0b9965&dd-evp-encoding=deflate&batch_time=1773386769749&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=513d219b-a019-4334-b04f-6fe6f3d9600d&dd-evp-encoding=deflate&batch_time=1773386769750&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=057dc840-f714-4e21-a274-4daa5a2a20f2&dd-evp-encoding=deflate&batch_time=1773386769762&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c38f5e7f-b581-4579-a865-2abce3574fcd&dd-evp-encoding=deflate&batch_time=1773386769763&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c7e5e901-add2-4dac-854b-09ed1b497ede&dd-evp-encoding=deflate&batch_time=1773386769763&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=22510151-cf16-43b9-bed3-fb2d219295ba&dd-evp-encoding=deflate&batch_time=1773386769763&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:54 [file_browser.navigation_mark] You appear to be logging a relative timestamp and not an epoch timestamp. Try adding performance.timeOrigin to the timestamp.
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:11 Unrecognized feature: 'local-network-access'.
+x @ vendor-core-ade2edecaf4781c7.min.js.br:11
+vendor-core-ade2edecaf4781c7.min.js.br:54 Autosave Changes not available or already claimed by another tab undefined
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=0c57c927-715d-4117-9957-c899206f7030&dd-evp-encoding=deflate&batch_time=1773386772080&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=09cf78a2-0cdd-4c6f-9275-558e120acdb2&dd-evp-encoding=deflate&batch_time=1773386772081&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Fullscreen] Booting... (emscripten version 4.0.21)
+vendor-core-ade2edecaf4781c7.min.js.br:54 [GPU] graphicsAPI:"WebGL 2", vendor:"Google Inc. (Intel)", renderer:"ANGLE (Intel, Mesa Intel(R) UHD Graphics 730 (ADL-S GT1), OpenGL ES 3.2)" version:"OpenGL ES 3.0 (WebGL 2.0 (OpenGL ES 3.0 Chromium))"
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Fullscreen] Ready in 40.9ms
+vendor-core-ade2edecaf4781c7.min.js.br:54 [FullscreenApp] calling setEditorTheme and setting preference dark
+vendor-core-ade2edecaf4781c7.min.js.br:54 [MultiplayerSession] connecting to wss://www.figma.com/api/multiplayer/5FOqWwfgECp8z9r9JuCSa0?role=editor&tracking_session_id=MFLpjDlQo8m0rPPd&version=151&recentReload=0&file-load-streaming-compression&user-id=1336977822049309121&client_release=b76162e144d1cea981c7927daa8501b7f3f696f6
+vendor-core-ade2edecaf4781c7.min.js.br:54 [FullscreenApp] calling setEditorTheme and setting preference dark
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=4afb9d47-2f9f-478d-a017-de7978ac6fe2&dd-evp-encoding=deflate&batch_time=1773386773257&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=a1b38ca0-e855-4a91-9c45-e83cfb3231a3&dd-evp-encoding=deflate&batch_time=1773386773258&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+statsigapi.net/v1/sdk_exception:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c576c0e1-68c4-487e-a4ea-33938bd57857&dd-evp-encoding=deflate&batch_time=1773386779368&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=09fc74b8-88f2-4bf6-a15a-c43b47906c6e&batch_time=1773386779368&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:54 [MultiplayerSession] Joining file version 106 (initial load)
+vendor-core-ade2edecaf4781c7.min.js.br:54 Migration succeeded: context: fullscreen_migrate_SceneGraphManager, version: 106, duration: 0ms.
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:54 [devtools] Initialized LS
+/api/make/fetch_ds_code_gen_status:1  Failed to load resource: the server responded with a status of 400 ()
+vendor-core-ade2edecaf4781c7.min.js.br:54 [devtools] Initialized LS
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=4597f6ff-fb63-4669-b5c2-30607aa2b220&dd-evp-encoding=deflate&batch_time=1773386792972&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=df1cb069-84bd-4c29-bcdb-ef24ac855a04&dd-evp-encoding=deflate&batch_time=1773386793087&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=e174f635-54db-48d7-a461-e315d86b63a0&dd-evp-encoding=deflate&batch_time=1773386802902&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=e82d8593-7eaf-493b-8506-af8d04651857&dd-evp-encoding=deflate&batch_time=1773386802906&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=10913d29-0c01-4ef5-8c3d-d84d3684ad35&dd-evp-encoding=deflate&batch_time=1773386833752&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=0422d575-2d66-4c1a-bbeb-2399eb04c34e&dd-evp-encoding=deflate&batch_time=1773386833753&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Fullscreen] loadtime=9.62s maxmem=430130348
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+[DOM] Input elements should have autocomplete attributes <attribute>: (More info: <URL>) 
+[DOM] Input elements should have autocomplete attributes <attribute>: (More info: <URL>) 
+[DOM] Input elements should have autocomplete attributes <attribute>: (More info: <URL>) 
+[DOM] Input elements should have autocomplete attributes <attribute>: (More info: <URL>) 
+[DOM] Input elements should have autocomplete attributes <attribute>: (More info: <URL>) 
+[DOM] Input elements should have autocomplete attributes <attribute>: (More info: <URL>) 
+[DOM] Input elements should have autocomplete attributes <attribute>: (More info: <URL>) 
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [vite] connecting...
+ [vite] connected.
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=7305cfb4-52fe-401e-8802-565ca756118e&dd-evp-encoding=deflate&batch_time=1773386860745&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=4a6d5e44-7b4b-42f7-b9cd-938fd3722abe&batch_time=1773386860745&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔧 Initializing Supabase client (SINGLE INSTANCE)
+ 🔍 Fetching platform settings...
+ 🔍 [VendorAuth] Checking for existing vendor session...
+ ✅ [VendorAuth] Found existing session for vendor: aungsone2023@gmail.com
+ 🔍 Checking for existing session...
+ ℹ️ No existing session found
+ ✅ Platform settings fetched: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=bdd23bd7-3864-40de-80b2-cdc1248b9e9a&dd-evp-encoding=deflate&batch_time=1773386889535&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=03350089-2aa6-46b6-9acc-d4ca076d7bd9&batch_time=1773386889535&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=949a79b3-779c-4b12-aab9-4fdaae3428fc&dd-evp-encoding=deflate&batch_time=1773386900415&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=ae6ba3df-00cb-4472-bc19-93b33e6908da&batch_time=1773386900415&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=a9f53f23-139a-4569-ba3c-1850a45f963c&dd-evp-encoding=deflate&batch_time=1773386930632&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=78f7ac4b-f10e-467a-96b6-caa634ad16fb&dd-evp-encoding=deflate&batch_time=1773386930633&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=610d8a85-4e8a-4fed-a7a5-07e06d75d484&dd-evp-encoding=deflate&batch_time=1773386958921&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c2a75eac-967c-4873-92ed-3f9352f6afa0&batch_time=1773386958921&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔐 Attempting login for: aungsone2023@gmail.com | Remember me: true
+ ✅ Login successful for: aungsone2023@gmail.com
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ ⚡ Loaded badge counts from cache instantly! Object
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/notifications
+ 🔄 Fetching fresh badge counts from server...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ 🔍 Checking server health (attempt 1/6)...
+ Warning: React does not recognize the `_fgT` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `_fgt` instead. If you accidentally passed it from a parent component, remove it from the DOM element. Component Stack
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/svg
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/lucide-react.js?v=edcea256:1611:5
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/lucide-react.js?v=edcea256:1643:8
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:63:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:44:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:301:13
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/button
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:63:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:44:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-HFKXESZM.js?v=ac3f16ba:1947:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:200:13
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at SelectTrigger (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/select.tsx:57:3)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at CollectionProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-VXYASK5T.js?v=ac3f16ba:20:13)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Popper (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-HFKXESZM.js?v=ac3f16ba:1939:11)
+    at Select (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:102:5)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Select (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/select.tsx:27:6)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Card (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/card.tsx:19:17)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Vendor (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/Vendor.tsx:78:17)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/main
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AdminPage (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/pages/AdminPage.tsx:76:26)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at Outlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7077:26)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AnimatedOutlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AnimatedOutlet.tsx:22:20)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at RenderErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6206:5)
+    at Outlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7077:26)
+    at AuthGate (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AuthGate.tsx:23:28)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AppRouter (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AppRouter.tsx:24:29)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ProtectedLayoutContent (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ProtectedLayout.tsx:39:20)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at CartVisibilityProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/CartVisibilityContext.tsx:21:42)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/ProtectedLayout
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ErrorBoundary.tsx:10:5)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at VendorAuthProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/VendorAuthContext.tsx:22:38)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AuthProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/AuthContext.tsx:40:32)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at LanguageProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/LanguageContext.tsx:1703:36)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ThemeProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/ThemeContext.tsx:21:33)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ProvidersWrapper (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/routes.tsx:43:29)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at RenderErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6206:5)
+    at DataRoutes (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6994:3)
+    at Router (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7086:13)
+    at RouterProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6760:3)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/App
+    at sm (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:117:4420)
+    at O (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:572:13253)
+    at ri (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:626:13959)
+    at bJ (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:643:10311)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at sC (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:117:13984)
+    at T1 (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:633:234274)
+    at yN (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:633:245399)
+    at oX (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:102:153215)
+    at hi (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:436:8433)
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+ Warning: React does not recognize the `_fgS` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `_fgs` instead. If you accidentally passed it from a parent component, remove it from the DOM element. Component Stack
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/svg
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/lucide-react.js?v=edcea256:1611:5
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/lucide-react.js?v=edcea256:1643:8
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:63:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:44:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:301:13
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/button
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:63:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:44:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-HFKXESZM.js?v=ac3f16ba:1947:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:200:13
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at SelectTrigger (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/select.tsx:57:3)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at CollectionProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-VXYASK5T.js?v=ac3f16ba:20:13)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Popper (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-HFKXESZM.js?v=ac3f16ba:1939:11)
+    at Select (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:102:5)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Select (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/select.tsx:27:6)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Card (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/card.tsx:19:17)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Vendor (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/Vendor.tsx:78:17)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/main
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AdminPage (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/pages/AdminPage.tsx:76:26)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at Outlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7077:26)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AnimatedOutlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AnimatedOutlet.tsx:22:20)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at RenderErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6206:5)
+    at Outlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7077:26)
+    at AuthGate (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AuthGate.tsx:23:28)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AppRouter (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AppRouter.tsx:24:29)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ProtectedLayoutContent (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ProtectedLayout.tsx:39:20)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at CartVisibilityProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/CartVisibilityContext.tsx:21:42)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/ProtectedLayout
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ErrorBoundary.tsx:10:5)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at VendorAuthProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/VendorAuthContext.tsx:22:38)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AuthProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/AuthContext.tsx:40:32)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at LanguageProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/LanguageContext.tsx:1703:36)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ThemeProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/ThemeContext.tsx:21:33)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ProvidersWrapper (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/routes.tsx:43:29)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at RenderErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6206:5)
+    at DataRoutes (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6994:3)
+    at Router (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7086:13)
+    at RouterProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6760:3)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/App
+    at sm (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:117:4420)
+    at O (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:572:13253)
+    at ri (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:626:13959)
+    at bJ (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:643:10311)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at sC (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:117:13984)
+    at T1 (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:633:234274)
+    at yN (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:633:245399)
+    at oX (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:102:153215)
+    at hi (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:436:8433)
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+ Warning: React does not recognize the `_fgB` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `_fgb` instead. If you accidentally passed it from a parent component, remove it from the DOM element. Component Stack
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/svg
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/lucide-react.js?v=edcea256:1611:5
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/lucide-react.js?v=edcea256:1643:8
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:63:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:44:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:301:13
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/button
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:63:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-GDMJLJO4.js?v=ac3f16ba:44:11
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-6TCZILLG.js?v=ac3f16ba:29:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-HFKXESZM.js?v=ac3f16ba:1947:13
+    at app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:200:13
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at SelectTrigger (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/select.tsx:57:3)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at CollectionProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-VXYASK5T.js?v=ac3f16ba:20:13)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Provider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-AUEUHYQQ.js?v=ac3f16ba:28:15)
+    at Popper (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/chunk-HFKXESZM.js?v=ac3f16ba:1939:11)
+    at Select (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/@radix-ui_react-select.js?v=49c715c3:102:5)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Select (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/select.tsx:27:6)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Card (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ui/card.tsx:19:17)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at Vendor (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/Vendor.tsx:78:17)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/main
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AdminPage (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/pages/AdminPage.tsx:76:26)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at Outlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7077:26)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AnimatedOutlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AnimatedOutlet.tsx:22:20)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at RenderErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6206:5)
+    at Outlet (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7077:26)
+    at AuthGate (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AuthGate.tsx:23:28)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AppRouter (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/AppRouter.tsx:24:29)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ProtectedLayoutContent (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ProtectedLayout.tsx:39:20)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at CartVisibilityProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/CartVisibilityContext.tsx:21:42)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/ProtectedLayout
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/components/ErrorBoundary.tsx:10:5)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at VendorAuthProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/VendorAuthContext.tsx:22:38)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at AuthProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/AuthContext.tsx:40:32)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at LanguageProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/LanguageContext.tsx:1703:36)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ThemeProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/contexts/ThemeContext.tsx:21:33)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at ProvidersWrapper (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/src/app/routes.tsx:43:29)
+    at code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:290:12506
+    at FGCmp (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/@id/fginspector:3:55)
+    at RenderedRoute (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6296:26)
+    at RenderErrorBoundary (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6206:5)
+    at DataRoutes (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6994:3)
+    at Router (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:7086:13)
+    at RouterProvider (app-7cux4guvljz4tf6rdkrv37bde4wzg2bh5swzcxm74x6ewqkaz5vq.makeproxy-c.figma.site/node_modules/.vite/deps/react-router.js?v=96e2e4b5:6760:3)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/App
+    at sm (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:117:4420)
+    at O (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:572:13253)
+    at ri (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:626:13959)
+    at bJ (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:643:10311)
+    at 9598e5a4-0e97-4e21-9c25-4fd85a09fea8-v2-figmaiframepreview.figma.site/admin/div
+    at sC (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:117:13984)
+    at T1 (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:633:234274)
+    at yN (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:633:245399)
+    at oX (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:102:153215)
+    at hi (code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:436:8433)
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+ 📦 Fetching vendors...
+ 📡 URL: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/vendors
+ ✅ Server is online: Object
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ ✅ Loaded 5 vendors
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ ✅ Auth user initialized successfully
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=728e89dc-6a3d-4df3-a64a-1eb36cdaa166&dd-evp-encoding=deflate&batch_time=1773386990514&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=4f4f113c-be27-482d-91c2-19a8ad730f92&dd-evp-encoding=deflate&batch_time=1773386990515&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 0 items: Array(0)
+ 💰 FINAL: Total Revenue: 0 MMK, Commission Earned: 0 MMK
+ 🔍 ALL ORDERS FROM API: Array(24)
+ ✅ VENDOR ORDERS for Go Go: Array(2)
+ 📦 Order ORD-MM98AS8G - Status: "processing" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "ready-to-ship" (string)
+ ✅ Loaded 2 orders for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 0 items: Array(0)
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 0 products...
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 0 products...
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 💾 Cached badge_counts (0.00MB)
+ ✅ Badge counts updated: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔍 All products from API: Array(17)
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go
+ ✅ Product "MC04944 - 3 in 1 Vitamin C Primer Cream" matches vendor Go Go Object
+ ✅ Product "MC04664 Travel Refill Bottle" matches vendor Go Go Object
+ ✅ Loaded 2 products for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 2 items: Array(2)
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=fbd83054-beb3-4f68-b4a1-65ef9fbd4343&dd-evp-encoding=deflate&batch_time=1773386998183&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=afffe1be-5866-4bf1-a56c-45cf446aa089&batch_time=1773386998183&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Tab became visible, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ ✅ Profile loaded successfully
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=9040ac24-9560-4886-9c84-4606b4620cf1&dd-evp-encoding=deflate&batch_time=1773387004966&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=41859abf-22e7-472b-b78a-57ac57967ae6&batch_time=1773387004966&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Tab became visible, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Profile loaded successfully
+ ✅ Profile loaded successfully
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=fc299525-c14f-41ef-a11d-7f507fa6fb6d&dd-evp-encoding=deflate&batch_time=1773387018895&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=fc8dcc79-70ef-4b37-979e-00ea5f12dd1d&batch_time=1773387018895&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Tab became visible, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Profile loaded successfully
+ ✅ Profile loaded successfully
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [vite] hot updated: /src/app/components/VendorProfile.tsx
+ [vite] hot updated: /src/styles/index.css
+ 7:30:32 AM [vite] (client) hmr update /src/app/components/VendorProfile.tsx, /src/styles/index.css
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 2 items: Array(2)
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔍 ALL ORDERS FROM API: Array(24)
+ ✅ VENDOR ORDERS for Go Go: Array(2)
+ 📦 Order ORD-MM98AS8G - Status: "processing" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "ready-to-ship" (string)
+ ✅ Loaded 2 orders for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 2 items: Array(2)
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔍 All products from API: Array(17)
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go
+ ✅ Product "MC04944 - 3 in 1 Vitamin C Primer Cream" matches vendor Go Go Object
+ ✅ Product "MC04664 Travel Refill Bottle" matches vendor Go Go Object
+ ✅ Loaded 2 products for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 2 items: Array(2)
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Auto-refreshing badge counts...
+ 🔄 Fetching fresh badge counts from server...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=dc8ace80-e55e-47ff-b67d-327ca2c94633&dd-evp-encoding=deflate&batch_time=1773387049652&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=0c41106f-1a2b-43a1-9361-3deb074a6d72&dd-evp-encoding=deflate&batch_time=1773387049652&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 💾 Cached badge_counts (0.00MB)
+ ✅ Badge counts updated: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=d11743d2-8dae-416b-884d-704879d80c4b&dd-evp-encoding=deflate&batch_time=1773387059383&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=b8c7f864-c384-4944-bfb0-cbe2f12b20d7&batch_time=1773387059383&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Tab became visible, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ ✅ Profile loaded successfully
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+vendor-core-ade2edecaf4781c7.min.js.br:11 [Violation] 'requestAnimationFrame' handler took 215ms
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+await in (anonymous)
+i @ code_components_prev…79708f.min.js.br:90
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=405c5b59-381c-4ced-9904-73d7666901bc&dd-evp-encoding=deflate&batch_time=1773387093584&_dd.api=fetch-keepalive net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-191557b646cc979f.min.js.br:3
+T @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+b @ vendor-191557b646cc979f.min.js.br:6
+y @ vendor-191557b646cc979f.min.js.br:6
+send @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=bcda56c8-e6bd-444d-88dc-681083cacb6d&dd-evp-encoding=deflate&batch_time=1773387093585&_dd.api=fetch net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-191557b646cc979f.min.js.br:3
+I @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+Promise.catch
+T @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+b @ vendor-191557b646cc979f.min.js.br:6
+y @ vendor-191557b646cc979f.min.js.br:6
+send @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/notifications
+ 🔄 Auto-refreshing badge counts...
+ 🔄 Fetching fresh badge counts from server...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ 💾 Cached badge_counts (0.00MB)
+ ✅ Badge counts updated: {orders: 2, vendor: 1, collaborator: 0, chat: 0}
+code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90
+d @ code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90
+o @ code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90
+send @ code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90
+h @ code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90
+(anonymous) @ code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90
+await in (anonymous)
+i @ code_components_preview_iframe-94f0c6d3bc79708f.min.js.br:90

@@ -1,0 +1,51 @@
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 💰 Starting commission calculation for Go Go Online Store...
+ 📦 Processing order ORD-MM98AS8G, status: "ready-to-ship", shouldEarnCommission: true
+    🔍 ITEM STRUCTURE: {sku: 'MC07351', name: 'MC07351 V Shape Face Mask', image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…SIQAIQhAAhCEACEIQAIQhAAhCEACEIQAIQhAAhCEACEIQB//Z', price: 29800, vendor: 'vendor_1770692613928_5ibshuq0g', …}
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    📊 Price sources: subtotal=undefined, total=undefined, price=29800, product.price=undefined, quantity=1
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "cancelled", shouldEarnCommission: false
+    🔍 ITEM STRUCTURE: {sku: 'S26', name: 'Samsung Galaxy S26+', image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//Z', price: '2635000', vendor: 'vendor_1770692613928_5ibshuq0g', …}
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    📊 Price sources: subtotal=undefined, total=undefined, price=2635000, product.price=undefined, quantity=4
+    ❌ No commission - order status "cancelled" doesn't qualify
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ ✅ Profile loaded successfully
+ 🔍 ALL ORDERS FROM API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ ✅ VENDOR ORDERS for Go Go Online Store: (2) [{…}, {…}]
+ 📦 Order ORD-MM98AS8G - Status: "ready-to-ship" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "cancelled" (string)
+ ✅ Loaded 2 orders for vendor Go Go Online Store
+ 💰 Starting commission calculation for Go Go Online Store...
+ 📦 Processing order ORD-MM98AS8G, status: "ready-to-ship", shouldEarnCommission: true
+    🔍 ITEM STRUCTURE: {sku: 'MC07351', name: 'MC07351 V Shape Face Mask', image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…SIQAIQhAAhCEACEIQAIQhAAhCEACEIQAIQhAAhCEACEIQB//Z', price: 29800, vendor: 'vendor_1770692613928_5ibshuq0g', …}
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    📊 Price sources: subtotal=undefined, total=undefined, price=29800, product.price=undefined, quantity=1
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "cancelled", shouldEarnCommission: false
+    🔍 ITEM STRUCTURE: {sku: 'S26', name: 'Samsung Galaxy S26+', image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//Z', price: '2635000', vendor: 'vendor_1770692613928_5ibshuq0g', …}
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    📊 Price sources: subtotal=undefined, total=undefined, price=2635000, product.price=undefined, quantity=4
+    ❌ No commission - order status "cancelled" doesn't qualify
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔍 All products from API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go Online Store
+ ✅ Product "MC07351 V Shape Face Mask" matches vendor Go Go Online Store {productVendor: '', productVendorId: undefined, productSelectedVendors: Array(1)}
+ ✅ Loaded 1 products for vendor Go Go Online Store
+ 💰 Starting commission calculation for Go Go Online Store...
+ 📦 Processing order ORD-MM98AS8G, status: "ready-to-ship", shouldEarnCommission: true
+    🔍 ITEM STRUCTURE: {sku: 'MC07351', name: 'MC07351 V Shape Face Mask', image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…SIQAIQhAAhCEACEIQAIQhAAhCEACEIQAIQhAAhCEACEIQB//Z', price: 29800, vendor: 'vendor_1770692613928_5ibshuq0g', …}
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    📊 Price sources: subtotal=undefined, total=undefined, price=29800, product.price=undefined, quantity=1
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "cancelled", shouldEarnCommission: false
+    🔍 ITEM STRUCTURE: {sku: 'S26', name: 'Samsung Galaxy S26+', image: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD…AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//Z', price: '2635000', vendor: 'vendor_1770692613928_5ibshuq0g', …}
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    📊 Price sources: subtotal=undefined, total=undefined, price=2635000, product.price=undefined, quantity=4
+    ❌ No commission - order status "cancelled" doesn't qualify
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully

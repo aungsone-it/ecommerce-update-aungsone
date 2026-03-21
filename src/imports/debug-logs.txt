@@ -1,0 +1,50 @@
+code_components_preview_iframe-45c712baf9cbf8c8.min.js.br:sourcemap:28 [HOME TOGGLE] Switching to grid view, current: list
+code_components_preview_iframe-45c712baf9cbf8c8.min.js.br:sourcemap:28 [DEBUG] About to check home sales render - viewMode: home dealProducts.length: 0 homeViewType: grid
+code_components_preview_iframe-45c712baf9cbf8c8.min.js.br:sourcemap:28 homeViewType state changed to: grid
+code_components_preview_iframe-45c712baf9cbf8c8.min.js.br:sourcemap:28 [HOME TOGGLE] Switching to list view, current: grid
+code_components_preview_iframe-45c712baf9cbf8c8.min.js.br:sourcemap:28 [DEBUG] About to check home sales render - viewMode: home dealProducts.length: 0 homeViewType: list
+code_components_preview_iframe-45c712baf9cbf8c8.min.js.br:sourcemap:28 homeViewType state changed to: list
+vendor-core-4ad04edb85d11631.min.js.br:sourcemap:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=5d4326e9-4759-48ff-8a7a-bd4d098a7638&dd-evp-encoding=deflate&batch_time=1772335696362&_dd.api=fetch-keepalive net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:sourcemap:54
+h @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+T @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+b @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+y @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+send @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+u.length.u.<computed>.finishCallback @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+h @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+u @ vendor-core-4ad04edb85d11631.min.js.br:sourcemap:54
+vendor-core-4ad04edb85d11631.min.js.br:sourcemap:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=70da501a-f17e-45b0-96f8-73eb20438e8b&dd-evp-encoding=deflate&batch_time=1772335696363&_dd.api=fetch net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:sourcemap:54
+h @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+I @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+h @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+Promise.catch
+T @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+b @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+y @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+send @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+u.length.u.<computed>.finishCallback @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:6
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+h @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+(anonymous) @ vendor-642ec174312e1812.min.js.br:sourcemap:3
+u @ vendor-core-4ad04edb85d11631.min.js.br:sourcemap:54
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…cbf8c8.min.js.br:28
+d @ code_components_prev…cbf8c8.min.js.br:28
+o @ code_components_prev…cbf8c8.min.js.br:28
+send @ code_components_prev…cbf8c8.min.js.br:28
+h @ code_components_prev…cbf8c8.min.js.br:28
+(anonymous) @ code_components_prev…cbf8c8.min.js.br:28
+await in (anonymous)
+i @ code_components_prev…cbf8c8.min.js.br:28

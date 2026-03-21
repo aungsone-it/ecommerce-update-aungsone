@@ -1,0 +1,91 @@
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 0 items: []
+ 💰 FINAL: Total Revenue: 0 MMK, Commission Earned: 0 MMK
+ ✅ Profile loaded successfully
+ 🔍 ALL ORDERS FROM API: (24) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ ✅ VENDOR ORDERS for Go Go: (2) [{…}, {…}]
+ 📦 Order ORD-MM98AS8G - Status: "processing" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "ready-to-ship" (string)
+ ✅ Loaded 2 orders for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 0 items: []
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 0 products...
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 0 products...
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔍 All products from API: (17) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go
+ ✅ Product "MC04944 - 3 in 1 Vitamin C Primer Cream" matches vendor Go Go {productVendor: undefined, productVendorId: undefined, productSelectedVendors: Array(2), price: '$27000', salePrice: undefined, …}
+ ✅ Product "MC04664 Travel Refill Bottle" matches vendor Go Go {productVendor: undefined, productVendorId: undefined, productSelectedVendors: Array(1), price: '$33800', salePrice: undefined, …}
+ ✅ Loaded 2 products for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 2 items: (2) [{…}, {…}]
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ 🔄 Auto-refreshing badge counts...
+ 🔄 Fetching fresh badge counts from server...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+svg?seed=Go%20Go:1  GET https://api.dicebear.com/7.x/pixel-art/svg?seed=Go%20Go net::ERR_CONNECTION_REFUSED
+Image
+c1 @ /webpack-artifacts/a…79708f.min.js.br:37
+TC @ /webpack-artifacts/a…79708f.min.js.br:37
+T0 @ /webpack-artifacts/a…79708f.min.js.br:37
+TQ @ /webpack-artifacts/a…79708f.min.js.br:37
+TJ @ /webpack-artifacts/a…79708f.min.js.br:37
+SJ @ /webpack-artifacts/a…79708f.min.js.br:37
+SZ @ /webpack-artifacts/a…79708f.min.js.br:37
+Sv @ /webpack-artifacts/a…79708f.min.js.br:37
+SS @ /webpack-artifacts/a…79708f.min.js.br:37
+(anonymous) @ /webpack-artifacts/a…79708f.min.js.br:65
+V @ /webpack-artifacts/a…79708f.min.js.br:61
+B @ /webpack-artifacts/a…79708f.min.js.br:61
+eo @ /webpack-artifacts/a…79708f.min.js.br:61
+svg?seed=Tech%20Zoo:1  GET https://api.dicebear.com/7.x/pixel-art/svg?seed=Tech%20Zoo net::ERR_CONNECTION_REFUSED
+Image
+c1 @ /webpack-artifacts/a…79708f.min.js.br:37
+TC @ /webpack-artifacts/a…79708f.min.js.br:37
+T0 @ /webpack-artifacts/a…79708f.min.js.br:37
+TQ @ /webpack-artifacts/a…79708f.min.js.br:37
+TJ @ /webpack-artifacts/a…79708f.min.js.br:37
+SJ @ /webpack-artifacts/a…79708f.min.js.br:37
+SZ @ /webpack-artifacts/a…79708f.min.js.br:37
+SO @ /webpack-artifacts/a…79708f.min.js.br:37
+pC @ /webpack-artifacts/a…79708f.min.js.br:37
+(anonymous) @ /webpack-artifacts/a…79708f.min.js.br:37
+ 💾 Cached badge_counts (0.00MB)
+ ✅ Badge counts updated: {orders: 2, vendor: 1, collaborator: 0, chat: 0}

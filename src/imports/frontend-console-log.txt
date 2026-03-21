@@ -1,0 +1,642 @@
+ Running frontend commit 104e5cff5c002c982d12ee7e71d6e343532dd808
+ Statsig is not ready to log exposures, will retry in 1 seconds
+(anonymous) @ vendor-core-ade2edec…4781c7.min.js.br:54
+ [Livegraph] Connected 2026-03-09T15:11:52.021Z.
+ Unrecognized feature: 'local-network-access'.
+x @ vendor-core-ade2edec…4781c7.min.js.br:11
+ Autosave Changes not available or already claimed by another tab undefined
+(index):1  Failed to load resource: net::ERR_FAILED
+ [import] git: 48589f4cb70c6245ed05d8f4e8e56d36d6b05fb3, stamp: 594A0F27E5DEFE4C
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=2bd314bc-5bc8-454f-a916-1b792707b6d8&dd-evp-encoding=deflate&batch_time=1773069112397&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=28dbe72b-7b7e-4089-bf5e-bbbad1eeb5ce&dd-evp-encoding=deflate&batch_time=1773069112403&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [Fullscreen] Booting... (emscripten version 4.0.21)
+ [GPU] graphicsAPI:"WebGL 2", vendor:"Google Inc. (Intel)", renderer:"ANGLE (Intel, Mesa Intel(R) UHD Graphics 730 (ADL-S GT1), OpenGL ES 3.2)" version:"OpenGL ES 3.0 (WebGL 2.0 (OpenGL ES 3.0 Chromium))"
+ [Fullscreen] Ready in 509.6ms
+ [FullscreenApp] calling setEditorTheme and setting preference dark
+ [MultiplayerSession] connecting to wss://www.figma.com/api/multiplayer/5FOqWwfgECp8z9r9JuCSa0?role=editor&tracking_session_id=xwCz81JTRLAYpQBI&version=151&recentReload=0&file-load-streaming-compression&user-id=1336977822049309121&client_release=104e5cff5c002c982d12ee7e71d6e343532dd808
+ [FullscreenApp] calling setEditorTheme and setting preference dark
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c4fbf080-b7b2-4902-bb2d-933b76fe38f6&dd-evp-encoding=deflate&batch_time=1773069113807&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=2e0e8a1d-03fc-4658-a560-5a636ef25de3&dd-evp-encoding=deflate&batch_time=1773069113809&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ Loaded 31 scripts (5988489b), 0 from cache (0b)
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=762f68c1-8a68-4775-8e74-906ac395970a&dd-evp-encoding=deflate&batch_time=1773069114527&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=32700a3b-5070-47d8-928a-78e554ead6d5&dd-evp-encoding=deflate&batch_time=1773069114528&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [MultiplayerSession] Joining file version 106 (initial load)
+ Migration succeeded: context: fullscreen_migrate_SceneGraphManager, version: 106, duration: 0ms.
+ [devtools] Initialized LS
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [devtools] Initialized LS
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+/api/make/fetch_ds_code_gen_status:1  Failed to load resource: the server responded with a status of 400 ()
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=18b37053-9639-463f-bba1-98995458d8b0&dd-evp-encoding=deflate&batch_time=1773069121175&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=dcee76cc-c54f-4d49-ad6a-5b74a9b63da2&dd-evp-encoding=deflate&batch_time=1773069121209&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=e671357d-928a-4c14-aefc-75957ee04163&dd-evp-encoding=deflate&batch_time=1773069122918&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=93aa0e22-85fa-4b94-818e-9cc3f4da3868&dd-evp-encoding=deflate&batch_time=1773069122931&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=b0884753-e29a-4cfe-93c5-ca57e9698fa8&dd-evp-encoding=deflate&batch_time=1773069124139&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=24b96b44-2fa7-4f75-800a-b9418e26e718&dd-evp-encoding=deflate&batch_time=1773069124140&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=67c7b728-fb4d-44b1-b9bf-6a483d5d967e&dd-evp-encoding=deflate&batch_time=1773069124141&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=a7631edb-fcac-4b7b-b59b-8c7455b25fa8&dd-evp-encoding=deflate&batch_time=1773069124173&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+statsigapi.net/v1/sdk_exception:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔧 Initializing Supabase client (SINGLE INSTANCE)
+ 🔍 Fetching platform settings...
+ 🔍 [VendorAuth] Checking for existing vendor session...
+ ℹ️ [VendorAuth] No existing session found
+ 🔍 Checking for existing session...
+ ℹ️ No existing session found
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Platform settings fetched: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [Fullscreen] loadtime=8.12s maxmem=408612416
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=3e410064-bd6e-4296-8eab-046e40309948&dd-evp-encoding=deflate&batch_time=1773069130427&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c59075c4-d165-4d6f-962f-1c7a7c1f26d0&dd-evp-encoding=deflate&batch_time=1773069130477&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📊 Filtered 0 products from 0 total
+ 📦 Filtered products: Array(0)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ homeViewType state changed to: grid
+ 🌐 URL changed to: /store Category: null
+ 🔍 Starting SECURE (first load)...
+ 📡 Server URL: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f
+ ��� Note: First load may take 30-60 seconds (Edge Function cold start)
+ 🔍 Checking for existing session...
+ ℹ️ No existing session found
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Server is healthy, loading data...
+ 🔄 Loading products ...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/products
+ 🔄 Loading categories with auto-retry...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/categories
+ ⚙️ Loading site settings...
+ 🎨 Loading banners...
+ 🎯 Loading featured campaigns...
+ 🎨 Loading appearance settings...
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Loaded 2 banners
+ ✅ API Response: 200 
+ ✅ Loaded 3 featured campaigns
+ ✅ Loaded appearance settings
+ ✅ Site settings loaded: Object
+ ✅ API Response: 200 
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=94a9baeb-3d98-4f12-9414-e80f1f186f44&dd-evp-encoding=deflate&batch_time=1773069137694&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=3ae90208-6523-4184-9f99-2851ee445dac&batch_time=1773069137694&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📦 API Data received successfully
+ ✅ Loaded 6 active categories for storefront
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📦 API Data received successfully
+ 📦 Raw products from API: 17
+ 🔍 ALL products with status: Array(17)
+ ✅ Active products: 17
+ 🔍 All active products: Array(17)
+ 💾 Cached data for key: storefront-products (TTL: 300000ms)
+ ✅ Loaded 17 active products for storefront 
+ ✅ All data loaded, app ready!
+ 📊 Filtered 17 products from 17 total
+ 📦 Filtered products: Array(17)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📦 Product selected: prod_1772088030874_6wf8sd1
+ 🔍 Fetching full details for product: prod_1772088030874_6wf8sd1
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🌐 URL changed to: /product/MW06886-Black Category: null
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+ ✅ Loaded full product details: Object
+ 📝 DESCRIPTION FROM API: <p>🔺color Black , Silver ,Gold<br>🔺Waterproof ;30M<br>🔺Case Material ;alloy<br>🔺Mirror Material ;Mineral reinforced glass mirror<br>🔺Watch strap;💯Silicone&nbsp;</p><p>💥ခေတ်ရေစီးကြောင်းကို လိုက်လျှောက်ချင်တဲ့ လူငယ်တွေရော ဖက်ရှင်ကျကျ ဝတ်စားဆင်ယင်ရတာကို ကြိုက်နှစ်သက်ပြီး၊ ထူးခြားတဲ့ ဒီဇိုင်းနဲ့ လူအများကြားမှာ ပေါ်လွင်ချင်တဲ့ကိုကိုမောင်မောင်တို့အတွက် Binbond &nbsp;Quartz Auto Watch လေးလာပါပြီရှင့်</p><p>&nbsp;⌚သာမန်နာရီတွေနဲ့ မတူဘဲ Tattoo ပုံစံဒီဇိုင်းတွေ ပါဝင်တာကြောင့် သင့်ရဲ့ တစ်မူထူးခြားတဲ့ စတိုင်လ်ကို ပြသနိုင်ပြီး လူအများကြားမှာ ပေါ်လွင်စေပြီး စတိုင်လ်ကျတဲ့ လူတစ်ယောက်အဖြစ် မြင်စေမှာပါ&nbsp;</p><p>⌚ဆွစ်ဇာလန်နိုင်ငံထုတ် နာရီတွေမှာ သုံးတဲ့အဆင့်မြင့် Quartz Movement ကို သုံးထားတာဖြစ်လို့ အချိန်ကို လုံးဝတိကျမှန်ကန်စွာ ပြသပေးပါတယ်။ တစ်စက္ကန့်လေးတောင် မှားယွင်းမှုမရှိဘဲ သင့်ရဲ့ အဖိုးတန်တဲ့ အချိန်တွေကို အတိအကျ ထိန်းသိမ်းပေးမှာပါ။</p><p>💯အရည်အသွေးပိုင်မှာဆိုရင်လဲ Silicone Strap လေးကထိတွေ့လိုက်တာနဲ့ နူးညံ့အိစက်တဲ့ ခံစားမှုကို ပေးစွမ်းနိုင်ပြီး &nbsp;နာရီရဲ့ Case ကို အလွန်အကြမ်းခံတဲ့ alloyလေးနဲ့ပြုလုပ်ထားကာ မှန်သားပြင်ကလည်း အလွယ်တကူ scratch မဖြစ်နိုင်တဲ့အတွက် အမြဲတမ်း ကြည်လင်တောက်ပနေမှာပါ။</p><p>✅နေ့စဉ်ဘဝမှာပဲဖြစ်ဖြစ် ရုံးတက်တဲ့အခါပဲဖြစ်ဖြစ်၊ပါတီပွဲတွေတက်တဲ့အခါပဲဖြစ်ဖြစ် သင့်ရဲ့ ဖက်ရှင်ကိုအထူးခြားဆုံးဖြစ်နေစေပြီး လူအများကြားမှာ ပေါ်လွင်စေကာ စတိုင်လ်ကျတဲ့ လူတစ်ယောက်အဖြစ် မြင်စေမှာပါ။</p><p>💢Lxury ဆန်ပြီး ပြီးပြည့်စုံတဲ့ ဒီဇိုင်းလေးကိုတစ်သိန်းစွန်းစွန်းနဲ့ ဈေးနှုန်းသင့်တင့်တာမို့ မဝယ်မိရင်နောင်တအကြီးကြီးရသွားမှာပါနော်......💗အဆင့်မြင့်နည်းပညာနဲ့ထုတ်လုပ်ထားတာမို့ အကြမ်းခံဖို့က လုံးဝစိတ်ချလို့ရပါတယ်<br>📌stock အရေအတွက် (20)လုံး ပဲရောင်းပေးမှာမို့လို့ လက်နှေးရင်တော့ မရလိုက်ပဲနေမယ်နော်♻️</p><p>06886</p><p><img class="rounded-lg max-w-full h-auto" src="https://cdn.shopify.com/s/files/1/0737/9320/8578/files/Gold_b886201f-ff31-4d53-9208-2d84e710f7d4.jpg?v=1746152045" alt=""><img class="rounded-lg max-w-full h-auto" src="https://cdn.shopify.com/s/files/1/0737/9320/8578/files/Silver_b7616117-01b6-4de3-94f1-5b126f76da17.jpg?v=1746152045" alt=""><img class="rounded-lg max-w-full h-auto" src="https://cdn.shopify.com/s/files/1/0737/9320/8578/files/Black_e306bc96-c4f6-4b35-aa5a-0b01e4dab9db.jpg?v=1746152045" alt=""><img class="rounded-lg max-w-full h-auto" src="https://cdn.shopify.com/s/files/1/0737/9320/8578/files/1_5766a355-0169-4e63-a4d3-c8511a82ee43.jpg?v=1746152044" alt=""><img class="rounded-lg max-w-full h-auto" src="https://cdn.shopify.com/s/files/1/0737/9320/8578/files/4_d0a8f891-b53e-4c31-b519-f2d7b07504cb.png?v=1746152045" alt=""></p>
+ 📏 Description length from API: 2471
+ ✅ Full product fetched, updating with complete data...
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🌐 URL changed to: /store Category: null
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📦 Product selected: prod_1772088030874_6wf8sd1
+ ⚡ INSTANT LOAD: Using cached product details for prod_1772088030874_6wf8sd1
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+ ✅ Full product fetched, updating with complete data...
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🌐 URL changed to: /product/MW06886-Black Category: null
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+ ✅ Variant thumbnails loaded: 3 unique images from 3 variants
+ 🔍 Selected Product Data: Object
+ 🔍 Variant Selector Check: Object
+ [vite] connecting...
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🌐 URL changed to: /store Category: null
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📊 Filtered 4 products from 17 total
+ 📦 Filtered products: Array(4)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🌐 URL changed to: /products Category: null
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📊 Filtered 17 products from 17 total
+ 📦 Filtered products: Array(17)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🌐 URL changed to: /store Category: null
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [vite] connected.
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+9624886f-1405-4920-adcb-3afdbfe6715b-v2-figmaiframepreview.figma.site/admin:1 [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) 
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔐 Attempting login for: aungsone2023@gmail.com | Remember me: true
+ 🔧 Initializing Supabase client (SINGLE INSTANCE)
+ 🔍 Fetching platform settings...
+ 🔍 [VendorAuth] Checking for existing vendor session...
+ ℹ️ [VendorAuth] No existing session found
+ 🔍 Checking for existing session...
+ ℹ️ No existing session found
+ ✅ Login successful for: aungsone2023@gmail.com
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/notifications
+ 🔄 Fetching fresh badge counts from server...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ 🔍 Checking server health (attempt 1/6)...
+ ✅ Platform settings fetched: Object
+ ✅ Server is online: Object
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=81f1a150-0d27-4e1a-bda0-57ac3c2ee5bd&dd-evp-encoding=deflate&batch_time=1773069168618&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=7f5c2255-cf93-4cf5-9b24-bcc60e3e6a8a&dd-evp-encoding=deflate&batch_time=1773069168619&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ ✅ Auth user initialized successfully
+ 🔄 Loading products with auto-retry...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/products
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/vendors
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Loading inventory from database (attempt 1)...
+ 📍 Using Products API to fetch inventory data
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Server is healthy
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ 📦 Fetching vendors...
+ 📡 URL: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/vendors
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔨 Cache rebuild triggered
+ 📣 Fetching campaigns from server...
+ 🔄 Setting up auto-refresh for campaigns (every 10s)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🛑 Clearing auto-refresh interval
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📥 Fetching customers from backend...
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=f6fcba38-c8e5-460a-97b4-2eec5359565f&dd-evp-encoding=deflate&batch_time=1773069179965&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=493801a5-8fc0-4447-8fbb-21db9546d26e&batch_time=1773069179965&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Tab became visible, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=561837ad-f870-4ee2-8c02-dc45a355289d&dd-evp-encoding=deflate&batch_time=1773069183605&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=f0b8e53f-2868-4727-91b8-7b4dd58aef8d&batch_time=1773069183605&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ ℹ️ Orders data not ready yet, keeping cached counts
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+The specified value "+95 9 XXX XXX XXX" cannot be parsed, or is out of range.
+ ⚠️ Server is taking longer than expected to respond, continuing without profile
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ ⚠️ Server is taking longer than expected to respond, continuing without profile
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ Error loading general settings: 
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ Error fetching dashboard stats: 
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ 🔄 Tab became visible, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+announcement:1  Failed to load resource: the server responded with a status of 500 ()
+announcement:1  Failed to load resource: the server responded with a status of 500 ()
+lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/landing-stats:1  Failed to load resource: the server responded with a status of 504 ()
+lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/landing-stats:1  Failed to load resource: the server responded with a status of 504 ()
+ Error fetching landing stats: 
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ ✅ API Response: 200 
+ Error fetching users: 
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ 📦 API Data received successfully
+ Orders loaded: Object
+ ❌ Error loading inventory: 
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ ✅ Profile loaded successfully
+ ✅ Profile loaded successfully
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📣 Fetching campaigns from server...
+ 🔄 Setting up auto-refresh for campaigns (every 10s)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🛑 Clearing auto-refresh interval
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔨 Cache rebuild triggered
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Server is healthy
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ Categories loaded: Object
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ ✅ Loaded 5 vendors for name mapping
+ ✅ Fetched 5 customers from backend
+ ✅ 5 valid customers after filtering
+ 📥 Response status: 200
+ 📥 Response data: Object
+ 📦 Fetching vendors...
+ 📡 URL: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/vendors
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/products:1  Failed to load resource: the server responded with a status of 504 ()
+lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/products:1  Failed to load resource: the server responded with a status of 504 ()
+ ✅ API Response: 504 
+ ❌ API Error (/products): Request timeout
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ ❌ API Request Failed (/products): ApiError: Request timeout
+    at sb (index.js?Expires=1774224000&Key-Pair-Id=APKAQ4GOSFWCW27IBOMQ&Signature=kDJrJmOVSXwBvIz4IEBEhbD~qPu2TEZZsOJlC5VY68ozVlXblqFebuIunSqfHgCvN7l53zq8HoaKWFyzVkO6Ob3Gu-stoH8GgQSWTL6wGV9Ud4W62DOhuS9msYExofZ3A72HDskvUPFOnOb66UcvDUOMD8vN5b0GquCzuWtnReCnt6~U4sswooqUTns-ZpEO9FnpgWv25o72d0ZCjrgakQxOUG9GXnMjB0~OqqidZvsjRpJd-pS2SFSAomzkx3npPSNJhL5jzjHwwGXcE7T33WR7Jo5xiv~YzrbVvhyIXlcM5cWHMFctnxhxLGzlTccxHp5m3wBsWGMUKIjfvj7uTQ__:10734:13)
+    at async WI (index.js?Expires=1774224000&Key-Pair-Id=APKAQ4GOSFWCW27IBOMQ&Signature=kDJrJmOVSXwBvIz4IEBEhbD~qPu2TEZZsOJlC5VY68ozVlXblqFebuIunSqfHgCvN7l53zq8HoaKWFyzVkO6Ob3Gu-stoH8GgQSWTL6wGV9Ud4W62DOhuS9msYExofZ3A72HDskvUPFOnOb66UcvDUOMD8vN5b0GquCzuWtnReCnt6~U4sswooqUTns-ZpEO9FnpgWv25o72d0ZCjrgakQxOUG9GXnMjB0~OqqidZvsjRpJd-pS2SFSAomzkx3npPSNJhL5jzjHwwGXcE7T33WR7Jo5xiv~YzrbVvhyIXlcM5cWHMFctnxhxLGzlTccxHp5m3wBsWGMUKIjfvj7uTQ__:10669:14)
+    at async j (index.js?Expires=1774224000&Key-Pair-Id=APKAQ4GOSFWCW27IBOMQ&Signature=kDJrJmOVSXwBvIz4IEBEhbD~qPu2TEZZsOJlC5VY68ozVlXblqFebuIunSqfHgCvN7l53zq8HoaKWFyzVkO6Ob3Gu-stoH8GgQSWTL6wGV9Ud4W62DOhuS9msYExofZ3A72HDskvUPFOnOb66UcvDUOMD8vN5b0GquCzuWtnReCnt6~U4sswooqUTns-ZpEO9FnpgWv25o72d0ZCjrgakQxOUG9GXnMjB0~OqqidZvsjRpJd-pS2SFSAomzkx3npPSNJhL5jzjHwwGXcE7T33WR7Jo5xiv~YzrbVvhyIXlcM5cWHMFctnxhxLGzlTccxHp5m3wBsWGMUKIjfvj7uTQ__:66067:19)
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ ⏳ Retry attempt 1/10 in 4000ms...
+ ✅ Loaded 5 vendors
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c41640f2-4fe7-4f8e-8610-d08c8984f707&dd-evp-encoding=deflate&batch_time=1773069196757&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=8187f697-ccc4-4862-83ed-5129327aa370&batch_time=1773069196757&_dd.api=beacon:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 💰 Financial data loaded: Object
+ 📥 Response status: 200
+ 📥 Response data: Object
+ 🔄 Tab became visible, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/products
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📥 Fetching customers from backend...
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📣 Fetching campaigns from server...
+ 🔄 Setting up auto-refresh for campaigns (every 10s)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🛑 Clearing auto-refresh interval
+ 📦 Fetching vendors...
+ 📡 URL: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/vendors
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ API Response: 200 
+ ⚠️ Server is taking longer than expected to respond, continuing without profile
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ ⚠️ Server is taking longer than expected to respond, continuing without profile
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+ 📦 API Data received successfully
+ Orders loaded: Object
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ⚠️ Server is taking longer than expected to respond, continuing without profile
+(anonymous) @ code_components_prev…89ccb5.min.js.br:28
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Profile loaded successfully
+ ✅ Loaded 5 vendors
+ 📥 Response status: 200
+ 📥 Response data: {campaigns: Array(3), total: 3}
+ ✅ Fetched 5 customers from backend
+ ✅ 5 valid customers after filtering
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://events.statsigapi.net/v1/rgstr net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-998f6c2559412105.min.js.br:3
+(anonymous) @ vendor-998f6c2559412105.min.js.br:123
+u @ vendor-998f6c2559412105.min.js.br:123
+(anonymous) @ vendor-998f6c2559412105.min.js.br:123
+(anonymous) @ vendor-998f6c2559412105.min.js.br:123
+s @ vendor-998f6c2559412105.min.js.br:123
+e.postToEndpoint @ vendor-998f6c2559412105.min.js.br:123
+(anonymous) @ vendor-998f6c2559412105.min.js.br:123
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+ ✅ Loaded 5 vendors
+ 💰 Financial data loaded: {summary: {…}, transactions: Array(0), paymentMethods: Array(0), revenueChartData: Array(0), vendorPayouts: Array(0), …}
+code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28
+d @ code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28
+o @ code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28
+send @ code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28
+h @ code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28
+(anonymous) @ code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28
+await in (anonymous)
+i @ code_components_preview_iframe-ab9bdbe29389ccb5.min.js.br:28
+ Categories loaded: {categories: Array(6), total: 6}

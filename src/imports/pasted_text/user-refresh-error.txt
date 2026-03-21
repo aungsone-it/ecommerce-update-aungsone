@@ -1,0 +1,318 @@
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+m @ code_components_prev…9708f.min.js.br:121
+f @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+(anonymous) @ code_components_prev…79708f.min.js.br:87
+window.history.<computed> @ code_components_prev…9708f.min.js.br:572
+push @ app-3b32q4i6yl4iut6l…r.js?v=a02f9e7f:724
+completeNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2050
+handleLoaders @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2560
+startNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2314
+navigate @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2177
+(anonymous) @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:6618
+(anonymous) @ app-3b32q4i6yl4iut6l…s/AdminPage.tsx:166
+TN @ code_components_prev…79708f.min.js.br:37
+T8 @ code_components_prev…79708f.min.js.br:37
+T7 @ code_components_prev…79708f.min.js.br:37
+T6 @ code_components_prev…79708f.min.js.br:37
+T4 @ code_components_prev…79708f.min.js.br:37
+S1 @ code_components_prev…79708f.min.js.br:37
+SQ @ code_components_prev…79708f.min.js.br:37
+SJ @ code_components_prev…79708f.min.js.br:37
+SZ @ code_components_prev…79708f.min.js.br:37
+SO @ code_components_prev…79708f.min.js.br:37
+pC @ code_components_prev…79708f.min.js.br:37
+(anonymous) @ code_components_prev…79708f.min.js.br:37
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+_ @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+(anonymous) @ code_components_prev…79708f.min.js.br:87
+window.history.<computed> @ code_components_prev…9708f.min.js.br:572
+push @ app-3b32q4i6yl4iut6l…r.js?v=a02f9e7f:724
+completeNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2050
+handleLoaders @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2560
+startNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2314
+navigate @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2177
+(anonymous) @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:6618
+(anonymous) @ app-3b32q4i6yl4iut6l…s/AdminPage.tsx:166
+TN @ code_components_prev…79708f.min.js.br:37
+T8 @ code_components_prev…79708f.min.js.br:37
+T7 @ code_components_prev…79708f.min.js.br:37
+T6 @ code_components_prev…79708f.min.js.br:37
+T4 @ code_components_prev…79708f.min.js.br:37
+S1 @ code_components_prev…79708f.min.js.br:37
+SQ @ code_components_prev…79708f.min.js.br:37
+SJ @ code_components_prev…79708f.min.js.br:37
+SZ @ code_components_prev…79708f.min.js.br:37
+SO @ code_components_prev…79708f.min.js.br:37
+pC @ code_components_prev…79708f.min.js.br:37
+(anonymous) @ code_components_prev…79708f.min.js.br:37
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+m @ code_components_prev…9708f.min.js.br:121
+f @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+eh.onpopstate @ code_components_prev…79708f.min.js.br:87
+navigateToUrl @ code_components_prev…9708f.min.js.br:572
+navigateToUrl @ code_components_prev…9708f.min.js.br:984
+o @ code_components_prev…79708f.min.js.br:65
+t.onmessage @ code_components_prev…79708f.min.js.br:65
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+_ @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+eh.onpopstate @ code_components_prev…79708f.min.js.br:87
+navigateToUrl @ code_components_prev…9708f.min.js.br:572
+navigateToUrl @ code_components_prev…9708f.min.js.br:984
+o @ code_components_prev…79708f.min.js.br:65
+t.onmessage @ code_components_prev…79708f.min.js.br:65
+ ✅ Server is healthy
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ ✅ Profile loaded successfully
+ 📦 Fetching vendors...
+ 📡 URL: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/vendors
+ 🔨 Cache rebuild triggered
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+m @ code_components_prev…9708f.min.js.br:121
+f @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+(anonymous) @ code_components_prev…79708f.min.js.br:87
+window.history.<computed> @ code_components_prev…9708f.min.js.br:572
+push @ app-3b32q4i6yl4iut6l…r.js?v=a02f9e7f:724
+completeNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2050
+handleLoaders @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2560
+startNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2314
+navigate @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2177
+(anonymous) @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:6618
+(anonymous) @ app-3b32q4i6yl4iut6l…s/AdminPage.tsx:166
+TN @ code_components_prev…79708f.min.js.br:37
+T8 @ code_components_prev…79708f.min.js.br:37
+T7 @ code_components_prev…79708f.min.js.br:37
+T6 @ code_components_prev…79708f.min.js.br:37
+T4 @ code_components_prev…79708f.min.js.br:37
+S1 @ code_components_prev…79708f.min.js.br:37
+SQ @ code_components_prev…79708f.min.js.br:37
+SJ @ code_components_prev…79708f.min.js.br:37
+SZ @ code_components_prev…79708f.min.js.br:37
+SO @ code_components_prev…79708f.min.js.br:37
+pC @ code_components_prev…79708f.min.js.br:37
+(anonymous) @ code_components_prev…79708f.min.js.br:37
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+_ @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+(anonymous) @ code_components_prev…79708f.min.js.br:87
+window.history.<computed> @ code_components_prev…9708f.min.js.br:572
+push @ app-3b32q4i6yl4iut6l…r.js?v=a02f9e7f:724
+completeNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2050
+handleLoaders @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2560
+startNavigation @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2314
+navigate @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:2177
+(anonymous) @ app-3b32q4i6yl4iut6l….js?v=a02f9e7f:6618
+(anonymous) @ app-3b32q4i6yl4iut6l…s/AdminPage.tsx:166
+TN @ code_components_prev…79708f.min.js.br:37
+T8 @ code_components_prev…79708f.min.js.br:37
+T7 @ code_components_prev…79708f.min.js.br:37
+T6 @ code_components_prev…79708f.min.js.br:37
+T4 @ code_components_prev…79708f.min.js.br:37
+S1 @ code_components_prev…79708f.min.js.br:37
+SQ @ code_components_prev…79708f.min.js.br:37
+SJ @ code_components_prev…79708f.min.js.br:37
+SZ @ code_components_prev…79708f.min.js.br:37
+SO @ code_components_prev…79708f.min.js.br:37
+pC @ code_components_prev…79708f.min.js.br:37
+(anonymous) @ code_components_prev…79708f.min.js.br:37
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+m @ code_components_prev…9708f.min.js.br:121
+f @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+eh.onpopstate @ code_components_prev…79708f.min.js.br:87
+navigateToUrl @ code_components_prev…9708f.min.js.br:572
+navigateToUrl @ code_components_prev…9708f.min.js.br:984
+o @ code_components_prev…79708f.min.js.br:65
+t.onmessage @ code_components_prev…79708f.min.js.br:65
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…79708f.min.js.br:90
+d @ code_components_prev…79708f.min.js.br:90
+o @ code_components_prev…79708f.min.js.br:90
+send @ code_components_prev…79708f.min.js.br:90
+h @ code_components_prev…79708f.min.js.br:90
+sendEnvelope @ code_components_prev…79708f.min.js.br:89
+sendSession @ code_components_prev…79708f.min.js.br:89
+captureSession @ code_components_prev…79708f.min.js.br:89
+E @ code_components_prev…9708f.min.js.br:121
+_ @ code_components_prev…9708f.min.js.br:121
+(anonymous) @ code_components_prev…79708f.min.js.br:90
+eu @ code_components_prev…79708f.min.js.br:84
+eh.onpopstate @ code_components_prev…79708f.min.js.br:87
+navigateToUrl @ code_components_prev…9708f.min.js.br:572
+navigateToUrl @ code_components_prev…9708f.min.js.br:984
+o @ code_components_prev…79708f.min.js.br:65
+t.onmessage @ code_components_prev…79708f.min.js.br:65
+ ✅ Loaded 5 vendors
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ Orders loaded: {orders: Array(24), total: 24}
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 0 items: []
+ 💰 FINAL: Total Revenue: 0 MMK, Commission Earned: 0 MMK
+ 🔍 ALL ORDERS FROM API: (24) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ ✅ VENDOR ORDERS for Go Go: (2) [{…}, {…}]
+ 📦 Order ORD-MM98AS8G - Status: "processing" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "ready-to-ship" (string)
+ ✅ Loaded 2 orders for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 0 items: []
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 0 products...
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 0 products...
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔍 All products from API: (17) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go
+ ✅ Product "MC04944 - 3 in 1 Vitamin C Primer Cream" matches vendor Go Go {productVendor: undefined, productVendorId: undefined, productSelectedVendors: Array(2), price: '$27000', salePrice: undefined, …}
+ ✅ Product "MC04664 Travel Refill Bottle" matches vendor Go Go {productVendor: undefined, productVendorId: undefined, productSelectedVendors: Array(1), price: '$33800', salePrice: undefined, …}
+ ✅ Loaded 2 products for vendor Go Go
+ 💰 Starting commission calculation for Go Go...
+ 📊 Products array has 2 items: (2) [{…}, {…}]
+ 📦 Processing order ORD-MM98AS8G, status: "processing", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    🔍 Searching in 2 products...
+       - Product "MC04944 - 3 in 1 Vitamin C Primer Cream" (sku: MC04944): sku=false, name=false, id=false
+       - Product "MC04664 Travel Refill Bottle" (sku: MC04664): sku=false, name=false, id=false
+    🔍 Matched product: undefined
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 2635000 MMK)
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+vendor-core-ade2edecaf4781c7.min.js.br:11 [Violation] 'requestAnimationFrame' handler took 239ms
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Violation] 'setTimeout' handler took 68ms
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://events.statsigapi.net/v1/rgstr net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+u @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+s @ vendor-191557b646cc979f.min.js.br:123
+e.postToEndpoint @ vendor-191557b646cc979f.min.js.br:123
+e.flush @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:54 [Violation] 'setTimeout' handler took 59ms
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://events.statsigapi.net/v1/rgstr net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+u @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+s @ vendor-191557b646cc979f.min.js.br:123
+e.postToEndpoint @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+setTimeout
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:63
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+Promise.catch
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+u @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+s @ vendor-191557b646cc979f.min.js.br:123
+e.postToEndpoint @ vendor-191557b646cc979f.min.js.br:123
+e.flush @ vendor-191557b646cc979f.min.js.br:123
+(anonymous) @ vendor-191557b646cc979f.min.js.br:123
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54

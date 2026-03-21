@@ -1,0 +1,129 @@
+vendor-core-4ad04edb85d11631.min.js.br:54  POST https://events.statsigapi.net/v1/rgstr net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:54
+h @ vendor-642ec174312e1812.min.js.br:3
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+setTimeout
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:63
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+Promise.catch
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ 🔍 ALL ORDERS FROM API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ ✅ VENDOR ORDERS for Go Go Online Store: (2) [{…}, {…}]
+ 📦 Order ORD-MM98AS8G - Status: "fulfilled" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "cancelled" (string)
+ ✅ Loaded 2 orders for vendor Go Go Online Store
+ 💰 Starting commission calculation for Go Go Online Store...
+ 📊 Products array has 1 items: [{…}]
+ 📦 Processing order ORD-MM98AS8G, status: "fulfilled", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 1 products...
+       - Product "MC07351 V Shape Face Mask" (sku: MC07351): sku=true, name=true, id=true
+    🔍 Matched product: {id: 'prod_1772090113791_7yhej0f', name: 'MC07351 V Shape Face Mask', price: '$29800', sku: 'MC07351', category: 'Cosmetic', …}
+    📋 Product keys: (20) ['id', 'name', 'price', 'sku', 'category', 'vendor', 'collaborator', 'status', 'inventory', 'stock', 'salesVolume', 'createDate', 'image', 'images', 'description', 'hasVariants', 'variantOptions', 'variants', 'commissionRate', 'selectedVendors']
+    🔍 Commission field check: {commission: undefined, commissionRate: 20, vendorCommission: undefined, productCommission: undefined}
+    ⚠️ Product found but has no commission field. Product data: {id: 'prod_1772090113791_7yhej0f', name: 'MC07351 V Shape Face Mask', price: '$29800', sku: 'MC07351', category: 'Cosmetic', …}
+    ⚠️ Using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "cancelled", shouldEarnCommission: false
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    ❌ No commission - order status "cancelled" doesn't qualify
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔍 All products from API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go Online Store
+ ✅ Product "MC07351 V Shape Face Mask" matches vendor Go Go Online Store {productVendor: '', productVendorId: undefined, productSelectedVendors: Array(1)}
+ ✅ Loaded 1 products for vendor Go Go Online Store
+ 💰 Starting commission calculation for Go Go Online Store...
+ 📊 Products array has 1 items: [{…}]
+ 📦 Processing order ORD-MM98AS8G, status: "fulfilled", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 1 products...
+       - Product "MC07351 V Shape Face Mask" (sku: MC07351): sku=true, name=true, id=true
+    🔍 Matched product: {id: 'prod_1772090113791_7yhej0f', name: 'MC07351 V Shape Face Mask', price: '$29800', sku: 'MC07351', category: 'Cosmetic', …}
+    📋 Product keys: (20) ['id', 'name', 'price', 'sku', 'category', 'vendor', 'collaborator', 'status', 'inventory', 'stock', 'salesVolume', 'createDate', 'image', 'images', 'description', 'hasVariants', 'variantOptions', 'variants', 'commissionRate', 'selectedVendors']
+    🔍 Commission field check: {commission: undefined, commissionRate: 20, vendorCommission: undefined, productCommission: undefined}
+    ⚠️ Product found but has no commission field. Product data: {id: 'prod_1772090113791_7yhej0f', name: 'MC07351 V Shape Face Mask', price: '$29800', sku: 'MC07351', category: 'Cosmetic', …}
+    ⚠️ Using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "cancelled", shouldEarnCommission: false
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    ❌ No commission - order status "cancelled" doesn't qualify
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+vendor-core-4ad04edb85d11631.min.js.br:54  POST https://events.statsigapi.net/v1/rgstr net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:54
+h @ vendor-642ec174312e1812.min.js.br:3
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+setTimeout
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:63
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+Promise.catch
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+setTimeout
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:63
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+Promise.catch
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…cbf8c8.min.js.br:28
+d @ code_components_prev…cbf8c8.min.js.br:28
+o @ code_components_prev…cbf8c8.min.js.br:28
+send @ code_components_prev…cbf8c8.min.js.br:28
+h @ code_components_prev…cbf8c8.min.js.br:28
+(anonymous) @ code_components_prev…cbf8c8.min.js.br:28
+await in (anonymous)
+i @ code_components_prev…cbf8c8.min.js.br:28
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…cbf8c8.min.js.br:28
+d @ code_components_prev…cbf8c8.min.js.br:28
+o @ code_components_prev…cbf8c8.min.js.br:28
+send @ code_components_prev…cbf8c8.min.js.br:28
+h @ code_components_prev…cbf8c8.min.js.br:28
+(anonymous) @ code_components_prev…cbf8c8.min.js.br:28
+await in (anonymous)
+i @ code_components_prev…cbf8c8.min.js.br:28
+Admin-panel-dashboard?p=f&t=xAoG3jAJvfVcBuRt-0&preview-route=%2Fadmin%2Fvendors:1 The resource https://www.figma.com/api/user/state?team_id=1336977824507653491&file_key=5FOqWwfgECp8z9r9JuCSa0&fuid=1336977822049309121 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+Admin-panel-dashboard?p=f&t=xAoG3jAJvfVcBuRt-0&preview-route=%2Fadmin%2Fvendors:1 The resource https://www.figma.com/api/session/state?fuid=1336977822049309121 was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.

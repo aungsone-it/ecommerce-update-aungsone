@@ -1,0 +1,246 @@
+ Running frontend commit 107bbd51e86fce9a104f472597b3e63a6aa8ffa6
+ Statsig is not ready to log exposures, will retry in 1 seconds
+(anonymous) @ vendor-core-ade2edec…4781c7.min.js.br:54
+ [bootstrap_waiting_on_user_state] You appear to be logging a relative timestamp and not an epoch timestamp. Try adding performance.timeOrigin to the timestamp.
+(anonymous) @ vendor-core-ade2edec…4781c7.min.js.br:54
+ [Livegraph] Connected 2026-03-14T07:20:15.100Z.
+ Autosave Changes not available or already claimed by another tab undefined
+ Unrecognized feature: 'local-network-access'.
+x @ vendor-core-ade2edec…4781c7.min.js.br:11
+(index):1  Failed to load resource: net::ERR_FAILED
+ [import] git: 640e7c0c7a50f673af49d46032d102e256b5e667, stamp: 8E3CE7D760547CC6
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+statsigapi.net/v1/sdk_exception:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=fa5a7dc6-3f4e-4a6d-b415-73352b65796e&dd-evp-encoding=deflate&batch_time=1773472815726&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=60ffa654-b9f0-4483-8b80-17addcf0422a&dd-evp-encoding=deflate&batch_time=1773472815728&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c5ccdb9a-6746-4f73-a9b6-c05774813caf&dd-evp-encoding=deflate&batch_time=1773472815752&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=230fc46c-e58f-47e1-a1f0-a613f323b3e1&dd-evp-encoding=deflate&batch_time=1773472815753&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=7e47a014-2122-47d7-8342-930971ba226a&dd-evp-encoding=deflate&batch_time=1773472815754&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=386e216d-e627-4d92-8ab3-b67f6551452e&dd-evp-encoding=deflate&batch_time=1773472815755&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=c52c6fe3-d63a-4322-b115-43235e426e02&dd-evp-encoding=deflate&batch_time=1773472815765&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=e3925aa3-3bf5-4faf-9729-4bf7ce48ee30&dd-evp-encoding=deflate&batch_time=1773472815766&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=410019ae-045e-4fbb-b1f0-976a7768a938&dd-evp-encoding=deflate&batch_time=1773472815767&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=af55bc58-fbf3-4436-b204-f4bd6a903434&dd-evp-encoding=deflate&batch_time=1773472815767&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [Fullscreen] Booting... (emscripten version 4.0.21)
+ [GPU] graphicsAPI:"WebGL 2", vendor:"Google Inc. (Intel)", renderer:"ANGLE (Intel, Mesa Intel(R) UHD Graphics 730 (ADL-S GT1), OpenGL ES 3.2)" version:"OpenGL ES 3.0 (WebGL 2.0 (OpenGL ES 3.0 Chromium))"
+ [Fullscreen] Ready in 1391.0ms
+ [FullscreenApp] calling setEditorTheme and setting preference dark
+ [MultiplayerSession] connecting to wss://www.figma.com/api/multiplayer/5FOqWwfgECp8z9r9JuCSa0?role=editor&tracking_session_id=PkPe7aojczJR4Hvs&version=151&recentReload=0&file-load-streaming-compression&user-id=1336977822049309121&client_release=107bbd51e86fce9a104f472597b3e63a6aa8ffa6
+ [FullscreenApp] calling setEditorTheme and setting preference dark
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=2ce7755e-4387-40f0-8bec-6b9e901c11df&dd-evp-encoding=deflate&batch_time=1773472817211&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=b72a1b47-bfd9-4d29-b141-4b8a9130e74b&dd-evp-encoding=deflate&batch_time=1773472817219&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [MultiplayerSession] Joining file version 106 (initial load)
+ Migration succeeded: context: fullscreen_migrate_SceneGraphManager, version: 106, duration: 0ms.
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+statsigapi.net/v1/sdk_exception:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [devtools] Initialized LS
+ Loaded 0 scripts (0b), 0 from cache (0b)
+ [Fullscreen] loadtime=11.57s maxmem=444571896
+/api/make/fetch_ds_code_gen_status:1  Failed to load resource: the server responded with a status of 400 ()
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=3f7c9c94-72d6-473b-96a2-0837da93f309&dd-evp-encoding=deflate&batch_time=1773472825928&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [devtools] Initialized LS
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=8b5dd4b8-84e7-4019-b1f1-2cee3fd27666&dd-evp-encoding=deflate&batch_time=1773472827015&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=3b61a46e-18ef-4ee6-ae23-786921115e77&dd-evp-encoding=deflate&batch_time=1773472828302&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=f146ab8c-6fd4-4777-9551-4b1a4d0fd8d5&dd-evp-encoding=deflate&batch_time=1773472828357&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=ee4ae32a-bc42-493f-9c6c-9a46f503adeb&dd-evp-encoding=deflate&batch_time=1773472833082&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=bb359b91-58f9-45d1-a236-bd0336a7d300&dd-evp-encoding=deflate&batch_time=1773472841214&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=876aae87-fe56-48ac-b086-815491e318a3&dd-evp-encoding=deflate&batch_time=1773472841223&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [vite] connecting...
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ [vite] connected.
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+events.statsigapi.net/v1/rgstr:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 🔧 Initializing Supabase client (SINGLE INSTANCE)
+ 🔍 Fetching platform settings...
+ 🔍 [VendorAuth] Checking for existing vendor session...
+ ℹ️ [VendorAuth] No existing session found
+ 🔍 Checking for existing session...
+ ℹ️ No existing session found
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Platform settings fetched: Object
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=8291a933-0bb0-4542-8c9f-b2f01316f18f&dd-evp-encoding=deflate&batch_time=1773472871474&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=54427cd6-5ebc-4df9-a3d4-74f03586b619&dd-evp-encoding=deflate&batch_time=1773472871475&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ 📊 Filtered 0 products from 0 total
+ 📦 Filtered products: Array(0)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ homeViewType state changed to: grid
+ 🌐 URL changed to: /store Category: null
+ 🔍 Starting SECURE (first load)...
+ 📡 Server URL: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f
+ ��� Note: First load may take 30-60 seconds (Edge Function cold start)
+ 🔍 Checking for existing session...
+ ℹ️ No existing session found
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ Server is healthy, loading data...
+ 🔄 Loading products ...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/products
+ 🔄 Loading categories with auto-retry...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/categories
+ ⚙️ Loading site settings...
+ 🎨 Loading banners...
+ 🎯 Loading featured campaigns...
+ ✅ Loaded 3 featured campaigns
+ ✅ Loaded 2 banners
+ ✅ Site settings loaded: Object
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=2faa33d6-7d9b-4f6c-9951-d75cb8c99882&dd-evp-encoding=deflate&batch_time=1773472908656&_dd.api=fetch-keepalive:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=d1083d9f-9871-4197-9e20-2c888f80062c&dd-evp-encoding=deflate&batch_time=1773472908657&_dd.api=fetch:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ ✅ Loaded 6 active categories for storefront
+ ✅ API Response: 200 
+ 📦 API Data received successfully
+ 📦 Raw products from API: 17
+ 🔍 ALL products with status: Array(17)
+ ✅ Active products: 17
+ 🔍 All active products: Array(17)
+ 💾 Cached data for key: storefront-products (TTL: 300000ms)
+ ✅ Loaded 17 active products for storefront 
+ ✅ All data loaded, app ready!
+ 📊 Filtered 17 products from 17 total
+ 📦 Filtered products: Array(17)
+store:1 [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) null
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔍 Fetching platform settings...
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ Platform settings fetched: Object
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ⚡ INSTANT LOAD: Restored 17 products from module cache
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ⚡ INSTANT LOAD: Restored 6 categories from module cache
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 📊 Filtered 17 products from 17 total
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 📦 Filtered products: Array(17)
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0:1  Failed to load resource: net::ERR_BLOCKED_BY_CLIENT
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 homeViewType state changed to: grid
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🌐 URL changed to: /store Category: null
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ⚡ App already initialized with cached data, skipping loading screen...
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 📦 Using cached data: 17 products, 6 categories
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔄 Loading products (background)...
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/products
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔄 Loading categories with auto-retry...
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/categories
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ⚙️ Loading site settings...
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🎨 Loading banners...
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔍 Checking for existing session...
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ℹ️ No existing session found
+store:1 [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) <input type=​"password" data-slot=​"input" class=​"file:​text-foreground placeholder:​text-muted-foreground selection:​bg-primary selection:​text-primary-foreground dark:​bg-input/​30 border-input flex w-full min-w-0 rounded-md border px-3 py-1 bg-input-background transition-[color,box-shadow]​ outline-none file:​inline-flex file:​h-7 file:​border-0 file:​bg-transparent file:​text-sm file:​font-medium disabled:​pointer-events-none disabled:​cursor-not-allowed disabled:​opacity-50 md:​text-sm focus-visible:​border-ring focus-visible:​ring-ring/​50 focus-visible:​ring-[3px]​ aria-invalid:​ring-destructive/​20 dark:​aria-invalid:​ring-destructive/​40 aria-invalid:​border-destructive pl-10 h-10 sm:​h-11 text-sm" id=​"password" placeholder=​"Enter your password" required data-fg-bn5s53=​"1596.378:​1596.12628:​/​src/​app/​components/​AuthModal.tsx:​233:​17:​9281:​374:​e:​Input:​:​:​:​:​s:​19W:​1" data-fgid-bn5s53=​":​r2sr:​" data-fg-djqs0=​"1596.497:​1596.963:​/​src/​app/​components/​ui/​input.tsx:​7:​5:​158:​778:​e:​input:​:​1" data-fgid-djqs0=​":​r2ss:​" data-fg-callsite-bn5s53 value>​flex
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ Loaded 2 banners
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ Site settings loaded: Object
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ API Response: 200 
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ API Response: 200 
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 📦 API Data received successfully
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ Loaded 6 active categories for storefront
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 📦 API Data received successfully
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 📦 Raw products from API: 17
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔍 ALL products with status: (17) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ Active products: 17
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 🔍 All active products: (17) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 💾 Cached data for key: storefront-products (TTL: 300000ms)
+code_components_preview_iframe-f4fd20809e153e7b.min.js.br:90 ✅ Loaded 17 active products for storefront (background)
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=5f3e1d5a-0473-4af7-8c95-acaf301a002a&dd-evp-encoding=deflate&batch_time=1773472939134&_dd.api=fetch-keepalive net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-191557b646cc979f.min.js.br:3
+T @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+b @ vendor-191557b646cc979f.min.js.br:6
+y @ vendor-191557b646cc979f.min.js.br:6
+send @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=9a8b2a61-4184-4aba-bc15-081d8f3a39c0&dd-evp-encoding=deflate&batch_time=1773472939135&_dd.api=fetch net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-191557b646cc979f.min.js.br:3
+I @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+Promise.catch
+T @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+b @ vendor-191557b646cc979f.min.js.br:6
+y @ vendor-191557b646cc979f.min.js.br:6
+send @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:6
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+h @ vendor-191557b646cc979f.min.js.br:3
+(anonymous) @ vendor-191557b646cc979f.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54

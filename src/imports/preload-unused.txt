@@ -1,0 +1,369 @@
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🎫 Validating coupon code: "FF" (original: "FF")
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🎫 Response status: 200 
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🎫 Coupon validation response: {valid: true, campaign: {…}, message: 'Coupon applied! You saved $9960.00'}
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=e37c2398-24ef-461d-ae73-2a40fef20d48&dd-evp-encoding=deflate&batch_time=1772615043507&_dd.api=fetch-keepalive net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+T @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+b @ vendor-dbdbf1041f2f9da9.min.js.br:6
+y @ vendor-dbdbf1041f2f9da9.min.js.br:6
+send @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=4480fc61-1ec5-4587-a237-e02a46aa1396&dd-evp-encoding=deflate&batch_time=1772615043508&_dd.api=fetch net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+I @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+Promise.catch
+T @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+b @ vendor-dbdbf1041f2f9da9.min.js.br:6
+y @ vendor-dbdbf1041f2f9da9.min.js.br:6
+send @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+d @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+send @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+h @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+await in (anonymous)
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+checkout:1 [DOM] Password field is not contained in a form: (More info: https://goo.gl/9p2vKq) <input type=​"password" data-slot=​"input" class=​"file:​text-foreground placeholder:​text-muted-foreground selection:​bg-primary selection:​text-primary-foreground dark:​bg-input/​30 flex h-9 w-full min-w-0 rounded-md border px-3 py-1 text-base bg-input-background transition-[color,box-shadow]​ outline-none file:​inline-flex file:​h-7 file:​border-0 file:​bg-transparent file:​text-sm file:​font-medium disabled:​pointer-events-none disabled:​cursor-not-allowed disabled:​opacity-50 md:​text-sm focus-visible:​border-ring focus-visible:​ring-ring/​50 focus-visible:​ring-[3px]​ aria-invalid:​ring-destructive/​20 dark:​aria-invalid:​ring-destructive/​40 aria-invalid:​border-destructive border-slate-300 focus:​border-slate-900" required placeholder=​"123" maxlength=​"4" data-fg-wlp1164=​"1362.360:​1393.5355:​/​src/​app/​components/​Storefront.tsx:​5244:​25:​221163:​439:​e:​Input:​:​:​:​:​s:​19W:​1" data-fg-djqs0=​"1362.407:​1362.963:​/​src/​app/​components/​ui/​input.tsx:​7:​5:​158:​778:​e:​input:​:​1" value>​flex
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=f4dcd407-24df-4925-8955-b806e34ae1cf&dd-evp-encoding=deflate&batch_time=1772615075604&_dd.api=fetch-keepalive net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+T @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+b @ vendor-dbdbf1041f2f9da9.min.js.br:6
+y @ vendor-dbdbf1041f2f9da9.min.js.br:6
+send @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=6488ea2f-1e4a-4763-8f1b-011d8cfa02e2&dd-evp-encoding=deflate&batch_time=1772615075606&_dd.api=fetch net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+I @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+Promise.catch
+T @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+b @ vendor-dbdbf1041f2f9da9.min.js.br:6
+y @ vendor-dbdbf1041f2f9da9.min.js.br:6
+send @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🔄 API Request: POST https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 📦 Payload size: 0.10 MB
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 ✅ API Response: 201 
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 📦 API Data received successfully
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🔄 API Request: POST https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/customers
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 📦 Payload size: 0.00 MB
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28  POST https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/customers 409 (Conflict)
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+apiRequest @ api-client.ts:134
+post @ api-client.ts:266
+create @ api.ts:250
+handlePlaceOrder @ Storefront.tsx:2295
+await in handlePlaceOrder
+y @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+iG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+ij @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+iz @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+dP @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dM @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dk @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+iR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+d$ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+lO @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lN @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lv @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 ✅ API Response: 409 
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 ❌ API Error (/customers): Customer with this email already exists
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+r @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:69
+error @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+apiRequest @ api-client.ts:197
+await in apiRequest
+post @ api-client.ts:266
+create @ api.ts:250
+handlePlaceOrder @ Storefront.tsx:2295
+await in handlePlaceOrder
+y @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+iG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+ij @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+iz @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+dP @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dM @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dk @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+iR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+d$ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+lO @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lN @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lv @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 ❌ API Request Failed (/customers): ApiError: Customer with this email already exists
+    at apiRequest (api-client.ts:208:13)
+    at async handlePlaceOrder (Storefront.tsx:2295:11)
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+r @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:69
+error @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+apiRequest @ api-client.ts:240
+await in apiRequest
+post @ api-client.ts:266
+create @ api.ts:250
+handlePlaceOrder @ Storefront.tsx:2295
+await in handlePlaceOrder
+y @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+iG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+ij @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+iz @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+dP @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dM @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dk @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+iR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+d$ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+lO @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lN @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lv @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 Failed to create customer record: ApiError: Customer with this email already exists
+    at apiRequest (api-client.ts:208:13)
+    at async handlePlaceOrder (Storefront.tsx:2295:11)
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+r @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:69
+error @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+handlePlaceOrder @ Storefront.tsx:2310
+await in handlePlaceOrder
+y @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+iG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+ij @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+iz @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+dP @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dM @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dk @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+dG @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+iR @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+d$ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+lO @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lN @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+lv @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:77
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+d @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+send @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+h @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+sendEnvelope @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+sendSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+captureSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+E @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+m @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+f @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+eu @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:22
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:25
+window.history.<computed> @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:567
+push @ react-router.js?v=4f0a97da:724
+completeNavigation @ react-router.js?v=4f0a97da:2050
+handleLoaders @ react-router.js?v=4f0a97da:2560
+startNavigation @ react-router.js?v=4f0a97da:2314
+navigate @ react-router.js?v=4f0a97da:2177
+(anonymous) @ react-router.js?v=4f0a97da:6618
+(anonymous) @ Storefront.tsx:546
+TN @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T7 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T8 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T6 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T4 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+S1 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SQ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SS @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:3
+V @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:113
+B @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:113
+eo @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:113
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+d @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+send @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+h @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+sendEnvelope @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+sendSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+captureSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+E @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+_ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+eu @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:22
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:25
+window.history.<computed> @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:567
+push @ react-router.js?v=4f0a97da:724
+completeNavigation @ react-router.js?v=4f0a97da:2050
+handleLoaders @ react-router.js?v=4f0a97da:2560
+startNavigation @ react-router.js?v=4f0a97da:2314
+navigate @ react-router.js?v=4f0a97da:2177
+(anonymous) @ react-router.js?v=4f0a97da:6618
+(anonymous) @ Storefront.tsx:546
+TN @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T7 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T8 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T6 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+T4 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+S1 @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SQ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+SS @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:89
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:3
+V @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:113
+B @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:113
+eo @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:113
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🌐 URL changed to: /order-confirmation
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+d @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+send @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+h @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+sendEnvelope @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+sendSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+captureSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+E @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+m @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+f @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+eu @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:22
+eh.onpopstate @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:25
+navigateToUrl @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:567
+navigateToUrl @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:979
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:3
+t.onmessage @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:3
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+d @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+send @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+h @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+sendEnvelope @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+sendSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+captureSession @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:27
+E @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+_ @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:121
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+eu @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:22
+eh.onpopstate @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:25
+navigateToUrl @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:567
+navigateToUrl @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:979
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:3
+t.onmessage @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:3
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🛒 Cart cleared from database after order
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28 🛒 Cart synced to database for user user_1772103544282_f8rweio
+code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+d @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+o @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+send @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+h @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+await in (anonymous)
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+setTimeout
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+d @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+c @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+h @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+await in h
+(anonymous) @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+await in (anonymous)
+i @ code_components_preview_iframe-7e022e10d2e5050f.min.js.br:28
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=3d460eeb-e8da-4cce-a53d-a6ef511e57b7&dd-evp-encoding=deflate&batch_time=1772615106555&_dd.api=fetch-keepalive net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+T @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+b @ vendor-dbdbf1041f2f9da9.min.js.br:6
+y @ vendor-dbdbf1041f2f9da9.min.js.br:6
+send @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54
+vendor-core-ade2edecaf4781c7.min.js.br:54  POST https://browser-intake-datadoghq.com/api/v2/rum?ddsource=browser&dd-api-key=pub3f6fa9c94d5ff85890f30fdc10b09c61&dd-evp-origin-version=6.25.2&dd-evp-origin=browser&dd-request-id=bd22d107-3e0e-4928-ac9a-1409c1df748a&dd-evp-encoding=deflate&batch_time=1772615106556&_dd.api=fetch net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-ade2edecaf4781c7.min.js.br:54
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+I @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+Promise.catch
+T @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+b @ vendor-dbdbf1041f2f9da9.min.js.br:6
+y @ vendor-dbdbf1041f2f9da9.min.js.br:6
+send @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+u.length.u.<computed>.finishCallback @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:6
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+h @ vendor-dbdbf1041f2f9da9.min.js.br:3
+(anonymous) @ vendor-dbdbf1041f2f9da9.min.js.br:3
+u @ vendor-core-ade2edecaf4781c7.min.js.br:54

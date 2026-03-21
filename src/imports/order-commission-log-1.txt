@@ -1,0 +1,44 @@
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ 🔍 ALL ORDERS FROM API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ ✅ VENDOR ORDERS for Go Go Online Store: (2) [{…}, {…}]
+ 📦 Order ORD-MM98AS8G - Status: "ready-to-ship" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "cancelled" (string)
+ ✅ Loaded 2 orders for vendor Go Go Online Store
+ 💰 Starting commission calculation for Go Go Online Store...
+ 📊 Products array has 1 items: [{…}]
+ 📦 Processing order ORD-MM98AS8G, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 1 products...
+       - Product "MC07351 V Shape Face Mask" (sku: MC07351): sku=true, name=true, id=true
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "cancelled", shouldEarnCommission: false
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    ❌ No commission - order status "cancelled" doesn't qualify
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔍 All products from API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go Online Store
+ ✅ Product "MC07351 V Shape Face Mask" matches vendor Go Go Online Store {productVendor: '', productVendorId: undefined, productSelectedVendors: Array(1)}
+ ✅ Loaded 1 products for vendor Go Go Online Store
+ 💰 Starting commission calculation for Go Go Online Store...
+ 📊 Products array has 1 items: [{…}]
+ 📦 Processing order ORD-MM98AS8G, status: "ready-to-ship", shouldEarnCommission: true
+    💵 Item: "MC07351 V Shape Face Mask", Total: 29800 MMK
+    🔍 Looking for product with sku="MC07351", name="MC07351 V Shape Face Mask", productId="prod_1772090113791_7yhej0f"
+    🔍 Searching in 1 products...
+       - Product "MC07351 V Shape Face Mask" (sku: MC07351): sku=true, name=true, id=true
+    ⚠️ No product match found, using vendor rate: 0%
+    ✅ Commission earned: 0 MMK (0% of 29800 MMK)
+ 📦 Processing order ORD-MM6J6YYH, status: "cancelled", shouldEarnCommission: false
+    💵 Item: "Samsung Galaxy S26+", Total: 2635000 MMK
+    🔍 Looking for product with sku="S26", name="Samsung Galaxy S26+", productId="prod_1772293396231_evy5xix"
+    ❌ No commission - order status "cancelled" doesn't qualify
+ 💰 FINAL: Total Revenue: 2664800 MMK, Commission Earned: 0 MMK
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+vendor-core-4ad04edb85d11631.min.js.br:11 [Violation] 'requestAnimationFrame' handler took 421ms

@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Environment Variables (Security)
+.env
+*.env.local
+.env.*.local
+
+# Build Outputs
+dist/
+build/
+*.log
+
+# Editor/System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Database/Storage
+supabase/storage/
+*.sqlite

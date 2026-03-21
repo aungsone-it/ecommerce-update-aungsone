@@ -1,0 +1,72 @@
+  POST https://o22594.ingest.us.sentry.io/api/56203/envelope/?sentry_key=333f664af67c57ab0ed581c89de74387&sentry_version=7&sentry_client=sentry.javascript.react%2F8.40.0 net::ERR_BLOCKED_BY_CLIENT
+o @ code_components_prev…cbf8c8.min.js.br:28
+d @ code_components_prev…cbf8c8.min.js.br:28
+o @ code_components_prev…cbf8c8.min.js.br:28
+send @ code_components_prev…cbf8c8.min.js.br:28
+h @ code_components_prev…cbf8c8.min.js.br:28
+(anonymous) @ code_components_prev…cbf8c8.min.js.br:28
+await in (anonymous)
+i @ code_components_prev…cbf8c8.min.js.br:28
+ 🔄 Window focused, refreshing user data...
+ 📡 Fetching profile from: https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/auth/profile/215646f5-50ca-4496-8feb-2f0a4e5f8718
+ ✅ Profile loaded successfully
+ 🔍 ALL ORDERS FROM API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ ✅ VENDOR ORDERS for Go Go Online Store: (2) [{…}, {…}]
+ 📦 Order ORD-MM98AS8G - Status: "ready-to-ship" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "cancelled" (string)
+ ✅ Loaded 2 orders for vendor Go Go Online Store
+ 🔍 All products from API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go Online Store
+ ✅ Product "MC07351 V Shape Face Mask" matches vendor Go Go Online Store {productVendor: '', productVendorId: undefined, productSelectedVendors: Array(1)}
+ ✅ Loaded 1 products for vendor Go Go Online Store
+vendor-core-4ad04edb85d11631.min.js.br:54  POST https://events.statsigapi.net/v1/rgstr net::ERR_BLOCKED_BY_CLIENT
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:54
+h @ vendor-642ec174312e1812.min.js.br:3
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+setTimeout
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:63
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+Promise.catch
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+setTimeout
+(anonymous) @ vendor-core-4ad04edb85d11631.min.js.br:63
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+Promise.catch
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+s @ vendor-642ec174312e1812.min.js.br:123
+e.postToEndpoint @ vendor-642ec174312e1812.min.js.br:123
+(anonymous) @ vendor-642ec174312e1812.min.js.br:123
+u @ vendor-core-4ad04edb85d11631.min.js.br:54
+ 🔍 ALL ORDERS FROM API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ ✅ VENDOR ORDERS for Go Go Online Store: (2) [{…}, {…}]
+ 📦 Order ORD-MM98AS8G - Status: "ready-to-ship" (string)
+ 📦 Order ORD-MM6J6YYH - Status: "cancelled" (string)
+ ✅ Loaded 2 orders for vendor Go Go Online Store
+ 🔍 All products from API: (10) [{…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}, {…}]
+ 🔍 Looking for vendor ID: vendor_1770692613928_5ibshuq0g, Name: Go Go Online Store
+ ✅ Product "MC07351 V Shape Face Mask" matches vendor Go Go Online Store {productVendor: '', productVendorId: undefined, productSelectedVendors: Array(1)}
+ ✅ Loaded 1 products for vendor Go Go Online Store
+ 🔄 Auto-refreshing badge counts...
+ 🔄 Fetching fresh badge counts from server...
+ 🔄 API Request: GET https://lmkthofnydxxgowryjcz.supabase.co/functions/v1/make-server-16010b6f/orders
+ ✅ API Response: 200 
+ 📦 API Data received successfully
