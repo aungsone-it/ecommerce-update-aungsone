@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { productsApi, apiClient } from "../../utils/api";
 import { Product, ProductsResponse } from "../../types";
-import { PRODUCT_STATUSES } from "../../constants";
+import { API_TIMEOUTS, PRODUCT_STATUSES } from "../../constants";
 import { SmartCache, CACHE_KEYS, CACHE_TTL } from "../../utils/cache";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -110,7 +110,9 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
     
     try {
       console.log('🔄 Loading products from database...');
-      const response = await apiClient.getWithRetry<ProductsResponse>('/products');
+      const response = await apiClient.get<ProductsResponse>('/products', {
+        timeout: API_TIMEOUTS.LIST,
+      });
       const productsData = response.products || [];
       
       // Update UI with fresh data

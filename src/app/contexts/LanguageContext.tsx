@@ -796,6 +796,8 @@ const translations: Record<Language, Record<string, string>> = {
     'auth.setup.successTitle': 'Account Created Successfully!',
     'auth.setup.successMessage': 'Your super admin account has been created. You can now login.',
     'auth.setup.goToLogin': 'Go to Login',
+    'auth.setup.footerPrompt': 'Already have an account?',
+    'auth.setup.footerSignIn': 'Sign in',
     
     // Auth - Change Password
     'auth.changePassword.title': 'Change Password',
@@ -1673,6 +1675,8 @@ const translations: Record<Language, Record<string, string>> = {
     'auth.setup.successTitle': '账户创建成功！',
     'auth.setup.successMessage': '您的超级管理员账户已创建。您现在可以登录。',
     'auth.setup.goToLogin': '前往登录',
+    'auth.setup.footerPrompt': '已有账户？',
+    'auth.setup.footerSignIn': '登录',
     
     // Auth - Change Password
     'auth.changePassword.title': '更改密码',

@@ -3,10 +3,13 @@
 // ============================================
 
 export const API_TIMEOUTS = {
-  DEFAULT: 180000, // 180 seconds (3 minutes) - INCREASED for Edge Function cold start
-  LARGE_PAYLOAD: 240000, // 240 seconds (4 minutes) for large payloads
-  FILE_UPLOAD: 240000, // 240 seconds (4 minutes) for file uploads
-  CHAT: 8000, // 8 seconds for chat requests (lighter weight)
+  /** Default GET/POST — long cold starts are rare; 90s avoids “stuck skeleton” UIs */
+  DEFAULT: 90000,
+  /** List/dashboard reads — fail fast; user can refresh */
+  LIST: 45000,
+  LARGE_PAYLOAD: 240000,
+  FILE_UPLOAD: 240000,
+  CHAT: 8000,
 } as const;
 
 export const PAYLOAD_LIMITS = {
@@ -15,9 +18,9 @@ export const PAYLOAD_LIMITS = {
 } as const;
 
 export const RETRY_CONFIG = {
-  MAX_RETRIES: 10, // INCREASED from 8 to 10 for cold start resilience
-  INITIAL_DELAY: 4000, // INCREASED from 3s to 4s
-  MAX_DELAY: 30000, // INCREASED from 20s to 30s for Edge Function cold starts
+  MAX_RETRIES: 3,
+  INITIAL_DELAY: 1500,
+  MAX_DELAY: 12000,
 } as const;
 
 // ============================================
