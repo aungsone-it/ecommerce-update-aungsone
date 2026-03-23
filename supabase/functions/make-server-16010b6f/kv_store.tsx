@@ -113,14 +113,37 @@ export const mdel = async (keys: string[]): Promise<void> => {
   }
 };
 
+// PostgREST caps each response at 1000 rows by default. Without pagination, prefix scans
+// silently drop newer keys (e.g. recent orders), which makes order history look empty.
+const PREFIX_PAGE_SIZE = 1000;
+
 // Search for key-value pairs by prefix.
 export const getByPrefix = async (prefix: string): Promise<any[]> => {
-  const { data, error } = await withTimeout(
-    supabaseClient.from("kv_store_16010b6f").select("key, value").like("key", prefix + "%"),
-    30000 // Increased from 15000ms - prefix queries can be slow and return many rows
-  );
-  if (error) {
-    throw new Error(error.message);
+  const allValues: any[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const { data, error } = await withTimeout(
+      supabaseClient
+        .from("kv_store_16010b6f")
+        .select("key, value")
+        .like("key", prefix + "%")
+        .order("key", { ascending: true })
+        .range(offset, offset + PREFIX_PAGE_SIZE - 1),
+      30000
+    );
+    if (error) {
+      throw new Error(error.message);
+    }
+    const rows = data ?? [];
+    for (const row of rows) {
+      allValues.push(row.value);
+    }
+    if (rows.length < PREFIX_PAGE_SIZE) {
+      break;
+    }
+    offset += PREFIX_PAGE_SIZE;
   }
-  return data?.map((d) => d.value) ?? [];
+
+  return allValues;
 };

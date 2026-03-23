@@ -189,7 +189,7 @@ export function OrderDetailView({ order, onBack, formatPriceMMK }: OrderDetailVi
               )}
               <div className="flex items-center justify-between pt-3 border-t border-slate-200">
                 <span className="text-base font-semibold text-slate-900">Total</span>
-                <p className="text-xl font-bold text-orange-600">{Math.round(order.total || 0)} MMK</p>
+                <p className="text-xl font-bold text-black">{Math.round(order.total || 0)} MMK</p>
               </div>
             </div>
           </div>

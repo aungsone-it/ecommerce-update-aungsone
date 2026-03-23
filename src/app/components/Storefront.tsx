@@ -4524,7 +4524,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         <div className="pt-3 border-t border-slate-100">
                           <div className="flex items-center justify-between">
                             <span className="text-sm text-slate-600">Total Amount</span>
-                            <span className="text-lg sm:text-xl font-bold text-amber-700">
+                            <span className="text-lg sm:text-xl font-bold text-black">
                               {Math.round(order.total || 0)} MMK
                             </span>
                           </div>

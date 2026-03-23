@@ -348,6 +348,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
       // 🔥 Save order to backend with vendor information
       const orderData = {
         orderNumber: orderNum,
+        userId: user?.id ?? null,
         customer: shippingInfo.fullName,
         customerName: shippingInfo.fullName,
         email: shippingInfo.email,

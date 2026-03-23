@@ -513,7 +513,7 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
       if (error.message === 'Failed to fetch') {
         console.error("❌ Error fetching vendors: Cannot connect to server.");
         console.error("   The Supabase edge function may not be deployed yet.");
-        console.error("   Please deploy the edge function at /supabase/functions/server/");
+        console.error("   Please deploy the edge function at /supabase/functions/make-server-16010b6f/");
       } else {
         console.error("❌ Error fetching vendors:", error);
       }
