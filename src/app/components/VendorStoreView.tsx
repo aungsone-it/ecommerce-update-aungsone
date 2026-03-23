@@ -85,6 +85,24 @@ interface VendorAddress {
   township: string;
 }
 
+/**
+ * Path segment for `/store/:store/product/:slug`.
+ * NOTE: Use `\w` and `\s` (single backslash) in regex literals — `\\w` breaks slugify and yields empty URLs like `/product/`.
+ */
+function buildVendorProductUrlSegment(product: { name?: string; sku?: string; id: string }): string {
+  const name = (product.name || "").trim();
+  const fromName = name
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .trim();
+  const sku = (product.sku || "").trim();
+  if (fromName.length > 0) return fromName;
+  if (sku.length > 0) return sku;
+  return product.id;
+}
+
 export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlug }: VendorStoreViewProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -807,25 +825,21 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
   // Handle initial product slug from URL
   useEffect(() => {
     if (initialProductSlug && products.length > 0) {
-      // Try to find product by matching slug (productSlug is derived from product name)
-      const product = products.find(p => {
-        const slug = p.name
-          .toLowerCase()
-          .replace(/[^\\w\\s-]/g, '')
-          .replace(/\\s+/g, '-')
-          .replace(/-+/g, '-')
-          .trim();
-        return slug === initialProductSlug;
-      });
-      
+      const decoded = (() => {
+        try {
+          return decodeURIComponent(initialProductSlug);
+        } catch {
+          return initialProductSlug;
+        }
+      })();
+
+      const product =
+        products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
+        products.find((p) => p.sku === decoded || p.sku === initialProductSlug) ||
+        products.find((p) => p.id === decoded || p.id === initialProductSlug);
+
       if (product) {
         setSelectedProduct(product);
-      } else {
-        // Fallback: try SKU match for legacy URLs
-        const productBySku = products.find(p => p.sku === initialProductSlug);
-        if (productBySku) {
-          setSelectedProduct(productBySku);
-        }
       }
     } else if (!initialProductSlug && selectedProduct) {
       // If URL has no product slug but we have a selected product, clear it
@@ -1763,16 +1777,10 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
                       sku: product.sku
                     }}
                     onProductClick={async () => {
-                      // Create product slug from title
-                      const productSlug = product.name
-                        .toLowerCase()
-                        .replace(/[^\\w\\s-]/g, '')
-                        .replace(/\\s+/g, '-')
-                        .replace(/-+/g, '-')
-                        .trim();
-                      
-                      // Navigate to product detail page - React Router will handle it
-                      navigate(`/store/${storeSlug || vendorId}/product/${productSlug}`);
+                      const segment = buildVendorProductUrlSegment(product);
+                      navigate(
+                        `/store/${storeSlug || vendorId}/product/${encodeURIComponent(segment)}`
+                      );
                     }}
                     onAddToCart={(e) => {
                       e.stopPropagation();

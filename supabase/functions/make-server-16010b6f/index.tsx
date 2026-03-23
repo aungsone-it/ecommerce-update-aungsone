@@ -7109,11 +7109,163 @@ app.get("/make-server-16010b6f/vendor/products-admin/:vendorId", async (c) => {
   }
 });
 
+/**
+ * Storefront checkout often saves line items with URL slug (e.g. "abc-store") while vendor admin
+ * queries with the canonical vendor id (e.g. "vendor_xxx..."). Resolve all identifiers that should match.
+ */
+async function resolveVendorOrderIdentifierSet(param: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const raw = decodeURIComponent((param || "").trim());
+  if (!raw) return ids;
+  ids.add(raw);
+
+  let vendor: any = await withTimeout(kv.get(`vendor:${raw}`), 5000).catch(() => null);
+  if (vendor?.id) ids.add(String(vendor.id));
+
+  if (!vendor) {
+    const slugMap = await withTimeout(kv.get(`vendor_slug_${raw}`), 5000).catch(() => null);
+    if (slugMap?.vendorId) {
+      ids.add(String(slugMap.vendorId));
+      vendor = await withTimeout(kv.get(`vendor:${slugMap.vendorId}`), 5000).catch(() => null);
+      if (vendor?.id) ids.add(String(vendor.id));
+    }
+  }
+
+  const resolvedId = vendor?.id || [...ids].find((x) => String(x).startsWith("vendor_"));
+  if (resolvedId) {
+    ids.add(String(resolvedId));
+    const settings = await withTimeout(kv.get(`vendor_settings:${resolvedId}`), 5000).catch(() => null);
+    if (settings?.storeSlug) ids.add(String(settings.storeSlug));
+  }
+
+  // Reverse lookup: every vendor_slug_* row that points at this vendor id (covers missing/outdated settings.storeSlug)
+  if (resolvedId) {
+    try {
+      const slugRows = await withTimeout(kv.getByPrefixWithKeys("vendor_slug_"), 10000).catch(() => []);
+      for (const row of slugRows) {
+        const vid = row.value?.vendorId;
+        if (vid != null && String(vid) === String(resolvedId)) {
+          const slug = row.key.replace(/^vendor_slug_/, "");
+          if (slug) ids.add(slug);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (vendor?.storeSlug) ids.add(String(vendor.storeSlug));
+  if (vendor?.name) ids.add(String(vendor.name));
+  if (vendor?.businessName) ids.add(String(vendor.businessName));
+
+  return ids;
+}
+
+/** KV sometimes stores items as JSON string or legacy object map — normalize to an array. */
+function normalizeOrderItems(raw: unknown): any[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw);
+      return Array.isArray(p) ? p : [];
+    } catch {
+      return [];
+    }
+  }
+  if (typeof raw === "object") {
+    const vals = Object.values(raw as Record<string, unknown>);
+    if (vals.length > 0 && vals.every((v) => v != null && typeof v === "object")) {
+      return vals as any[];
+    }
+  }
+  return [];
+}
+
+/** Prefer `items`, then alternate keys used by older clients or other checkouts. */
+function orderLineItemsFromOrder(order: any): any[] {
+  if (!order || typeof order !== "object") return [];
+  for (const key of ["items", "lineItems", "line_items", "products", "cartItems"]) {
+    const arr = normalizeOrderItems((order as any)[key]);
+    if (arr.length > 0) return arr;
+  }
+  return [];
+}
+
+function vendorIdentifiersHas(vendorIds: Set<string>, candidate: unknown): boolean {
+  if (candidate == null) return false;
+  const c = String(candidate).trim();
+  if (!c) return false;
+  for (const id of vendorIds) {
+    const s = String(id).trim();
+    if (s === c) return true;
+    if (s.toLowerCase() === c.toLowerCase()) return true;
+  }
+  return false;
+}
+
+function orderLineItemMatchesVendor(item: any, vendorIds: Set<string>): boolean {
+  const candidates = [
+    item.vendorId,
+    item.vendor,
+    item.vendorName,
+    item.vendor_id,
+    item.sellerId,
+    item.product?.vendorId,
+    item.product?.vendor,
+    Array.isArray(item.product?.selectedVendors) ? item.product.selectedVendors[0] : undefined,
+  ].filter((x) => x != null && String(x).trim() !== "");
+  for (const c of candidates) {
+    if (vendorIdentifiersHas(vendorIds, c)) return true;
+  }
+  return false;
+}
+
+async function enrichLineItemsWithProductVendors(
+  items: any[],
+  productCache: Map<string, any>
+): Promise<any[]> {
+  const out: any[] = [];
+  for (const raw of items) {
+    const item = raw && typeof raw === "object" ? { ...raw } : raw;
+    if (!item || typeof item !== "object") {
+      out.push(item);
+      continue;
+    }
+    const hasLineVendor = [item.vendorId, item.vendor, item.vendorName].some(
+      (x) => x != null && String(x).trim() !== ""
+    );
+    const pid = item.productId ?? item.id;
+    if (hasLineVendor || !pid) {
+      out.push(item);
+      continue;
+    }
+    const pk = String(pid);
+    if (!productCache.has(pk)) {
+      const p = await withTimeout(kv.get(`product:${pk}`), 3000).catch(() => null);
+      productCache.set(pk, p);
+    }
+    const p = productCache.get(pk);
+    if (p && typeof p === "object") {
+      const vid = p.vendorId ?? (Array.isArray(p.selectedVendors) && p.selectedVendors.length ? p.selectedVendors[0] : undefined);
+      if (vid != null && String(vid).trim() !== "") {
+        (item as any).vendorId = (item as any).vendorId ?? vid;
+        (item as any).vendor = (item as any).vendor ?? vid;
+      }
+    }
+    out.push(item);
+  }
+  return out;
+}
+
 // Get vendor-specific orders (for vendor admin portal)
 app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
   try {
     const vendorId = c.req.param("vendorId");
     console.log(`📦 Fetching orders for vendor: ${vendorId}`);
+
+    const vendorIdentifiers = await resolveVendorOrderIdentifierSet(vendorId);
+    console.log(`📦 Resolved vendor id aliases for orders filter (${vendorIdentifiers.size}):`, [...vendorIdentifiers]);
     
     // Get all orders - kv.getByPrefix already has 30s timeout, no need to wrap
     const allOrders = await withRetry(
@@ -7124,46 +7276,93 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
     
     console.log(`📊 Total orders in database: ${allOrders.length}`);
     
-    // Filter orders that belong to this vendor
-    const vendorOrders = allOrders
-      .filter((order: any) => {
-        if (!order || !order.items) return false;
-        
-        // Check if any item in the order has this vendorId
-        return order.items.some((item: any) => item.vendorId === vendorId);
-      })
-      .map((order: any) => {
-        // Filter items to only this vendor's products
-        const vendorItems = order.items.filter((item: any) => item.vendorId === vendorId);
-        
-        // Calculate total for vendor's items only
-        const vendorTotal = vendorItems.reduce((sum: number, item: any) => {
-          const itemPrice = typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0').replace('$', '')) || 0;
-          const itemQuantity = item.quantity || 1;
-          return sum + (itemPrice * itemQuantity);
-        }, 0);
-        
-        return {
-          id: order.id,
-          orderNumber: order.orderNumber,
-          customer: order.customer || order.customerName,
-          customerName: order.customerName || order.customer,
-          email: order.email,
-          phone: order.phone,
-          status: order.status || 'pending',
-          paymentStatus: order.paymentStatus || 'pending',
-          paymentMethod: order.paymentMethod || '',
-          total: vendorTotal, // Calculated total for vendor's items only
-          date: order.date || order.createdAt,
-          createdAt: order.createdAt,
-          items: vendorItems,
-          shippingAddress: order.shippingAddress || '',
-          trackingNumber: order.trackingNumber || '',
-          notes: order.notes || '',
-          deliveryService: order.deliveryService || '',
-          deliveryServiceLogo: order.deliveryServiceLogo || '',
-        };
+    const productCache = new Map<string, any>();
+    const vendorOrders: any[] = [];
+
+    for (const order of allOrders) {
+      if (!order) continue;
+
+      let normalizedItems = orderLineItemsFromOrder(order);
+      normalizedItems = await enrichLineItemsWithProductVendors(normalizedItems, productCache);
+
+      let passes = false;
+      if (normalizedItems.length > 0) {
+        passes = normalizedItems.some((item: any) => orderLineItemMatchesVendor(item, vendorIdentifiers));
+      }
+      if (!passes) {
+        const top = [order.vendor, order.vendorName, order.vendorId].filter(
+          (x) => x != null && String(x).trim() !== ""
+        );
+        passes = top.some((v) => vendorIdentifiersHas(vendorIdentifiers, v));
+      }
+      if (!passes) continue;
+
+      let vendorItems = normalizedItems.filter((item: any) =>
+        orderLineItemMatchesVendor(item, vendorIdentifiers)
+      );
+      if (vendorItems.length === 0 && normalizedItems.length > 0) {
+        const topMatch = [order.vendor, order.vendorName, order.vendorId].filter(
+          (x) => x != null && String(x).trim() !== ""
+        );
+        if (topMatch.some((v) => vendorIdentifiersHas(vendorIdentifiers, v))) {
+          vendorItems = normalizedItems;
+        }
+      }
+
+      const parsedOrderTotal =
+        typeof order.total === "string" ? parseFloat(order.total) : Number(order.total ?? 0);
+
+      let vendorTotal = vendorItems.reduce((sum: number, item: any) => {
+        const itemPrice = typeof item.price === "number" ? item.price : parseFloat(String(item.price || "0").replace("$", "")) || 0;
+        const itemQuantity = item.quantity || 1;
+        return sum + itemPrice * itemQuantity;
+      }, 0);
+
+      if (
+        vendorTotal === 0 &&
+        vendorItems.length > 0 &&
+        Number.isFinite(parsedOrderTotal) &&
+        parsedOrderTotal > 0
+      ) {
+        vendorTotal = parsedOrderTotal;
+      }
+
+      const parsedSubtotal =
+        order.subtotal != null
+          ? typeof order.subtotal === "string"
+            ? parseFloat(order.subtotal)
+            : Number(order.subtotal)
+          : vendorTotal;
+      const parsedDiscount =
+        order.discount != null
+          ? typeof order.discount === "string"
+            ? parseFloat(order.discount)
+            : Number(order.discount)
+          : 0;
+
+      vendorOrders.push({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customer: order.customer || order.customerName,
+        customerName: order.customerName || order.customer,
+        email: order.email,
+        phone: order.phone,
+        status: order.status || "pending",
+        paymentStatus: order.paymentStatus || "pending",
+        paymentMethod: order.paymentMethod || "",
+        total: vendorTotal,
+        subtotal: Number.isFinite(parsedSubtotal) ? parsedSubtotal : vendorTotal,
+        discount: Number.isFinite(parsedDiscount) ? parsedDiscount : 0,
+        date: order.date || order.createdAt,
+        createdAt: order.createdAt,
+        items: vendorItems,
+        shippingAddress: order.shippingAddress || "",
+        trackingNumber: order.trackingNumber || "",
+        notes: order.notes || "",
+        deliveryService: order.deliveryService || "",
+        deliveryServiceLogo: order.deliveryServiceLogo || "",
       });
+    }
     
     console.log(`✅ Found ${vendorOrders.length} orders for vendor ${vendorId}`);
     return c.json({ 
@@ -7238,14 +7437,41 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
   try {
     const vendorId = c.req.param("vendorId");
 
-    const vendor = await withTimeout(kv.get(`vendor:${vendorId}`), 5000).catch(() => null);
+    const vendorIdentifiers = await resolveVendorOrderIdentifierSet(vendorId);
+    const canonicalVendorId =
+      [...vendorIdentifiers].find((x) => String(x).startsWith("vendor_")) || vendorId;
+
+    const vendor = await withTimeout(kv.get(`vendor:${canonicalVendorId}`), 5000).catch(() => null);
     if (!vendor) {
       return c.json({ error: "Vendor not found", customers: [] }, 404);
     }
 
-    const storageKey = `vendor:audience:${vendorId}`;
+    const vid = String(vendor.id || canonicalVendorId);
+    const storageKey = `vendor:audience:${vid}`;
     let audience: any[] = (await withTimeout(kv.get(storageKey), 5000).catch(() => [])) || [];
     if (!Array.isArray(audience)) audience = [];
+
+    const settings = await withTimeout(kv.get(`vendor_settings:${vid}`), 5000).catch(() => null);
+    const storeSlug =
+      settings?.storeSlug != null && String(settings.storeSlug).trim() !== ""
+        ? String(settings.storeSlug).trim()
+        : "";
+    if (storeSlug && storeSlug !== vid) {
+      const altKey = `vendor:audience:${storeSlug}`;
+      const extra = (await withTimeout(kv.get(altKey), 5000).catch(() => [])) || [];
+      if (Array.isArray(extra) && extra.length) {
+        const seen = new Set(audience.map((r: any) => String(r?.email || "").toLowerCase()));
+        for (const row of extra) {
+          const em = String(row?.email || "")
+            .trim()
+            .toLowerCase();
+          if (em && !seen.has(em)) {
+            seen.add(em);
+            audience.push(row);
+          }
+        }
+      }
+    }
 
     const allOrders = await withRetry(
       () => kv.getByPrefix("order:"),
@@ -7255,7 +7481,7 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
 
     const vendorOrders = (allOrders || []).filter((order: any) => {
       if (!order || !order.items) return false;
-      return order.items.some((item: any) => item.vendorId === vendorId);
+      return order.items.some((item: any) => orderLineItemMatchesVendor(item, vendorIdentifiers));
     });
 
     type Agg = {
@@ -7281,7 +7507,9 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
         (typeof order.customer === "object" ? order.customer?.name || order.customer?.fullName : "") ||
         em.split("@")[0];
 
-      const vendorItems = order.items.filter((item: any) => item.vendorId === vendorId);
+      const vendorItems = order.items.filter((item: any) =>
+        orderLineItemMatchesVendor(item, vendorIdentifiers)
+      );
       const vendorTotal = vendorItems.reduce((sum: number, item: any) => {
         const itemPrice =
           typeof item.price === "number"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useLocation } from "react-router";
 import { 
   Plus, 
   Search, 
@@ -58,6 +58,8 @@ interface VendorAdminProductsCRUDProps {
 export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminProductsCRUDProps) {
   const navigate = useNavigate();
   const params = useParams();
+  const location = useLocation();
+  const adminPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -385,7 +387,11 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
                         variant="ghost" 
                         size="sm" 
                         className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                        onClick={() => navigate(`/vendor/${params.storeName}/admin/products/${product.id}/view`)}
+                        onClick={() =>
+                          navigate(
+                            `/${adminPrefix}/${params.storeName}/admin/products/${product.id}/view`
+                          )
+                        }
                         title="View Product Details"
                       >
                         <Eye className="w-4 h-4" />

@@ -143,6 +143,24 @@ export const router = createBrowserRouter([
             path: "admin/fix-slugs",
             element: <AdminSlugFixer />,
           },
+          // Vendor admin under /store/<slug>/admin (mirrors /vendor/<slug>/admin)
+          {
+            path: "store/:storeName/admin",
+            element: <VendorProtectedLayout />,
+            children: [
+              {
+                element: <AnimatedOutlet />,
+                children: [
+                  { index: true, element: <VendorAdminPage /> },
+                  {
+                    path: "products/:productId/view",
+                    element: <VendorAdminProductViewPage />,
+                  },
+                  { path: ":section", element: <VendorAdminPage /> },
+                ],
+              },
+            ],
+          },
           // Clean vendor storefront URLs - use /store/{slug} instead of /vendor/{id}
           {
             path: "store/:storeName",

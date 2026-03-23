@@ -31,7 +31,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   useEffect(() => {
     if (vendor && vendor.storeSlug) {
       console.log('✅ [VendorLogin] Vendor authenticated, redirecting to admin panel:', vendor.storeSlug);
-      navigate(`/vendor/${vendor.storeSlug}/admin`, { replace: true });
+      navigate(`/store/${vendor.storeSlug}/admin`, { replace: true });
     }
   }, [vendor, navigate]);
 

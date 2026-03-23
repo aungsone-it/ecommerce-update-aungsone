@@ -46,7 +46,14 @@ export function AnimatedOutlet() {
       return "setup";
     }
 
-    // Vendor admin routes (check before general vendor routes)
+    // Vendor admin: /store/<slug>/admin (same grouping as legacy /vendor/.../admin)
+    if (pathname.startsWith("/store/") && pathname.includes("/admin")) {
+      const parts = pathname.split("/");
+      const vendorSlug = parts[2] || "unknown";
+      return `vendor-admin-${vendorSlug}`;
+    }
+
+    // Vendor admin routes (legacy /vendor/.../admin)
     if (pathname.startsWith("/vendor/") && pathname.includes("/admin")) {
       const parts = pathname.split("/");
       const vendorSlug = parts[2] || "unknown";

@@ -79,9 +79,10 @@ export function validateSection(section: string | undefined): string | null {
 }
 
 /**
- * Safely builds vendor admin URL
+ * Safely builds vendor admin URL.
+ * Pass `pathname` when already on a `/store/.../admin` URL so links stay under `/store/`.
  */
-export function buildVendorAdminUrl(storeName: string, section?: string): string {
+export function buildVendorAdminUrl(storeName: string, section?: string, pathname?: string): string {
   const validStoreName = validateStoreName(storeName);
   
   if (!validStoreName) {
@@ -89,12 +90,16 @@ export function buildVendorAdminUrl(storeName: string, section?: string): string
     return '/vendor/login';
   }
 
+  const enc = encodeURIComponent(validStoreName);
+  const useStorePrefix = pathname?.startsWith('/store/') ?? false;
+  const base = useStorePrefix ? 'store' : 'vendor';
+
   if (!section || section === 'dashboard') {
-    return `/vendor/${encodeURIComponent(validStoreName)}/admin`;
+    return `/${base}/${enc}/admin`;
   }
 
   const validSection = validateSection(section);
-  return `/vendor/${encodeURIComponent(validStoreName)}/admin/${validSection}`;
+  return `/${base}/${enc}/admin/${validSection}`;
 }
 
 /**
@@ -124,13 +129,19 @@ export function buildVendorStorefrontUrl(storeName: string, productSlug?: string
  * Checks if the current route is a vendor admin route
  */
 export function isVendorAdminRoute(pathname: string): boolean {
-  return pathname.includes('/vendor/') && pathname.includes('/admin');
+  return (
+    (pathname.includes('/vendor/') && pathname.includes('/admin')) ||
+    (pathname.startsWith('/store/') && pathname.includes('/admin'))
+  );
 }
 
 /**
  * Checks if the current route is a vendor storefront route
  */
 export function isVendorStorefrontRoute(pathname: string): boolean {
+  if (pathname.startsWith('/store/') && pathname.includes('/admin')) {
+    return false;
+  }
   return pathname.startsWith('/store/') || (pathname.includes('/vendor/') && !pathname.includes('/admin'));
 }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router";
+import { useParams, useNavigate, useLocation } from "react-router";
 import { 
   LayoutDashboard, 
   Package, 
@@ -27,7 +27,6 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { notificationsApi } from "../../utils/api";
-import { buildVendorAdminUrl } from "../utils/routeValidation";
 import { VendorAdminDashboard } from "./vendor-admin/VendorAdminDashboard";
 import { VendorAdminProductsCRUD } from "./vendor-admin/VendorAdminProductsCRUD";
 import { VendorAdminCategories } from "./vendor-admin/VendorAdminCategories";
@@ -74,6 +73,9 @@ interface NavItem {
 export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAdminPortalProps) {
   const params = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  /** /store/<slug>/admin vs legacy /vendor/<slug>/admin */
+  const adminPathPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
   const [currentPage, setCurrentPage] = useState<VendorPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
@@ -134,15 +136,15 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     }
     
     const targetPath = currentPage === "dashboard" 
-      ? `/vendor/${storeName}/admin`
-      : `/vendor/${storeName}/admin/${currentPage}`;
+      ? `/${adminPathPrefix}/${storeName}/admin`
+      : `/${adminPathPrefix}/${storeName}/admin/${currentPage}`;
     
     // Only navigate if URL doesn't match
     if (window.location.pathname !== targetPath) {
       navigate(targetPath, { replace: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
+  }, [currentPage, adminPathPrefix]);
 
   // Poll for notifications every 30 seconds
   useEffect(() => {

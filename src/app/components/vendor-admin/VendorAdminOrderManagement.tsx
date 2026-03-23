@@ -41,7 +41,7 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { Skeleton } from "../ui/skeleton";
-import { moduleCache, CACHE_KEYS, fetchVendorOrders } from "../../utils/module-cache";
+import { fetchVendorOrders } from "../../utils/module-cache";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -65,6 +65,8 @@ interface OrderItem {
   email: string;
   phone: string;
   total: number;
+  subtotal?: number;
+  discount?: number;
   items: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
@@ -159,20 +161,16 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
     loadOrders();
   }, [vendorId]);
 
-  const loadOrders = async (forceRefresh = false) => {
+  const loadOrders = async () => {
     try {
       setIsLoading(true);
       
       console.log(`📦 Loading orders for vendor: ${vendorId}`);
       
-      // Use module cache to reduce Supabase requests
-      const data = await moduleCache.get(
-        CACHE_KEYS.vendorOrders(vendorId),
-        () => fetchVendorOrders(vendorId),
-        forceRefresh
-      );
+      // Do not use module cache here: orders change often and an empty first response was cached for the whole session.
+      const data = await fetchVendorOrders(vendorId);
       
-      console.log(`📊 Received ${data.length} orders from cache`);
+      console.log(`📊 Received ${data.length} orders from API`);
       
       // Transform API orders to match OrderItem interface
       const transformedOrders = (data || []).map((order: any) => ({
@@ -184,6 +182,14 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
         email: order.customerEmail || order.email || order.customer?.email || '',
         phone: order.customerPhone || order.phone || order.customer?.phone || '',
         total: parseFloat(order.total) || 0,
+        subtotal:
+          order.subtotal != null && order.subtotal !== ""
+            ? parseFloat(String(order.subtotal))
+            : undefined,
+        discount:
+          order.discount != null && order.discount !== ""
+            ? parseFloat(String(order.discount))
+            : undefined,
         items: order.items?.length || 0,
         status: order.status || 'pending',
         paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : order.paymentStatus === 'paid' ? 'paid' : 'unpaid',
@@ -634,8 +640,18 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
             <CardContent className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-slate-600">Subtotal</span>
-                <span className="font-medium">${selectedOrder.total.toFixed(2)}</span>
+                <span className="font-medium">
+                  ${(selectedOrder.subtotal ?? selectedOrder.total).toFixed(2)}
+                </span>
               </div>
+              {(selectedOrder.discount ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Discount</span>
+                  <span className="font-medium text-emerald-700">
+                    -${(selectedOrder.discount ?? 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-600">Shipping</span>
                 <span className="font-medium">$0.00</span>

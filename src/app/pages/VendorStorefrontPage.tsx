@@ -34,7 +34,7 @@ export function VendorStorefrontPage() {
 
   const handleBack = () => {
     // Always navigate back to the vendor's admin dashboard
-    const vendorAdminPath = `/vendor/${storeName}/admin`;
+    const vendorAdminPath = `/store/${storeName}/admin`;
     console.log('Back button clicked - navigating to:', vendorAdminPath);
     navigate(vendorAdminPath);
   };
