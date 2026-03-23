@@ -50,7 +50,7 @@ import { Checkout } from "./Checkout";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import { ProductGridSkeleton, ProductDetailSkeleton } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
-import { authApi } from "../../utils/api";
+import { authApi, wishlistApi } from "../../utils/api";
 import { toast } from "sonner";
 
 interface Product {
@@ -77,6 +77,8 @@ interface VendorStoreViewProps {
   initialProductSlug?: string;
   /** From URL `/store/:slug/profile/...` — drives account view mode */
   profileSegment?: string | null;
+  /** `/store/:slug/saved` — saved products (wishlist) for this storefront */
+  savedPage?: boolean;
 }
 
 type VendorAccountViewMode =
@@ -153,6 +155,7 @@ export function VendorStoreView({
   onBack,
   initialProductSlug,
   profileSegment = null,
+  savedPage = false,
 }: VendorStoreViewProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -196,6 +199,13 @@ export function VendorStoreView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    if (savedPage) {
+      setSelectedProduct(null);
+    }
+  }, [savedPage]);
+
   const [cartOpen, setCartOpen] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [storeName, setStoreName] = useState("Vendor Store");
@@ -272,6 +282,16 @@ export function VendorStoreView({
     confirm: false,
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const goToSavedProducts = useCallback(() => {
+    if (!user) {
+      toast.error("Please sign in to view your wishlist");
+      setShowAuthModal(true);
+      setAuthMode("login");
+      return;
+    }
+    navigate(`${storeBase}/saved`);
+  }, [user, navigate, storeBase]);
 
   /** Pass 'register' from handleRegister before setUser; cleared after track. */
   const lastAuthEventRef = useRef<"login" | "register" | null>(null);
@@ -812,7 +832,7 @@ export function VendorStoreView({
                   <Package className="w-4 h-4 mr-2" />
                   View Orders
                 </Button>
-                <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("storefront")}>
+                <Button variant="outline" className="justify-start" onClick={() => navigate(`${storeBase}/saved`)}>
                   <Heart className="w-4 h-4 mr-2" />
                   My Wishlist
                 </Button>
@@ -1735,6 +1755,10 @@ export function VendorStoreView({
         vendorId: vendorId,
       }, quantity);
       setQuantity(1);
+      // Match main storefront: auto-open cart drawer on desktop (md+)
+      if (typeof window !== "undefined" && window.innerWidth >= 768) {
+        setCartOpen(true);
+      }
     } catch (error) {
       console.error('Error adding to cart:', error);
     }
@@ -1746,8 +1770,29 @@ export function VendorStoreView({
     return `${Math.round(numPrice)} MMK`;
   };
 
-  // Wishlist management (simplified for vendor storefront)
+  // Wishlist — same API as main storefront (global product IDs)
   const [wishlist, setWishlist] = useState<string[]>([]);
+
+  useEffect(() => {
+    const uid = resolveUserIdFromRecord(user);
+    if (!uid) {
+      setWishlist([]);
+      return;
+    }
+    void wishlistApi
+      .get(uid)
+      .then((res) => setWishlist(res.productIds || []))
+      .catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    const uid = resolveUserIdFromRecord(user);
+    if (!uid) return;
+    const t = setTimeout(() => {
+      wishlistApi.update(uid, wishlist).catch(() => {});
+    }, 500);
+    return () => clearTimeout(t);
+  }, [wishlist, user]);
   
   const toggleWishlist = (productId: string) => {
     // Require authentication for wishlist
@@ -1775,7 +1820,7 @@ export function VendorStoreView({
   });
 
   // Product Detail View (inline, not modal)
-  if (selectedProduct && vendorViewMode === "storefront") {
+  if (selectedProduct && vendorViewMode === "storefront" && !savedPage) {
     return (
       <div className="min-h-screen bg-white flex flex-col">
         <ServerStatusBanner 
@@ -1850,6 +1895,21 @@ export function VendorStoreView({
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 >
                   {mobileMenuOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative hover:bg-slate-100 rounded-full w-10 h-10"
+                  onClick={goToSavedProducts}
+                  title="Saved products"
+                >
+                  <Heart className="w-5 h-5 text-slate-700" />
+                  {wishlist.length > 0 && (
+                    <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-amber-600 text-white text-xs border-2 border-white">
+                      {wishlist.length}
+                    </Badge>
+                  )}
                 </Button>
 
                 <Button
@@ -2159,7 +2219,6 @@ export function VendorStoreView({
                   onClick={() => {
                     if (selectedProduct.inventory === 0) return;
                     handleAddToCart(selectedProduct);
-                    setCartOpen(true);
                   }}
                 >
                   <span className="block leading-none">
@@ -2407,6 +2466,7 @@ export function VendorStoreView({
               onClick={() => {
                 setSearchQuery("");
                 setSelectedCategory("all");
+                navigate(storeBase);
               }}
               className="flex items-center gap-3 group"
             >
@@ -2448,6 +2508,21 @@ export function VendorStoreView({
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative hover:bg-slate-100 rounded-full w-10 h-10"
+                onClick={goToSavedProducts}
+                title="Saved products"
+              >
+                <Heart className="w-5 h-5 text-slate-700" />
+                {wishlist.length > 0 && (
+                  <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-amber-600 text-white text-xs border-2 border-white">
+                    {wishlist.length}
+                  </Badge>
+                )}
               </Button>
 
               <Button
@@ -2562,8 +2637,8 @@ export function VendorStoreView({
             </div>
           )}
 
-          {/* Categories — hide on account pages to match main /store profile layout */}
-          {vendorViewMode === "storefront" && vendorCategories.length > 0 && (
+          {/* Categories — hide on account + saved pages */}
+          {vendorViewMode === "storefront" && !savedPage && vendorCategories.length > 0 && (
             <div className="flex items-center gap-2 py-3 overflow-x-auto scrollbar-hide">
               <button
                 onClick={() => setSelectedCategory("all")}
@@ -2597,6 +2672,90 @@ export function VendorStoreView({
       <main className="max-w-7xl mx-auto px-4 py-8 w-full">
         {vendorViewMode !== "storefront" ? (
           renderVendorAccountPage()
+        ) : savedPage ? (
+          <>
+            <div className="-mx-4">
+              <div
+                className="text-white py-8 sm:py-10 md:py-11 px-4 sm:px-6 lg:px-8"
+                style={{ backgroundColor: "#223044" }}
+              >
+                <div className="max-w-7xl mx-auto">
+                  <div className="flex items-center gap-3 sm:gap-4">
+                    <Heart className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 fill-white text-white" strokeWidth={1.5} />
+                    <h1 className="font-serif font-bold text-white text-2xl sm:text-3xl tracking-tight">
+                      Saved Products
+                    </h1>
+                  </div>
+                  <p className="mt-2 text-sm sm:text-[15px] text-white/95 font-sans font-normal">
+                    {(() => {
+                      const n = products.filter((p) => wishlist.includes(p.id)).length;
+                      return `${n} ${n === 1 ? "item" : "items"} saved for later`;
+                    })()}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto w-full pt-6 md:pt-12">
+              {(() => {
+                const savedHere = products.filter((p) => wishlist.includes(p.id));
+                if (savedHere.length === 0) {
+                  return (
+                    <Card className="text-center py-16 sm:py-20 border-0 shadow-md">
+                      <Heart className="w-16 h-16 mx-auto text-slate-300 mb-4" />
+                      <p className="text-lg text-slate-500 mb-2">No saved products from this store yet</p>
+                      <p className="text-sm text-slate-400 mb-6">
+                        {wishlist.length > 0
+                          ? "Your wishlist has items from other areas — browse this shop and tap the heart on products you like."
+                          : "Start adding products to your wishlist!"}
+                      </p>
+                      <Button onClick={() => navigate(storeBase)} className="bg-amber-600 hover:bg-amber-700">
+                        Browse products
+                      </Button>
+                    </Card>
+                  );
+                }
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6">
+                    {savedHere.map((product) => (
+                      <ProductCard
+                        key={product.id}
+                        product={{
+                          id: product.id,
+                          image: product.images && product.images.length > 0 ? product.images[0] : "",
+                          name: product.name,
+                          price: product.price.toString(),
+                          salesVolume: product.reviewCount || 0,
+                          sku: product.sku,
+                        }}
+                        onProductClick={() => {
+                          const segment = buildVendorProductUrlSegment(product);
+                          navigate(`${storeBase}/product/${encodeURIComponent(segment)}`);
+                        }}
+                        onAddToCart={(e) => {
+                          e.stopPropagation();
+                          handleAddToCart(product);
+                          toast.success(`${product.name} added to cart!`);
+                        }}
+                        onToggleWishlist={(e) => {
+                          e.stopPropagation();
+                          toggleWishlist(product.id);
+                          const isNowWishlisted = !wishlist.includes(product.id);
+                          toast.success(
+                            isNowWishlisted
+                              ? `${product.name} added to wishlist!`
+                              : `${product.name} removed from wishlist`
+                          );
+                        }}
+                        isWishlisted={wishlist.includes(product.id)}
+                        formatPriceMMK={formatPriceMMK}
+                      />
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          </>
         ) : (
           <>
             {/* Show skeleton loaders while checking server status - Shopify style */}

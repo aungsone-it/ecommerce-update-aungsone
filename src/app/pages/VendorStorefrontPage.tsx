@@ -36,6 +36,14 @@ export function VendorStorefrontPage() {
     return vendorProfileSegmentFromPathname(location.pathname, storeName);
   }, [storeName, location.pathname]);
 
+  const savedPage = useMemo(() => {
+    if (!storeName) return false;
+    return (
+      matchPath({ path: "/store/:storeName/saved", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null
+    );
+  }, [storeName, location.pathname]);
+
   if (!storeName) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
@@ -75,6 +83,7 @@ export function VendorStorefrontPage() {
           onBack={handleBack}
           initialProductSlug={productSlug}
           profileSegment={profileSegment}
+          savedPage={savedPage}
         />
       </CartProvider>
     </AuthProvider>

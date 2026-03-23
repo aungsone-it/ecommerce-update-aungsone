@@ -178,6 +178,11 @@ export const router = createBrowserRouter([
             errorElement: <NotFound />,
           },
           {
+            path: "store/:storeName/saved",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
             path: "store/:storeName",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
@@ -195,6 +200,11 @@ export const router = createBrowserRouter([
           },
           {
             path: "vendor/:storeName/product/:productSlug",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/saved",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
           },
