@@ -2,7 +2,7 @@
 import { moduleCache, CACHE_KEYS, fetchVendorProducts, fetchVendorCategories } from "../utils/module-cache";
 import { ProductCard } from "./ProductCard";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useNavigate, useLocation } from "react-router";
+import { useNavigate, useLocation, matchPath } from "react-router";
 import { 
   ShoppingCart, 
   Heart, 
@@ -164,6 +164,14 @@ export function VendorStoreView({
     const slug = encodeURIComponent(storeSlug || vendorId);
     return location.pathname.startsWith("/vendor/") ? `/vendor/${slug}` : `/store/${slug}`;
   }, [location.pathname, storeSlug, vendorId]);
+
+  /** Prefer pathname over useParams so async product load cannot reopen detail after user navigated away. */
+  const productSlugFromPath = useMemo(() => {
+    const m =
+      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
+    return typeof m?.params?.productSlug === "string" ? m.params.productSlug : undefined;
+  }, [location.pathname]);
 
   const goToProfileMode = useCallback(
     (mode: VendorAccountViewMode) => {
@@ -1703,30 +1711,35 @@ export function VendorStoreView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  // Handle initial product slug from URL
+  // Sync product detail from URL + catalog (pathname is source of truth — avoids races with slow loads)
   useEffect(() => {
-    if (initialProductSlug && products.length > 0) {
-      const decoded = (() => {
-        try {
-          return decodeURIComponent(initialProductSlug);
-        } catch {
-          return initialProductSlug;
-        }
-      })();
-
-      const product =
-        products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
-        products.find((p) => p.sku === decoded || p.sku === initialProductSlug) ||
-        products.find((p) => p.id === decoded || p.id === initialProductSlug);
-
-      if (product) {
-        setSelectedProduct(product);
-      }
-    } else if (!initialProductSlug && selectedProduct) {
-      // If URL has no product slug but we have a selected product, clear it
+    const slug = productSlugFromPath ?? initialProductSlug;
+    if (!slug) {
       setSelectedProduct(null);
+      return;
     }
-  }, [initialProductSlug, products]);
+    if (products.length === 0) return;
+
+    const decoded = (() => {
+      try {
+        return decodeURIComponent(slug);
+      } catch {
+        return slug;
+      }
+    })();
+
+    const product =
+      products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
+      products.find((p) => p.sku === decoded || p.sku === slug) ||
+      products.find((p) => p.id === decoded || p.id === slug);
+
+    const stillOnProduct =
+      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
+    if (product && stillOnProduct) {
+      setSelectedProduct(product);
+    }
+  }, [productSlugFromPath, initialProductSlug, products, location.pathname]);
 
   // Handle browser back button - detect when URL changes back to storefront home
   useEffect(() => {

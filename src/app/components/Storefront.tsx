@@ -527,6 +527,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     const categoryParam = searchParams.get('category');
     
     console.log('🌐 URL changed to:', path, 'Category:', categoryParam);
+
+    // Drop product detail state whenever the URL is not a /product/... route (browser back, etc.).
+    // Prevents stale selectedProduct + async fetchProductDetails from reopening detail after navigate away.
+    if (!path.startsWith("/product/")) {
+      setSelectedProduct(null);
+      setSelectedVariants({});
+      setSelectedImageIndex(0);
+    }
     
     // Mark that we're initializing from URL
     isInitializingFromURL.current = true;
@@ -724,6 +732,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     
     // Guard: Don't run if user is navigating away
     if (isNavigatingAwayRef.current) return;
+
+    if (!location.pathname.startsWith("/product/")) return;
     
     // Guard: Only run if products just loaded and we're in product-detail mode without a selectedProduct
     if (products.length > 0 && viewMode === "product-detail" && !selectedProduct) {
@@ -1406,6 +1416,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     try {
       // Fetch full product details in background (silently skip if already complete)
       const fullProduct = await fetchProductDetails(product.id);
+
+      // User may have navigated away (back / link) while the request was in flight — do not restore detail.
+      if (isNavigatingAwayRef.current) return;
+      if (!location.pathname.startsWith("/product/")) return;
+      const skuSegment = location.pathname.slice("/product/".length).split("/")[0];
+      if (skuSegment) {
+        const decoded = decodeURIComponent(skuSegment);
+        if (decoded !== product.sku && skuSegment !== product.sku) return;
+      }
       
       if (fullProduct) {
         console.log(`✅ Full product fetched, updating with complete data...`);
@@ -1422,7 +1441,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       stopFaviconLoading();
       isSelectingProductRef.current = false;
     }
-  }, [fetchProductDetails, navigate, startFaviconLoading, stopFaviconLoading]);
+  }, [fetchProductDetails, navigate, startFaviconLoading, stopFaviconLoading, location.pathname]);
 
   // 🆕 RACE CONDITION FIX: Safe navigation away from product detail
   // This prevents state mismatch when navigating between pages
