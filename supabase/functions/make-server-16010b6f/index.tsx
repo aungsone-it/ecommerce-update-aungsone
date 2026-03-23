@@ -90,6 +90,18 @@ const supabase = createClient(
   }
 );
 
+/** Used to verify current password via signInWithPassword (storefront customers use Supabase Auth, not KV). */
+const supabaseAuth = createClient(
+  Deno.env.get("SUPABASE_URL")!,
+  Deno.env.get("SUPABASE_ANON_KEY")!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  }
+);
+
 // Helper function to wrap KV operations with timeout
 // NOTE: KV operations now have built-in timeouts, so this is just a pass-through
 // Kept for backward compatibility with existing code
@@ -1456,7 +1468,7 @@ app.post("/make-server-16010b6f/auth/sync-users", async (c) => {
   }
 });
 
-// Change user password
+// Change user password (legacy KV users + Supabase Auth storefront customers)
 app.post("/make-server-16010b6f/auth/change-password", async (c) => {
   try {
     const body = await c.req.json();
@@ -1466,34 +1478,62 @@ app.post("/make-server-16010b6f/auth/change-password", async (c) => {
       return c.json({ error: "Email, current password, and new password are required" }, 400);
     }
     
-    console.log(`🔐 Password change attempt for: ${email}`);
+    const emailTrim = String(email).trim();
+    const emailLower = emailTrim.toLowerCase();
     
-    // Get user from KV storage
-    const user = await withTimeout(kv.get(`user:${email}`), 5000);
+    console.log(`🔐 Password change attempt for: ${emailTrim}`);
     
-    if (!user) {
-      return c.json({ error: "User not found" }, 404);
+    // Legacy: password stored in KV (user:${email})
+    let legacyUser = await withTimeout(kv.get(`user:${emailTrim}`), 5000);
+    if (!legacyUser) {
+      legacyUser = await withTimeout(kv.get(`user:${emailLower}`), 5000);
     }
     
-    // Verify current password
-    if (user.password !== currentPassword) {
-      console.log(`❌ Current password verification failed for: ${email}`);
-      return c.json({ error: "Current password is incorrect" }, 401);
+    if (legacyUser && typeof legacyUser === "object" && (legacyUser as { password?: string }).password !== undefined) {
+      if ((legacyUser as { password?: string }).password !== currentPassword) {
+        console.log(`❌ Current password verification failed (legacy KV) for: ${emailTrim}`);
+        return c.json({ error: "Current password is incorrect" }, 401);
+      }
+      const updatedUser = {
+        ...legacyUser,
+        password: newPassword,
+      };
+      const key = (legacyUser as { email?: string }).email || emailTrim;
+      await withTimeout(kv.set(`user:${key}`, updatedUser), 5000);
+      console.log(`✅ Password changed successfully (legacy KV) for: ${emailTrim}`);
+      return c.json({
+        success: true,
+        message: "Password changed successfully",
+      });
     }
     
-    // Update password
-    const updatedUser = {
-      ...user,
+    // Storefront customers: Supabase Auth (no KV user: record)
+    const { data: signInData, error: signInErr } = await supabaseAuth.auth.signInWithPassword({
+      email: emailLower,
+      password: currentPassword,
+    });
+    
+    if (signInErr || !signInData.user) {
+      console.log(`❌ Supabase sign-in failed for password change:`, signInErr?.message);
+      return c.json(
+        { error: signInErr?.message?.includes("Invalid") ? "Current password is incorrect" : (signInErr?.message || "Current password is incorrect") },
+        401
+      );
+    }
+    
+    const { error: updErr } = await supabase.auth.admin.updateUserById(signInData.user.id, {
       password: newPassword,
-    };
+    });
     
-    await withTimeout(kv.set(`user:${email}`, updatedUser), 5000);
+    if (updErr) {
+      console.error("❌ Error updating Supabase Auth password:", updErr);
+      return c.json({ error: updErr.message || "Failed to update password" }, 500);
+    }
     
-    console.log(`✅ Password changed successfully for: ${email}`);
-    
+    console.log(`✅ Password changed successfully (Supabase Auth) for: ${emailTrim}`);
     return c.json({
       success: true,
-      message: "Password changed successfully"
+      message: "Password changed successfully",
     });
   } catch (error) {
     console.error("❌ Error changing password:", error);
@@ -1628,7 +1668,118 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
       }
     }
     
+    // Storefront customers (login/register via auth_routes) live in customer: KV + Supabase Auth,
+    // not in legacy user:${email}. Resolve and update them when legacy user is missing.
     if (!existingUser) {
+      const authKvProfile = await withTimeout(kv.get(`auth:user:${userId}`), 5000);
+      if (authKvProfile && typeof authKvProfile === "object") {
+        let profileImagePath = (authKvProfile as { profileImage?: string }).profileImage;
+        if (body.profileImage) {
+          const uploadedPath = await uploadProfileImage(userId, body.profileImage);
+          if (uploadedPath) {
+            profileImagePath = uploadedPath;
+            console.log(`📸 Profile image uploaded (auth:user KV): ${profileImagePath}`);
+          }
+        }
+        const updatedProfile = {
+          ...(authKvProfile as Record<string, unknown>),
+          name: typeof body.name === "string" ? body.name : (authKvProfile as { name?: string }).name,
+          phone: typeof body.phone === "string" ? body.phone : (authKvProfile as { phone?: string }).phone,
+          profileImage: profileImagePath,
+          updatedAt: new Date().toISOString(),
+        };
+        await withTimeout(kv.set(`auth:user:${userId}`, updatedProfile), 5000);
+        const metadataUpdates: Record<string, unknown> = {
+          name: updatedProfile.name,
+          phone: updatedProfile.phone,
+        };
+        if (profileImagePath) {
+          metadataUpdates.profileImage = profileImagePath;
+        }
+        const { error: authUpdErr } = await supabase.auth.admin.updateUserById(userId, {
+          user_metadata: metadataUpdates,
+        });
+        if (authUpdErr) {
+          console.error("❌ Supabase Auth update (auth:user profile):", authUpdErr);
+        }
+        const { password: __, ...userOut } = updatedProfile as Record<string, unknown> & { password?: string };
+        const out = { ...userOut } as Record<string, unknown>;
+        if (out.profileImage && typeof out.profileImage === "string") {
+          const signedUrl = await getSignedImageUrl(out.profileImage as string);
+          if (signedUrl) out.profileImageUrl = signedUrl;
+        }
+        return c.json({
+          success: true,
+          user: out,
+          message: "Profile updated successfully",
+        });
+      }
+
+      const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 5000);
+      const customer = Array.isArray(allCustomers)
+        ? allCustomers.find((c: any) => c != null && c.userId === userId)
+        : null;
+
+      if (customer) {
+        let profileImagePath: string | undefined =
+          typeof customer.profileImage === "string" ? customer.profileImage : undefined;
+
+        if (body.profileImage) {
+          const uploadedPath = await uploadProfileImage(userId, body.profileImage);
+          if (uploadedPath) {
+            profileImagePath = uploadedPath;
+            console.log(`📸 Profile image uploaded (customer): ${profileImagePath}`);
+          }
+        }
+
+        if (typeof body.name === "string" && body.name.trim()) {
+          customer.name = body.name.trim();
+        }
+        if (typeof body.phone === "string") {
+          customer.phone = body.phone.trim();
+        }
+        customer.updatedAt = new Date().toISOString();
+        if (profileImagePath) {
+          customer.profileImage = profileImagePath;
+          const signed = await getSignedImageUrl(profileImagePath);
+          if (signed) customer.avatar = signed;
+        }
+
+        await withTimeout(kv.set(`customer:${customer.id}`, customer), 5000);
+
+        const metadataUpdates: Record<string, unknown> = {
+          name: customer.name,
+          phone: customer.phone,
+        };
+        if (profileImagePath) {
+          metadataUpdates.profileImage = profileImagePath;
+        }
+        const { error: authUpdErr } = await supabase.auth.admin.updateUserById(userId, {
+          user_metadata: metadataUpdates,
+        });
+        if (authUpdErr) {
+          console.error("❌ Supabase Auth update (customer profile):", authUpdErr);
+        }
+
+        const { password: _, ...customerRest } = customer as Record<string, unknown> & { password?: string };
+        const userResponse = {
+          ...customerRest,
+          id: userId,
+          customerId: customer.id,
+          profileImageUrl: profileImagePath ? await getSignedImageUrl(profileImagePath) : customer.avatar,
+        };
+        if (profileImagePath) {
+          const su = await getSignedImageUrl(profileImagePath);
+          if (su) (userResponse as { profileImageUrl?: string }).profileImageUrl = su;
+        }
+
+        return c.json({
+          success: true,
+          user: userResponse,
+          message: "Profile updated successfully",
+        });
+      }
+
       console.error(`❌ User not found for userId: ${userId}`);
       return c.json({ error: "User not found" }, 404);
     }
@@ -3270,13 +3421,15 @@ app.get("/make-server-16010b6f/user/:userId/orders", async (c) => {
       }
     }
     
-    // 3. Try searching user: (legacy or other types)
+    // 3. Same as GET /auth/profile/:userId — keys are user:${email}, not user:${userId}
     if (!userEmail) {
-      const genericUser = await withTimeout(kv.get(`user:${userId}`), 5000);
-      if (genericUser && genericUser.email) {
-        userEmail = genericUser.email;
-        // Create mapping for next time
+      const allUsers = await withTimeout(kv.getByPrefix(`user:`), 10000);
+      const arr = Array.isArray(allUsers) ? allUsers : [];
+      const found = arr.find((u: any) => u && u.id === userId);
+      if (found && found.email) {
+        userEmail = found.email;
         await withTimeout(kv.set(`userId:${userId}`, { email: userEmail }), 5000);
+        console.log(`🔧 Resolved email for ${userId} via user: scan`);
       }
     }
 

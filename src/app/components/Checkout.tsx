@@ -9,6 +9,32 @@ import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 
+/** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
+function getMigooCustomerFromStorage(): {
+  id: string;
+  email?: string;
+  name?: string;
+  phone?: string;
+} | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("migoo-user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { id?: string; email?: string; name?: string; phone?: string };
+    if (parsed && typeof parsed.id === "string") {
+      return {
+        id: parsed.id,
+        email: parsed.email,
+        name: parsed.name,
+        phone: parsed.phone,
+      };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 interface CheckoutProps {
   onBack: () => void;
   storeName: string;
@@ -18,7 +44,19 @@ interface CheckoutProps {
 
 export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutProps) {
   const { items, totalPrice, clearCart } = useCart();
-  const { user } = useAuth(); // Get logged-in user
+  const { user: authUser } = useAuth();
+  const migoo = getMigooCustomerFromStorage();
+
+  /** Supabase session user OR KV customer from migoo-user (AuthContext has no KV-only sessions). */
+  const effectiveUser = authUser?.id
+    ? {
+        id: authUser.id,
+        email: authUser.email,
+        name: authUser.name,
+        phone: authUser.phone,
+      }
+    : migoo;
+
   const [step, setStep] = useState<"shipping" | "payment" | "success">("shipping");
   const [loading, setLoading] = useState(false);
 
@@ -34,18 +72,18 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
 
   // Load user data and saved addresses on mount
   useEffect(() => {
-    console.log("🔍 User data in Checkout:", user); // DEBUG: Check what user contains
-    
+    console.log("🔍 User data in Checkout:", effectiveUser);
+
     // 🔥 Load saved shipping addresses from DATABASE (not localStorage!)
     const loadUserAddresses = async () => {
-      if (!user?.id) {
+      if (!effectiveUser?.id) {
         console.log("⚠️ No user logged in, skipping address load");
         return;
       }
-      
+
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${user.id}/addresses`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${effectiveUser.id}/addresses`,
           {
             headers: {
               'Authorization': `Bearer ${publicAnonKey}`,
@@ -64,9 +102,9 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
             
             // Pre-fill form with default address
             setShippingInfo({
-              fullName: defaultAddress?.recipientName || user?.name || "",
-              email: user?.email || "",
-              phone: defaultAddress?.phone || user?.phone || "",
+              fullName: defaultAddress?.recipientName || effectiveUser?.name || "",
+              email: effectiveUser?.email || "",
+              phone: defaultAddress?.phone || effectiveUser?.phone || "",
               address: defaultAddress?.addressLine1 || "",
               city: defaultAddress?.city || "",
               zipCode: defaultAddress?.zipCode || ""
@@ -81,15 +119,15 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
     };
     
     // Try database first
-    if (user?.id) {
+    if (effectiveUser?.id) {
       loadUserAddresses();
     } else {
       // Fallback to user data if no saved addresses
-      if (user) {
+      if (effectiveUser) {
         setShippingInfo({
-          fullName: user?.name || "",
-          email: user?.email || "",
-          phone: user?.phone || "",
+          fullName: effectiveUser?.name || "",
+          email: effectiveUser?.email || "",
+          phone: effectiveUser?.phone || "",
           address: "",
           city: "",
           zipCode: ""
@@ -97,7 +135,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
         console.log("✅ Auto-filled checkout form with user profile data");
       }
     }
-  }, [user]);
+  }, [authUser?.id, authUser?.email, authUser?.name, authUser?.phone, migoo?.id, migoo?.email]);
 
   // Order Note
   const [orderNote, setOrderNote] = useState("");
@@ -348,7 +386,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
       // 🔥 Save order to backend with vendor information
       const orderData = {
         orderNumber: orderNum,
-        userId: user?.id ?? null,
+        userId: effectiveUser?.id ?? null,
         customer: shippingInfo.fullName,
         customerName: shippingInfo.fullName,
         email: shippingInfo.email,
@@ -422,9 +460,9 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
       console.log("✅ Order saved to backend:", orderNum);
       
       // 🔥 Save shipping address to database for future use
-      if (user?.id) {
+      if (effectiveUser?.id) {
         try {
-          console.log(`📍 Saving shipping address for user ${user.id}`);
+          console.log(`📍 Saving shipping address for user ${effectiveUser.id}`);
           
           // Create address object
           const newAddress = {
@@ -440,7 +478,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
           
           // Get existing addresses
           const addressResponse = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${user.id}/addresses`,
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${effectiveUser.id}/addresses`,
             {
               headers: {
                 'Authorization': `Bearer ${publicAnonKey}`,
@@ -466,7 +504,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
             const updatedAddresses = [...existingAddresses, newAddress];
             
             await fetch(
-              `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${user.id}/addresses`,
+              `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${effectiveUser.id}/addresses`,
               {
                 method: 'POST',
                 headers: {

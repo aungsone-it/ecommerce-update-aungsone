@@ -161,18 +161,43 @@ export const router = createBrowserRouter([
               },
             ],
           },
-          // Clean vendor storefront URLs - use /store/{slug} instead of /vendor/{id}
+          // Vendor storefront — most specific paths first
           {
-            path: "store/:storeName",
+            path: "store/:storeName/profile/:profileSection",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />, // Handle vendor storefront errors
+            errorElement: <NotFound />,
+          },
+          {
+            path: "store/:storeName/profile",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
           },
           {
             path: "store/:storeName/product/:productSlug",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />, // Handle product detail errors
+            errorElement: <NotFound />,
           },
-          // Legacy support for old /vendor/{id} URLs - redirect to new structure
+          {
+            path: "store/:storeName",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          // Legacy /vendor/{slug} storefront URLs
+          {
+            path: "vendor/:storeName/profile/:profileSection",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/profile",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/product/:productSlug",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
           {
             path: "vendor/:storeName",
             element: <VendorStorefrontPage />,

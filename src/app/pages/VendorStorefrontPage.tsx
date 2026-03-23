@@ -1,13 +1,40 @@
-import { useParams, useNavigate } from "react-router";
+import { useMemo } from "react";
+import { useParams, useNavigate, useLocation, matchPath } from "react-router";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
 import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 
+function vendorProfileSegmentFromPathname(
+  pathname: string,
+  storeName: string
+): string | null {
+  const patterns = [
+    "/store/:storeName/profile/:profileSection",
+    "/vendor/:storeName/profile/:profileSection",
+    "/store/:storeName/profile",
+    "/vendor/:storeName/profile",
+  ] as const;
+  for (const path of patterns) {
+    const m = matchPath({ path, end: true }, pathname);
+    if (m?.params?.storeName === storeName) {
+      const section = m.params.profileSection;
+      return typeof section === "string" ? section : "view";
+    }
+  }
+  return null;
+}
+
 export function VendorStorefrontPage() {
   const { storeName, productSlug } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
+
+  const profileSegment = useMemo(() => {
+    if (!storeName) return null;
+    return vendorProfileSegmentFromPathname(location.pathname, storeName);
+  }, [storeName, location.pathname]);
 
   if (!storeName) {
     return (
@@ -47,6 +74,7 @@ export function VendorStorefrontPage() {
           storeSlug={storeName}
           onBack={handleBack}
           initialProductSlug={productSlug}
+          profileSegment={profileSegment}
         />
       </CartProvider>
     </AuthProvider>

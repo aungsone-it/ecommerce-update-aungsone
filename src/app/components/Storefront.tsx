@@ -10,7 +10,7 @@ import {
   Smartphone, Laptop, Watch, Headphones, Camera, Monitor, Tablet,
   ShoppingBag, Gift, Percent, Bell, Crown, Sparkles, Dumbbell, Gamepad2, Grid3x3,
   LogOut, UserCircle, Folder, Copy, FileText, Shirt, Box, Utensils, Briefcase,
-  Backpack, Sofa, Eye, EyeOff, MessageSquare, Settings, Keyboard, Mic, Pen, Database
+  Backpack, Sofa, Eye, EyeOff, MessageSquare, Settings, Keyboard, Mic, Pen
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "./ui/button";
@@ -120,6 +120,41 @@ interface User {
   phone?: string;
   profileImage?: string; // Storage path to profile image
   profileImageUrl?: string; // Signed URL to profile image
+}
+
+/** KV/session objects may use `id` or `userId`; never call `/user/undefined/orders`. */
+function resolveUserIdFromRecord(u: unknown): string | null {
+  if (!u || typeof u !== "object") return null;
+  const o = u as Record<string, unknown>;
+  const raw = o.id ?? o.userId;
+  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  return null;
+}
+
+function readMigooUserFromStorage(): User | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("migoo-user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const id = resolveUserIdFromRecord(parsed);
+    if (!id) return null;
+    return {
+      ...(parsed as unknown as User),
+      id,
+      email: String(parsed.email ?? ""),
+      name: String((parsed.name as string) ?? parsed.email ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveOrderApiUserId(user: User | null): string | null {
+  const fromState = resolveUserIdFromRecord(user);
+  if (fromState) return fromState;
+  return resolveUserIdFromRecord(readMigooUserFromStorage());
 }
 
 interface CartItem extends Product {
@@ -308,7 +343,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // 🚀 CACHE-AWARE: Only show loading if we DON'T have cached data
   // If cache exists, skip loading state entirely for instant display
   const hasCachedData = cachedProducts.length > 0 && cachedCategories.length > 0;
-  const isDataReady = hasCachedData || (serverStatus === 'healthy' && products.length > 0 && allCategories.length > 0);
+  /** After first successful catalog fetch, allow UI even if products AND categories are both empty (otherwise spinner never ends). */
+  const [initialCatalogFetchDone, setInitialCatalogFetchDone] = useState(hasCachedData);
+  const isDataReady =
+    hasCachedData ||
+    (serverStatus === "unhealthy" && initialCatalogFetchDone) ||
+    (serverStatus === "healthy" &&
+      ((products.length > 0 && allCategories.length > 0) || initialCatalogFetchDone));
   
   // Sync loading state with global loading context
   useEffect(() => {
@@ -718,8 +759,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   }, [showMobileMenu]);
   
-  // User authentication
-  const [user, setUser] = useState<User | null>(null);
+  // User authentication — hydrate from migoo-user immediately so /profile/orders can fetch on first paint
+  const [user, setUser] = useState<User | null>(() => readMigooUserFromStorage());
   const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
@@ -1014,6 +1055,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       if (appInitialized === 'true' && serverStatus === 'healthy' && cachedProducts.length > 0) {
         console.log('⚡ App already initialized with cached data, skipping loading screen...');
         console.log(`📦 Using cached data: ${cachedProducts.length} products, ${cachedCategories.length} categories`);
+        setInitialCatalogFetchDone(true);
         // ⚡ No need to set loading - serverStatus already handles it
         // Silently refresh data in background to keep it fresh - PASS TRUE FLAG to prevent race conditions
         Promise.all([loadProducts(true), loadCategories(), loadSiteSettings(), loadBanners()]).catch(err => {
@@ -1037,6 +1079,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         // Wait for both products and categories to load before marking as healthy
         await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
         if (!isMounted) return;
+        setInitialCatalogFetchDone(true);
         updateServerStatus('healthy');
         sessionStorage.setItem('migoo-initialized', 'true');
         console.log('✅ All data loaded, app ready!');
@@ -1053,6 +1096,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           if (retryCheck.isHealthy) {
             await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
             if (!isMounted) return;
+            setInitialCatalogFetchDone(true);
             updateServerStatus('healthy');
             sessionStorage.setItem('migoo-initialized', 'true');
             toast.success('✅ Connected to server successfully!');
@@ -1068,6 +1112,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               if (retry2Check.isHealthy) {
                 await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
                 if (!isMounted) return;
+                setInitialCatalogFetchDone(true);
                 updateServerStatus('healthy');
                 sessionStorage.setItem('migoo-initialized', 'true');
                 toast.success('✅ Connected to server successfully!');
@@ -1083,10 +1128,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   if (retry3Check.isHealthy) {
                     await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
                     if (!isMounted) return;
+                    setInitialCatalogFetchDone(true);
                     updateServerStatus('healthy');
                     sessionStorage.setItem('migoo-initialized', 'true');
                     toast.success('✅ Connected to server successfully!');
                   } else {
+                    setInitialCatalogFetchDone(true);
                     setServerStatus('unhealthy');
                     toast.error('❌ Unable to connect to server after multiple attempts. Please refresh the page.');
                   }
@@ -1469,24 +1516,37 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   };
 
-  // Auto-load user from localStorage on page load
+  // Auto-load user from localStorage on page load (sync with cart / profile refresh)
   useEffect(() => {
     const storedUser = localStorage.getItem("migoo-user");
     if (storedUser) {
       try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
+        const parsedUser = JSON.parse(storedUser) as Record<string, unknown>;
+        const uid = resolveUserIdFromRecord(parsedUser);
+        if (!uid) {
+          console.warn("[Storefront] migoo-user missing id/userId; clearing invalid session");
+          localStorage.removeItem("migoo-user");
+          setUser(null);
+          return;
+        }
+        const normalized = { ...(parsedUser as unknown as User), id: uid };
+        setUser(normalized);
         // 🔥 Load user's cart and wishlist from database
-        loadUserCart(parsedUser.id);
-        loadUserWishlist(parsedUser.id);
+        loadUserCart(uid);
+        loadUserWishlist(uid);
         
         // Refresh profile data from server to get fresh signed URL
-        authApi.getProfile(parsedUser.id)
+        authApi.getProfile(uid)
           .then((response: any) => {
             const freshProfile = response?.user || response;
-            if (freshProfile && typeof freshProfile === "object") {
-              // Update user with fresh profile data including new signed URL
-              const updatedUser = { ...parsedUser, ...freshProfile };
+            if (freshProfile && typeof freshProfile === "object" && !Array.isArray(freshProfile)) {
+              // Never drop id/email from session — bad merges were breaking order history & profile APIs
+              const updatedUser = {
+                ...normalized,
+                ...freshProfile,
+                id: uid,
+                email: (freshProfile as { email?: string }).email ?? String(normalized.email ?? ""),
+              };
               setUser(updatedUser);
               localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
             }
@@ -1498,6 +1558,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       } catch (error) {
         console.error("Failed to parse stored user:", error);
         localStorage.removeItem("migoo-user");
+        setUser(null);
       }
     }
   }, []);
@@ -1517,14 +1578,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Fetch user stats for profile page
   useEffect(() => {
     const fetchUserStats = async () => {
-      if (!user?.id) {
+      const uid = resolveOrderApiUserId(user);
+      if (!uid) {
         setLoadingStats(false);
         return;
       }
 
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${user.id}/orders`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${uid}/orders`,
           {
             headers: {
               'Authorization': `Bearer ${publicAnonKey}`,
@@ -1552,7 +1614,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Fetch user orders for order history page
   useEffect(() => {
     const fetchUserOrders = async () => {
-      if (!user?.id) {
+      const uid = resolveOrderApiUserId(user);
+      if (!uid) {
         setOrdersLoading(false);
         return;
       }
@@ -1562,7 +1625,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${user.id}/orders`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${uid}/orders`,
           {
             headers: {
               'Authorization': `Bearer ${publicAnonKey}`,
@@ -1584,15 +1647,23 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       }
     };
 
-    if (viewMode === "order-history" || viewMode === "order-detail") {
+    const onOrdersUrl =
+      location.pathname === "/profile/orders" ||
+      location.pathname.startsWith("/profile/orders/");
+    if (
+      viewMode === "order-history" ||
+      viewMode === "order-detail" ||
+      onOrdersUrl
+    ) {
       fetchUserOrders();
     }
-  }, [user, viewMode]);
+  }, [user, viewMode, location.pathname]);
 
   // Redirect to auth page if user tries to access protected pages without login
   useEffect(() => {
     const protectedPages: ViewMode[] = ["view-profile", "edit-profile", "order-history", "order-detail", "shipping-addresses", "security-settings"];
-    if (protectedPages.includes(viewMode) && !user) {
+    const hasSession = !!resolveOrderApiUserId(user);
+    if (protectedPages.includes(viewMode) && !hasSession) {
       console.log('🔒 Protected page access denied, opening auth modal');
       toast.error("Please log in to access this page");
       setViewMode("home");
@@ -3037,17 +3108,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 onChatClick={() => {}}
               />
 
-              {/* Cache Debug Toggle Button */}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowCacheDebug(!showCacheDebug)}
-                className="hidden md:flex hover:bg-slate-100 rounded-full w-10 h-10 p-0"
-                title="Toggle Cache Monitor (Ctrl+Shift+D)"
-              >
-                <Database className="h-5 w-5 text-slate-600" />
-              </Button>
-
               {/* Profile Menu - Show text for guests, icon for logged-in users */}
               {user ? (
                 <Popover>
@@ -4454,7 +4514,16 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               <CardContent className="py-16 text-center">
                 <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">No Orders Yet</h3>
-                <p className="text-slate-600 mb-6">You haven't placed any orders yet.</p>
+                <p className="text-slate-600 mb-2">You haven&apos;t placed any orders for this account yet.</p>
+                {resolveOrderApiUserId(user) && (
+                  <p className="text-xs text-slate-500 mb-6 max-w-md mx-auto leading-relaxed">
+                    Loading orders for{" "}
+                    <span className="font-medium text-slate-700">{user?.email || "your session"}</span>
+                    . If you see orders on the live site but not here, you&apos;re usually signed in as a{" "}
+                    <span className="font-medium">different user</span> on localhost — log out and sign in with the same email as production, or compare{" "}
+                    <span className="font-mono text-[11px]">migoo-user</span> in DevTools → Application → Local Storage.
+                  </p>
+                )}
                 <Button 
                   onClick={() => {
                     navigate("/products");

@@ -1,7 +1,7 @@
 // Minimalist Vendor Storefront - MVP Design
 import { moduleCache, CACHE_KEYS, fetchVendorProducts, fetchVendorCategories } from "../utils/module-cache";
 import { ProductCard } from "./ProductCard";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { 
   ShoppingCart, 
@@ -19,19 +19,28 @@ import {
   Package,
   RefreshCw,
   User,
+  UserCircle,
   ChevronRight,
   MapPin,
   LogOut,
   Truck,
   Shield,
-  TrendingUp
+  TrendingUp,
+  Clock,
+  ShoppingBag,
+  Check,
+  Trash2,
+  Phone,
+  EyeOff,
+  Loader2,
 } from "lucide-react";
 import { Button } from "./ui/button";
-import { Card } from "./ui/card";
-import { CardContent } from "./ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
+import { Checkbox } from "./ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useFaviconLoader } from "../hooks/useFaviconLoader";
@@ -66,6 +75,8 @@ interface VendorStoreViewProps {
   storeSlug?: string;
   onBack?: () => void;
   initialProductSlug?: string;
+  /** From URL `/store/:slug/profile/...` — drives account view mode */
+  profileSegment?: string | null;
 }
 
 type VendorAccountViewMode =
@@ -76,13 +87,46 @@ type VendorAccountViewMode =
   | "shipping-addresses"
   | "security-settings";
 
-interface VendorAddress {
+function profileSegmentToMode(seg: string | null): VendorAccountViewMode | null {
+  if (seg === null) return null;
+  if (seg === "view") return "view-profile";
+  switch (seg) {
+    case "edit":
+      return "edit-profile";
+    case "orders":
+      return "order-history";
+    case "addresses":
+      return "shipping-addresses";
+    case "security":
+      return "security-settings";
+    default:
+      return "view-profile";
+  }
+}
+
+/** Same shape as main Storefront shipping addresses (KV + `/customers/:id/addresses`). */
+interface MarketplaceAddress {
   id: string;
+  label: string;
   recipientName: string;
   phone: string;
-  addressLine: string;
+  addressLine1: string;
+  addressLine2?: string;
   city: string;
-  township: string;
+  state?: string;
+  zipCode?: string;
+  country: string;
+  isDefault?: boolean;
+  userId?: string;
+}
+
+function resolveUserIdFromRecord(u: unknown): string | null {
+  if (!u || typeof u !== "object") return null;
+  const o = u as Record<string, unknown>;
+  const raw = o.id ?? o.userId;
+  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  return null;
 }
 
 /**
@@ -103,9 +147,39 @@ function buildVendorProductUrlSegment(product: { name?: string; sku?: string; id
   return product.id;
 }
 
-export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlug }: VendorStoreViewProps) {
+export function VendorStoreView({
+  vendorId,
+  storeSlug,
+  onBack,
+  initialProductSlug,
+  profileSegment = null,
+}: VendorStoreViewProps) {
   const navigate = useNavigate();
   const location = useLocation();
+
+  const storeBase = useMemo(() => {
+    const slug = encodeURIComponent(storeSlug || vendorId);
+    return location.pathname.startsWith("/vendor/") ? `/vendor/${slug}` : `/store/${slug}`;
+  }, [location.pathname, storeSlug, vendorId]);
+
+  const goToProfileMode = useCallback(
+    (mode: VendorAccountViewMode) => {
+      if (mode === "storefront") {
+        navigate(storeBase);
+        return;
+      }
+      const pathMap: Record<Exclude<VendorAccountViewMode, "storefront">, string> = {
+        "view-profile": `${storeBase}/profile`,
+        "edit-profile": `${storeBase}/profile/edit`,
+        "order-history": `${storeBase}/profile/orders`,
+        "shipping-addresses": `${storeBase}/profile/addresses`,
+        "security-settings": `${storeBase}/profile/security`,
+      };
+      navigate(pathMap[mode]);
+    },
+    [navigate, storeBase]
+  );
+
   const { startLoading: startFaviconLoading, stopLoading: stopFaviconLoading } = useFaviconLoader();
   
   // Cleanup favicon loader on unmount
@@ -142,7 +216,18 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
   const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  const [vendorViewMode, setVendorViewMode] = useState<VendorAccountViewMode>("storefront");
+  const [vendorViewMode, setVendorViewMode] = useState<VendorAccountViewMode>(
+    () => profileSegmentToMode(profileSegment ?? null) ?? "storefront"
+  );
+
+  useEffect(() => {
+    const mode = profileSegmentToMode(profileSegment ?? null);
+    if (mode === null) {
+      setVendorViewMode("storefront");
+    } else {
+      setVendorViewMode(mode);
+    }
+  }, [profileSegment]);
   const [authForm, setAuthForm] = useState({
     email: '',
     password: '',
@@ -154,24 +239,37 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
     name: "",
     email: "",
     phone: "",
-    profileImageUrl: "",
+    profileImage: null as string | null,
   });
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [shippingAddresses, setShippingAddresses] = useState<VendorAddress[]>([]);
-  const [addressForm, setAddressForm] = useState<Omit<VendorAddress, "id">>({
+  const [ordersError, setOrdersError] = useState<string | null>(null);
+  const [shippingAddresses, setShippingAddresses] = useState<MarketplaceAddress[]>([]);
+  const [addressForm, setAddressForm] = useState({
+    label: "",
     recipientName: "",
     phone: "",
-    addressLine: "",
+    addressLine1: "",
+    addressLine2: "",
     city: "",
-    township: "",
+    state: "",
+    zipCode: "",
+    country: "Myanmar",
+    isDefault: false,
   });
-  const [editingAddressId, setEditingAddressId] = useState<string | null>(null);
+  const [showAddressForm, setShowAddressForm] = useState(false);
+  const [editingAddress, setEditingAddress] = useState<MarketplaceAddress | null>(null);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
+  });
+  const [showPasswordFields, setShowPasswordFields] = useState({
+    current: false,
+    new: false,
+    confirm: false,
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
@@ -250,7 +348,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
       name: user.name || "",
       email: user.email || "",
       phone: user.phone || "",
-      profileImageUrl: user.profileImageUrl || user.avatarUrl || user.avatar || user.profileImage || "",
+      profileImage: null,
     });
   }, [user]);
 
@@ -263,8 +361,13 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
       authApi.getProfile(parsedUser.id)
         .then((response: any) => {
           const freshProfile = response?.user || response;
-          if (freshProfile && typeof freshProfile === "object") {
-            const updatedUser = { ...parsedUser, ...freshProfile };
+          if (freshProfile && typeof freshProfile === "object" && !Array.isArray(freshProfile)) {
+            const updatedUser = {
+              ...parsedUser,
+              ...freshProfile,
+              id: parsedUser.id ?? freshProfile.id,
+              email: freshProfile.email ?? parsedUser.email,
+            };
             setUser((prev: any) => ({ ...(prev || parsedUser), ...updatedUser }));
             localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
           }
@@ -277,51 +380,105 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
     }
   }, []);
 
+  // Same as Storefront: cache key `migoo-shipping-addresses-${userId}` + GET/POST customers/:id/addresses
   useEffect(() => {
-    if (!user?.id) {
+    const uid = resolveUserIdFromRecord(user);
+    if (!uid) {
       setShippingAddresses([]);
       return;
     }
-    try {
-      const storageKey = `vendor-storefront-addresses-${vendorId}-${user.id}`;
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        setShippingAddresses(JSON.parse(stored));
-      } else {
-        setShippingAddresses([]);
-      }
-    } catch (error) {
-      console.error("Failed to load vendor storefront addresses:", error);
-      setShippingAddresses([]);
-    }
-  }, [user?.id, vendorId]);
+    const onAddresses =
+      vendorViewMode === "shipping-addresses" || profileSegment === "addresses";
+    if (!onAddresses) return;
 
-  useEffect(() => {
-    if (!user?.id || vendorViewMode !== "order-history") return;
-    const loadOrderHistory = async () => {
-      setOrdersLoading(true);
+    const storageKey = `migoo-shipping-addresses-${uid}`;
+    try {
+      const cachedAddresses = localStorage.getItem(storageKey);
+      if (cachedAddresses) {
+        const parsed = JSON.parse(cachedAddresses);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setShippingAddresses(parsed);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load addresses from localStorage:", e);
+    }
+
+    const loadAddresses = async () => {
+      setLoadingAddresses(true);
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${user.id}/orders`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${uid}/addresses`,
           {
             headers: {
               Authorization: `Bearer ${publicAnonKey}`,
             },
           }
         );
-        if (!response.ok) throw new Error("Failed to fetch orders");
+
+        if (response.ok) {
+          const data = await response.json();
+          const addresses = data.addresses || [];
+          setShippingAddresses(addresses);
+          localStorage.setItem(storageKey, JSON.stringify(addresses));
+        }
+      } catch (error) {
+        console.error("Failed to load addresses from database:", error);
+        toast.error("Failed to load addresses");
+      } finally {
+        setLoadingAddresses(false);
+      }
+    };
+
+    void loadAddresses();
+  }, [vendorViewMode, profileSegment, user]);
+
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) {
+      setOrderHistory([]);
+      setOrdersError(null);
+      return;
+    }
+    const needsOrders =
+      vendorViewMode === "order-history" ||
+      vendorViewMode === "view-profile" ||
+      profileSegment === "view" ||
+      profileSegment === "orders";
+    if (!needsOrders) return;
+
+    const loadOrderHistory = async () => {
+      setOrdersLoading(true);
+      setOrdersError(null);
+      try {
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${uid}/orders`,
+          {
+            headers: {
+              Authorization: `Bearer ${publicAnonKey}`,
+            },
+          }
+        );
+        if (!response.ok) {
+          const t = await response.text();
+          throw new Error(t || "Failed to fetch orders");
+        }
         const data = await response.json();
-        setOrderHistory(data.orders || []);
+        setOrderHistory(Array.isArray(data.orders) ? data.orders : []);
       } catch (error) {
         console.error("Failed to load vendor storefront order history:", error);
         setOrderHistory([]);
-        toast.error("Could not load order history");
+        const msg = error instanceof Error ? error.message : "Failed to load orders";
+        setOrdersError(msg);
+        if (vendorViewMode === "order-history") {
+          toast.error("Could not load order history");
+        }
       } finally {
         setOrdersLoading(false);
       }
     };
-    loadOrderHistory();
-  }, [vendorViewMode, user?.id]);
+    void loadOrderHistory();
+  }, [vendorViewMode, profileSegment, user?.id]);
 
   // 🔐 Authentication Handlers
   const handleLogin = async () => {
@@ -386,7 +543,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
     audienceTrackedKeyRef.current = "";
     setUser(null);
     localStorage.removeItem('migoo-user');
-    setVendorViewMode("storefront");
+    navigate(storeBase);
     toast.success("You have been logged out");
   };
 
@@ -423,121 +580,92 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
     setProfileImageLoadFailed(false);
   }, [userProfileImageUrl]);
 
-  const saveShippingAddresses = (nextAddresses: VendorAddress[]) => {
-    setShippingAddresses(nextAddresses);
-    if (!user?.id) return;
-    try {
-      const storageKey = `vendor-storefront-addresses-${vendorId}-${user.id}`;
-      localStorage.setItem(storageKey, JSON.stringify(nextAddresses));
-    } catch (error) {
-      console.error("Failed to save vendor storefront addresses:", error);
-    }
-  };
-
   const handleSaveProfile = async () => {
-    if (!user?.id) return;
-    if (!profileForm.name.trim() || !profileForm.email.trim()) {
-      toast.error("Name and email are required");
+    const uid = resolveUserIdFromRecord(user);
+    if (!uid) {
+      toast.error("Please log in to update your profile");
       return;
     }
 
     setIsProfileSaving(true);
     try {
-      await authApi.updateProfile(user.id, {
-        name: profileForm.name.trim(),
-        email: profileForm.email.trim(),
-        phone: profileForm.phone.trim(),
-        profileImageUrl: profileForm.profileImageUrl.trim(),
-      });
-
-      const updatedUser = {
-        ...user,
-        name: profileForm.name.trim(),
-        email: profileForm.email.trim(),
-        phone: profileForm.phone.trim(),
-        profileImageUrl: profileForm.profileImageUrl.trim(),
+      const payload: Record<string, unknown> = {
+        name: profileForm.name,
+        phone: profileForm.phone,
       };
+      if (profileForm.profileImage) {
+        payload.profileImage = profileForm.profileImage;
+      }
 
-      setUser(updatedUser);
-      localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
-      setVendorViewMode("view-profile");
-      toast.success("Profile updated");
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/profile/${uid}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const raw = await response.text();
+      let data: { success?: boolean; user?: unknown; error?: string } = {};
+      try {
+        data = raw ? (JSON.parse(raw) as typeof data) : {};
+      } catch {
+        /* ignore */
+      }
+
+      if (!response.ok) {
+        const msg = data.error || raw?.slice(0, 200) || "Failed to update profile";
+        throw new Error(msg);
+      }
+
+      if (data.success && data.user && typeof data.user === "object") {
+        setUser(data.user);
+        localStorage.setItem("migoo-user", JSON.stringify(data.user));
+        toast.success("Profile updated successfully!");
+        goToProfileMode("view-profile");
+      } else {
+        throw new Error(data.error || "Failed to update profile");
+      }
     } catch (error) {
-      console.error("Failed to update vendor storefront profile:", error);
-      toast.error("Failed to update profile");
+      console.error("Error updating profile:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to update profile. Please try again.");
     } finally {
       setIsProfileSaving(false);
     }
   };
 
-  const handleSaveAddress = () => {
-    if (!addressForm.recipientName || !addressForm.phone || !addressForm.addressLine) {
-      toast.error("Please fill required address fields");
-      return;
-    }
-
-    const nextAddress: VendorAddress = {
-      id: editingAddressId || `addr-${Date.now()}`,
-      ...addressForm,
-    };
-
-    const nextAddresses = editingAddressId
-      ? shippingAddresses.map((addr) => (addr.id === editingAddressId ? nextAddress : addr))
-      : [nextAddress, ...shippingAddresses];
-
-    saveShippingAddresses(nextAddresses);
-    setAddressForm({
-      recipientName: "",
-      phone: "",
-      addressLine: "",
-      city: "",
-      township: "",
-    });
-    setEditingAddressId(null);
-    toast.success(editingAddressId ? "Address updated" : "Address added");
-  };
-
-  const handleEditAddress = (address: VendorAddress) => {
-    setEditingAddressId(address.id);
-    setAddressForm({
-      recipientName: address.recipientName,
-      phone: address.phone,
-      addressLine: address.addressLine,
-      city: address.city,
-      township: address.township,
-    });
-  };
-
-  const handleDeleteAddress = (addressId: string) => {
-    const nextAddresses = shippingAddresses.filter((addr) => addr.id !== addressId);
-    saveShippingAddresses(nextAddresses);
-    toast.success("Address removed");
-  };
-
   const handleChangePassword = async () => {
-    if (!user?.email) return;
-    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-      toast.error("Please fill all password fields");
+    if (!user?.email) {
+      toast.error("User email not found. Please log in again.");
       return;
     }
-    if (passwordForm.newPassword.length < 8) {
-      toast.error("New password must be at least 8 characters");
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      toast.error("Please fill in all fields");
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error("New password and confirm password do not match");
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      toast.error("Password must be at least 6 characters long");
       return;
     }
 
     setIsChangingPassword(true);
     try {
       await authApi.changePassword(user.email, passwordForm.currentPassword, passwordForm.newPassword);
+      toast.success("Password changed successfully! Please use your new password next time you log in.");
       setPasswordForm({
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
       });
-      toast.success("Password changed successfully");
+      setShowPasswordFields({ current: false, new: false, confirm: false });
     } catch (error) {
       console.error("Failed to change password:", error);
       toast.error(error instanceof Error ? error.message : "Failed to change password");
@@ -547,234 +675,967 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
   };
 
   const handleProfileAction = (mode: VendorAccountViewMode) => {
-    setVendorViewMode(mode);
     setSelectedProduct(null);
     setMobileMenuOpen(false);
+    goToProfileMode(mode);
   };
 
   const renderVendorAccountPage = () => {
     if (!user || vendorViewMode === "storefront") return null;
 
+    const orderCount = orderHistory.length;
+    const getOrderStatusColor = (status: string) => {
+      switch (status?.toLowerCase()) {
+        case "delivered":
+        case "fulfilled":
+          return "bg-emerald-600";
+        case "processing":
+          return "bg-blue-600";
+        case "shipped":
+          return "bg-amber-600";
+        case "ready-to-ship":
+          return "bg-blue-600";
+        case "cancelled":
+          return "bg-red-600";
+        default:
+          return "bg-slate-600";
+      }
+    };
+    const getOrderStatusLabel = (status: string) => {
+      if (status?.toLowerCase() === "ready-to-ship") return "Shipping";
+      return status || "Pending";
+    };
+
     if (vendorViewMode === "view-profile") {
       return (
-        <Card className="max-w-3xl mx-auto">
-          <CardContent className="p-6 space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base sm:text-lg font-bold text-slate-900">Profile</h2>
-              <Button variant="outline" size="sm" onClick={() => setVendorViewMode("edit-profile")} className="border-amber-200 text-amber-700 hover:bg-amber-50">
-                Edit Profile
-              </Button>
-            </div>
-            <div className="flex items-center gap-4">
-              {userProfileImageUrl && !profileImageLoadFailed ? (
-                <img
-                  src={userProfileImageUrl}
-                  alt={user.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                  onError={() => setProfileImageLoadFailed(true)}
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center">
-                  <User className="w-7 h-7 text-slate-600" />
+        <div className="max-w-4xl mx-auto">
+          <Button
+            variant="ghost"
+            onClick={() => goToProfileMode("storefront")}
+            className="mb-6 hover:bg-slate-100"
+          >
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Back to Home
+          </Button>
+
+          <Card className="mb-6">
+            <CardContent className="pt-6">
+              <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
+                {userProfileImageUrl && !profileImageLoadFailed ? (
+                  <img
+                    src={userProfileImageUrl}
+                    alt={user.name || "Profile"}
+                    className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
+                    onError={() => setProfileImageLoadFailed(true)}
+                  />
+                ) : (
+                  <div className="w-[100px] h-[100px] rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0">
+                    <UserCircle className="w-16 h-16 text-white" />
+                  </div>
+                )}
+                <div className="flex-1 text-center md:text-left">
+                  <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
+                    {user?.name || "Guest User"}
+                  </h1>
+                  <p className="text-slate-600 mb-4">{user?.email || "No email provided"}</p>
+                  <Button onClick={() => goToProfileMode("edit-profile")} className="bg-amber-600 hover:bg-amber-700">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Edit Profile
+                  </Button>
                 </div>
-              )}
-              <div>
-                <p className="text-lg font-semibold text-slate-900">{user.name || "Unnamed User"}</p>
-                <p className="text-sm text-slate-600">{user.email || "No email"}</p>
               </div>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
-              <div className="p-3 rounded-lg bg-slate-50">
-                <p className="text-slate-500">Phone Number</p>
-                <p className="font-medium text-slate-900">{user.phone || "Not set"}</p>
+            </CardContent>
+          </Card>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm sm:text-base">Personal Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="text-sm text-slate-600">Full Name</Label>
+                  <p className="font-medium text-slate-900">{user?.name || "Not provided"}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-slate-600">Email Address</Label>
+                  <p className="font-medium text-slate-900">{user?.email || "Not provided"}</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-slate-600">Phone Number</Label>
+                  <p className="font-medium text-slate-900">{user?.phone || "+95 9 XXX XXX XXX"}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm sm:text-base">Account Statistics</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Package className="w-5 h-5 text-amber-600" />
+                    <span className="text-sm font-medium text-slate-700">Total Orders</span>
+                  </div>
+                  {ordersLoading ? (
+                    <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span className="text-lg font-bold text-amber-700">{orderCount}</span>
+                  )}
+                </div>
+                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Heart className="w-5 h-5 text-blue-600" />
+                    <span className="text-sm font-medium text-slate-700">Wishlist Items</span>
+                  </div>
+                  <span className="text-lg font-bold text-blue-700">{wishlist.length}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <ShoppingBag className="w-5 h-5 text-emerald-600" />
+                    <span className="text-sm font-medium text-slate-700">Cart Items</span>
+                  </div>
+                  <span className="text-lg font-bold text-emerald-700">{totalItems}</span>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-lg">Quick Actions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("order-history")}>
+                  <Package className="w-4 h-4 mr-2" />
+                  View Orders
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("storefront")}>
+                  <Heart className="w-4 h-4 mr-2" />
+                  My Wishlist
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("shipping-addresses")}>
+                  <MapPin className="w-4 h-4 mr-2" />
+                  Addresses
+                </Button>
+                <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("security-settings")}>
+                  <Shield className="w-4 h-4 mr-2" />
+                  Security
+                </Button>
               </div>
-              <div className="p-3 rounded-lg bg-slate-50">
-                <p className="text-slate-500">Account Type</p>
-                <p className="font-medium text-slate-900">{storeName}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       );
     }
 
     if (vendorViewMode === "edit-profile") {
       return (
-        <Card className="max-w-3xl mx-auto">
-          <CardContent className="p-6 space-y-4">
-            <h2 className="text-base sm:text-lg font-bold text-slate-900">Edit Profile</h2>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-600">Name</p>
-              <Input value={profileForm.name} onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-600">Email</p>
-              <Input type="email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-600">Phone</p>
-              <Input value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} />
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-slate-600">Profile Image URL</p>
-              <Input value={profileForm.profileImageUrl} onChange={(e) => setProfileForm({ ...profileForm, profileImageUrl: e.target.value })} />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleSaveProfile} disabled={isProfileSaving} className="bg-amber-600 hover:bg-amber-700">
-                {isProfileSaving ? "Saving..." : "Save Changes"}
-              </Button>
-              <Button variant="outline" onClick={() => setVendorViewMode("view-profile")}>
-                Cancel
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="max-w-2xl mx-auto px-4 py-8">
+          <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Back to Profile
+          </Button>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base sm:text-lg">Edit Profile</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center gap-6">
+                {profileForm.profileImage ? (
+                  <img
+                    src={profileForm.profileImage}
+                    alt="Profile preview"
+                    className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
+                  />
+                ) : userProfileImageUrl && !profileImageLoadFailed ? (
+                  <img
+                    src={userProfileImageUrl}
+                    alt={user.name || "Profile"}
+                    className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
+                    onError={() => setProfileImageLoadFailed(true)}
+                  />
+                ) : (
+                  <div className="w-[100px] h-[100px] rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0">
+                    <UserCircle className="w-14 h-14 text-white" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-slate-900 mb-1">Profile Picture</p>
+                  <p className="text-xs text-slate-500 mb-2">Upload a photo (JPG/PNG/WEBP, auto-compressed)</p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const input = document.createElement("input");
+                        input.type = "file";
+                        input.accept = "image/jpeg,image/png,image/webp,image/jpg,image/gif";
+                        input.onchange = async (e: Event) => {
+                          const target = e.target as HTMLInputElement;
+                          const file = target.files?.[0];
+                          if (!file) return;
+
+                          toast.loading("Compressing image...", { id: "compress" });
+
+                          try {
+                            const compressImage = (file: File, maxSizeKB: number = 400): Promise<string> => {
+                              return new Promise((resolve, reject) => {
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                  const img = new Image();
+                                  img.onload = () => {
+                                    const canvas = document.createElement("canvas");
+                                    const ctx = canvas.getContext("2d");
+                                    if (!ctx) {
+                                      reject(new Error("Canvas not supported"));
+                                      return;
+                                    }
+
+                                    let width = img.width;
+                                    let height = img.height;
+
+                                    const maxDimension = 2048;
+                                    if (width > maxDimension || height > maxDimension) {
+                                      if (width > height) {
+                                        height = (height * maxDimension) / width;
+                                        width = maxDimension;
+                                      } else {
+                                        width = (width * maxDimension) / height;
+                                        height = maxDimension;
+                                      }
+                                    }
+
+                                    canvas.width = width;
+                                    canvas.height = height;
+                                    ctx.drawImage(img, 0, 0, width, height);
+
+                                    let quality = 0.9;
+                                    let dataUrl = "";
+                                    let iterations = 0;
+                                    const maxIterations = 10;
+
+                                    const compress = () => {
+                                      dataUrl = canvas.toDataURL("image/jpeg", quality);
+                                      const sizeKB = Math.round((dataUrl.length * 3) / 4 / 1024);
+
+                                      if (sizeKB > maxSizeKB && quality > 0.1 && iterations < maxIterations) {
+                                        quality -= 0.1;
+                                        iterations++;
+                                        compress();
+                                      } else {
+                                        resolve(dataUrl);
+                                      }
+                                    };
+
+                                    compress();
+                                  };
+                                  img.onerror = () => reject(new Error("Failed to load image"));
+                                  img.src = event.target?.result as string;
+                                };
+                                reader.onerror = () => reject(new Error("Failed to read file"));
+                                reader.readAsDataURL(file);
+                              });
+                            };
+
+                            const compressedDataUrl = await compressImage(file, 400);
+                            setProfileForm((prev) => ({ ...prev, profileImage: compressedDataUrl }));
+
+                            toast.dismiss("compress");
+                          } catch (error) {
+                            console.error("Image compression error:", error);
+                            toast.error("Failed to process image. Please try another file.", { id: "compress" });
+                          }
+                        };
+                        input.click();
+                      }}
+                      className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
+                    >
+                      Upload Photo
+                    </Button>
+                    {(profileForm.profileImage || userProfileImageUrl) && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setProfileForm((prev) => ({ ...prev, profileImage: null }))}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <Label htmlFor="vendor-edit-name">Full Name</Label>
+                <Input
+                  id="vendor-edit-name"
+                  value={profileForm.name}
+                  onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                  placeholder="Enter your full name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="vendor-edit-email">Email Address</Label>
+                <Input
+                  id="vendor-edit-email"
+                  type="email"
+                  value={profileForm.email}
+                  onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                  placeholder="your.email@example.com"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="vendor-edit-phone">Phone Number</Label>
+                <Input
+                  id="vendor-edit-phone"
+                  value={profileForm.phone}
+                  onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                  placeholder="+95 9 XXX XXX XXX"
+                />
+                <p className="text-xs text-slate-500">Myanmar phone format</p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button
+                  onClick={handleSaveProfile}
+                  disabled={isProfileSaving}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  {isProfileSaving ? "Saving..." : "Save Changes"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => goToProfileMode("view-profile")}
+                  disabled={isProfileSaving}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       );
     }
 
     if (vendorViewMode === "order-history") {
       return (
-        <Card className="max-w-4xl mx-auto">
-          <CardContent className="p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Order History</h2>
-              <Button variant="outline" size="sm" onClick={() => setVendorViewMode("view-profile")}>
-                Back to Profile
-              </Button>
-            </div>
+        <div className="max-w-6xl mx-auto">
+          <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Back to Profile
+          </Button>
+
+          <div className="mb-8">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Order History</h1>
             <p className="text-slate-600 text-sm">View and track all your orders</p>
-            {ordersLoading && <p className="text-sm text-slate-600">Loading orders...</p>}
-            {!ordersLoading && orderHistory.length === 0 && (
-              <p className="text-sm text-slate-600">You haven't placed any orders yet.</p>
-            )}
-            {!ordersLoading && orderHistory.length > 0 && (
-              <div className="space-y-3">
-                {orderHistory.map((order: any) => (
-                  <div key={order.id} className="border rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-900">{order.orderNumber || order.id}</p>
-                      <p className="text-xs text-slate-500">{order.createdAt ? new Date(order.createdAt).toLocaleString() : "Unknown date"}</p>
+          </div>
+
+          {ordersLoading && (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <div className="animate-spin w-12 h-12 border-4 border-amber-600 border-t-transparent rounded-full mx-auto mb-4" />
+                <p className="text-slate-600">Loading your orders...</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {!ordersLoading && ordersError && (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">Error Loading Orders</h3>
+                <p className="text-slate-600 mb-6">{ordersError}</p>
+                <Button
+                  onClick={() => window.location.reload()}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  Retry
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {!ordersLoading && !ordersError && orderHistory.length === 0 && (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">No Orders Yet</h3>
+                <p className="text-slate-600 mb-6">You haven&apos;t placed any orders yet.</p>
+                <Button onClick={() => goToProfileMode("storefront")} className="bg-amber-600 hover:bg-amber-700">
+                  Start Shopping
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {!ordersLoading && !ordersError && orderHistory.length > 0 && (
+            <div className="space-y-4">
+              {orderHistory.map((order: any) => (
+                <Card key={order.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <h3 className="text-base sm:text-lg font-bold text-slate-900 break-all">
+                          {order.orderNumber || order.id}
+                        </h3>
+                        <Badge variant="default" className={`${getOrderStatusColor(order.status)} shrink-0 text-xs`}>
+                          {getOrderStatusLabel(order.status)}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-slate-600">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-4 h-4 shrink-0" />
+                          <span>{new Date(order.createdAt || order.date).toLocaleDateString("en-GB")}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Package className="w-4 h-4 shrink-0" />
+                          <span>
+                            {order.items?.length || 0} {order.items?.length === 1 ? "item" : "items"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="pt-3 border-t border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-600">Total Amount</span>
+                          <span className="text-lg sm:text-xl font-bold text-black">
+                            {Math.round(order.total || order.totalAmount || 0)} MMK
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        className="w-full sm:w-auto"
+                        onClick={() => navigate(`/profile/orders/${order.id}`)}
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        View Details
+                      </Button>
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-slate-900">{formatPriceMMK(order.total || order.totalAmount || 0)}</p>
-                      <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-100 border">{order.status || "Pending"}</Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       );
     }
 
     if (vendorViewMode === "shipping-addresses") {
+      const addressUserId = resolveUserIdFromRecord(user);
       return (
-        <Card className="max-w-4xl mx-auto">
-          <CardContent className="p-6 space-y-5">
-            <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Shipping Addresses</h2>
-            <p className="text-slate-600 text-sm">Manage your delivery addresses</p>
-            <div className="grid md:grid-cols-2 gap-3">
-              <Input
-                placeholder="Recipient name"
-                value={addressForm.recipientName}
-                onChange={(e) => setAddressForm({ ...addressForm, recipientName: e.target.value })}
-              />
-              <Input
-                placeholder="Phone"
-                value={addressForm.phone}
-                onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
-              />
-              <Input
-                placeholder="City"
-                value={addressForm.city}
-                onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
-              />
-              <Input
-                placeholder="Township"
-                value={addressForm.township}
-                onChange={(e) => setAddressForm({ ...addressForm, township: e.target.value })}
-              />
+        <div className="max-w-4xl mx-auto px-4">
+          <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
+            <ChevronLeft className="w-4 h-4 mr-2" />
+            Back to Profile
+          </Button>
+
+          <div className="mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Shipping Addresses</h1>
+              <p className="text-slate-600 text-sm">Manage your delivery addresses</p>
             </div>
-            <Input
-              placeholder="Address line"
-              value={addressForm.addressLine}
-              onChange={(e) => setAddressForm({ ...addressForm, addressLine: e.target.value })}
-            />
-            <div className="flex gap-2">
-              <Button onClick={handleSaveAddress}>{editingAddressId ? "Update Address" : "Add Address"}</Button>
-              {editingAddressId && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditingAddressId(null);
-                    setAddressForm({ recipientName: "", phone: "", addressLine: "", city: "", township: "" });
-                  }}
-                >
-                  Cancel Edit
-                </Button>
-              )}
-            </div>
-            <Separator />
-            <div className="space-y-3">
-              {shippingAddresses.length === 0 && <p className="text-sm text-slate-600">No shipping addresses saved yet.</p>}
-              {shippingAddresses.map((address) => (
-                <div key={address.id} className="border rounded-lg p-4 flex flex-wrap justify-between gap-3">
+            <Button
+              onClick={() => {
+                setShowAddressForm(true);
+                setEditingAddress(null);
+                const isFirstAddress = shippingAddresses.length === 0;
+                setAddressForm({
+                  label: isFirstAddress ? "Home" : "",
+                  recipientName: isFirstAddress && user?.name ? user.name : "",
+                  phone: isFirstAddress && user?.phone ? user.phone : "",
+                  addressLine1: "",
+                  addressLine2: "",
+                  city: "",
+                  state: "",
+                  zipCode: "",
+                  country: "Myanmar",
+                  isDefault: isFirstAddress,
+                });
+                setTimeout(() => window.scrollTo({ top: 200, behavior: "instant" }), 10);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 shrink-0"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Address
+            </Button>
+          </div>
+
+          {showAddressForm && (
+            <Card className="mb-6 border-2 border-amber-500">
+              <CardHeader>
+                <CardTitle>{editingAddress ? "Edit Address" : "Add New Address"}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 gap-4">
                   <div>
-                    <p className="font-semibold text-slate-900">{address.recipientName}</p>
-                    <p className="text-sm text-slate-600">{address.phone}</p>
-                    <p className="text-sm text-slate-700">{address.addressLine}</p>
-                    <p className="text-xs text-slate-500">{address.township}, {address.city}</p>
+                    <Label>Address Label *</Label>
+                    <Input
+                      placeholder="e.g., Home, Office, etc."
+                      value={addressForm.label}
+                      onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })}
+                    />
                   </div>
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleEditAddress(address)}>
-                      Edit
-                    </Button>
-                    <Button variant="outline" size="sm" className="text-red-600" onClick={() => handleDeleteAddress(address.id)}>
-                      Delete
-                    </Button>
+                  <div>
+                    <Label>Recipient Name *</Label>
+                    <Input
+                      placeholder="Full name"
+                      value={addressForm.recipientName}
+                      onChange={(e) => setAddressForm({ ...addressForm, recipientName: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Phone Number *</Label>
+                    <Input
+                      placeholder="+95 9 XXX XXX XXX"
+                      value={addressForm.phone}
+                      onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>City *</Label>
+                    <Input
+                      placeholder="City"
+                      value={addressForm.city}
+                      onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Address Line 1 *</Label>
+                    <Input
+                      placeholder="Street address, P.O. box"
+                      value={addressForm.addressLine1}
+                      onChange={(e) => setAddressForm({ ...addressForm, addressLine1: e.target.value })}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <div className="flex items-baseline justify-between mb-1.5">
+                      <Label>Address Line 2</Label>
+                      <span className="text-xs text-slate-500">(optional)</span>
+                    </div>
+                    <Input
+                      placeholder="Apartment, suite, unit, building, floor, etc."
+                      value={addressForm.addressLine2}
+                      onChange={(e) => setAddressForm({ ...addressForm, addressLine2: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>State/Region</Label>
+                    <Input
+                      placeholder="State or Region"
+                      value={addressForm.state}
+                      onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label>Zip/Postal Code</Label>
+                    <Input
+                      placeholder="Postal code"
+                      value={addressForm.zipCode}
+                      onChange={(e) => setAddressForm({ ...addressForm, zipCode: e.target.value })}
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label>Country *</Label>
+                    <Input
+                      value={addressForm.country}
+                      onChange={(e) => setAddressForm({ ...addressForm, country: e.target.value })}
+                      disabled
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex items-center gap-2">
+                    <Checkbox
+                      id="vendor-isDefault"
+                      checked={addressForm.isDefault}
+                      onCheckedChange={(checked) => setAddressForm({ ...addressForm, isDefault: checked as boolean })}
+                    />
+                    <Label htmlFor="vendor-isDefault" className="cursor-pointer">
+                      Set as default address
+                    </Label>
                   </div>
                 </div>
+                <div className="flex gap-3 mt-6">
+                  <Button
+                    onClick={async () => {
+                      if (
+                        !addressForm.label ||
+                        !addressForm.recipientName ||
+                        !addressForm.phone ||
+                        !addressForm.addressLine1 ||
+                        !addressForm.city
+                      ) {
+                        toast.error("Please fill in all required fields");
+                        return;
+                      }
+                      if (!addressUserId) {
+                        toast.error("Please sign in to save addresses");
+                        return;
+                      }
+
+                      const newAddress: MarketplaceAddress = {
+                        id: editingAddress?.id || Date.now().toString(),
+                        ...addressForm,
+                        userId: addressUserId,
+                      };
+
+                      let updatedAddresses = shippingAddresses;
+                      if (newAddress.isDefault) {
+                        updatedAddresses = shippingAddresses.map((addr) => ({
+                          ...addr,
+                          isDefault: false,
+                        }));
+                      }
+
+                      if (editingAddress) {
+                        updatedAddresses = updatedAddresses.map((addr) =>
+                          addr.id === editingAddress.id ? newAddress : addr
+                        );
+                        setShippingAddresses(updatedAddresses);
+                        toast.success("Address updated successfully!");
+                      } else {
+                        updatedAddresses = [...updatedAddresses, newAddress];
+                        setShippingAddresses(updatedAddresses);
+                        toast.success("Address added successfully!");
+                      }
+
+                      localStorage.setItem(`migoo-shipping-addresses-${addressUserId}`, JSON.stringify(updatedAddresses));
+
+                      try {
+                        await fetch(
+                          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${addressUserId}/addresses`,
+                          {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${publicAnonKey}`,
+                            },
+                            body: JSON.stringify({ addresses: updatedAddresses }),
+                          }
+                        );
+                      } catch (error) {
+                        console.error("Failed to save addresses to backend:", error);
+                      }
+
+                      setShowAddressForm(false);
+                      setEditingAddress(null);
+                    }}
+                    className="flex-1 bg-amber-600 hover:bg-amber-700"
+                  >
+                    <Check className="w-4 h-4 mr-2" />
+                    {editingAddress ? "Update Address" : "Save Address"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowAddressForm(false);
+                      setEditingAddress(null);
+                    }}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {loadingAddresses && shippingAddresses.length === 0 && !showAddressForm ? (
+            <Card>
+              <CardContent className="py-16 text-center text-slate-600">Loading addresses…</CardContent>
+            </Card>
+          ) : shippingAddresses.length === 0 && !showAddressForm ? (
+            <Card>
+              <CardContent className="py-16 text-center">
+                <MapPin className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">No Addresses Yet</h3>
+                <p className="text-slate-600 mb-6">Add a shipping address to make checkout faster</p>
+                <Button
+                  onClick={() => {
+                    setShowAddressForm(true);
+                    setEditingAddress(null);
+                    setAddressForm({
+                      label: "Home",
+                      recipientName: user?.name || "",
+                      phone: user?.phone || "",
+                      addressLine1: "",
+                      addressLine2: "",
+                      city: "",
+                      state: "",
+                      zipCode: "",
+                      country: "Myanmar",
+                      isDefault: true,
+                    });
+                  }}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Your First Address
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-4">
+              {shippingAddresses.map((address) => (
+                <Card key={address.id} className={address.isDefault ? "border-2 border-amber-500" : ""}>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h3 className="font-bold text-slate-900 mb-1 flex items-center gap-2 flex-wrap">
+                          {address.label}
+                          {address.isDefault && (
+                            <Badge className="bg-amber-600 hover:bg-amber-600 text-xs">Default</Badge>
+                          )}
+                        </h3>
+                        <p className="text-sm font-medium text-slate-700">{address.recipientName}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-sm text-slate-600 mb-4">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                        <div>
+                          <p>{address.addressLine1}</p>
+                          {address.addressLine2 && <p>{address.addressLine2}</p>}
+                          <p>
+                            {address.city}
+                            {address.state && `, ${address.state}`}
+                          </p>
+                          <p>
+                            {address.zipCode && `${address.zipCode}, `}
+                            {address.country}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-4 h-4 text-amber-600" />
+                        <span>{address.phone}</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                        onClick={() => {
+                          setEditingAddress(address);
+                          setAddressForm({
+                            label: address.label || "",
+                            recipientName: address.recipientName || "",
+                            phone: address.phone || "",
+                            addressLine1: address.addressLine1 || "",
+                            addressLine2: address.addressLine2 || "",
+                            city: address.city || "",
+                            state: address.state || "",
+                            zipCode: address.zipCode || "",
+                            country: address.country || "Myanmar",
+                            isDefault: address.isDefault ?? false,
+                          });
+                          setShowAddressForm(true);
+                          setTimeout(() => window.scrollTo({ top: 200, behavior: "instant" }), 10);
+                        }}
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={async () => {
+                          if (!confirm("Are you sure you want to delete this address?")) return;
+                          if (!addressUserId) {
+                            toast.error("Please sign in");
+                            return;
+                          }
+                          const updatedAddresses = shippingAddresses.filter((addr) => addr.id !== address.id);
+                          setShippingAddresses(updatedAddresses);
+                          toast.success("Address deleted successfully!");
+                          localStorage.setItem(
+                            `migoo-shipping-addresses-${addressUserId}`,
+                            JSON.stringify(updatedAddresses)
+                          );
+                          try {
+                            await fetch(
+                              `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${addressUserId}/addresses`,
+                              {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${publicAnonKey}`,
+                                },
+                                body: JSON.stringify({ addresses: updatedAddresses }),
+                              }
+                            );
+                          } catch (error) {
+                            console.error("Failed to save address deletion to backend:", error);
+                          }
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
       );
     }
 
     return (
-      <Card className="max-w-3xl mx-auto">
-        <CardContent className="p-6 space-y-4">
-          <h2 className="text-xl sm:text-2xl font-bold text-slate-900">Security Settings</h2>
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
+          <ChevronLeft className="w-4 h-4 mr-2" />
+          Back to Profile
+        </Button>
+
+        <div className="mb-8">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Security Settings</h1>
           <p className="text-slate-600 text-sm">Manage your account security and password</p>
-          <Input
-            type="password"
-            placeholder="Current password"
-            value={passwordForm.currentPassword}
-            onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
-          />
-          <Input
-            type="password"
-            placeholder="New password"
-            value={passwordForm.newPassword}
-            onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
-          />
-          <Input
-            type="password"
-            placeholder="Confirm new password"
-            value={passwordForm.confirmPassword}
-            onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
-          />
-          <div className="flex gap-2">
-            <Button onClick={handleChangePassword} disabled={isChangingPassword} className="bg-amber-600 hover:bg-amber-700">
-              {isChangingPassword ? "Updating..." : "Update Password"}
-            </Button>
-            <Button variant="outline" onClick={() => setVendorViewMode("view-profile")}>
-              Back to Profile
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-amber-600" />
+              Change Password
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void handleChangePassword();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <Label htmlFor="vendor-cur-pw">Current Password *</Label>
+                <div className="relative">
+                  <Input
+                    id="vendor-cur-pw"
+                    type={showPasswordFields.current ? "text" : "password"}
+                    placeholder="Enter current password"
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    required
+                    className="pr-10"
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowPasswordFields((prev) => ({ ...prev, current: !prev.current }))
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label={showPasswordFields.current ? "Hide password" : "Show password"}
+                  >
+                    {showPasswordFields.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="vendor-new-pw">New Password *</Label>
+                <div className="relative">
+                  <Input
+                    id="vendor-new-pw"
+                    type={showPasswordFields.new ? "text" : "password"}
+                    placeholder="Enter new password (min. 6 characters)"
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    required
+                    className="pr-10"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordFields((prev) => ({ ...prev, new: !prev.new }))}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label={showPasswordFields.new ? "Hide password" : "Show password"}
+                  >
+                    {showPasswordFields.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="vendor-confirm-pw">Confirm New Password *</Label>
+                <div className="relative">
+                  <Input
+                    id="vendor-confirm-pw"
+                    type={showPasswordFields.confirm ? "text" : "password"}
+                    placeholder="Re-enter new password"
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    required
+                    className="pr-10"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowPasswordFields((prev) => ({ ...prev, confirm: !prev.confirm }))
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    aria-label={showPasswordFields.confirm ? "Hide password" : "Show password"}
+                  >
+                    {showPasswordFields.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+              <Button
+                type="submit"
+                disabled={isChangingPassword}
+                className="w-full bg-amber-600 hover:bg-amber-700"
+              >
+                {isChangingPassword ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Changing Password...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Change Password
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <User className="w-5 h-5 text-amber-600" />
+              Account Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label className="text-sm text-slate-600">Email Address</Label>
+              <p className="font-medium text-slate-900">{user?.email || "Not provided"}</p>
+              <p className="text-xs text-slate-500 mt-1">Your email is used for login and notifications</p>
+            </div>
+            <Separator />
+            <div>
+              <Label className="text-sm text-slate-600">Account Created</Label>
+              <p className="font-medium text-slate-900">{new Date().toLocaleDateString("en-GB")}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     );
   };
 
@@ -947,7 +1808,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
                   setSelectedProduct(null);
                   setSearchQuery("");
                   setSelectedCategory("all");
-                  navigate(`/store/${storeSlug || vendorId}`, { replace: false });
+                  navigate(storeBase, { replace: false });
                 }}
                 className="flex items-center gap-3 group"
               >
@@ -1110,7 +1971,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
                   onClick={() => {
                     setSelectedProduct(null);
                     setSelectedCategory("all");
-                    navigate(`/store/${storeSlug || vendorId}`, { replace: false });
+                    navigate(storeBase, { replace: false });
                   }}
                   className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                     selectedCategory === "all"
@@ -1126,7 +1987,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
                     onClick={() => {
                       setSelectedProduct(null);
                       setSelectedCategory(category.name);
-                      navigate(`/store/${storeSlug || vendorId}`, { replace: false });
+                      navigate(storeBase, { replace: false });
                     }}
                     className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                       selectedCategory === category.name
@@ -1148,7 +2009,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
             <button onClick={() => {
               setSelectedProduct(null);
-              navigate(`/store/${storeSlug || vendorId}`, { replace: false });
+              navigate(storeBase, { replace: false });
             }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
               Home
             </button>
@@ -1158,7 +2019,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
                 <button onClick={() => {
                   setSelectedProduct(null);
                   setSelectedCategory(selectedProduct.category);
-                  navigate(`/store/${storeSlug || vendorId}`, { replace: false });
+                  navigate(storeBase, { replace: false });
                 }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
                   {selectedProduct.category}
                 </button>
@@ -1320,7 +2181,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
                     setCartOpen(false);
                     // Clear selected product and navigate to checkout
                     setSelectedProduct(null);
-                    navigate(`/store/${storeSlug || vendorId}`, { replace: false });
+                    navigate(storeBase, { replace: false });
                     setShowCheckout(true);
                   }}
                 >
@@ -1492,7 +2353,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
 
   // Main Storefront
   return (
-    <div className="min-h-screen bg-white">
+    <div className={vendorViewMode !== "storefront" ? "min-h-screen bg-slate-50" : "min-h-screen bg-white"}>
       {/* Show error banner ONLY when server is unhealthy */}
       {serverStatus === 'unhealthy' && (
         <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-amber-50 to-orange-50 border-b-2 border-amber-300 shadow-lg">
@@ -1701,8 +2562,8 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
             </div>
           )}
 
-          {/* Categories */}
-          {vendorCategories.length > 0 && (
+          {/* Categories — hide on account pages to match main /store profile layout */}
+          {vendorViewMode === "storefront" && vendorCategories.length > 0 && (
             <div className="flex items-center gap-2 py-3 overflow-x-auto scrollbar-hide">
               <button
                 onClick={() => setSelectedCategory("all")}
@@ -1733,17 +2594,9 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
       </header>
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-8 w-full">
         {vendorViewMode !== "storefront" ? (
-          <div className="space-y-4">
-            <div>
-              <Button variant="ghost" className="px-0 text-slate-700" onClick={() => setVendorViewMode("storefront")}>
-                <ChevronLeft className="w-4 h-4 mr-1" />
-                {vendorViewMode === "view-profile" ? "Back to Home" : "Back to Profile"}
-              </Button>
-            </div>
-            {renderVendorAccountPage()}
-          </div>
+          renderVendorAccountPage()
         ) : (
           <>
             {/* Show skeleton loaders while checking server status - Shopify style */}
@@ -1779,7 +2632,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
                     onProductClick={async () => {
                       const segment = buildVendorProductUrlSegment(product);
                       navigate(
-                        `/store/${storeSlug || vendorId}/product/${encodeURIComponent(segment)}`
+                        `${storeBase}/product/${encodeURIComponent(segment)}`
                       );
                     }}
                     onAddToCart={(e) => {
