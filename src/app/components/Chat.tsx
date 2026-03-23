@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import imageCompression from "browser-image-compression";
 import {
   MessageSquare,
@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Loader2,
   X,
+  Eye,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -35,6 +36,25 @@ import {
 } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { chatApi } from "../../utils/api";
+import { mainStoreConversationIdFromEmail } from "../../utils/chatConversation";
+
+const CHAT_MESSAGES_REVEALED_KEY = "admin-chat-messages-revealed-ids";
+
+function readRevealedConversationIds(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(CHAT_MESSAGES_REVEALED_KEY);
+    const ids: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistRevealedConversationId(conversationId: string) {
+  const set = readRevealedConversationIds();
+  set.add(conversationId);
+  sessionStorage.setItem(CHAT_MESSAGES_REVEALED_KEY, JSON.stringify([...set]));
+}
 import { toast } from "sonner";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
 
@@ -62,7 +82,19 @@ interface Conversation {
   vendorId?: string; // Vendor ID if from vendor store
 }
 
-export function Chat() {
+export interface ChatInitialCustomer {
+  email: string;
+  name: string;
+  avatar?: string;
+}
+
+export function Chat({
+  initialCustomer = null,
+  onInitialCustomerHandled,
+}: {
+  initialCustomer?: ChatInitialCustomer | null;
+  onInitialCustomerHandled?: () => void;
+} = {}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"new-old" | "old-new">("new-old");
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
@@ -71,6 +103,8 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  /** Bumps when admin reveals messages so we re-read sessionStorage (survives remount / first load). */
+  const [messagesRevealTick, setMessagesRevealTick] = useState(0);
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -78,6 +112,70 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollingIntervalRef = useRef<number | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  const loadConversations = async () => {
+    try {
+      const response = await chatApi.getConversations();
+      if (response.conversations && Array.isArray(response.conversations)) {
+        setConversations(response.conversations);
+        const totalUnread = response.conversations.reduce(
+          (sum: number, conv: Conversation) => sum + (Number(conv.unread) || 0),
+          0
+        );
+        window.dispatchEvent(
+          new CustomEvent("admin-chat-unread-updated", { detail: { total: totalUnread } })
+        );
+      }
+      setLoading(false);
+    } catch (error) {
+      console.error("Failed to load conversations:", error);
+      setLoading(false);
+    }
+  };
+
+  const loadMessages = useCallback(async (conversationId: string, silent = false) => {
+    if (!silent) setLoadingMessages(true);
+    try {
+      const response = await chatApi.getMessages(conversationId);
+      if (response.messages && Array.isArray(response.messages)) {
+        const sortedMessages = response.messages.sort(
+          (a: Message, b: Message) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        setMessages(sortedMessages);
+
+        if (!silent) {
+          await chatApi.markAsRead(conversationId);
+          setConversations((prev) => {
+            const next = prev.map((conv) =>
+              conv.id === conversationId ? { ...conv, unread: 0 } : conv
+            );
+            const totalUnread = next.reduce(
+              (sum, c) => sum + (Number(c.unread) || 0),
+              0
+            );
+            queueMicrotask(() =>
+              window.dispatchEvent(
+                new CustomEvent("admin-chat-unread-updated", {
+                  detail: { total: totalUnread },
+                })
+              )
+            );
+            return next;
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load messages:", error);
+      if (!silent) {
+        toast.error("Failed to load messages", {
+          description: "The server is taking longer than expected. Please try again.",
+        });
+      }
+    } finally {
+      if (!silent) setLoadingMessages(false);
+    }
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -88,10 +186,91 @@ export function Chat() {
     scrollToBottom();
   }, [messages]);
 
-  // Load conversations on mount
+  /** True until admin clicks "Show messages" for this conversation id (stored in sessionStorage). */
+  const showMessageSkeletonPreview = useMemo(() => {
+    if (!selectedConversation) return false;
+    const revealed = readRevealedConversationIds();
+    return !revealed.has(selectedConversation);
+  }, [selectedConversation, messagesRevealTick]);
+
+  // Load conversations (skip when opening from Customers → Message; handoff effect loads)
   useEffect(() => {
+    if (initialCustomer?.email?.trim()) return;
     loadConversations();
-  }, []);
+  }, [initialCustomer]);
+
+  // Super admin: Customers → Message — open this thread and focus composer
+  useEffect(() => {
+    if (!initialCustomer?.email?.trim()) return;
+
+    let cancelled = false;
+
+    const open = async () => {
+      setSearchQuery("");
+      const email = initialCustomer.email.trim();
+      const name = initialCustomer.name?.trim() || "Customer";
+      const convId = mainStoreConversationIdFromEmail(email);
+
+      try {
+        const response = await chatApi.getConversations();
+        if (cancelled) return;
+        const raw = response.conversations || [];
+        let list = [...raw];
+
+        const match = list.find(
+          (c) =>
+            c.id === convId ||
+            (c.customerEmail &&
+              c.customerEmail.toLowerCase() === email.toLowerCase())
+        );
+
+        if (!match) {
+          list = [
+            ...list,
+            {
+              id: convId,
+              customerName: name,
+              customerEmail: email,
+              customerProfileImage: initialCustomer.avatar || "",
+              lastMessage: "—",
+              timestamp: new Date().toISOString(),
+              unread: 0,
+              status: "offline" as const,
+            },
+          ];
+        }
+
+        setConversations(list);
+        setLoading(false);
+        const idToUse = match?.id ?? convId;
+        setSelectedConversation(idToUse);
+        await loadMessages(idToUse, false);
+        if (cancelled) return;
+      } catch (e) {
+        console.error("Chat handoff failed:", e);
+        if (!cancelled) {
+          setLoading(false);
+          toast.error("Could not open this chat", {
+            description: "Try again from Chat or refresh the page.",
+          });
+          onInitialCustomerHandled?.();
+        }
+        return;
+      }
+
+      if (cancelled) return;
+      onInitialCustomerHandled?.();
+
+      setTimeout(() => {
+        document.getElementById("admin-chat-composer-input")?.focus();
+      }, 200);
+    };
+
+    void open();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCustomer, loadMessages, onInitialCustomerHandled]);
 
   // Poll for new messages every 3 seconds (real-time simulation)
   useEffect(() => {
@@ -113,56 +292,6 @@ export function Chat() {
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
       pollingIntervalRef.current = null;
-    }
-  };
-
-  const loadConversations = async () => {
-    try {
-      const response = await chatApi.getConversations();
-      if (response.conversations && Array.isArray(response.conversations)) {
-        setConversations(response.conversations);
-      }
-      setLoading(false);
-    } catch (error) {
-      console.error("Failed to load conversations:", error);
-      // Don't show error toast for background polling, just log it
-      setLoading(false);
-    }
-  };
-
-  const loadMessages = async (conversationId: string, silent = false) => {
-    if (!silent) setLoadingMessages(true);
-    try {
-      const response = await chatApi.getMessages(conversationId);
-      if (response.messages && Array.isArray(response.messages)) {
-        // Sort messages by timestamp
-        const sortedMessages = response.messages.sort(
-          (a: Message, b: Message) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-        setMessages(sortedMessages);
-        
-        // Mark as read
-        if (!silent) {
-          await chatApi.markAsRead(conversationId);
-          // Update conversation unread count locally
-          setConversations(prev =>
-            prev.map(conv =>
-              conv.id === conversationId ? { ...conv, unread: 0 } : conv
-            )
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Failed to load messages:", error);
-      // Only show error toast for user-initiated actions, not silent polling
-      if (!silent) {
-        toast.error("Failed to load messages", {
-          description: "The server is taking longer than expected. Please try again."
-        });
-      }
-    } finally {
-      if (!silent) setLoadingMessages(false);
     }
   };
 
@@ -228,6 +357,8 @@ export function Chat() {
         sender: "admin",
         senderName: "Admin",
         customerEmail: selectedConv.customerEmail,
+        customerName: selectedConv.customerName,
+        customerProfileImage: selectedConv.customerProfileImage || undefined,
         imageUrl: selectedImage || undefined,
       });
 
@@ -237,9 +368,28 @@ export function Chat() {
         setMessageInput("");
         setSelectedImage(null);
         toast.success("Message sent!");
-        
-        // Update conversation list
-        loadConversations();
+
+        // Keep customer name/avatar in sidebar + header (server used to overwrite with "Admin")
+        const ts = new Date().toISOString();
+        const patchCustomer = (list: Conversation[]) =>
+          list.map((c) =>
+            c.id === selectedConversation
+              ? {
+                  ...c,
+                  customerName: selectedConv.customerName,
+                  customerEmail: selectedConv.customerEmail,
+                  customerProfileImage: selectedConv.customerProfileImage || "",
+                  lastMessage: messageInput.trim(),
+                  timestamp: ts,
+                }
+              : c
+          );
+
+        setConversations((prev) => patchCustomer(prev));
+
+        await loadConversations();
+        // Re-apply customer identity after fetch (until backend is redeployed, API may still return "Admin")
+        setConversations((prev) => patchCustomer(prev));
       }
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -352,8 +502,8 @@ export function Chat() {
   };
 
   const filteredConversations = conversations.filter((conv) =>
-    conv.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.customerEmail.toLowerCase().includes(searchQuery.toLowerCase())
+    (conv.customerName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (conv.customerEmail || "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Apply sorting
@@ -490,8 +640,10 @@ export function Chat() {
             ) : (
               sortedConversations.map((conv) => {
                 // Use customer profile image if available, otherwise use Dicebear avatar
-                const avatar = conv.customerProfileImage || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(conv.customerName)}&backgroundColor=3b82f6`;
-                
+                const avatar =
+                  conv.customerProfileImage ||
+                  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(conv.customerName)}&backgroundColor=3b82f6`;
+
                 return (
                   <button
                     key={conv.id}
@@ -502,6 +654,7 @@ export function Chat() {
                   >
                     <div className="relative flex-shrink-0">
                       <img
+                        key={avatar}
                         src={avatar}
                         alt={conv.customerName}
                         className="w-12 h-12 rounded-full object-cover"
@@ -553,7 +706,14 @@ export function Chat() {
               <div className="flex items-center gap-3">
                 <div className="relative">
                   <img
-                    src={selectedConv.customerProfileImage || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(selectedConv.customerName)}&backgroundColor=3b82f6`}
+                    key={
+                      selectedConv.customerProfileImage ||
+                      `dicebear-${selectedConv.customerName}`
+                    }
+                    src={
+                      selectedConv.customerProfileImage ||
+                      `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(selectedConv.customerName)}&backgroundColor=3b82f6`
+                    }
                     alt={selectedConv.customerName}
                     className="w-10 h-10 rounded-full object-cover"
                   />
@@ -609,23 +769,59 @@ export function Chat() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50">
-              {loadingMessages ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <div 
-                      key={`skeleton-msg-${index}`} 
-                      className={`flex ${index % 2 === 0 ? 'justify-start' : 'justify-end'} animate-pulse`}
-                    >
-                      <div className={`flex gap-3 max-w-[70%] ${index % 2 === 0 ? 'flex-row' : 'flex-row-reverse'}`}>
-                        <div className="w-8 h-8 bg-slate-200 rounded-full flex-shrink-0"></div>
-                        <div className="space-y-2 flex-1">
-                          <div className="h-16 bg-slate-200 rounded-lg"></div>
-                          <div className="h-3 bg-slate-200 rounded w-20"></div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50 min-h-0">
+              {showMessageSkeletonPreview ? (
+                <div className="flex flex-col min-h-full">
+                  {loadingMessages && (
+                    <div className="flex items-center justify-end gap-2 text-xs text-slate-500 mb-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Loading messages…</span>
+                    </div>
+                  )}
+                  <div className="space-y-4 flex-1">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                      <div
+                        key={`skeleton-msg-${index}`}
+                        className={`flex ${index % 2 === 0 ? "justify-start" : "justify-end"} animate-pulse`}
+                      >
+                        <div
+                          className={`flex gap-3 max-w-[70%] ${index % 2 === 0 ? "flex-row" : "flex-row-reverse"}`}
+                        >
+                          <div className="w-8 h-8 bg-slate-200 rounded-full flex-shrink-0" />
+                          <div className="space-y-2 flex-1">
+                            <div className="h-16 bg-slate-200 rounded-lg" />
+                            <div className="h-3 bg-slate-200 rounded w-20" />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                  <div className="pt-6 mt-auto flex flex-col items-center gap-2 border-t border-slate-200/80">
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedConversation) return;
+                        try {
+                          persistRevealedConversationId(selectedConversation);
+                        } catch {
+                          /* private mode */
+                        }
+                        setMessagesRevealTick((t) => t + 1);
+                      }}
+                      className="gap-2 bg-slate-900 hover:bg-slate-800 text-white"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Show messages
+                    </Button>
+                    <p className="text-xs text-slate-500 text-center max-w-sm">
+                      Stays until you turn it off — not tied to loading. Persists while this tab is open.
+                    </p>
+                  </div>
+                </div>
+              ) : loadingMessages ? (
+                <div className="flex flex-col items-center justify-center min-h-[200px] gap-3">
+                  <Loader2 className="w-10 h-10 text-slate-400 animate-spin" />
+                  <p className="text-sm text-slate-500">Loading messages…</p>
                 </div>
               ) : messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center">
@@ -758,6 +954,7 @@ export function Chat() {
                 </Button>
                 <div className="flex-1">
                   <Textarea
+                    id="admin-chat-composer-input"
                     placeholder="Type your message..."
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}

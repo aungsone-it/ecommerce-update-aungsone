@@ -297,7 +297,14 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         // Use stored user data if available
         actualCustomerName = user.fullName || user.firstName || user.name || customerName;
         actualCustomerEmail = user.email || customerEmail;
-        customerProfileImage = user.profileImageUrl || "";
+        customerProfileImage =
+          user.profileImageUrl ||
+          user.avatarUrl ||
+          user.avatar ||
+          (typeof user.profileImage === "string" && user.profileImage.startsWith("http")
+            ? user.profileImage
+            : "") ||
+          "";
       }
     } catch (error) {
       console.error("Failed to get user data from localStorage:", error);

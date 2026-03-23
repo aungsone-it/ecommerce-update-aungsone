@@ -109,7 +109,13 @@ interface Customer {
   };
 }
 
-export function CustomersEnhanced() {
+type ChatHandoffCustomer = { name: string; email: string; avatar?: string };
+
+export function CustomersEnhanced({
+  onOpenChatWithCustomer,
+}: {
+  onOpenChatWithCustomer?: (c: ChatHandoffCustomer) => void;
+} = {}) {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -742,6 +748,20 @@ export function CustomersEnhanced() {
       <CustomerProfile
         customer={viewingCustomer}
         onClose={() => setViewingCustomer(null)}
+        onMessageCustomer={
+          onOpenChatWithCustomer
+            ? () => {
+                const email = (viewingCustomer.email || "").trim();
+                if (!email) return;
+                onOpenChatWithCustomer({
+                  name: viewingCustomer.name || "Customer",
+                  email,
+                  avatar: viewingCustomer.avatar || undefined,
+                });
+                setViewingCustomer(null);
+              }
+            : undefined
+        }
       />
     );
   }

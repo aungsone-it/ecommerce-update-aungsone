@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, Search, Menu, Check, Clock, Store, Package, Star, ShoppingCart, AlertCircle, User, Edit, Trash2, LogOut } from "lucide-react";
+import { Bell, Search, Menu, Check, Clock, Store, Package, Star, ShoppingCart, AlertCircle, User, Edit, Trash2, LogOut, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
@@ -23,6 +23,8 @@ interface TopNavProps {
   onOpenVendorApplication?: () => void; // 🔥 NEW: Open vendor application form
   vendorApplicationsCount?: number; // 🔥 NEW: Pending vendor applications count
   pendingOrdersCount?: number; // 🔥 NEW: Pending orders count
+  /** Unread customer chat messages (summed per conversation). */
+  chatUnreadCount?: number;
   onViewProfile?: () => void; // 🔥 NEW: View current user profile
   onEditProfile?: () => void; // 🔥 NEW: Edit current user profile
 }
@@ -51,7 +53,7 @@ const iconColorMap = {
   system: "bg-red-500",
 };
 
-export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, vendorApplicationsCount, pendingOrdersCount, onViewProfile, onEditProfile }: TopNavProps) {
+export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, vendorApplicationsCount, pendingOrdersCount, chatUnreadCount = 0, onViewProfile, onEditProfile }: TopNavProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -78,8 +80,15 @@ export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, 
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
   
-  // 🔥 Add vendor applications to total notification count
-  const totalNotificationCount = unreadCount + (vendorApplicationsCount || 0) + (pendingOrdersCount || 0);
+  // 🔥 Add vendor applications, pending orders, and unread chat to bell badge total
+  const totalNotificationCount =
+    unreadCount +
+    (vendorApplicationsCount || 0) +
+    (pendingOrdersCount || 0) +
+    (chatUnreadCount || 0);
+
+  const bellBadgeLabel =
+    totalNotificationCount > 99 ? "99+" : String(totalNotificationCount);
 
   const markNotificationAsRead = async (id: string) => {
     try {
@@ -157,8 +166,8 @@ export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, 
               <Button variant="ghost" size="icon" className="relative">
                 <Bell className="w-5 h-5" />
                 {totalNotificationCount > 0 && (
-                  <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-red-500 text-white border-2 border-white">
-                    {totalNotificationCount}
+                  <Badge className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-0.5 flex items-center justify-center p-0 bg-red-500 text-white text-[10px] leading-none border-2 border-white">
+                    {bellBadgeLabel}
                   </Badge>
                 )}
               </Button>
@@ -186,7 +195,7 @@ export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, 
               </div>
 
               {/* Notification List */}
-              {(notifications.length > 0 || (pendingOrdersCount && pendingOrdersCount > 0) || (vendorApplicationsCount && vendorApplicationsCount > 0)) ? (
+              {(notifications.length > 0 || (pendingOrdersCount && pendingOrdersCount > 0) || (vendorApplicationsCount && vendorApplicationsCount > 0) || (chatUnreadCount && chatUnreadCount > 0)) ? (
                 <ScrollArea className="h-[420px]">
                   <div className="divide-y divide-slate-100">
                     {/* Badge-based notifications from sidebar */}
@@ -238,6 +247,33 @@ export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, 
                             <p className="text-xs text-slate-400 flex items-center gap-1">
                               <Clock className="w-3 h-3" />
                               From Vendor section
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {chatUnreadCount > 0 && (
+                      <div className="group relative p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-indigo-50/30">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                            <MessageSquare className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="text-sm font-semibold text-slate-900 leading-tight">
+                                New chat messages
+                              </p>
+                              <div className="w-2 h-2 rounded-full bg-purple-600 flex-shrink-0 mt-1" />
+                            </div>
+                            <p className="text-sm text-slate-600 leading-snug mb-2">
+                              {chatUnreadCount === 1
+                                ? "You have 1 unread customer message"
+                                : `You have ${chatUnreadCount} unread customer messages`}
+                            </p>
+                            <p className="text-xs text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              From Chat
                             </p>
                           </div>
                         </div>

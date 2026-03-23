@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams, useParams, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
@@ -73,8 +73,16 @@ export function AdminPage() {
   const [appKey] = useState(() => Date.now());
   const [productRefreshKey, setProductRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  /** When set, Chat opens this customer's thread (from Customers → Message). */
+  const [chatHandoff, setChatHandoff] = useState<{
+    email: string;
+    name: string;
+    avatar?: string;
+  } | null>(null);
   
   const { badgeCounts, loadBadgeCounts, incrementOrdersBadge } = useBadgeCounts();
+
+  const handleChatHandoffDone = useCallback(() => setChatHandoff(null), []);
 
   // Current user state - can be updated when profile is saved
   const [currentUser, setCurrentUser] = useState<User>({
@@ -381,9 +389,21 @@ export function AdminPage() {
       case ADMIN_PAGES.ORDERS:
         return <Orders onViewOrder={setViewingOrder} onOrderUpdate={handleOrderUpdate} />;
       case ADMIN_PAGES.CUSTOMERS:
-        return <CustomersEnhanced />;
+        return (
+          <CustomersEnhanced
+            onOpenChatWithCustomer={(c) => {
+              setChatHandoff(c);
+              setCurrentPage(ADMIN_PAGES.CHAT);
+            }}
+          />
+        );
       case ADMIN_PAGES.CHAT:
-        return <Chat />;
+        return (
+          <Chat
+            initialCustomer={chatHandoff}
+            onInitialCustomerHandled={handleChatHandoffDone}
+          />
+        );
       case ADMIN_PAGES.DISCOUNT:
         return <Marketing />;
       case ADMIN_PAGES.LIVE_STREAM:
@@ -492,6 +512,7 @@ export function AdminPage() {
               currentUser={currentUser}
               vendorApplicationsCount={badgeCounts.vendor}
               pendingOrdersCount={badgeCounts.orders}
+              chatUnreadCount={badgeCounts.chat}
               onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
               onOpenVendorApplication={() => {
                 navigate("/vendor/application");

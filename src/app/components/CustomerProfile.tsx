@@ -42,6 +42,7 @@ import {
   DropdownMenuTrigger 
 } from "./ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 
 interface Customer {
@@ -120,6 +121,8 @@ interface SavedProduct {
 interface CustomerProfileProps {
   customer: Customer;
   onClose: () => void;
+  /** Super admin: jump to Chat and open this customer's thread */
+  onMessageCustomer?: () => void;
 }
 
 /** KV / API data is not always typed; avoid runtime crashes on .trim / .toFixed / .substring */
@@ -156,7 +159,7 @@ function formatOrderDate(d: unknown): string {
   return new Date(t).toLocaleDateString();
 }
 
-export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
+export function CustomerProfile({ customer, onClose, onMessageCustomer }: CustomerProfileProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [activities, setActivities] = useState<Activity[]>([]);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -538,7 +541,22 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
           </div>
 
           <div className="flex gap-2">
-            <Button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white gap-2">
+            <Button
+              type="button"
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white gap-2"
+              onClick={() => {
+                if (!onMessageCustomer) return;
+                const email = safeStr(customer.email).trim();
+                if (!email) {
+                  toast.error("No email on file", {
+                    description: "Add an email to this customer before sending a message.",
+                  });
+                  return;
+                }
+                onMessageCustomer();
+              }}
+              disabled={!onMessageCustomer}
+            >
               <MessageSquare className="w-4 h-4" />
               Message
             </Button>

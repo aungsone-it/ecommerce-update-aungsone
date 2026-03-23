@@ -6063,6 +6063,98 @@ app.get("/make-server-16010b6f/finances/analytics", async (c) => {
 // CHAT MESSAGE ENDPOINTS
 // ============================================
 
+/** Treat Dicebear / generic avatar URLs as non-final so we can replace with a real profile photo. */
+function isPlaceholderAvatarUrl(url: string): boolean {
+  const u = (url || "").trim().toLowerCase();
+  if (!u.startsWith("http")) return true;
+  return (
+    u.includes("dicebear.com") ||
+    u.includes("ui-avatars.com") ||
+    u.includes("robohash.org") ||
+    u.includes("avatar.vercel.sh")
+  );
+}
+
+/** Build email (lowercase) → avatar URL from admin customer records (signed URLs). */
+async function buildCustomerEmailToAvatarMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const customers = await withTimeout(kv.getByPrefix("customer:"), 12000);
+    for (const c of customers || []) {
+      if (!c?.email || !c?.avatar) continue;
+      const av = String(c.avatar).trim();
+      if (av.startsWith("http") && !isPlaceholderAvatarUrl(av)) {
+        map.set(String(c.email).toLowerCase().trim(), av);
+      }
+    }
+  } catch (e) {
+    console.warn("⚠️ buildCustomerEmailToAvatarMap failed:", e);
+  }
+  return map;
+}
+
+/**
+ * Resolve customer profile image: prefer real photos from `user:` KV or `customer:` records.
+ * Replaces empty values and placeholder (Dicebear) URLs when a real image exists.
+ */
+async function resolveCustomerProfileImage(
+  email: string,
+  existingUrl?: string,
+  customerAvatarMap?: Map<string, string>
+): Promise<string> {
+  const trimmed = (email || "").trim();
+  const existing = (existingUrl || "").trim();
+  const lower = trimmed.toLowerCase();
+
+  const shouldReplace =
+    !existing ||
+    !existing.startsWith("http") ||
+    isPlaceholderAvatarUrl(existing);
+
+  if (!shouldReplace) return existing;
+  if (!trimmed) return existing;
+
+  if (customerAvatarMap?.has(lower)) {
+    const fromCustomer = customerAvatarMap.get(lower)!;
+    if (fromCustomer.startsWith("http") && !isPlaceholderAvatarUrl(fromCustomer)) {
+      return fromCustomer;
+    }
+  }
+
+  let userRecord: any = null;
+  try {
+    userRecord = await withTimeout(kv.get(`user:${trimmed}`), 4000);
+    if (!userRecord) {
+      userRecord = await withTimeout(kv.get(`user:${lower}`), 4000);
+    }
+  } catch {
+    userRecord = null;
+  }
+  if (userRecord?.profileImage && String(userRecord.profileImage).trim() !== "") {
+    const signed = await getSignedImageUrl(String(userRecord.profileImage).trim());
+    if (signed) return signed;
+  }
+
+  if (!customerAvatarMap) {
+    try {
+      const customers = await withTimeout(kv.getByPrefix("customer:"), 10000);
+      const match = (customers || []).find(
+        (c: any) =>
+          c?.email &&
+          String(c.email).toLowerCase().trim() === lower
+      );
+      if (match?.avatar) {
+        const av = String(match.avatar).trim();
+        if (av.startsWith("http") && !isPlaceholderAvatarUrl(av)) return av;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return existing;
+}
+
 // Get all chat conversations
 app.get("/make-server-16010b6f/chat/conversations", async (c) => {
   try {
@@ -6075,9 +6167,32 @@ app.get("/make-server-16010b6f/chat/conversations", async (c) => {
       // Return empty array instead of failing - UI will handle gracefully
       return c.json({ conversations: [], warning: "Conversations loading slowly, please refresh" });
     }
-    
-    console.log(`📨 Retrieved ${conversations.length} conversations`);
-    return c.json({ conversations });
+
+    // Enrich avatars from customer: + user: KV (replaces Dicebear/empty when a real photo exists)
+    const customerAvatarMap = await buildCustomerEmailToAvatarMap();
+    const enriched = await Promise.all(
+      (conversations || []).map(async (conv: any) => {
+        if (!conv?.customerEmail) return conv;
+        const img = await resolveCustomerProfileImage(
+          conv.customerEmail,
+          conv.customerProfileImage,
+          customerAvatarMap
+        );
+        if (img && img !== conv.customerProfileImage) {
+          const next = { ...conv, customerProfileImage: img };
+          try {
+            await withTimeout(kv.set(`chat:conversation:${conv.id}`, next), 5000);
+          } catch {
+            /* non-fatal */
+          }
+          return next;
+        }
+        return conv;
+      })
+    );
+
+    console.log(`📨 Retrieved ${enriched.length} conversations`);
+    return c.json({ conversations: enriched });
   } catch (error: any) {
     console.error("❌ Failed to get conversations:", error);
     return c.json({ error: error.message, conversations: [] }, 500);
@@ -6155,15 +6270,64 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
       }
     }
 
+    // Preserve customer identity — do not overwrite with admin's senderName ("Admin")
+    const existingConv = await withTimeout(
+      kv.get(`chat:conversation:${message.conversationId}`),
+      5000
+    ).catch(() => null) as any;
+
+    const bodyCustomerName = (body as any).customerName as string | undefined;
+    const bodyCustomerProfileImage = (body as any).customerProfileImage as string | undefined;
+
+    let resolvedCustomerName = "";
+    let resolvedCustomerEmail = (customerEmail || existingConv?.customerEmail || "").trim();
+    let resolvedCustomerImage = (customerProfileImage || bodyCustomerProfileImage || existingConv?.customerProfileImage || "").trim();
+
+    if (sender === "customer") {
+      resolvedCustomerName = (senderName || existingConv?.customerName || "").trim();
+    } else {
+      const fromClient = (bodyCustomerName || "").trim();
+      const fromExisting = (existingConv?.customerName || "").trim();
+      const emailLocal = resolvedCustomerEmail ? resolvedCustomerEmail.split("@")[0] : "";
+      if (fromClient && fromClient !== "Admin") {
+        resolvedCustomerName = fromClient;
+      } else if (fromExisting && fromExisting !== "Admin") {
+        resolvedCustomerName = fromExisting;
+      } else if (emailLocal) {
+        resolvedCustomerName = emailLocal;
+      } else {
+        resolvedCustomerName = "Customer";
+      }
+    }
+
+    if (!resolvedCustomerName) {
+      resolvedCustomerName = resolvedCustomerEmail ? resolvedCustomerEmail.split("@")[0] : "Customer";
+    }
+
+    if (resolvedCustomerEmail) {
+      const customerAvatarMap = await buildCustomerEmailToAvatarMap();
+      resolvedCustomerImage = await resolveCustomerProfileImage(
+        resolvedCustomerEmail,
+        resolvedCustomerImage,
+        customerAvatarMap
+      );
+    }
+
+    const prevUnread = Number(existingConv?.unread) || 0;
+    const nextUnread =
+      sender === "customer"
+        ? prevUnread + 1
+        : prevUnread;
+
     // Update or create conversation
     const conversation = {
       id: message.conversationId,
-      customerName: senderName,
-      customerEmail: customerEmail || "",
-      customerProfileImage: customerProfileImage || "", // Add profile image
+      customerName: resolvedCustomerName,
+      customerEmail: resolvedCustomerEmail,
+      customerProfileImage: resolvedCustomerImage,
       lastMessage: text,
       timestamp,
-      unread: sender === "customer" ? 1 : 0,
+      unread: nextUnread,
       status: "online",
       vendorSource: vendorSource, // Add vendor source
       vendorId: vendorId || null // Store vendorId for reference

@@ -545,6 +545,8 @@ export const chatApi = {
     sender: 'customer' | 'admin';
     senderName: string;
     customerEmail?: string;
+    /** When sender is admin, pass the customer's display name so the thread header stays correct */
+    customerName?: string;
     imageUrl?: string;
     vendorId?: string;
     customerProfileImage?: string;

@@ -36,6 +36,29 @@ export function useBadgeCounts() {
   const [loading, setLoading] = useState(false);
 
   /**
+   * Refresh only chat unread total (fast path, no 30s cache gate).
+   * Polls conversations and sums `unread` so badges update soon after customer messages.
+   */
+  const refreshChatBadgeOnly = useCallback(async () => {
+    try {
+      const chatResponse = await chatApi.getConversations();
+      const unreadChats =
+        chatResponse.conversations?.reduce(
+          (sum: number, conv: { unread?: number }) => sum + (Number(conv.unread) || 0),
+          0
+        ) ?? 0;
+      setBadgeCounts((prev) => {
+        const updated = { ...prev, chat: unreadChats };
+        SmartCache.set('badge_counts', updated);
+        return updated;
+      });
+      badgeCircuitBreaker.recordSuccess();
+    } catch {
+      // Chat endpoint may be unavailable — keep previous count
+    }
+  }, []);
+
+  /**
    * Load badge counts from the server
    */
   const loadBadgeCounts = useCallback(async () => {
@@ -191,10 +214,33 @@ export function useBadgeCounts() {
     return () => clearInterval(interval);
   }, [loadBadgeCounts]);
 
+  /** Chat unread updates quickly when customers message (admin may be on any page). */
+  useEffect(() => {
+    refreshChatBadgeOnly();
+    const interval = setInterval(refreshChatBadgeOnly, 6000);
+    return () => clearInterval(interval);
+  }, [refreshChatBadgeOnly]);
+
+  /** Instant badge sync when Chat panel polls conversations (same tab). */
+  useEffect(() => {
+    const onChatUnread = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ total?: number }>).detail;
+      if (typeof detail?.total !== 'number') return;
+      setBadgeCounts((prev) => {
+        const updated = { ...prev, chat: detail.total };
+        SmartCache.set('badge_counts', updated);
+        return updated;
+      });
+    };
+    window.addEventListener('admin-chat-unread-updated', onChatUnread);
+    return () => window.removeEventListener('admin-chat-unread-updated', onChatUnread);
+  }, []);
+
   return {
     badgeCounts,
     loading,
     loadBadgeCounts,
+    refreshChatBadgeOnly,
     incrementOrdersBadge,
     decrementOrdersBadge,
     resetBadgeCounts,

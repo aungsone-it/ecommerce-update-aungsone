@@ -297,11 +297,7 @@ export function SideNav({ currentPage, onNavigate, currentUser, onViewProfile, b
                   <item.icon className={`w-5 h-5 transition-transform duration-300 ${!isActive && 'group-hover:scale-110'}`} />
                   <span className="flex-1 text-left text-sm font-medium">{t(getNavKey(item.label))}</span>
                   {item.badge !== undefined && item.badge > 0 && (
-                    <span className={`text-white text-xs px-2.5 py-1 rounded-full font-semibold shadow-md ${
-                      item.label === "Chat" 
-                        ? "bg-slate-900 animate-pulse" 
-                        : "bg-slate-900"
-                    }`}>
+                    <span className="text-white text-xs px-2.5 py-1 rounded-full font-semibold shadow-md bg-slate-900">
                       {item.badge}
                     </span>
                   )}
