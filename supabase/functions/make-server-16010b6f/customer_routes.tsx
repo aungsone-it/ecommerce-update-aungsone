@@ -1,6 +1,7 @@
 import { Hono } from "npm:hono@4";
 import * as kv from "./kv_store.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+import { ensureBucket } from "./storage_bucket_helpers.tsx";
 
 const customerApp = new Hono();
 
@@ -476,6 +477,16 @@ customerApp.post("/customers/upload-image", async (c) => {
     const fileName = `customer_${timestamp}_${randomStr}.${fileExt}`;
     
     console.log(`📁 Uploading file: ${fileName}`);
+
+    try {
+      await ensureBucket(supabase, BUCKET_NAME, {
+        public: false,
+        fileSizeLimit: 524288,
+      });
+    } catch (bucketErr: any) {
+      console.error("❌ Failed to ensure customer images bucket:", bucketErr);
+      return c.json({ error: "Failed to prepare storage bucket" }, 500);
+    }
     
     // Convert File to ArrayBuffer
     const arrayBuffer = await imageFile.arrayBuffer();

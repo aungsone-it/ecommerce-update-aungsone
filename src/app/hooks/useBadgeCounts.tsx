@@ -217,7 +217,7 @@ export function useBadgeCounts() {
   /** Chat unread updates quickly when customers message (admin may be on any page). */
   useEffect(() => {
     refreshChatBadgeOnly();
-    const interval = setInterval(refreshChatBadgeOnly, 6000);
+    const interval = setInterval(refreshChatBadgeOnly, 30000);
     return () => clearInterval(interval);
   }, [refreshChatBadgeOnly]);
 

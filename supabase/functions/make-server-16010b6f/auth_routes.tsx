@@ -1,6 +1,7 @@
 import { Hono } from "npm:hono@4";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
+import { ensureBucket } from "./storage_bucket_helpers.tsx";
 
 const authApp = new Hono();
 
@@ -74,6 +75,11 @@ initializeStorage();
 // Helper function to upload profile image to Supabase Storage
 async function uploadProfileImage(userId: string, imageDataUrl: string): Promise<string | null> {
   try {
+    await ensureBucket(supabaseAdmin, PROFILE_IMAGES_BUCKET, {
+      public: false,
+      fileSizeLimit: 524288,
+    });
+
     // Extract base64 data from data URL
     const matches = imageDataUrl.match(/^data:image\/(png|jpg|jpeg|gif|webp);base64,(.+)$/);
     if (!matches) {

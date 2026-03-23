@@ -43,6 +43,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const loadedUserRef = useRef<string | null>(null); // Track which user's cart we loaded
+  /** Throttle cart GET from tab focus/visibility (each call hits the Edge Function + KV). */
+  const lastAmbientCartFetchRef = useRef<number>(0);
 
   // 🔥 Sync cart to database (for logged-in users only)
   const syncCartToDatabase = useCallback(async (userId: string, cart: CartItem[]) => {
@@ -134,23 +136,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [user?.id, loadCartFromDatabase]);
 
-  // 🔥 AUTO-REFRESH cart when browser tab becomes visible (for logged-in users)
+  // 🔥 AUTO-REFRESH cart when tab becomes visible — throttled to avoid spamming the API
   useEffect(() => {
+    const MIN_MS_BETWEEN_AMBIENT_FETCH = 120_000;
+
+    const maybeRefresh = (reason: string) => {
+      if (!user?.id) return;
+      const now = Date.now();
+      if (now - lastAmbientCartFetchRef.current < MIN_MS_BETWEEN_AMBIENT_FETCH) {
+        return;
+      }
+      lastAmbientCartFetchRef.current = now;
+      console.log(`🔄 ${reason}, refreshing cart from database (throttled)...`);
+      loadCartFromDatabase(user.id);
+    };
+
     const handleVisibilityChange = () => {
-      if (!document.hidden && user?.id) {
-        console.log('🔄 Tab became visible, refreshing cart from database...');
-        loadCartFromDatabase(user.id);
+      if (!document.hidden) {
+        maybeRefresh('Tab became visible');
       }
     };
 
     const handleFocus = () => {
-      if (user?.id) {
-        console.log('🔄 Window focused, refreshing cart from database...');
-        loadCartFromDatabase(user.id);
-      }
+      maybeRefresh('Window focused');
     };
 
-    // Only add listeners if user is logged in
     if (user?.id) {
       document.addEventListener('visibilitychange', handleVisibilityChange);
       window.addEventListener('focus', handleFocus);
@@ -173,7 +183,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // Logged-in user → Save to DATABASE ONLY (debounced to avoid spam)
       syncTimeoutRef.current = setTimeout(() => {
         syncCartToDatabase(user.id, items);
-      }, 500); // Debounce 500ms
+      }, 2000); // Debounce: fewer Edge Function writes under rapid quantity changes
       
       // Remove guest cart from localStorage (no longer needed)
       localStorage.removeItem('migoo-guest-cart');

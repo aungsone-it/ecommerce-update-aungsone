@@ -7,6 +7,7 @@ import blogEngagementApp from "./blog_engagement_routes.tsx";
 import customerApp from "./customer_routes.tsx";
 import userApp from "./user_routes.tsx";
 import { createPaymentIntent, verifyPayment } from "./stripe_routes.tsx";
+import { ensureBucket } from "./storage_bucket_helpers.tsx";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
 const originalConsoleError = console.error;
@@ -116,37 +117,8 @@ console.log(`🚀 SECURE server v${SERVER_VERSION} starting...`);
 console.log(`📅 Deployed at: ${new Date().toISOString()}`);
 console.log("🎯 Marketing campaigns module loaded");
 
-// Initialize storage bucket for profile images
-const PROFILE_IMAGES_BUCKET = "make-16010b6f-profile-images";
-async function initializeStorage() {
-  try {
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === PROFILE_IMAGES_BUCKET);
-    
-    if (!bucketExists) {
-      console.log(`📦 Creating storage bucket: ${PROFILE_IMAGES_BUCKET}`);
-      const { error } = await supabase.storage.createBucket(PROFILE_IMAGES_BUCKET, {
-        public: false,
-        fileSizeLimit: 524288, // 512KB
-      });
-      
-      if (error && error.message !== 'The resource already exists') {
-        console.error("❌ Error creating bucket:", error);
-      } else if (error && error.message === 'The resource already exists') {
-        console.log(`✅ Storage bucket already exists: ${PROFILE_IMAGES_BUCKET}`);
-      } else {
-        console.log(`✅ Storage bucket created: ${PROFILE_IMAGES_BUCKET}`);
-      }
-    } else {
-      console.log(`✅ Storage bucket already exists: ${PROFILE_IMAGES_BUCKET}`);
-    }
-  } catch (error) {
-    console.error("❌ Error initializing storage:", error);
-  }
-}
-
-// Initialize storage on server start
-initializeStorage();
+// Storage buckets are created lazily via ensureBucket() (cached listBuckets) to avoid
+// hammering the Storage API on every cold start and on every upload.
 
 // ============================================
 // 🚀 DASHBOARD CACHE - Module-level caching to reduce database calls
@@ -475,24 +447,15 @@ app.post("/make-server-16010b6f/settings/upload-logo", async (c) => {
     
     console.log(`📁 Uploading logo file: ${fileName}`);
     
-    // Ensure bucket exists
     const BUCKET_NAME = "make-16010b6f-store-logos";
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === BUCKET_NAME);
-    
-    if (!bucketExists) {
-      console.log("🪣 Creating store logos bucket...");
-      const { error: bucketError } = await supabase.storage.createBucket(BUCKET_NAME, {
+    try {
+      await ensureBucket(supabase, BUCKET_NAME, {
         public: false,
-        fileSizeLimit: 524288, // 512KB
+        fileSizeLimit: 524288,
       });
-      if (bucketError && bucketError.message !== 'The resource already exists') {
-        console.error("❌ Failed to create bucket:", bucketError);
-        return c.json({ error: "Failed to create storage bucket" }, 500);
-      }
-      if (bucketError && bucketError.message === 'The resource already exists') {
-        console.log("✅ Bucket already exists, continuing...");
-      }
+    } catch (bucketErr: any) {
+      console.error("❌ Failed to ensure bucket:", bucketErr);
+      return c.json({ error: "Failed to create storage bucket" }, 500);
     }
     
     // Convert File to ArrayBuffer
@@ -578,24 +541,15 @@ app.post("/make-server-16010b6f/settings/upload-banner", async (c) => {
     
     console.log(`📁 Uploading banner file: ${fileName}`);
     
-    // Ensure bucket exists
     const BUCKET_NAME = "make-16010b6f-banners";
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === BUCKET_NAME);
-    
-    if (!bucketExists) {
-      console.log("🪣 Creating banners bucket...");
-      const { error: bucketError } = await supabase.storage.createBucket(BUCKET_NAME, {
+    try {
+      await ensureBucket(supabase, BUCKET_NAME, {
         public: false,
-        fileSizeLimit: 2097152, // 2MB
+        fileSizeLimit: 2097152,
       });
-      if (bucketError && bucketError.message !== 'The resource already exists') {
-        console.error("❌ Failed to create bucket:", bucketError);
-        return c.json({ error: "Failed to create storage bucket" }, 500);
-      }
-      if (bucketError && bucketError.message === 'The resource already exists') {
-        console.log("✅ Bucket already exists, continuing...");
-      }
+    } catch (bucketErr: any) {
+      console.error("❌ Failed to ensure bucket:", bucketErr);
+      return c.json({ error: "Failed to create storage bucket" }, 500);
     }
     
     // Convert File to ArrayBuffer
@@ -854,7 +808,11 @@ app.post("/make-server-16010b6f/rebuild-cache", async (c) => {
 async function uploadProfileImage(userId: string, imageDataUrl: string): Promise<string | null> {
   try {
     const PROFILE_IMAGES_BUCKET = "make-16010b6f-profile-images";
-    
+    await ensureBucket(supabase, PROFILE_IMAGES_BUCKET, {
+      public: false,
+      fileSizeLimit: 524288,
+    });
+
     // Extract base64 data from data URL
     const matches = imageDataUrl.match(/^data:image\/(png|jpg|jpeg|gif|webp);base64,(.+)$/);
     if (!matches) {
@@ -3224,24 +3182,15 @@ app.post("/make-server-16010b6f/upload-description-image", async (c) => {
       return c.json({ error: "No file provided" }, 400);
     }
     
-    // Create bucket if it doesn't exist
     const bucketName = "make-16010b6f-description-images";
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === bucketName);
-    
-    if (!bucketExists) {
-      console.log(`📦 Creating bucket: ${bucketName}`);
-      const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
-        public: true, // Public bucket for product images
-        fileSizeLimit: 10485760, // 10MB limit
+    try {
+      await ensureBucket(supabase, bucketName, {
+        public: true,
+        fileSizeLimit: 10485760,
       });
-      if (bucketError && bucketError.message !== 'The resource already exists') {
-        console.error("❌ Bucket creation error:", bucketError);
-        return c.json({ error: "Failed to create storage bucket" }, 500);
-      }
-      if (bucketError && bucketError.message === 'The resource already exists') {
-        console.log("✅ Bucket already exists, continuing...");
-      }
+    } catch (bucketErr: any) {
+      console.error("❌ Bucket creation error:", bucketErr);
+      return c.json({ error: "Failed to create storage bucket" }, 500);
     }
     
     // Upload file
@@ -6611,24 +6560,15 @@ app.post("/make-server-16010b6f/chat/upload-image", async (c) => {
       return c.json({ error: "Missing image data or fileName" }, 400);
     }
 
-    // Create bucket if it doesn't exist
     const bucketName = "make-16010b6f-chat-images";
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === bucketName);
-    
-    if (!bucketExists) {
-      console.log(`📦 Creating bucket: ${bucketName}`);
-      const { error: bucketError } = await supabase.storage.createBucket(bucketName, {
+    try {
+      await ensureBucket(supabase, bucketName, {
         public: false,
-        fileSizeLimit: 5242880, // 5MB limit
+        fileSizeLimit: 5242880,
       });
-      if (bucketError && bucketError.message !== 'The resource already exists') {
-        console.error("❌ Bucket creation error:", bucketError);
-        return c.json({ error: "Failed to create storage bucket" }, 500);
-      }
-      if (bucketError && bucketError.message === 'The resource already exists') {
-        console.log("✅ Bucket already exists, continuing...");
-      }
+    } catch (bucketErr: any) {
+      console.error("❌ Bucket creation error:", bucketErr);
+      return c.json({ error: "Failed to create storage bucket" }, 500);
     }
 
     // Decode base64 and upload

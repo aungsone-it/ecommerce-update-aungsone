@@ -1,6 +1,7 @@
 import { Hono } from "npm:hono@4";
 import * as kv from "./kv_store.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
+import { ensureBucket } from "./storage_bucket_helpers.tsx";
 
 const userApp = new Hono();
 
@@ -93,26 +94,11 @@ userApp.post("/users/:userId/avatar", async (c) => {
       return c.json({ error: "No image data provided" }, 400);
     }
 
-    // Create bucket if it doesn't exist
     const bucketName = "make-16010b6f-user-avatars";
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some((bucket) => bucket.name === bucketName);
-
-    if (!bucketExists) {
-      console.log(`📦 Creating bucket: ${bucketName}`);
-      const { error: createError } = await supabase.storage.createBucket(
-        bucketName,
-        {
-          public: false,
-          fileSizeLimit: 5242880, // 5MB
-        }
-      );
-
-      if (createError) {
-        console.error("❌ Error creating bucket:", createError);
-        throw createError;
-      }
-    }
+    await ensureBucket(supabase, bucketName, {
+      public: false,
+      fileSizeLimit: 5242880,
+    });
 
     // Convert base64 to buffer
     const base64Data = imageData.split(",")[1] || imageData;
