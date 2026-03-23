@@ -122,6 +122,40 @@ interface CustomerProfileProps {
   onClose: () => void;
 }
 
+/** KV / API data is not always typed; avoid runtime crashes on .trim / .toFixed / .substring */
+function safeStr(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  return "";
+}
+
+function safeNum(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  const n = parseFloat(String(v ?? ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatJoinDate(d: unknown): string {
+  const raw = safeStr(d);
+  if (!raw) return "—";
+  const t = new Date(raw).getTime();
+  if (Number.isNaN(t)) return "—";
+  return new Date(t).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function formatOrderDate(d: unknown): string {
+  const raw = safeStr(d);
+  if (!raw) return "—";
+  const t = new Date(raw).getTime();
+  if (Number.isNaN(t)) return "—";
+  return new Date(t).toLocaleDateString();
+}
+
 export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
   const [activeTab, setActiveTab] = useState("overview");
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -183,11 +217,11 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
           
           // Transform orders to match the Order interface
           const transformedOrders: Order[] = orders.map((order: any) => ({
-            id: order.orderNumber || order.id,
-            date: order.date || order.createdAt,
+            id: safeStr(order.orderNumber || order.id),
+            date: safeStr(order.date || order.createdAt),
             items: Array.isArray(order.items) ? order.items.length : 0,
-            total: order.total || 0,
-            status: order.status || "pending",
+            total: safeNum(order.total),
+            status: safeStr(order.status) || "pending",
             products: Array.isArray(order.items) 
               ? order.items.map((item: any) => item.name || item.title || "Unknown Product")
               : [],
@@ -226,12 +260,12 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
           
           // Transform products to match the SavedProduct interface
           const transformedProducts: SavedProduct[] = products.map((product: any) => ({
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            image: product.image,
-            category: product.category,
-            savedAt: product.savedAt,
+            id: safeStr(product.id),
+            name: safeStr(product.name),
+            price: safeNum(product.price),
+            image: safeStr(product.image),
+            category: safeStr(product.category),
+            savedAt: safeStr(product.savedAt),
           }));
           
           setSavedProducts(transformedProducts);
@@ -398,9 +432,12 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
   };
 
   const getSegmentBadge = () => {
-    if (!customer.rfmScore) return null;
-    const { recency, frequency, monetary } = customer.rfmScore;
+    if (!customer.rfmScore || typeof customer.rfmScore !== "object") return null;
+    const recency = safeNum(customer.rfmScore.recency);
+    const frequency = safeNum(customer.rfmScore.frequency);
+    const monetary = safeNum(customer.rfmScore.monetary);
     const score = recency + frequency + monetary;
+    if (Number.isNaN(score)) return null;
 
     if (score >= 13) {
       return (
@@ -453,10 +490,15 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
         {/* Customer Avatar & Basic Info */}
         <div className="p-6 border-b border-slate-200">
           <div className="flex flex-col items-center text-center mb-4">
-            {customer.avatar && customer.avatar.trim() !== "" ? (
+            {(() => {
+              const avatarUrl = safeStr(customer.avatar).trim();
+              const initials = safeStr(customer.name).slice(0, 2).toUpperCase() || "??";
+              return (
+                <>
+            {avatarUrl ? (
               <img
-                src={customer.avatar}
-                alt={customer.name}
+                src={avatarUrl}
+                alt={safeStr(customer.name) || "Customer"}
                 className="w-[100px] h-[100px] rounded-lg border-4 border-blue-100 mb-3 object-cover"
                 onError={(e) => {
                   // If image fails to load, hide it and show fallback
@@ -466,10 +508,10 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                 }}
               />
             ) : null}
-            {(!customer.avatar || customer.avatar.trim() === "") && (
+            {!avatarUrl && (
               <div className="w-[100px] h-[100px] rounded-lg border-4 border-blue-100 mb-3 bg-blue-100 flex items-center justify-center">
                 <span className="text-2xl font-semibold text-blue-600">
-                  {customer.name?.substring(0, 2).toUpperCase() || "??"}
+                  {initials}
                 </span>
               </div>
             )}
@@ -479,15 +521,18 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
               className="w-[100px] h-[100px] rounded-lg border-4 border-blue-100 mb-3 bg-blue-100 flex items-center justify-center"
             >
               <span className="text-2xl font-semibold text-blue-600">
-                {customer.name?.substring(0, 2).toUpperCase() || "??"}
+                {initials}
               </span>
             </div>
+                </>
+              );
+            })()}
             <h3 className="text-xl font-semibold text-slate-900 mb-2">
-              {customer.name}
+              {safeStr(customer.name) || "—"}
             </h3>
             <div className="flex items-center gap-2 mb-3">
-              {getTierBadge(customer.tier)}
-              {getStatusBadge(customer.status)}
+              {getTierBadge(safeStr(customer.tier))}
+              {getStatusBadge(safeStr(customer.status))}
             </div>
             {getSegmentBadge()}
           </div>
@@ -545,7 +590,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                   <div>
                     <p className="text-xs text-slate-500">Email</p>
                     <p className="text-sm text-slate-900 break-all">
-                      {customer.email}
+                      {safeStr(customer.email) || "—"}
                     </p>
                   </div>
                 </div>
@@ -554,7 +599,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                   <Phone className="w-4 h-4 text-green-600 mt-0.5" />
                   <div>
                     <p className="text-xs text-slate-500">Phone</p>
-                    <p className="text-sm text-slate-900">{customer.phone}</p>
+                    <p className="text-sm text-slate-900">{safeStr(customer.phone) || "—"}</p>
                   </div>
                 </div>
 
@@ -600,11 +645,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                   <div>
                     <p className="text-xs text-slate-500">Member Since</p>
                     <p className="text-sm text-slate-900">
-                      {new Date(customer.joinDate).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
+                      {formatJoinDate(customer.joinDate)}
                     </p>
                   </div>
                 </div>
@@ -839,13 +880,13 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                             </div>
                             <p className="text-xs text-slate-600 mt-0.5">
                               {order.items} items •{" "}
-                              {new Date(order.date).toLocaleDateString()}
+                              {formatOrderDate(order.date)}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
                           <p className="font-semibold text-slate-900">
-                            ${Math.abs(order.total).toFixed(2)}
+                            ${safeNum(order.total).toFixed(2)}
                           </p>
                         </div>
                       </div>
@@ -923,24 +964,26 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                                     {activity.metadata.orderId}
                                   </Badge>
                                 )}
-                                {activity.metadata.amount && (
+                                {activity.metadata != null &&
+                                  activity.metadata.amount != null &&
+                                  activity.metadata.amount !== "" && (
                                   <div className="flex items-center gap-1 text-green-700">
                                     <DollarSign className="w-4 h-4" />
                                     <span className="font-semibold">
-                                      {Math.abs(activity.metadata.amount).toFixed(2)}
+                                      {safeNum(activity.metadata.amount).toFixed(2)}
                                     </span>
                                   </div>
                                 )}
-                                {activity.metadata.rating && (
+                                {activity.metadata.rating != null && safeNum(activity.metadata.rating) > 0 && (
                                   <div className="flex items-center gap-1">
-                                    {[...Array(activity.metadata.rating)].map(
-                                      (_, i) => (
+                                    {Array.from({
+                                      length: Math.min(5, Math.max(0, Math.floor(safeNum(activity.metadata.rating)))),
+                                    }).map((_, i) => (
                                         <Star
                                           key={i}
                                           className="w-4 h-4 fill-yellow-400 text-yellow-400"
                                         />
-                                      )
-                                    )}
+                                      ))}
                                   </div>
                                 )}
                               </div>
@@ -979,17 +1022,13 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                             </div>
                             <p className="text-sm text-slate-600">
                               {order.items} items •{" "}
-                              {new Date(order.date).toLocaleDateString("en-US", {
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              })}
+                              {formatJoinDate(order.date)}
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
                           <p className="text-xl font-semibold text-slate-900">
-                            ${Math.abs(order.total).toFixed(2)}
+                            ${safeNum(order.total).toFixed(2)}
                           </p>
                           <Button variant="ghost" size="sm" className="mt-2">
                             View Details
@@ -1003,7 +1042,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                           Products in this order:
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          {order.products.map((product, idx) => (
+                          {(Array.isArray(order.products) ? order.products : []).map((product, idx) => (
                             <Badge
                               key={idx}
                               variant="outline"
@@ -1087,7 +1126,7 @@ export function CustomerProfile({ customer, onClose }: CustomerProfileProps) {
                                 <div className="flex items-center gap-1 text-green-700">
                                   <DollarSign className="w-4 h-4" />
                                   <span className="font-semibold">
-                                    {product.price.toFixed(2)}
+                                    {safeNum(product.price).toFixed(2)}
                                   </span>
                                 </div>
                               </div>
