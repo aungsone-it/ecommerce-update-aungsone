@@ -45,7 +45,24 @@ export default defineConfig({
 
   // Build configuration - keep it simple for Figma Make
   build: {
-    // Clear output before build
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          // Core React — stable caching across route chunks
+          if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) {
+            return 'react-vendor';
+          }
+          if (id.includes('react-router')) return 'router';
+          // Heavy optional UI (admin / editors)
+          if (id.includes('@mui') || id.includes('@emotion')) return 'mui';
+          if (id.includes('recharts')) return 'charts';
+          if (id.includes('@tiptap') || id.includes('prosemirror')) return 'editor';
+          if (id.includes('emoji-picker-react')) return 'emoji-picker';
+          if (id.includes('react-quill')) return 'react-quill';
+        },
+      },
+    },
   },
 })

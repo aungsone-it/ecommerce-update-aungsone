@@ -1,32 +1,68 @@
 // Routes Configuration - Cache bust: 20260307181500
+import { lazy, Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { ProtectedLayout } from "./components/ProtectedLayout";
 import { VendorProtectedLayout } from "./components/VendorProtectedLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
-import { LandingPage } from "./pages/LandingPage";
-import { StorefrontPage } from "./pages/StorefrontPage";
-import { AdminPage } from "./pages/AdminPage";
-import { AddCustomerPage } from "./pages/AddCustomerPage";
-import { VendorApplicationPage } from "./pages/VendorApplicationPage";
-import { VendorSetupPage } from "./pages/VendorSetupPage";
-import { VendorStorefrontPage } from "./pages/VendorStorefrontPage";
-import { VendorAdminPage } from "./pages/VendorAdminPage";
-import { VendorAdminProductViewPage } from "./pages/VendorAdminProductViewPage";
-import { AdminSlugFixer } from "./components/AdminSlugFixer";
+import { RouteLoadingFallback } from "./components/RouteLoadingFallback";
 import { NotFound } from "./pages/NotFound";
-import { ResetPasswordPage } from "./pages/ResetPasswordPage";
-import { SetupPage } from "./pages/SetupPage";
-import { VendorAuthPage } from "./pages/VendorAuthPage";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
+// —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
+const LandingPage = lazy(() =>
+  import("./pages/LandingPage").then((m) => ({ default: m.LandingPage }))
+);
+const StorefrontPage = lazy(() =>
+  import("./pages/StorefrontPage").then((m) => ({ default: m.StorefrontPage }))
+);
+const AdminPage = lazy(() =>
+  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage }))
+);
+const AddCustomerPage = lazy(() =>
+  import("./pages/AddCustomerPage").then((m) => ({ default: m.AddCustomerPage }))
+);
+const VendorApplicationPage = lazy(() =>
+  import("./pages/VendorApplicationPage").then((m) => ({ default: m.VendorApplicationPage }))
+);
+const VendorSetupPage = lazy(() =>
+  import("./pages/VendorSetupPage").then((m) => ({ default: m.VendorSetupPage }))
+);
+const VendorStorefrontPage = lazy(() =>
+  import("./pages/VendorStorefrontPage").then((m) => ({ default: m.VendorStorefrontPage }))
+);
+const VendorAdminPage = lazy(() =>
+  import("./pages/VendorAdminPage").then((m) => ({ default: m.VendorAdminPage }))
+);
+const VendorAdminProductViewPage = lazy(() =>
+  import("./pages/VendorAdminProductViewPage").then((m) => ({
+    default: m.VendorAdminProductViewPage,
+  }))
+);
+const AdminSlugFixer = lazy(() =>
+  import("./components/AdminSlugFixer").then((m) => ({ default: m.AdminSlugFixer }))
+);
+const ResetPasswordPage = lazy(() =>
+  import("./pages/ResetPasswordPage").then((m) => ({ default: m.ResetPasswordPage }))
+);
+const SetupPage = lazy(() =>
+  import("./pages/SetupPage").then((m) => ({ default: m.SetupPage }))
+);
+const VendorAuthPage = lazy(() =>
+  import("./pages/VendorAuthPage").then((m) => ({ default: m.VendorAuthPage }))
+);
+
+function LazyBoundary({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
+}
+
 // Wrapper component for all providers
-function ProvidersWrapper({ children }: { children: React.ReactNode }) {
+function ProvidersWrapper({ children }: { children: ReactNode }) {
   return (
     <ThemeProvider>
       <LanguageProvider>
@@ -51,17 +87,20 @@ export const router = createBrowserRouter([
         <RootLayout />
       </ProvidersWrapper>
     ),
-    errorElement: <NotFound />, // Handle errors at root level
+    errorElement: <NotFound />,
     children: [
       {
-        element: <AnimatedOutlet />,
-        errorElement: <NotFound />, // Handle errors in child routes
+        element: (
+          <LazyBoundary>
+            <AnimatedOutlet />
+          </LazyBoundary>
+        ),
+        errorElement: <NotFound />,
         children: [
           {
             index: true,
             element: <LandingPage />,
           },
-          // Main Storefront - moved to /store
           {
             path: "store",
             element: <StorefrontPage />,
@@ -70,7 +109,6 @@ export const router = createBrowserRouter([
             path: "store/reset-password",
             element: <ResetPasswordPage />,
           },
-          // Storefront sub-routes - All handled by the SAME component instance
           {
             path: "products",
             element: <StorefrontPage />,
@@ -143,13 +181,16 @@ export const router = createBrowserRouter([
             path: "admin/fix-slugs",
             element: <AdminSlugFixer />,
           },
-          // Vendor admin under /store/<slug>/admin (mirrors /vendor/<slug>/admin)
           {
             path: "store/:storeName/admin",
             element: <VendorProtectedLayout />,
             children: [
               {
-                element: <AnimatedOutlet />,
+                element: (
+                  <LazyBoundary>
+                    <AnimatedOutlet />
+                  </LazyBoundary>
+                ),
                 children: [
                   { index: true, element: <VendorAdminPage /> },
                   {
@@ -161,7 +202,6 @@ export const router = createBrowserRouter([
               },
             ],
           },
-          // Vendor storefront — most specific paths first
           {
             path: "store/:storeName/profile/:profileSection",
             element: <VendorStorefrontPage />,
@@ -187,7 +227,6 @@ export const router = createBrowserRouter([
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
           },
-          // Legacy /vendor/{slug} storefront URLs
           {
             path: "vendor/:storeName/profile/:profileSection",
             element: <VendorStorefrontPage />,
@@ -228,10 +267,14 @@ export const router = createBrowserRouter([
         <ProtectedLayout />
       </ProvidersWrapper>
     ),
-    errorElement: <NotFound />, // Handle super admin errors
+    errorElement: <NotFound />,
     children: [
       {
-        element: <AnimatedOutlet />,
+        element: (
+          <LazyBoundary>
+            <AnimatedOutlet />
+          </LazyBoundary>
+        ),
         errorElement: <NotFound />,
         children: [
           {
@@ -257,26 +300,30 @@ export const router = createBrowserRouter([
         <VendorProtectedLayout />
       </ProvidersWrapper>
     ),
-    errorElement: <NotFound />, // Handle vendor admin errors
+    errorElement: <NotFound />,
     children: [
       {
-        element: <AnimatedOutlet />,
+        element: (
+          <LazyBoundary>
+            <AnimatedOutlet />
+          </LazyBoundary>
+        ),
         errorElement: <NotFound />,
         children: [
           {
             path: "vendor/:storeName/admin",
             element: <VendorAdminPage />,
-            errorElement: <NotFound />, // Handle missing vendor admin
+            errorElement: <NotFound />,
           },
           {
             path: "vendor/:storeName/admin/:section",
             element: <VendorAdminPage />,
-            errorElement: <NotFound />, // Handle invalid vendor admin sections
+            errorElement: <NotFound />,
           },
           {
             path: "vendor/:storeName/admin/products/:productId/view",
             element: <VendorAdminProductViewPage />,
-            errorElement: <NotFound />, // Handle invalid product view
+            errorElement: <NotFound />,
           },
         ],
       },
