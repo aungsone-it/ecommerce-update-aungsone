@@ -207,12 +207,6 @@ export function LandingPage() {
             <div className="flex items-center gap-4 sm:gap-6">
               <button
                 className="text-sm sm:text-base text-slate-700 hover:text-slate-900 font-medium transition-colors"
-                onClick={() => navigate("/store")}
-              >
-                Shop Now
-              </button>
-              <button
-                className="text-sm sm:text-base text-slate-700 hover:text-slate-900 font-medium transition-colors"
                 onClick={() => navigate("/vendor/application")}
               >
                 Become a Vendor
@@ -238,14 +232,6 @@ export function LandingPage() {
               across Myanmar. Built for the Burmese market, trusted by local businesses.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 px-4 sm:px-0">
-              <Button
-                size="lg"
-                className="w-full sm:w-auto bg-[#1a1d29] hover:bg-slate-900 text-white px-8 h-12 text-base font-medium rounded-full shadow-lg transition-all duration-200 flex items-center justify-center"
-                onClick={() => navigate("/store")}
-              >
-                <span>Start Shopping</span>
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
               <Button
                 size="lg"
                 className="w-full sm:w-auto bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 px-8 h-12 text-base font-medium rounded-full transition-all duration-200"
@@ -460,28 +446,6 @@ export function LandingPage() {
           </div>
         </section>
       )}
-
-      {/* Final CTA */}
-      <section className="py-12 sm:py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 mb-4">
-            Start Your Shopping Journey Today
-          </h2>
-          <p className="text-base text-slate-600 mb-8">
-            Discover quality products from verified vendors across Myanmar
-          </p>
-          <div className="flex justify-center">
-            <Button
-              size="lg"
-              className="bg-[#1a1d29] hover:bg-slate-900 text-white px-8 h-12 text-base font-medium rounded-full shadow-lg transition-all duration-200 flex items-center justify-center"
-              onClick={() => navigate("/store")}
-            >
-              <span>Browse Products</span>
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-          </div>
-        </div>
-      </section>
 
       {/* Footer */}
       <footer className="bg-slate-900 text-slate-400 py-12 px-4 sm:px-6 lg:px-8">

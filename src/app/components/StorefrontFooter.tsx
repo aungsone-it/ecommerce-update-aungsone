@@ -224,4 +224,5 @@ export const StorefrontFooter = ({
       </div>
     </div>
   </footer>
-);
+  );
+};
