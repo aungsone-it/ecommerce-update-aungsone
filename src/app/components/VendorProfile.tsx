@@ -43,7 +43,7 @@ import { Input } from "./ui/input";
 import { Checkbox } from "./ui/checkbox";
 import { VendorStorefront } from "./VendorStorefront";
 import { toast } from "sonner";
-import { moduleCache, CACHE_KEYS, fetchAllProducts, fetchAllOrders } from "../utils/module-cache";
+import { moduleCache, CACHE_KEYS, fetchAllOrders } from "../utils/module-cache";
 
 type VendorStatus = "active" | "inactive" | "pending" | "suspended" | "banned";
 
@@ -80,6 +80,7 @@ interface Product {
   status: string;
   images?: string[];
   image?: string;
+  commissionRate?: number;
 }
 
 interface Order {
@@ -169,27 +170,61 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
 
   const loadProducts = async () => {
     setIsLoadingProducts(true);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 60000);
     try {
-      // Use module cache to reduce Supabase requests
-      const allProducts = await moduleCache.get(
-        CACHE_KEYS.ADMIN_PRODUCTS,
-        fetchAllProducts,
-        false
+      // Dedicated endpoint — avoids waiting on shared moduleCache(ADMIN_PRODUCTS) if another
+      // screen's /products fetch is stuck or very slow (that caused endless skeletons here).
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${encodeURIComponent(vendor.id)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          signal: controller.signal,
+        }
       );
-      
-      // Filter products by vendor ID or vendor name
-      const vendorProducts = (allProducts || []).filter((p: any) => {
-        const matchesId = p.selectedVendors?.includes(vendor.id) || p.vendorId === vendor.id;
-        const matchesName = p.vendor === vendor.name || p.vendorName === vendor.name;
-        const matchesSelectedName = p.selectedVendors?.includes(vendor.name);
-        return matchesId || matchesName || matchesSelectedName;
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(
+          typeof errBody?.error === "string" ? errBody.error : `Request failed (${response.status})`
+        );
+      }
+
+      const data = await response.json();
+      const raw = Array.isArray(data.products) ? data.products : [];
+
+      const vendorProducts: Product[] = raw.map((p: any) => {
+        const st = String(p.status ?? "active").trim().toLowerCase();
+        return {
+          id: p.id,
+          name: p.name || p.title || "",
+          sku: p.sku || "",
+          category: p.category || "Uncategorized",
+          price: String(p.price ?? ""),
+          stock: typeof p.inventory === "number" ? p.inventory : Number(p.stock) || 0,
+          status: st || "active",
+          images: p.images || [],
+          image: p.images?.[0],
+          commissionRate:
+            typeof p.commissionRate === "number" ? p.commissionRate : parseFloat(p.commissionRate) || undefined,
+        };
       });
-      
+
       setProducts(vendorProducts);
       console.log(`[VENDOR PROFILE] Loaded ${vendorProducts.length} products for vendor ${vendor.name}`);
     } catch (error) {
       console.error("Error loading vendor products:", error);
+      const msg =
+        error instanceof Error && error.name === "AbortError"
+          ? "Loading products timed out. Try again."
+          : "Could not load vendor products.";
+      toast.error(msg);
+      setProducts([]);
     } finally {
+      window.clearTimeout(timeoutId);
       setIsLoadingProducts(false);
     }
   };
@@ -197,7 +232,6 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   const loadOrders = async () => {
     setIsLoadingOrders(true);
     try {
-      // Use module cache to reduce Supabase requests
       const allOrders = await moduleCache.get(
         CACHE_KEYS.ADMIN_ORDERS,
         fetchAllOrders,
@@ -217,6 +251,8 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
       console.log(`[VENDOR PROFILE] Loaded ${vendorOrders.length} orders for vendor ${vendor.name}`);
     } catch (error) {
       console.error("Error loading vendor orders:", error);
+      toast.error("Could not load vendor orders.");
+      setOrders([]);
     } finally {
       setIsLoadingOrders(false);
     }
@@ -426,7 +462,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     );
   };
 
-  // Save selected products to vendor
+  // Save selected products to vendor (single bulk request — avoids N parallel PUTs + SKU full-scan timeouts)
   const handleSaveSelectedProducts = async () => {
     if (selectedProductIds.length === 0) {
       toast.error("Please select at least one product");
@@ -435,40 +471,44 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
 
     setSavingProducts(true);
     try {
-      // Update each selected product to add this vendor to its selectedVendors array
-      const updatePromises = selectedProductIds.map(async (productId) => {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/${productId}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${publicAnonKey}`,
-            },
-            body: JSON.stringify({
-              selectedVendors: [vendor.id], // Add this vendor to the product
-              _addToSelectedVendors: true, // Flag to append instead of replace
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to update product ${productId}`);
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/bulk-assign-vendor`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({
+            vendorId: vendor.id,
+            productIds: selectedProductIds,
+          }),
         }
-        return response.json();
-      });
+      );
 
-      await Promise.all(updatePromises);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === "string" ? data.error : `Request failed (${response.status})`
+        );
+      }
 
-      toast.success(`${selectedProductIds.length} product(s) added to ${vendor.name}`);
+      const updated = typeof data.updated === "number" ? data.updated : selectedProductIds.length;
+      const failed = typeof data.failed === "number" ? data.failed : 0;
+      if (failed > 0) {
+        toast.warning(`Added ${updated} product(s); ${failed} could not be updated.`);
+      } else {
+        toast.success(`${updated} product(s) added to ${vendor.name}`);
+      }
       setShowProductSelectModal(false);
       setSelectedProductIds([]);
-      
-      // Reload vendor products
+
       await loadProducts();
     } catch (error) {
       console.error("Error assigning products to vendor:", error);
-      toast.error("Failed to assign products");
+      toast.error(
+        error instanceof Error ? error.message : "Failed to assign products"
+      );
     } finally {
       setSavingProducts(false);
     }

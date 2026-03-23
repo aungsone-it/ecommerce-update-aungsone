@@ -178,20 +178,11 @@ export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdi
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
             {searchQuery ? "No products found" : "No products yet"}
           </h3>
-          <p className="text-slate-600 mb-4">
+          <p className="text-slate-600">
             {searchQuery 
               ? "Try adjusting your search" 
               : "Start by adding your first product to your store"}
           </p>
-          {!searchQuery && (
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700"
-              onClick={onNavigateToAdd}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Add Your First Product
-            </Button>
-          )}
         </Card>
       ) : (
         <div className="space-y-3">

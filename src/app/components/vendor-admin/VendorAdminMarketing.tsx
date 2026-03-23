@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, Tag, Percent, Gift, TrendingUp, Plus, Search, Filter, Download, Eye, Edit, Trash2, Copy, Calendar, Users, Target, BarChart3, Clock, CheckCircle, XCircle, Send, Megaphone, Sparkles, AlertCircle, Info, ShoppingCart, Truck, Star, Heart, Zap, Award, Palette, Save, Package, MoreVertical } from "lucide-react";
+import { Bell, Tag, Percent, Gift, TrendingUp, Search, Filter, Download, Eye, Edit, Trash2, Copy, Calendar, Users, Target, BarChart3, Clock, CheckCircle, XCircle, Send, Megaphone, Sparkles, AlertCircle, Info, ShoppingCart, Truck, Star, Heart, Zap, Award, Palette, Save, Package, MoreVertical } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -932,10 +932,6 @@ export function VendorAdminMarketing({ vendorId, vendorName, vendorAvatar }: Ven
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-slate-900 text-lg">Campaigns ({filteredCampaigns.length})</h3>
                 <div className="flex items-center gap-2">
-                  <Button onClick={() => setCurrentView("add")} className="h-9 bg-slate-900 hover:bg-slate-800">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Campaign
-                  </Button>
                   {campaigns.length > 0 && (
                     <Button 
                       variant="outline" 
@@ -1031,11 +1027,7 @@ export function VendorAdminMarketing({ vendorId, vendorName, vendorAvatar }: Ven
                 <Target className="w-8 h-8 text-slate-400" />
               </div>
               <h3 className="text-lg font-semibold text-slate-900 mb-2">No campaigns found</h3>
-              <p className="text-slate-600 mb-6">Get started by creating your first campaign</p>
-              <Button onClick={() => setCurrentView("add")} className="bg-slate-900 hover:bg-slate-800">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Campaign
-              </Button>
+              <p className="text-slate-600">Try adjusting your filters or check back later.</p>
             </Card>
           )}
 

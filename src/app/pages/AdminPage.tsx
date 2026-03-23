@@ -19,7 +19,6 @@ import { Vendor } from "../components/Vendor";
 import { VendorProfile } from "../components/VendorProfile";
 import { VendorApplications } from "../components/VendorApplications";
 import { VendorPromotions } from "../components/VendorPromotions";
-import { VendorStoreView } from "../components/VendorStoreView";
 import { Collaborator } from "../components/Collaborator";
 import { CollaboratorProfile } from "../components/CollaboratorProfile";
 import { CollaboratorApplications } from "../components/CollaboratorApplications";
@@ -450,7 +449,26 @@ export function AdminPage() {
       case ADMIN_PAGES.VENDOR_PROMOTIONS:
         return <VendorPromotions />;
       case ADMIN_PAGES.VENDOR_STORE_VIEW:
-        return <VendorStoreView />;
+        return (
+          <div className="p-8 max-w-lg">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+              Vendor storefront preview
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+              Open a specific vendor&apos;s shop from the marketplace URL{" "}
+              <code className="text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">/store/&lt;vendor&gt;</code>
+              , or use <strong>Preview store</strong> on a vendor in the Vendors list. This admin section does not
+              embed a store without choosing which vendor.
+            </p>
+            <button
+              type="button"
+              className="text-sm font-medium text-amber-700 hover:underline"
+              onClick={() => navigate("/admin/vendors")}
+            >
+              Go to Vendors
+            </button>
+          </div>
+        );
       case ADMIN_PAGES.COLLABORATOR:
         return <Collaborator />;
       case ADMIN_PAGES.COLLABORATOR_PROFILE:

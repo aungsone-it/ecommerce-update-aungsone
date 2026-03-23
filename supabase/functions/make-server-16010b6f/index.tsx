@@ -182,7 +182,8 @@ app.use("*", async (c, next) => {
       c.req.url.includes('/health') ||
       c.req.url.includes('/stats') ||
       c.req.url.includes('/vendors') ||
-      c.req.url.includes('/campaigns')) {
+      c.req.url.includes('/campaigns') ||
+      c.req.url.includes('/bulk-assign-vendor')) {
     return await next();
   }
   
@@ -1966,9 +1967,8 @@ app.post("/make-server-16010b6f/vendor-auth/login", async (c) => {
     
     console.log(`🔐 [VendorAuth] Login attempt for: ${email}`);
     
-    // Get all vendors - kv.getByPrefix already has 30s timeout
-    const vendors = await kv.getByPrefix("vendor:");
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    // Vendor profiles only (excludes vendor:audience:* KV rows)
+    const validVendors = await kv.getVendorProfiles();
     
     // Find vendor by email
     const vendor = validVendors.find((v: any) => v.email?.toLowerCase() === email.toLowerCase());
@@ -2034,9 +2034,7 @@ app.post("/make-server-16010b6f/vendor-auth/verify-email", async (c) => {
     
     console.log(`🔍 [VendorAuth] Verifying email for setup: ${email}`);
     
-    // Get all vendors - kv.getByPrefix already has 30s timeout
-    const vendors = await kv.getByPrefix("vendor:");
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await kv.getVendorProfiles();
     
     // Find vendor by email
     const vendor = validVendors.find((v: any) => v.email?.toLowerCase() === email.toLowerCase());
@@ -2105,9 +2103,7 @@ app.post("/make-server-16010b6f/vendor-auth/setup-credentials", async (c) => {
     
     console.log(`🔐 [VendorAuth] Setting up credentials for: ${email}`);
     
-    // Get all vendors - kv.getByPrefix already has 30s timeout
-    const vendors = await kv.getByPrefix("vendor:");
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await kv.getVendorProfiles();
     
     // Find vendor by email
     const vendor = validVendors.find((v: any) => v.email?.toLowerCase() === email.toLowerCase());
@@ -2405,6 +2401,61 @@ app.get("/make-server-16010b6f/products", async (c) => {
   }
 });
 
+/**
+ * Assign one vendor to many platform products in one request (super admin vendor profile).
+ * Avoids N parallel PUTs each scanning all products for SKU uniqueness (timeouts / failures).
+ */
+app.post("/make-server-16010b6f/products/bulk-assign-vendor", async (c) => {
+  try {
+    const body = await c.req.json();
+    const vendorId = String(body.vendorId ?? "").trim();
+    const productIds = Array.isArray(body.productIds) ? body.productIds : [];
+    if (!vendorId || productIds.length === 0) {
+      return c.json({ error: "vendorId and non-empty productIds[] are required" }, 400);
+    }
+
+    const results: { productId: string; ok: boolean; error?: string }[] = [];
+    for (const rawId of productIds) {
+      const pid = String(rawId ?? "").trim();
+      if (!pid) continue;
+      try {
+        const existing = await withTimeout(kv.get(`product:${pid}`), 8000).catch(() => null);
+        if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+          results.push({ productId: pid, ok: false, error: "not_found" });
+          continue;
+        }
+        const existingSel = Array.isArray((existing as any).selectedVendors)
+          ? [...(existing as any).selectedVendors]
+          : [];
+        if (!existingSel.includes(vendorId)) existingSel.push(vendorId);
+        const updated = {
+          ...(existing as object),
+          selectedVendors: existingSel,
+          updatedAt: new Date().toISOString(),
+        };
+        await withTimeout(kv.set(`product:${pid}`, updated), 8000);
+        results.push({ productId: pid, ok: true });
+      } catch (e: any) {
+        results.push({ productId: pid, ok: false, error: String(e?.message || e) });
+      }
+    }
+
+    invalidateDashboardCache();
+    clearCache("products");
+
+    const updated = results.filter((r) => r.ok).length;
+    return c.json({
+      success: updated > 0,
+      updated,
+      failed: results.length - updated,
+      results,
+    });
+  } catch (error: any) {
+    console.error("❌ bulk-assign-vendor:", error);
+    return c.json({ error: error?.message || "Failed to assign products" }, 500);
+  }
+});
+
 app.get("/make-server-16010b6f/products/:id", async (c) => {
   try {
     const id = c.req.param("id");
@@ -2563,6 +2614,7 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
   try {
     const id = c.req.param("id");
     const body = await c.req.json();
+    const { _addToSelectedVendors, selectedVendors: bodySelectedVendors, ...restPatch } = body;
     
     console.log(`🔄 Updating product: ${id}`);
     
@@ -2573,20 +2625,20 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
     }
     
     // Format price properly for storage and display
-    let formattedPrice = body.price || existingProduct.price;
-    if (body.price !== undefined) {
-      if (typeof body.price === 'number') {
-        formattedPrice = `$${body.price.toFixed(2)}`;
-      } else if (typeof body.price === 'string' && !body.price.startsWith('$')) {
-        const numPrice = parseFloat(body.price);
+    let formattedPrice = restPatch.price !== undefined ? restPatch.price : existingProduct.price;
+    if (restPatch.price !== undefined) {
+      if (typeof restPatch.price === 'number') {
+        formattedPrice = `$${restPatch.price.toFixed(2)}`;
+      } else if (typeof restPatch.price === 'string' && !restPatch.price.startsWith('$')) {
+        const numPrice = parseFloat(restPatch.price);
         formattedPrice = isNaN(numPrice) ? '$0.00' : `$${numPrice.toFixed(2)}`;
       }
     }
     
     // Format variant prices if variants exist
-    let formattedVariants = body.variants || existingProduct.variants;
-    if (body.variants && Array.isArray(body.variants)) {
-      formattedVariants = body.variants.map((variant: any) => {
+    let formattedVariants = restPatch.variants || existingProduct.variants;
+    if (restPatch.variants && Array.isArray(restPatch.variants)) {
+      formattedVariants = restPatch.variants.map((variant: any) => {
         let variantPrice = variant.price;
         if (typeof variant.price === 'number') {
           variantPrice = `$${variant.price.toFixed(2)}`;
@@ -2602,20 +2654,32 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
     }
     
     // ✅ Ensure description is properly encoded for Unicode (Burmese text)
-    const safeDescription = body.description !== undefined 
-      ? String(body.description) 
+    const safeDescription = restPatch.description !== undefined 
+      ? String(restPatch.description) 
       : (existingProduct.description || '');
     
+    const existingSel = Array.isArray(existingProduct.selectedVendors) ? [...existingProduct.selectedVendors] : [];
+    let nextSelectedVendors = existingSel;
+    if (_addToSelectedVendors === true && Array.isArray(bodySelectedVendors)) {
+      const set = new Set(existingSel.map(String));
+      for (const v of bodySelectedVendors) {
+        if (v != null && String(v).trim()) set.add(String(v).trim());
+      }
+      nextSelectedVendors = [...set];
+    } else if (bodySelectedVendors !== undefined) {
+      nextSelectedVendors = Array.isArray(bodySelectedVendors) ? bodySelectedVendors : existingSel;
+    }
+
     const updatedProduct = {
       ...existingProduct,
-      ...body,
+      ...restPatch,
       variants: formattedVariants, // Use formatted variants
       id,
       price: formattedPrice, // Store formatted price
-      name: body.title || body.name || existingProduct.name, // Ensure name field exists
+      name: restPatch.title || restPatch.name || existingProduct.name, // Ensure name field exists
       description: safeDescription, // ✅ Safe Unicode description
-      commissionRate: body.commissionRate !== undefined ? parseFloat(body.commissionRate) : (existingProduct.commissionRate || 0), // 🔥 Product-level commission rate (%)
-      selectedVendors: body.selectedVendors || existingProduct.selectedVendors || [], // 🔥 Multi-vendor support
+      commissionRate: restPatch.commissionRate !== undefined ? parseFloat(restPatch.commissionRate) : (existingProduct.commissionRate || 0), // 🔥 Product-level commission rate (%)
+      selectedVendors: nextSelectedVendors,
       updatedAt: new Date().toISOString(),
     };
     
@@ -2631,13 +2695,20 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
       commissionRateType: typeof updatedProduct.commissionRate, // 🔥 Check type
     });
     
-    // Check SKU uniqueness
-    const skuCheck = await checkSkuUniqueness(updatedProduct.sku, id);
-    if (!skuCheck.isUnique) {
-      return c.json({ 
-        error: "SKU already exists",
-        details: `SKU "${updatedProduct.sku}" is already used in product: ${skuCheck.existingProduct?.id}`
-      }, 409);
+    // Super-admin vendor assignment: only selectedVendors/_add (skip full-catalog SKU scan — avoids timeouts)
+    const patchKeys = Object.keys(body || {});
+    const isVendorOnlyUpdate =
+      patchKeys.length > 0 &&
+      patchKeys.every((k) => k === "selectedVendors" || k === "_addToSelectedVendors");
+
+    if (!isVendorOnlyUpdate) {
+      const skuCheck = await checkSkuUniqueness(updatedProduct.sku, id);
+      if (!skuCheck.isUnique) {
+        return c.json({ 
+          error: "SKU already exists",
+          details: `SKU "${updatedProduct.sku}" is already used in product: ${skuCheck.existingProduct?.id}`
+        }, 409);
+      }
     }
     
     // Log payload size for debugging
@@ -2663,6 +2734,7 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
       
       // 🗑️ Invalidate dashboard cache since we updated a product
       invalidateDashboardCache();
+      clearCache("products");
       
       return c.json({ 
         success: true,
@@ -4109,8 +4181,7 @@ app.post("/make-server-16010b6f/vendors/validate", async (c) => {
     const errors: { email?: string; phone?: string } = {};
     
     // Get all vendors for validation
-    const vendors = await withTimeout(kv.getByPrefix("vendor:"), 5000);
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await withTimeout(kv.getVendorProfiles(), 5000);
     
     // Check email if provided
     if (email && email.trim()) {
@@ -4163,8 +4234,7 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
     }
     
     // Fetch all vendors and find by slug or ID
-    const vendors = await withTimeout(kv.getByPrefix("vendor:"), 5000);
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await withTimeout(kv.getVendorProfiles(), 5000);
     
     console.log(`🔍 Searching ${validVendors.length} vendors for slug: ${slug}`);
     
@@ -4259,16 +4329,14 @@ app.get("/make-server-16010b6f/vendors", async (c) => {
   try {
     console.log("👥 Fetching vendors...");
     
-    // Check cache first
-    const cached = getCached("vendors", 60000); // Cache for 60 seconds
+    // Check cache first (v2 key: excludes legacy cached responses that included vendor:audience:* rows)
+    const cached = getCached("vendors_list_v2", 60000); // Cache for 60 seconds
     if (cached) {
       console.log("⚡ Returning cached vendors");
       return c.json(cached);
     }
     
-    // kv.getByPrefix already has 30s timeout, no need to wrap
-    const vendors = await kv.getByPrefix("vendor:");
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await kv.getVendorProfiles();
     
     // Fetch all vendor settings
     const allSettings = await kv.getByPrefix("vendor_settings:");
@@ -4291,7 +4359,7 @@ app.get("/make-server-16010b6f/vendors", async (c) => {
     };
     
     // Cache the result
-    setCache("vendors", response);
+    setCache("vendors_list_v2", response);
     
     return c.json(response);
   } catch (error) {
@@ -4300,7 +4368,7 @@ app.get("/make-server-16010b6f/vendors", async (c) => {
       vendors: [],
       total: 0
     };
-    setCache("vendors", errorResponse); // Cache to prevent repeated failures
+    setCache("vendors_list_v2", errorResponse); // Cache to prevent repeated failures
     return c.json(errorResponse, 200); // Return 200 instead of 500
   }
 });
@@ -4308,10 +4376,18 @@ app.get("/make-server-16010b6f/vendors", async (c) => {
 app.post("/make-server-16010b6f/vendors", async (c) => {
   try {
     const body = await c.req.json();
+
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const email = typeof body.email === "string" ? body.email.trim() : "";
+    if (!name || !email) {
+      return c.json(
+        { error: "Vendor name and email are required and cannot be empty" },
+        400
+      );
+    }
     
     // 🔥 Check for duplicate email and phone
-    const vendors = await withTimeout(kv.getByPrefix("vendor:"), 5000);
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await withTimeout(kv.getVendorProfiles(), 5000);
     
     // Check if vendor with this email already exists
     if (body.email && body.email.trim()) {
@@ -4343,7 +4419,10 @@ app.post("/make-server-16010b6f/vendors", async (c) => {
     
     const vendorData = {
       ...body,
+      name,
+      email,
       id,
+      status: body.status && typeof body.status === "string" ? body.status : "pending",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -4351,7 +4430,7 @@ app.post("/make-server-16010b6f/vendors", async (c) => {
     await withTimeout(kv.set(`vendor:${id}`, vendorData), 5000);
     
     // Create default vendor settings with store name from business name
-    const storeName = body.businessName || body.name || "Vendor Store";
+    const storeName = (typeof body.businessName === "string" && body.businessName.trim()) || name || "Vendor Store";
     // Generate a friendly slug from the store name
     const baseSlug = storeName
       .toLowerCase()
@@ -4428,6 +4507,7 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
     
     // Clear vendor cache
     serverCache.delete("vendors");
+    serverCache.delete("vendors_list_v2");
     serverCache.delete(`vendor_by_slug:${vendorSettings?.storeSlug}`);
     
     return c.json({ 
@@ -4689,6 +4769,7 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
     // 🔥 Clear vendor list cache to force refresh
     try {
       await withTimeout(kv.del("vendors"), 5000);
+      clearCache("vendors_list_v2");
       console.log("🔄 Cleared vendor list cache after vendor update");
     } catch (cacheError) {
       console.warn("⚠️ Failed to clear vendor cache, but vendor update succeeded:", cacheError);
@@ -4716,8 +4797,7 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
 app.delete("/make-server-16010b6f/vendors/all/clear", async (c) => {
   try {
     console.log("🗑️ Clearing all vendors...");
-    const vendors = await withTimeout(kv.getByPrefix("vendor:"), 8000);
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await withTimeout(kv.getVendorProfiles(), 8000);
     
     // Delete each vendor
     for (const vendor of validVendors) {
@@ -5789,7 +5869,7 @@ app.get("/make-server-16010b6f/landing-stats", async (c) => {
     
     // Fetch vendors, products, and customers in parallel
     const [vendors, products, customers] = await Promise.all([
-      withTimeout(kv.getByPrefix("vendor:"), 25000).catch(() => []),
+      withTimeout(kv.getVendorProfiles(), 25000).catch(() => []),
       withTimeout(kv.getByPrefix("product:"), 25000).catch(() => []),
       withTimeout(kv.getByPrefix("customer:"), 25000).catch(() => []),
     ]);
@@ -5846,7 +5926,7 @@ app.get("/make-server-16010b6f/finances/analytics", async (c) => {
     // Fetch orders, vendors, and products in parallel
     const [orders, vendors, products] = await Promise.all([
       withTimeout(kv.getByPrefix("order:"), 30000).catch(() => []),
-      withTimeout(kv.getByPrefix("vendor:"), 30000).catch(() => []),
+      withTimeout(kv.getVendorProfiles(), 30000).catch(() => []),
       withTimeout(kv.getByPrefix("product:"), 30000).catch(() => []), // 🔥 Fetch products for commission rates
     ]);
 
@@ -6541,6 +6621,7 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
       
       // 🔥 INVALIDATE VENDORS CACHE so the updated logo appears immediately
       clearCache("vendors");
+      clearCache("vendors_list_v2");
       console.log(`🗑️ Cleared vendors cache after logo sync`);
     }
 
@@ -6717,8 +6798,7 @@ app.get("/make-server-16010b6f/admin/vendor-domains", async (c) => {
     console.log("🌐 Fetching all vendor custom domains...");
 
     // Get all vendors
-    const vendors = await kv.getByPrefix("vendor:");
-    const validVendors = Array.isArray(vendors) ? vendors.filter(v => v != null) : [];
+    const validVendors = await kv.getVendorProfiles();
 
     // Get all vendor storefront settings
     const allSettings = await kv.getByPrefix("vendor_storefront_");
@@ -7098,6 +7178,189 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
       orders: [],
       total: 0 
     }, 500);
+  }
+});
+
+/**
+ * Track a global customer account as belonging to this vendor's audience (login/register on vendor storefront).
+ * KV: vendor:audience:{vendorId} → array of { email, userId, name, phone, avatar, firstSeenAt, lastSeenAt, lastEvent }
+ */
+app.post("/make-server-16010b6f/vendor/audience/:vendorId/track", async (c) => {
+  try {
+    const vendorId = c.req.param("vendorId");
+    const body = await c.req.json();
+    const { email, userId, name, phone, avatar, event } = body as Record<string, string | undefined>;
+
+    if (!email || typeof email !== "string" || !email.trim()) {
+      return c.json({ error: "email is required" }, 400);
+    }
+
+    const vendor = await withTimeout(kv.get(`vendor:${vendorId}`), 5000).catch(() => null);
+    if (!vendor) {
+      return c.json({ error: "Vendor not found" }, 404);
+    }
+
+    const normEmail = email.trim().toLowerCase();
+    const storageKey = `vendor:audience:${vendorId}`;
+    let list: any[] = (await withTimeout(kv.get(storageKey), 5000).catch(() => [])) || [];
+    if (!Array.isArray(list)) list = [];
+
+    const now = new Date().toISOString();
+    const idx = list.findIndex((r: any) => (r?.email || "").toLowerCase() === normEmail);
+    const lastEvent = event === "register" ? "register" : "login";
+
+    const nextRecord = {
+      email: normEmail,
+      userId: userId || (idx >= 0 ? list[idx].userId : undefined),
+      name: name || (idx >= 0 ? list[idx].name : undefined),
+      phone: phone || (idx >= 0 ? list[idx].phone : undefined),
+      avatar: avatar || (idx >= 0 ? list[idx].avatar : undefined),
+      firstSeenAt: idx >= 0 ? list[idx].firstSeenAt || now : now,
+      lastSeenAt: now,
+      lastEvent,
+    };
+
+    if (idx >= 0) list[idx] = { ...list[idx], ...nextRecord };
+    else list.push(nextRecord);
+
+    await withTimeout(kv.set(storageKey, list), 5000);
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error("❌ vendor audience track:", error);
+    return c.json({ error: error.message || "Failed to track" }, 500);
+  }
+});
+
+/**
+ * Vendor admin: customers who registered/logged in on this storefront OR placed an order with this vendor.
+ */
+app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
+  try {
+    const vendorId = c.req.param("vendorId");
+
+    const vendor = await withTimeout(kv.get(`vendor:${vendorId}`), 5000).catch(() => null);
+    if (!vendor) {
+      return c.json({ error: "Vendor not found", customers: [] }, 404);
+    }
+
+    const storageKey = `vendor:audience:${vendorId}`;
+    let audience: any[] = (await withTimeout(kv.get(storageKey), 5000).catch(() => [])) || [];
+    if (!Array.isArray(audience)) audience = [];
+
+    const allOrders = await withRetry(
+      () => kv.getByPrefix("order:"),
+      2,
+      2000
+    );
+
+    const vendorOrders = (allOrders || []).filter((order: any) => {
+      if (!order || !order.items) return false;
+      return order.items.some((item: any) => item.vendorId === vendorId);
+    });
+
+    type Agg = {
+      email: string;
+      name: string;
+      orderCount: number;
+      totalSpent: number;
+    };
+    const byEmail = new Map<string, Agg>();
+
+    for (const order of vendorOrders) {
+      const raw =
+        order.email ||
+        order.customerEmail ||
+        (typeof order.customer === "object" && order.customer?.email) ||
+        "";
+      const em = String(raw).trim().toLowerCase();
+      if (!em) continue;
+
+      const custName =
+        order.customerName ||
+        order.customer ||
+        (typeof order.customer === "object" ? order.customer?.name || order.customer?.fullName : "") ||
+        em.split("@")[0];
+
+      const vendorItems = order.items.filter((item: any) => item.vendorId === vendorId);
+      const vendorTotal = vendorItems.reduce((sum: number, item: any) => {
+        const itemPrice =
+          typeof item.price === "number"
+            ? item.price
+            : parseFloat(String(item.price || "0").replace("$", "")) || 0;
+        return sum + itemPrice * (item.quantity || 1);
+      }, 0);
+
+      const prev = byEmail.get(em);
+      if (prev) {
+        prev.orderCount += 1;
+        prev.totalSpent += vendorTotal;
+        if (!prev.name && custName) prev.name = String(custName);
+      } else {
+        byEmail.set(em, {
+          email: em,
+          name: String(custName || em.split("@")[0]),
+          orderCount: 1,
+          totalSpent: vendorTotal,
+        });
+      }
+    }
+
+    const audienceByEmail = new Map<string, any>();
+    for (const row of audience) {
+      if (!row?.email) continue;
+      audienceByEmail.set(String(row.email).toLowerCase().trim(), row);
+    }
+
+    const allEmails = new Set<string>([...byEmail.keys(), ...audienceByEmail.keys()]);
+
+    const customers = [...allEmails].map((em) => {
+      const ord = byEmail.get(em);
+      const aud = audienceByEmail.get(em);
+      const name =
+        aud?.name ||
+        ord?.name ||
+        em.split("@")[0];
+      const totalOrders = ord?.orderCount || 0;
+      const totalSpent = ord?.totalSpent || 0;
+      const avgOrder = totalOrders > 0 ? totalSpent / totalOrders : 0;
+
+      let segment = "New";
+      if (totalOrders >= 3 || totalSpent >= 500000) segment = "Champions";
+      else if (totalOrders > 0) segment = "Active";
+
+      const tags: string[] = [];
+      if (aud) tags.push("Storefront");
+      if (totalOrders > 0) tags.push("Purchased");
+
+      const id = aud?.userId || `email:${em}`;
+
+      return {
+        id,
+        name,
+        email: em,
+        phone: aud?.phone || "",
+        role: "customer" as const,
+        status: "active" as const,
+        avatar: aud?.avatar || undefined,
+        joinedDate: aud?.firstSeenAt || new Date().toISOString(),
+        totalOrders,
+        totalSpent,
+        avgOrder,
+        segment,
+        tags,
+        isNew: totalOrders === 0 && !!aud,
+      };
+    });
+
+    customers.sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0));
+
+    return c.json({ success: true, customers, total: customers.length });
+  } catch (error: any) {
+    console.error("❌ vendor audience get:", error);
+    return c.json(
+      { error: error.message || "Failed to load customers", customers: [], total: 0 },
+      500
+    );
   }
 });
 
@@ -8209,9 +8472,8 @@ app.post("/make-server-16010b6f/admin/fix-vendor-slugs", async (c) => {
   try {
     console.log("🔧 Starting vendor slug fix...");
     
-    // Get all vendors
-    const vendors = await kv.getByPrefix("vendor:");
-    const validVendors = vendors.filter((v: any) => v && v.id);
+    // Get all vendors (excludes vendor:audience:*)
+    const validVendors = (await kv.getVendorProfiles()).filter((v: any) => v && v.id);
     
     console.log(`Found ${validVendors.length} vendors to process`);
     

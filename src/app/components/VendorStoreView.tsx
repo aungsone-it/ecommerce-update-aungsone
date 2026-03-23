@@ -1,7 +1,7 @@
 // Minimalist Vendor Storefront - MVP Design
 import { moduleCache, CACHE_KEYS, fetchVendorProducts, fetchVendorCategories } from "../utils/module-cache";
 import { ProductCard } from "./ProductCard";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { 
   ShoppingCart, 
@@ -157,6 +157,62 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
   });
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  /** Pass 'register' from handleRegister before setUser; cleared after track. */
+  const lastAuthEventRef = useRef<"login" | "register" | null>(null);
+  const audienceTrackedKeyRef = useRef<string>("");
+
+  const trackVendorAudience = useCallback(
+    async (userData: any, event: "login" | "register") => {
+      if (!vendorId || !userData?.email) return;
+      try {
+        let avatar: string | undefined;
+        for (const c of [
+          userData?.profileImageUrl,
+          userData?.avatarUrl,
+          userData?.avatar,
+          userData?.profileImage,
+        ]) {
+          if (typeof c === "string" && c.trim().startsWith("http")) {
+            avatar = c.trim();
+            break;
+          }
+        }
+        await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/audience/${vendorId}/track`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${publicAnonKey}`,
+            },
+            body: JSON.stringify({
+              email: userData.email,
+              userId: userData.id,
+              name: userData.name || userData.fullName,
+              phone: userData.phone,
+              avatar,
+              event,
+            }),
+          }
+        );
+      } catch (e) {
+        console.warn("[VendorStore] audience track failed:", e);
+      }
+    },
+    [vendorId]
+  );
+
+  // Register this global account with this vendor when the user session is available (login/register or return visit).
+  useEffect(() => {
+    if (!user?.email || !vendorId) return;
+    const key = `${vendorId}::${user.email}`;
+    if (audienceTrackedKeyRef.current === key) return;
+    audienceTrackedKeyRef.current = key;
+    const ev = lastAuthEventRef.current;
+    lastAuthEventRef.current = null;
+    void trackVendorAudience(user, ev || "login");
+  }, [user, vendorId, trackVendorAudience]);
+
   // Load user from localStorage on mount
   useEffect(() => {
     const storedUser = localStorage.getItem('migoo-user');
@@ -260,7 +316,8 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
     try {
       const response = await authApi.login(authForm.email, authForm.password);
       const userData = response.user;
-      
+
+      lastAuthEventRef.current = "login";
       setUser(userData);
       localStorage.setItem('migoo-user', JSON.stringify(userData));
       
@@ -291,7 +348,8 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
         profileImage
       );
       const userData = response.user;
-      
+
+      lastAuthEventRef.current = "register";
       setUser(userData);
       localStorage.setItem('migoo-user', JSON.stringify(userData));
       
@@ -307,6 +365,7 @@ export function VendorStoreView({ vendorId, storeSlug, onBack, initialProductSlu
   };
 
   const handleLogout = () => {
+    audienceTrackedKeyRef.current = "";
     setUser(null);
     localStorage.removeItem('migoo-user');
     setVendorViewMode("storefront");

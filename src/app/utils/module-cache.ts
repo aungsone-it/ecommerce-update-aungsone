@@ -287,7 +287,8 @@ export const CACHE_KEYS = {
   STOREFRONT_SETTINGS: 'storefront-settings',
   
   // SECURE Admin
-  ADMIN_VENDORS: 'admin-vendors',
+  /** Bump when vendor list semantics change (e.g. API no longer returns audience rows as vendors). */
+  ADMIN_VENDORS: 'admin-vendors-v2',
   ADMIN_PRODUCTS: 'admin-products',
   ADMIN_ORDERS: 'admin-orders',
   

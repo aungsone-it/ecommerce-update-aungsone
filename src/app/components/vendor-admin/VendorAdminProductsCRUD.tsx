@@ -306,17 +306,11 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
             {searchQuery ? "No products found" : "No products yet"}
           </h3>
-          <p className="text-slate-600 mb-4">
+          <p className="text-slate-600">
             {searchQuery 
               ? "Try adjusting your search" 
               : "Start by adding your first product to your store"}
           </p>
-          {!searchQuery && (
-            <Button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Your First Product
-            </Button>
-          )}
         </Card>
       ) : (
         <Card>

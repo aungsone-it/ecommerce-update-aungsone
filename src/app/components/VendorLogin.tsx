@@ -118,8 +118,9 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
     // If successful, VendorAuthContext will handle the state update
   };
 
-  const handleBackToHome = () => {
-    navigate('/');
+  /** Browser back: return to the last visited page (same as clicking the browser Back control). */
+  const handleBack = () => {
+    navigate(-1);
   };
 
   return (
@@ -153,7 +154,9 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
           {/* Back Arrow */}
           <button 
             type="button"
-            onClick={handleBackToHome}
+            onClick={handleBack}
+            aria-label="Go back to previous page"
+            title="Back"
             className="mb-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />

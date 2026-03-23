@@ -64,15 +64,16 @@ let cachedVendors: any[] = [];
 
 interface Vendor {
   id: string;
-  name: string;
-  email: string;
-  phone: string;
-  location: string;
-  status: VendorStatus;
+  name?: string;
+  email?: string;
+  phone?: string;
+  location?: string;
+  status?: VendorStatus;
   productsCount: number;
   totalRevenue: number;
   commission: number;
-  joinedDate: string;
+  joinedDate?: string;
+  createdAt?: string;
   avatar: string;
   logo?: string; // 🔥 Logo from vendor storefront settings
   businessType?: string;
@@ -81,6 +82,57 @@ interface Vendor {
 }
 
 const mockVendors: Vendor[] = [];
+
+function safeLower(value: unknown): string {
+  return String(value ?? "").toLowerCase();
+}
+
+function safeNumber(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+const KNOWN_VENDOR_STATUSES: VendorStatus[] = [
+  "active",
+  "inactive",
+  "pending",
+  "suspended",
+  "banned",
+];
+
+function isKnownVendorStatus(status: unknown): status is VendorStatus {
+  return typeof status === "string" && KNOWN_VENDOR_STATUSES.includes(status as VendorStatus);
+}
+
+/** Missing or invalid API status — not the same as workflow "pending". */
+function effectiveVendorStatus(vendor: Vendor): VendorStatus | "incomplete" {
+  return isKnownVendorStatus(vendor.status) ? vendor.status : "incomplete";
+}
+
+function vendorDisplayName(vendor: Vendor & { id?: string }): string {
+  const raw = typeof vendor.name === "string" ? vendor.name.trim() : "";
+  if (raw) return raw;
+  const id = vendor.id || "";
+  return id ? `Unnamed (${id.length > 20 ? `${id.slice(0, 18)}…` : id})` : "Unnamed vendor";
+}
+
+function vendorDisplayJoined(vendor: Vendor & { createdAt?: string }): string {
+  const j = vendor.joinedDate;
+  if (typeof j === "string" && j.trim()) return j;
+  const c = vendor.createdAt;
+  if (typeof c === "string" && c.trim()) {
+    try {
+      return new Date(c).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return "—";
+    }
+  }
+  return "—";
+}
 
 interface VendorProps {
   onPreviewVendorStore?: (vendorId: string, storeSlug: string, vendor: Vendor) => void;
@@ -91,7 +143,7 @@ interface VendorProps {
 export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicationsCount }: VendorProps = {}) {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<VendorStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<VendorStatus | "all" | "incomplete">("all");
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -113,11 +165,17 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
     status: "active" as VendorStatus,
   });
 
-  const filteredVendors = vendors.filter(vendor => {
-    const matchesSearch = vendor.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         vendor.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         vendor.location.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || vendor.status === statusFilter;
+  const searchLower = searchQuery.toLowerCase();
+  const filteredVendors = vendors.filter((vendor) => {
+    const matchesSearch =
+      !searchLower ||
+      safeLower(vendor.name).includes(searchLower) ||
+      safeLower(vendor.email).includes(searchLower) ||
+      safeLower(vendor.location).includes(searchLower);
+    const eff = effectiveVendorStatus(vendor);
+    const matchesStatus =
+      statusFilter === "all" ||
+      (statusFilter === "incomplete" ? eff === "incomplete" : eff === statusFilter);
     return matchesSearch && matchesStatus;
   });
 
@@ -137,15 +195,20 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
     }
   };
 
-  const getStatusBadge = (status: VendorStatus) => {
-    const variants: Record<VendorStatus, { color: string; label: string }> = {
+  const getStatusBadge = (vendor: Vendor) => {
+    const eff = effectiveVendorStatus(vendor);
+    const variants: Record<VendorStatus | "incomplete", { color: string; label: string }> = {
       active: { color: "bg-green-100 text-green-700 border-green-200", label: "Active" },
       inactive: { color: "bg-gray-100 text-gray-700 border-gray-200", label: "Inactive" },
       pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Pending" },
       suspended: { color: "bg-orange-100 text-orange-700 border-orange-200", label: "Suspended" },
       banned: { color: "bg-red-100 text-red-700 border-red-200", label: "Banned" },
+      incomplete: {
+        color: "bg-slate-100 text-slate-600 border-slate-200",
+        label: "Incomplete",
+      },
     };
-    const variant = variants[status];
+    const variant = variants[eff];
     return (
       <Badge className={`${variant.color} border`}>
         {variant.label}
@@ -532,8 +595,12 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
     active: vendors.filter(v => v.status === "active").length,
     inactive: vendors.filter(v => v.status === "inactive").length,
     pending: vendors.filter(v => v.status === "pending").length,
-    totalRevenue: vendors.reduce((sum, v) => sum + v.totalRevenue, 0),
-    commissionEarned: vendors.reduce((sum, v) => sum + (v.totalRevenue * v.commission / 100), 0),
+    incomplete: vendors.filter((v) => effectiveVendorStatus(v) === "incomplete").length,
+    totalRevenue: vendors.reduce((sum, v) => sum + safeNumber(v.totalRevenue), 0),
+    commissionEarned: vendors.reduce(
+      (sum, v) => sum + (safeNumber(v.totalRevenue) * safeNumber(v.commission)) / 100,
+      0
+    ),
   };
 
   // 🔥 If viewing applications, show the applications component
@@ -657,7 +724,7 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
       </Card>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         <Card className="p-4 border border-slate-200">
           <div className="flex items-center justify-between">
             <div>
@@ -709,6 +776,18 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
         <Card className="p-4 border border-slate-200">
           <div className="flex items-center justify-between">
             <div>
+              <p className="text-sm text-slate-500">Incomplete</p>
+              <p className="text-2xl font-semibold text-slate-600 mt-1">{stats.incomplete}</p>
+            </div>
+            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-slate-500" />
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-4 border border-slate-200">
+          <div className="flex items-center justify-between">
+            <div>
               <p className="text-sm text-slate-500">{t('vendor.totalRevenue')}</p>
               <p className="text-2xl font-semibold text-slate-900 mt-1">${(stats.totalRevenue / 1000).toFixed(0)}k</p>
             </div>
@@ -748,7 +827,7 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
           </div>
 
           {/* Status Filter */}
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as VendorStatus | "all")}>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as VendorStatus | "all" | "incomplete")}>
             <SelectTrigger className="w-[180px]">
               <Filter className="w-4 h-4 mr-2" />
               <SelectValue placeholder={t('vendor.filterStatus')} />
@@ -758,6 +837,7 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
               <SelectItem value="active">{t('vendor.active')}</SelectItem>
               <SelectItem value="inactive">{t('vendor.inactive')}</SelectItem>
               <SelectItem value="pending">{t('vendor.pending')}</SelectItem>
+              <SelectItem value="incomplete">Incomplete</SelectItem>
               <SelectItem value="suspended">{t('vendor.suspended')}</SelectItem>
               <SelectItem value="banned">{t('vendor.banned')}</SelectItem>
             </SelectContent>
@@ -868,7 +948,10 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredVendors.map((vendor) => (
+                  {filteredVendors.map((vendor) => {
+                    const label = vendorDisplayName(vendor);
+                    const avatarSeed = vendor.id || label;
+                    return (
                     <tr key={vendor.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                       <td className="p-4">
                         <Checkbox
@@ -882,24 +965,24 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
                             {(vendor.logo || vendor.avatar) ? (
                               <img 
                                 src={vendor.logo || vendor.avatar}
-                                alt={vendor.name}
+                                alt={label}
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
                                   // Fallback to DiceBear if image fails to load
-                                  e.currentTarget.src = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${vendor.name}`;
+                                  e.currentTarget.src = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}`;
                                 }}
                               />
                             ) : (
                               <img 
-                                src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${vendor.name}`}
-                                alt={vendor.name}
+                                src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}`}
+                                alt={label}
                                 className="w-full h-full object-cover"
                               />
                             )}
                           </div>
                           <div>
-                            <div className="text-sm font-semibold text-slate-900">{vendor.name}</div>
-                            <div className="text-xs text-slate-500">{vendor.email}</div>
+                            <div className="text-sm font-semibold text-slate-900">{label}</div>
+                            <div className="text-xs text-slate-500">{vendor.email?.trim() || "—"}</div>
                           </div>
                         </div>
                       </td>
@@ -907,37 +990,37 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
                         <div className="flex flex-col gap-1">
                           <div className="flex items-center gap-2 text-sm text-slate-600">
                             <Mail className="w-3.5 h-3.5" />
-                            <span className="truncate max-w-[150px]">{vendor.email}</span>
+                            <span className="truncate max-w-[150px]">{vendor.email?.trim() || "—"}</span>
                           </div>
                           <div className="flex items-center gap-2 text-sm text-slate-600">
                             <Phone className="w-3.5 h-3.5" />
-                            <span>{vendor.phone}</span>
+                            <span>{vendor.phone?.trim() || "—"}</span>
                           </div>
                         </div>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <MapPin className="w-3.5 h-3.5" />
-                          <span>{vendor.location}</span>
+                          <span>{vendor.location?.trim() || "—"}</span>
                         </div>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
                           <Package className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm font-medium text-slate-900">{vendor.productsCount}</span>
+                          <span className="text-sm font-medium text-slate-900">{safeNumber(vendor.productsCount)}</span>
                         </div>
                       </td>
                       <td className="p-4">
-                        <span className="text-sm font-semibold text-slate-900">{vendor.totalRevenue.toLocaleString()} MMK</span>
+                        <span className="text-sm font-semibold text-slate-900">{safeNumber(vendor.totalRevenue).toLocaleString()} MMK</span>
                       </td>
                       <td className="p-4">
-                        <span className="text-sm text-slate-900">{vendor.commission}%</span>
+                        <span className="text-sm text-slate-900">{safeNumber(vendor.commission)}%</span>
                       </td>
                       <td className="p-4">
-                        {getStatusBadge(vendor.status)}
+                        {getStatusBadge(vendor)}
                       </td>
                       <td className="p-4">
-                        <span className="text-sm text-slate-600">{vendor.joinedDate}</span>
+                        <span className="text-sm text-slate-600">{vendorDisplayJoined(vendor)}</span>
                       </td>
                       <td className="p-4">
                         <div className="flex items-center gap-2">
@@ -1008,7 +1091,8 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

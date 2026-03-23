@@ -147,3 +147,59 @@ export const getByPrefix = async (prefix: string): Promise<any[]> => {
 
   return allValues;
 };
+
+/** True for real vendor profile docs under vendor:{id}. Excludes vendor:audience:* (arrays) and bad values. */
+export function isVendorProfileKvEntry(key: string, value: unknown): boolean {
+  if (!key.startsWith("vendor:")) return false;
+  if (key.startsWith("vendor:audience:")) return false;
+  if (value == null || Array.isArray(value) || typeof value !== "object") return false;
+  return true;
+}
+
+/** Same prefix scan as getByPrefix but returns key + value (needed to recover vendor id from key). */
+export const getByPrefixWithKeys = async (
+  prefix: string
+): Promise<{ key: string; value: any }[]> => {
+  const allRows: { key: string; value: any }[] = [];
+  let offset = 0;
+
+  for (;;) {
+    const { data, error } = await withTimeout(
+      supabaseClient
+        .from("kv_store_16010b6f")
+        .select("key, value")
+        .like("key", prefix + "%")
+        .order("key", { ascending: true })
+        .range(offset, offset + PREFIX_PAGE_SIZE - 1),
+      30000
+    );
+    if (error) {
+      throw new Error(error.message);
+    }
+    const rows = data ?? [];
+    for (const row of rows) {
+      allRows.push({ key: row.key, value: row.value });
+    }
+    if (rows.length < PREFIX_PAGE_SIZE) {
+      break;
+    }
+    offset += PREFIX_PAGE_SIZE;
+  }
+
+  return allRows;
+};
+
+/**
+ * Vendor profile records only. getByPrefix("vendor:") incorrectly included vendor:audience:{vendorId}
+ * (arrays), which the admin UI treated as empty vendor rows ("ghost" vendors).
+ */
+export const getVendorProfiles = async (): Promise<any[]> => {
+  const rows = await getByPrefixWithKeys("vendor:");
+  return rows
+    .filter(({ key, value }) => isVendorProfileKvEntry(key, value))
+    .map(({ key, value }) => {
+      const idFromKey = key.slice("vendor:".length);
+      const id = (value as any).id || idFromKey;
+      return { ...(value as any), id };
+    });
+};
