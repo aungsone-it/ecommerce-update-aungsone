@@ -2,7 +2,6 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { createBrowserRouter } from "react-router";
 import { RootLayout } from "./components/RootLayout";
-import { ProtectedLayout } from "./components/ProtectedLayout";
 import { VendorProtectedLayout } from "./components/VendorProtectedLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
@@ -14,6 +13,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { resolveVendorSubdomainStoreSlug } from "./utils/vendorSubdomainHooks";
+import { AdminSubdomainOrSuper } from "./components/AdminSubdomainOrSuper";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
@@ -21,12 +21,6 @@ const LandingPage = lazy(() =>
 );
 const StorefrontPage = lazy(() =>
   import("./pages/StorefrontPage").then((m) => ({ default: m.StorefrontPage }))
-);
-const AdminPage = lazy(() =>
-  import("./pages/AdminPage").then((m) => ({ default: m.AdminPage }))
-);
-const AddCustomerPage = lazy(() =>
-  import("./pages/AddCustomerPage").then((m) => ({ default: m.AddCustomerPage }))
 );
 const VendorApplicationPage = lazy(() =>
   import("./pages/VendorApplicationPage").then((m) => ({ default: m.VendorApplicationPage }))
@@ -190,6 +184,10 @@ export const router = createBrowserRouter([
             element: <AdminSlugFixer />,
           },
           {
+            path: "admin/*",
+            element: <AdminSubdomainOrSuper />,
+          },
+          {
             path: "store/:storeName/admin",
             element: <VendorProtectedLayout />,
             children: [
@@ -263,39 +261,6 @@ export const router = createBrowserRouter([
           {
             path: "*",
             element: <NotFound />,
-          },
-        ],
-      },
-    ],
-  },
-  {
-    path: "/",
-    element: (
-      <ProvidersWrapper>
-        <ProtectedLayout />
-      </ProvidersWrapper>
-    ),
-    errorElement: <NotFound />,
-    children: [
-      {
-        element: (
-          <LazyBoundary>
-            <AnimatedOutlet />
-          </LazyBoundary>
-        ),
-        errorElement: <NotFound />,
-        children: [
-          {
-            path: "admin",
-            element: <AdminPage />,
-          },
-          {
-            path: "admin/:section",
-            element: <AdminPage />,
-          },
-          {
-            path: "admin/customers/add",
-            element: <AddCustomerPage />,
           },
         ],
       },
