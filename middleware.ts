@@ -1,13 +1,13 @@
 /**
  * Vercel Edge Middleware: map vendor subdomains to existing store routes.
  *
- * Example: https://gogo.secure.com/ → internally serves /store/gogo
- *          https://gogo.secure.com/product/x → /store/gogo/product/x
+ * Example: https://gogo.walwal.online/ → internally serves /store/gogo
+ *          https://gogo.walwal.online/product/x → /store/gogo/product/x
  *
- * Apex / www (https://secure.com, https://www.secure.com) → no rewrite (branding + marketplace paths).
+ * Apex / www (https://walwal.online, https://www.walwal.online) → no rewrite (branding + marketplace paths).
  *
- * Set Vercel env: VENDOR_SUBDOMAIN_BASE_DOMAIN=secure.com (your real apex, no protocol)
- * DNS: add *.secure.com CNAME → Vercel (see Vercel project Domains)
+ * Set Vercel env: VENDOR_SUBDOMAIN_BASE_DOMAIN=walwal.online (apex only, no protocol)
+ * DNS: add *.walwal.online → Vercel (A 76.76.21.21 or nameservers; see Vercel Domains)
  */
 import { next, rewrite } from "@vercel/edge";
 
