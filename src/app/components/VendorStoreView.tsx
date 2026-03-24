@@ -149,6 +149,74 @@ function buildVendorProductUrlSegment(product: { name?: string; sku?: string; id
   return product.id;
 }
 
+function safeDecodePathSegment(slug: string): string {
+  try {
+    return decodeURIComponent(slug);
+  } catch {
+    return slug;
+  }
+}
+
+function defaultVariantSelections(product: Product): Record<string, string> {
+  const out: Record<string, string> = {};
+  (product.variantOptions || []).forEach((opt: { name: string; values?: string[] }) => {
+    if (opt.values && opt.values.length > 0) out[opt.name] = opt.values[0];
+  });
+  return out;
+}
+
+function variantSelectionsFromSlug(product: Product, decodedSlug: string): Record<string, string> | null {
+  const variantOptions = product.variantOptions || [];
+  const variants = product.variants || [];
+  if (!product.hasVariants || !variants.length || !variantOptions.length) return null;
+
+  const variant = variants.find(
+    (v: any) =>
+      v?.sku === decodedSlug ||
+      (typeof v?.sku === "string" && v.sku.toLowerCase() === decodedSlug.toLowerCase())
+  );
+  if (!variant) return null;
+
+  const names = variantOptions.map((o: any) => o.name);
+  const vals = [variant.option1, variant.option2, variant.option3].filter(Boolean);
+  const out: Record<string, string> = {};
+  names.forEach((name, i) => {
+    if (vals[i]) out[name] = String(vals[i]);
+  });
+  return Object.keys(out).length ? out : null;
+}
+
+function findMatchingVariant(
+  product: Product,
+  selections: Record<string, string>
+): any | null {
+  if (!product.hasVariants || !product.variants?.length || !product.variantOptions?.length) return null;
+  const optionNames = product.variantOptions.map((o: any) => o.name);
+  const sel = Object.keys(selections).length
+    ? selections
+    : defaultVariantSelections(product);
+  return (
+    product.variants.find((v: any) => {
+      const values = [v.option1, v.option2, v.option3].filter(Boolean);
+      return optionNames.every((name: string, idx: number) => sel[name] === values[idx]);
+    }) ?? null
+  );
+}
+
+function resolveVendorProductFromSlug(products: Product[], decoded: string): Product | undefined {
+  const direct =
+    products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
+    products.find((p) => p.sku === decoded) ||
+    products.find((p) => p.id === decoded);
+  if (direct) return direct;
+  return products.find(
+    (p) =>
+      p.hasVariants &&
+      Array.isArray(p.variants) &&
+      p.variants.some((v: any) => v?.sku === decoded)
+  );
+}
+
 export function VendorStoreView({
   vendorId,
   storeSlug,
@@ -220,15 +288,44 @@ export function VendorStoreView({
   const [storeLogo, setStoreLogo] = useState<string>("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  /** Option name → value; mirrors main marketplace variant picker */
+  const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
+  const [vendorProductImageIndex, setVendorProductImageIndex] = useState(0);
   const [debugInfo, setDebugInfo] = useState<any>(null);
 
   const { addToCart, totalItems, clearCart } = useCart();
 
-  // 🔥 Lightbox State for Product Description Images
-  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  // Product description gallery lightbox (full-screen overlay + prev/next)
+  const [descLightboxOpen, setDescLightboxOpen] = useState(false);
   const [lightboxImages, setLightboxImages] = useState<string[]>([]);
-  const [lightboxIndex, setLightboxIndex] = useState<number>(0);
-  
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  useEffect(() => {
+    if (!descLightboxOpen) return;
+    const len = lightboxImages.length;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setDescLightboxOpen(false);
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setLightboxIndex((i) => Math.max(0, i - 1));
+      }
+      if (e.key === "ArrowRight" && len > 0) {
+        e.preventDefault();
+        setLightboxIndex((i) => Math.min(len - 1, i + 1));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [descLightboxOpen, lightboxImages]);
+
   // 🔐 User Authentication State
   const [user, setUser] = useState<any>(null);
   const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
@@ -1720,18 +1817,9 @@ export function VendorStoreView({
     }
     if (products.length === 0) return;
 
-    const decoded = (() => {
-      try {
-        return decodeURIComponent(slug);
-      } catch {
-        return slug;
-      }
-    })();
+    const decoded = safeDecodePathSegment(slug);
 
-    const product =
-      products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
-      products.find((p) => p.sku === decoded || p.sku === slug) ||
-      products.find((p) => p.id === decoded || p.id === slug);
+    const product = resolveVendorProductFromSlug(products, decoded);
 
     const stillOnProduct =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
@@ -1757,16 +1845,39 @@ export function VendorStoreView({
 
   const handleAddToCart = (product: Product) => {
     try {
-      addToCart({
-        id: product.id,
-        sku: product.sku,
-        name: product.name,
-        price: product.price,
-        image: product.images && product.images.length > 0 ? product.images[0] : '',
-        productId: product.id,
-        inventory: product.inventory,
-        vendorId: vendorId,
-      }, quantity);
+      const selections = selectedProduct?.id === product.id ? vendorVariantSelections : {};
+      const variant = findMatchingVariant(product, selections);
+      const parseNum = (x: unknown, fallback: number) => {
+        if (x == null || x === "") return fallback;
+        const n = typeof x === "number" ? x : parseFloat(String(x).replace(/[^0-9.-]/g, ""));
+        return Number.isFinite(n) ? n : fallback;
+      };
+      const price = variant != null ? parseNum(variant.price, product.price) : product.price;
+      const sku = (variant?.sku as string | undefined) || product.sku;
+      const inventory =
+        variant != null
+          ? typeof variant.inventory === "number"
+            ? variant.inventory
+            : parseNum(variant.inventory, product.inventory)
+          : product.inventory;
+      const image =
+        (variant?.image as string | undefined) ||
+        (product.images && product.images.length > 0 ? product.images[0] : "");
+      const cartId = variant?.sku ? `${product.id}:${String(variant.sku)}` : product.id;
+
+      addToCart(
+        {
+          id: cartId,
+          sku,
+          name: product.name,
+          price,
+          image,
+          productId: product.id,
+          inventory,
+          vendorId: vendorId,
+        },
+        quantity
+      );
       setQuantity(1);
       // Match main storefront: auto-open cart drawer on desktop (md+)
       if (typeof window !== "undefined" && window.innerWidth >= 768) {
@@ -1832,8 +1943,95 @@ export function VendorStoreView({
     return matchesSearch && matchesCategory;
   });
 
+  const vendorDetailDisplay = useMemo(() => {
+    if (!selectedProduct) return null;
+    const v = findMatchingVariant(selectedProduct, vendorVariantSelections);
+    const parseNum = (x: unknown, fallback: number) => {
+      if (x == null || x === "") return fallback;
+      const n = typeof x === "number" ? x : parseFloat(String(x).replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) ? n : fallback;
+    };
+    let images: string[] = [];
+    if (selectedProduct.hasVariants && selectedProduct.variants?.length) {
+      const imgs = selectedProduct.variants
+        .map((x: any) => x?.image)
+        .filter((img: any) => typeof img === "string" && img.length > 0);
+      if (imgs.length > 0) images = [...new Set(imgs)] as string[];
+    }
+    if (images.length === 0) images = selectedProduct.images?.length ? [...selectedProduct.images] : [];
+    const price = v != null ? parseNum(v.price, selectedProduct.price) : selectedProduct.price;
+    let compareAtPrice: number | undefined = selectedProduct.compareAtPrice;
+    if (v != null && v.compareAtPrice != null && v.compareAtPrice !== "") {
+      compareAtPrice = parseNum(v.compareAtPrice, selectedProduct.compareAtPrice ?? 0);
+    }
+    const inventory =
+      v != null
+        ? typeof v.inventory === "number"
+          ? v.inventory
+          : parseNum(v.inventory, selectedProduct.inventory)
+        : selectedProduct.inventory;
+    const sku = (v?.sku as string | undefined) || selectedProduct.sku;
+    return { variant: v, price, compareAtPrice, inventory, sku, images };
+  }, [selectedProduct, vendorVariantSelections]);
+
+  useEffect(() => {
+    setVendorProductImageIndex(0);
+  }, [selectedProduct?.id]);
+
+  useEffect(() => {
+    if (!selectedProduct?.hasVariants || !selectedProduct.variantOptions?.length) {
+      setVendorVariantSelections({});
+      return;
+    }
+    const slug = productSlugFromPath ?? initialProductSlug ?? "";
+    const decoded = slug ? safeDecodePathSegment(slug) : "";
+    const fromSlug = decoded ? variantSelectionsFromSlug(selectedProduct, decoded) : null;
+    setVendorVariantSelections(fromSlug ?? defaultVariantSelections(selectedProduct));
+  }, [selectedProduct?.id, productSlugFromPath, initialProductSlug]);
+
+  useEffect(() => {
+    if (!selectedProduct?.hasVariants || !selectedProduct.variants?.length) return;
+    const v = findMatchingVariant(selectedProduct, vendorVariantSelections);
+    if (!v?.image) return;
+    let images: string[] = [];
+    const raw = selectedProduct.variants
+      .map((x: any) => x?.image)
+      .filter((img: any) => typeof img === "string" && img.length > 0);
+    if (raw.length > 0) images = [...new Set(raw)] as string[];
+    else images = selectedProduct.images?.length ? [...selectedProduct.images] : [];
+    const idx = images.indexOf(v.image as string);
+    if (idx >= 0) setVendorProductImageIndex(idx);
+  }, [selectedProduct, vendorVariantSelections]);
+
+  // Checkout must render before product detail — otherwise selectedProduct keeps the detail view mounted and checkout never shows
+  if (showCheckout) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <Checkout
+          onBack={() => setShowCheckout(false)}
+          storeName={storeName}
+          vendorId={vendorId}
+          vendorName={storeName}
+          accountUser={user}
+        />
+      </div>
+    );
+  }
+
   // Product Detail View (inline, not modal)
   if (selectedProduct && vendorViewMode === "storefront" && !savedPage) {
+    const dd = vendorDetailDisplay;
+    const galleryImages =
+      dd && dd.images.length > 0 ? dd.images : selectedProduct.images?.length ? selectedProduct.images : [];
+    const safeMainIdx =
+      galleryImages.length > 0
+        ? Math.min(Math.max(0, vendorProductImageIndex), galleryImages.length - 1)
+        : 0;
+    const displayPriceVal = dd?.price ?? selectedProduct.price;
+    const displayCompareAt = dd?.compareAtPrice;
+    const displaySkuVal = dd?.sku ?? selectedProduct.sku;
+    const displayInventoryVal = dd?.inventory ?? selectedProduct.inventory;
+
     return (
       <div className="min-h-screen bg-white flex flex-col">
         <ServerStatusBanner 
@@ -2107,17 +2305,27 @@ export function VendorStoreView({
             <div className="space-y-2 sm:space-y-3 md:space-y-4">
               <div className="aspect-square bg-slate-50 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-slate-200 shadow-lg">
                 <img
-                  src={selectedProduct.images[0]}
+                  key={`${selectedProduct.id}-${safeMainIdx}`}
+                  src={galleryImages[safeMainIdx] || selectedProduct.images[0]}
                   alt={selectedProduct.name}
                   className="w-full h-full object-cover"
                 />
               </div>
-              {selectedProduct.images.length > 1 && (
-                <div className="flex gap-2 justify-start">
-                  {selectedProduct.images.slice(1, 5).map((image, idx) => (
-                    <div key={idx} className="w-14 h-14 sm:w-24 sm:h-24 bg-slate-50 rounded-md overflow-hidden border-2 border-slate-200 hover:border-amber-600 transition-all flex-shrink-0 cursor-pointer">
-                      <img src={image} alt={`${selectedProduct.name} ${idx + 2}`} className="w-full h-full object-cover" />
-                    </div>
+              {galleryImages.length > 1 && (
+                <div className="flex gap-2 justify-start flex-wrap">
+                  {galleryImages.map((image, idx) => (
+                    <button
+                      key={`${image}-${idx}`}
+                      type="button"
+                      onClick={() => setVendorProductImageIndex(idx)}
+                      className={`w-14 h-14 sm:w-24 sm:h-24 bg-slate-50 rounded-md overflow-hidden border-2 transition-all flex-shrink-0 ${
+                        idx === safeMainIdx
+                          ? "border-amber-600 ring-2 ring-amber-200"
+                          : "border-slate-200 hover:border-amber-600"
+                      }`}
+                    >
+                      <img src={image} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                    </button>
                   ))}
                 </div>
               )}
@@ -2131,9 +2339,19 @@ export function VendorStoreView({
                   {selectedProduct.category && (
                     <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border border-amber-300 text-xs font-medium px-2.5 py-0.5">{selectedProduct.category}</Badge>
                   )}
-                  <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 text-xs font-medium px-2.5 py-0.5">In Stock</Badge>
+                  <Badge
+                    className={
+                      displayInventoryVal === 0
+                        ? "bg-red-100 text-red-800 hover:bg-red-200 border border-red-300 text-xs font-medium px-2.5 py-0.5"
+                        : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 text-xs font-medium px-2.5 py-0.5"
+                    }
+                  >
+                    {displayInventoryVal === 0 ? "Out of Stock" : "In Stock"}
+                  </Badge>
                 </div>
-                <h1 className="text-sm sm:text-base font-semibold text-slate-900 mb-2 leading-tight">{selectedProduct.sku} {selectedProduct.name || 'Product'}</h1>
+                <h1 className="text-sm sm:text-base font-semibold text-slate-900 mb-2 leading-tight">
+                  {selectedProduct.name || "Product"}
+                </h1>
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="flex items-center gap-0.5">
                     {[...Array(5)].map((_, i) => (
@@ -2150,19 +2368,71 @@ export function VendorStoreView({
               <Card className="bg-gradient-to-br from-slate-50 to-slate-100 shadow-md border-0">
                 <CardContent className="px-4 py-[17px]">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base sm:text-lg font-bold bg-gradient-to-r from-amber-700 to-amber-600 bg-clip-text text-transparent">{formatPriceMMK(selectedProduct.price)}</span>
-                    {selectedProduct.compareAtPrice && (
+                    <span className="text-base sm:text-lg font-bold bg-gradient-to-r from-amber-700 to-amber-600 bg-clip-text text-transparent">
+                      {formatPriceMMK(displayPriceVal)}
+                    </span>
+                    {displayCompareAt != null && displayCompareAt > displayPriceVal && (
                       <>
-                        <span className="text-sm text-slate-400 line-through">{formatPriceMMK(selectedProduct.compareAtPrice)}</span>
+                        <span className="text-sm text-slate-400 line-through">{formatPriceMMK(displayCompareAt)}</span>
                         <Badge className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-0 text-xs">
-                          Save {Math.round(((selectedProduct.compareAtPrice - selectedProduct.price) / selectedProduct.compareAtPrice) * 100)}%
+                          Save {Math.round(((displayCompareAt - displayPriceVal) / displayCompareAt) * 100)}%
                         </Badge>
                       </>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-3 font-medium">SKU: {selectedProduct.sku}</p>
+                  {selectedProduct.hasVariants && (
+                    <p className="text-[11px] text-slate-500 mt-3 font-medium">SKU: {displaySkuVal}</p>
+                  )}
+                  {!selectedProduct.hasVariants && (
+                    <p className="text-[11px] text-slate-500 mt-3 font-medium">SKU: {selectedProduct.sku}</p>
+                  )}
                 </CardContent>
               </Card>
+
+              {selectedProduct.hasVariants &&
+                selectedProduct.variantOptions &&
+                selectedProduct.variantOptions.length > 0 && (
+                  <div className="space-y-6">
+                    {selectedProduct.variantOptions.map((option: { name: string; values: string[] }) => (
+                      <div key={option.name}>
+                        <div className="mb-2.5">
+                          <span className="text-sm font-semibold text-slate-900">{option.name}</span>
+                          {vendorVariantSelections[option.name] && (
+                            <span className="ml-2 text-sm font-normal text-slate-600">
+                              - {vendorVariantSelections[option.name]}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {option.values.map((value: string) => (
+                            <Button
+                              key={value}
+                              type="button"
+                              onClick={() => {
+                                const next = { ...vendorVariantSelections, [option.name]: value };
+                                setVendorVariantSelections(next);
+                                const v = findMatchingVariant(selectedProduct, next);
+                                if (v?.sku && typeof v.sku === "string" && v.sku.trim()) {
+                                  navigate(`${storeBase}/product/${encodeURIComponent(v.sku.trim())}`, {
+                                    replace: true,
+                                  });
+                                }
+                              }}
+                              variant={vendorVariantSelections[option.name] === value ? "default" : "outline"}
+                              className={`min-w-[70px] h-9 text-sm font-medium px-4 ${
+                                vendorVariantSelections[option.name] === value
+                                  ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                  : "border-slate-300 hover:border-slate-400"
+                              }`}
+                            >
+                              {value}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
               {/* Product Details */}
               <Card className="border border-slate-200 shadow-sm">
@@ -2189,20 +2459,20 @@ export function VendorStoreView({
                         <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">Availability</p>
                         <div className="flex items-center gap-2">
                           <p className={`font-medium text-sm ${
-                            selectedProduct.inventory === 0 
+                            displayInventoryVal === 0 
                               ? "text-red-600" 
-                              : selectedProduct.inventory < 10 
+                              : displayInventoryVal < 10 
                                 ? "text-amber-600" 
                                 : "text-emerald-700"
                           }`}>
-                            {selectedProduct.inventory || 0} units
+                            {displayInventoryVal || 0} units
                           </p>
-                          {selectedProduct.inventory === 0 && (
+                          {displayInventoryVal === 0 && (
                             <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">
                               OUT OF STOCK
                             </Badge>
                           )}
-                          {selectedProduct.inventory > 0 && selectedProduct.inventory < 10 && (
+                          {displayInventoryVal > 0 && displayInventoryVal < 10 && (
                             <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-xs">
                               LOW STOCK
                             </Badge>
@@ -2224,29 +2494,29 @@ export function VendorStoreView({
               {/* Action Buttons */}
               <div className="flex gap-2 items-center">
                 <Button
-                  disabled={selectedProduct.inventory === 0}
-                  className={selectedProduct.inventory === 0 
+                  disabled={displayInventoryVal === 0}
+                  className={displayInventoryVal === 0 
                     ? "bg-slate-300 h-10 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
                     : "bg-amber-600 hover:bg-amber-700 h-10 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
                   }
                   onClick={() => {
-                    if (selectedProduct.inventory === 0) return;
+                    if (displayInventoryVal === 0) return;
                     handleAddToCart(selectedProduct);
                   }}
                 >
                   <span className="block leading-none">
-                    {selectedProduct.inventory === 0 ? "OUT OF STOCK" : "ADD TO CART"}
+                    {displayInventoryVal === 0 ? "OUT OF STOCK" : "ADD TO CART"}
                   </span>
                 </Button>
                 <Button 
-                  disabled={selectedProduct.inventory === 0}
+                  disabled={displayInventoryVal === 0}
                   variant="outline"
-                  className={selectedProduct.inventory === 0
+                  className={displayInventoryVal === 0
                     ? "h-10 border-2 border-slate-300 bg-slate-100 text-slate-400 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
                     : "h-10 border-2 border-amber-600 hover:bg-amber-50 hover:border-amber-700 text-amber-700 hover:text-amber-800 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
                   }
                   onClick={() => {
-                    if (selectedProduct.inventory === 0) return;
+                    if (displayInventoryVal === 0) return;
                     // Clear cart first, then add only this product for direct checkout
                     clearCart();
                     handleAddToCart(selectedProduct);
@@ -2314,9 +2584,9 @@ export function VendorStoreView({
                         
                         {/* Gallery Grid for Images */}
                         {(() => {
-                          const imgRegex = /<img[^>]+src="([^">]+)"/g;
+                          const imgRegex = /<img[^>]+src=["']([^"'>]+)["']/gi;
                           const matches = [...selectedProduct.description.matchAll(imgRegex)];
-                          const imageSrcs = matches.map(match => match[1]);
+                          const imageSrcs = [...new Set(matches.map((m) => m[1]))];
                           
                           if (imageSrcs.length > 0) {
                             return (
@@ -2330,7 +2600,7 @@ export function VendorStoreView({
                                       onClick={() => {
                                         setLightboxImages(imageSrcs);
                                         setLightboxIndex(index);
-                                        setLightboxImage(src);
+                                        setDescLightboxOpen(true);
                                       }}
                                     >
                                       <img 
@@ -2393,6 +2663,69 @@ export function VendorStoreView({
           </footer>
         )}
 
+        {/* Description image lightbox — matches marketplace full-screen gallery */}
+        {descLightboxOpen && lightboxImages.length > 0 && (
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 p-3 sm:p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Product image gallery"
+            onClick={() => setDescLightboxOpen(false)}
+          >
+            <button
+              type="button"
+              className="absolute right-3 top-3 z-[210] flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDescLightboxOpen(false);
+              }}
+              aria-label="Close gallery"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <button
+              type="button"
+              disabled={lightboxIndex <= 0}
+              className="absolute left-2 top-1/2 z-[210] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-30 sm:left-4 sm:h-12 sm:w-12"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxIndex((i) => Math.max(0, i - 1));
+              }}
+              aria-label="Previous image"
+            >
+              <ChevronLeft className="h-6 w-6 sm:h-7 sm:w-7" />
+            </button>
+
+            <button
+              type="button"
+              disabled={lightboxIndex >= lightboxImages.length - 1}
+              className="absolute right-2 top-1/2 z-[210] flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-30 sm:right-4 sm:h-12 sm:w-12"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxIndex((i) => Math.min(lightboxImages.length - 1, i + 1));
+              }}
+              aria-label="Next image"
+            >
+              <ChevronRight className="h-6 w-6 sm:h-7 sm:w-7" />
+            </button>
+
+            <div
+              className="relative flex max-h-[90vh] max-w-[min(96vw,1200px)] flex-col items-center justify-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img
+                src={lightboxImages[lightboxIndex]}
+                alt=""
+                className="max-h-[min(85vh,900px)] w-auto max-w-full object-contain shadow-2xl"
+              />
+              <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1.5 text-sm font-medium tabular-nums text-white backdrop-blur-sm">
+                {lightboxIndex + 1} / {lightboxImages.length}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* 🔐 Auth Modal - Available on Product Detail Page */}
         <AuthModal
           isOpen={showAuthModal}
@@ -2404,20 +2737,6 @@ export function VendorStoreView({
           onLogin={handleLogin}
           onRegister={handleRegister}
           isLoading={isAuthLoading}
-        />
-      </div>
-    );
-  }
-
-  // Checkout View
-  if (showCheckout) {
-    return (
-      <div className="min-h-screen bg-white">
-        <Checkout 
-          onBack={() => setShowCheckout(false)}
-          storeName={storeName}
-          vendorId={vendorId}
-          vendorName={storeName}
         />
       </div>
     );

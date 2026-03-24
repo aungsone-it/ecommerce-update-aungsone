@@ -1,10 +1,26 @@
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
-import { useState, useEffect } from "react";
-import { ArrowLeft, CreditCard, ShoppingBag, Check, Package, Truck, MapPin, Mail, Phone, User, Banknote, Wallet, DollarSign, Tag, X, XCircle, CheckCircle, Shield, Clock } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  ChevronLeft,
+  CreditCard,
+  ShoppingBag,
+  Check,
+  Package,
+  MapPin,
+  Phone,
+  Banknote,
+  DollarSign,
+  Tag,
+  X,
+  XCircle,
+  CheckCircle,
+  Shield,
+  Loader2,
+} from "lucide-react";
 import { Button } from "./ui/button";
-import { Card } from "./ui/card";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import { Label } from "./ui/label";
 import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
@@ -35,29 +51,63 @@ function getMigooCustomerFromStorage(): {
   return null;
 }
 
+/** Same ID resolution as VendorStoreView / addresses page (`id` or `userId`). */
+function resolveUserIdFromRecord(u: unknown): string | null {
+  if (!u || typeof u !== "object") return null;
+  const o = u as Record<string, unknown>;
+  const raw = o.id ?? o.userId;
+  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+  return null;
+}
+
 interface CheckoutProps {
   onBack: () => void;
   storeName: string;
   vendorId?: string;
   vendorName?: string;
+  /** Vendor storefront session (migoo-user) — must match addresses page so default shipping loads. */
+  accountUser?: { id?: string; userId?: string; email?: string; name?: string; phone?: string } | null;
 }
 
-export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutProps) {
+export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser = null }: CheckoutProps) {
   const { items, totalPrice, clearCart } = useCart();
   const { user: authUser } = useAuth();
   const migoo = getMigooCustomerFromStorage();
 
-  /** Supabase session user OR KV customer from migoo-user (AuthContext has no KV-only sessions). */
-  const effectiveUser = authUser?.id
-    ? {
-        id: authUser.id,
-        email: authUser.email,
-        name: authUser.name,
-        phone: authUser.phone,
-      }
-    : migoo;
+  /**
+   * Customer id + profile: prefer vendor `accountUser` (same as `/profile/addresses`),
+   * then Supabase session, then raw migoo-user — so `/customers/:id/addresses` matches saved addresses.
+   */
+  const effectiveUser = useMemo(() => {
+    const fromVendor = resolveUserIdFromRecord(accountUser);
+    const fromAuth = authUser?.id ? String(authUser.id) : null;
+    const fromMigoo = migoo?.id ? String(migoo.id) : null;
+    const id = fromVendor || fromAuth || fromMigoo;
+    if (!id) return null;
+    return {
+      id,
+      email: accountUser?.email ?? authUser?.email ?? migoo?.email ?? "",
+      name: accountUser?.name ?? authUser?.name ?? migoo?.name ?? "",
+      phone: accountUser?.phone ?? authUser?.phone ?? migoo?.phone ?? "",
+    };
+  }, [
+    accountUser?.id,
+    accountUser?.userId,
+    accountUser?.email,
+    accountUser?.name,
+    accountUser?.phone,
+    authUser?.id,
+    authUser?.email,
+    authUser?.name,
+    authUser?.phone,
+    migoo?.id,
+    migoo?.email,
+    migoo?.name,
+    migoo?.phone,
+  ]);
 
-  const [step, setStep] = useState<"shipping" | "payment" | "success">("shipping");
+  const [step, setStep] = useState<"checkout" | "success">("checkout");
   const [loading, setLoading] = useState(false);
 
   // Shipping Form State - Pre-fill from saved addresses
@@ -67,48 +117,77 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
     phone: "",
     address: "",
     city: "",
-    zipCode: ""
+    zipCode: "",
+    country: "",
   });
 
-  // Load user data and saved addresses on mount
+  // Pre-fill from cached addresses (same key as VendorStoreView) + API — matches main marketplace behavior
   useEffect(() => {
     console.log("🔍 User data in Checkout:", effectiveUser);
 
-    // 🔥 Load saved shipping addresses from DATABASE (not localStorage!)
+    const applyAddress = (
+      addr: any,
+      profile: { id: string; email: string; name: string; phone: string }
+    ) => {
+      const line1 = typeof addr?.addressLine1 === "string" ? addr.addressLine1 : "";
+      const line2 = typeof addr?.addressLine2 === "string" ? addr.addressLine2 : "";
+      const combined = [line1, line2].filter(Boolean).join(", ");
+      setShippingInfo({
+        fullName: (typeof addr?.recipientName === "string" ? addr.recipientName : "") || profile.name || "",
+        email: profile.email || "",
+        phone: (typeof addr?.phone === "string" ? addr.phone : "") || profile.phone || "",
+        address: combined || line1,
+        city: typeof addr?.city === "string" ? addr.city : "",
+        zipCode: typeof addr?.zipCode === "string" ? addr.zipCode : "",
+        country: typeof addr?.country === "string" ? addr.country : "",
+      });
+    };
+
     const loadUserAddresses = async () => {
-      if (!effectiveUser?.id) {
+      const eu = effectiveUser;
+      if (!eu?.id) {
         console.log("⚠️ No user logged in, skipping address load");
         return;
       }
 
+      const storageKey = `migoo-shipping-addresses-${eu.id}`;
+      try {
+        const cached = localStorage.getItem(storageKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as unknown;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const defaultAddress = parsed.find((a: any) => a?.isDefault) || parsed[0];
+            applyAddress(defaultAddress, eu);
+            console.log("✅ Checkout pre-filled from migoo address cache");
+          }
+        }
+      } catch (e) {
+        console.warn("Checkout: could not read address cache", e);
+      }
+
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${effectiveUser.id}/addresses`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${eu.id}/addresses`,
           {
             headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
+              Authorization: `Bearer ${publicAnonKey}`,
             },
           }
         );
-        
+
         if (response.ok) {
           const data = await response.json();
           const addresses = data.addresses || [];
-          
+
           if (addresses.length > 0) {
-            // Find default address or use first address
+            try {
+              localStorage.setItem(storageKey, JSON.stringify(addresses));
+            } catch {
+              /* ignore quota */
+            }
             const defaultAddress = addresses.find((addr: any) => addr.isDefault) || addresses[0];
             console.log("📦 Found saved address from database:", defaultAddress);
-            
-            // Pre-fill form with default address
-            setShippingInfo({
-              fullName: defaultAddress?.recipientName || effectiveUser?.name || "",
-              email: effectiveUser?.email || "",
-              phone: defaultAddress?.phone || effectiveUser?.phone || "",
-              address: defaultAddress?.addressLine1 || "",
-              city: defaultAddress?.city || "",
-              zipCode: defaultAddress?.zipCode || ""
-            });
+            applyAddress(defaultAddress, eu);
             console.log("✅ Auto-filled checkout form with saved address from database");
             return;
           }
@@ -116,32 +195,25 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
       } catch (error) {
         console.error("Failed to load addresses from database:", error);
       }
+
+      setShippingInfo((prev) => ({
+        ...prev,
+        fullName: prev.fullName || eu.name || "",
+        email: prev.email || eu.email || "",
+        phone: prev.phone || eu.phone || "",
+      }));
     };
-    
-    // Try database first
+
     if (effectiveUser?.id) {
-      loadUserAddresses();
-    } else {
-      // Fallback to user data if no saved addresses
-      if (effectiveUser) {
-        setShippingInfo({
-          fullName: effectiveUser?.name || "",
-          email: effectiveUser?.email || "",
-          phone: effectiveUser?.phone || "",
-          address: "",
-          city: "",
-          zipCode: ""
-        });
-        console.log("✅ Auto-filled checkout form with user profile data");
-      }
+      void loadUserAddresses();
     }
-  }, [authUser?.id, authUser?.email, authUser?.name, authUser?.phone, migoo?.id, migoo?.email]);
+  }, [effectiveUser]);
 
   // Order Note
   const [orderNote, setOrderNote] = useState("");
 
   // Payment Form State
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "bank" | "kpay" | "">("");
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "bank" | "kpay">("card");
   const [paymentInfo, setPaymentInfo] = useState({
     cardNumber: "",
     cardName: "",
@@ -272,26 +344,26 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
     setCouponError("");
   };
 
-  const handleShippingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setStep("payment");
-  };
+  const resolveOrderEmail = () =>
+    (shippingInfo.email?.trim() || effectiveUser?.email?.trim() || "");
 
-  const handlePaymentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // 🚫 Block KPay and Bank Transfer - Show Coming Soon notification
-    if (paymentMethod === "kpay" || paymentMethod === "bank") {
-      toast.info("🚀 Coming Soon! This payment method will be available soon.", { 
-        duration: 4000,
-        style: {
-          background: '#3b82f6',
-          color: '#fff',
-        }
-      });
+  const handlePlaceOrder = async (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault();
+
+    if (!shippingInfo.fullName.trim() || !shippingInfo.phone.trim()) {
+      toast.error("Please enter your full name and phone number");
       return;
     }
-    
+    if (!shippingInfo.address.trim() || !shippingInfo.city.trim() || !shippingInfo.country.trim()) {
+      toast.error("Please complete your address, city, and country");
+      return;
+    }
+    const orderEmail = resolveOrderEmail();
+    if (!orderEmail) {
+      toast.error("Please enter your email address");
+      return;
+    }
+
     setLoading(true);
 
     // 💳 TEST CARD PAYMENT PROCESSING (Stripe-style)
@@ -371,6 +443,8 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
       toast.success("💳 Payment Successful!", { duration: 3000 });
     }
 
+    // Bank / KPay: no card simulation — proceed to order
+
     // 🔥 SAVE items and total BEFORE clearing cart
     setConfirmedItems(items);
     setConfirmedTotal(finalTotal);
@@ -389,7 +463,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
         userId: effectiveUser?.id ?? null,
         customer: shippingInfo.fullName,
         customerName: shippingInfo.fullName,
-        email: shippingInfo.email,
+        email: orderEmail,
         phone: shippingInfo.phone,
         status: "pending",
         paymentStatus: "paid", // All prepaid orders have "paid" status
@@ -413,7 +487,14 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
           vendorId: vendorId || item.vendor || item.vendorId, // 🔥 Include vendor ID from props or item
           vendor: vendorId || item.vendor || item.vendorId,
         })),
-        shippingAddress: `${shippingInfo.address}, ${shippingInfo.city}, ${shippingInfo.zipCode}`,
+        shippingAddress: [
+          shippingInfo.address,
+          shippingInfo.city,
+          shippingInfo.zipCode?.trim(),
+          shippingInfo.country,
+        ]
+          .filter(Boolean)
+          .join(", "),
         notes: orderNote,
       };
 
@@ -595,20 +676,20 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
   // Success Screen
   if (step === "success") {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="max-w-2xl w-full">
-          {/* Success Message */}
-          <div className="bg-white rounded-t-xl px-6 py-4 flex items-center gap-3 border border-slate-200">
-            <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
-              <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="w-full max-w-2xl">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+            <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500">
+                <Check className="h-6 w-6 text-white" strokeWidth={2.5} />
+              </div>
+              <span className="text-sm font-bold uppercase tracking-wide text-emerald-700">
+                Order Placed Successfully
+              </span>
             </div>
-            <span className="text-sm font-semibold text-emerald-700 uppercase tracking-wide">Order Placed Successfully</span>
-          </div>
 
-          {/* Order Summary Card */}
-          <Card className="rounded-t-none border-t-0 overflow-hidden shadow-lg">
             {/* Order Number Header */}
-            <div className="bg-blue-600 px-6 py-5 flex items-center justify-between">
+            <div className="flex items-center justify-between bg-blue-600 px-6 py-5">
               <div>
                 <p className="text-xs text-blue-200 uppercase tracking-wider mb-1">Order Number</p>
                 <p className="text-2xl font-bold text-white">{orderNumber}</p>
@@ -631,9 +712,11 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
                         </div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900">{item.sku}</p>
-                      <p className="text-xs text-slate-500">Qty: {item.quantity} × {Math.round(Number(item.price) || 0)} MMK</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900">{item.sku}</p>
+                      <p className="text-xs text-slate-500">
+                        Qty: {item.quantity} × {Math.round(Number(item.price) || 0)} MMK
+                      </p>
                     </div>
                     <p className="text-sm font-semibold text-slate-900">{Math.round((Number(item.price) || 0) * item.quantity)} MMK</p>
                   </div>
@@ -661,7 +744,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
                 
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Shipping</span>
-                  <span className="font-medium text-emerald-600">FREE</span>
+                  <span className="font-bold text-emerald-600">FREE</span>
                 </div>
                 
                 <div className="pt-2 border-t border-slate-200 flex justify-between">
@@ -736,9 +819,11 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
 
             {/* Order Notes */}
             {confirmedOrderNote && (
-              <div className="px-6 py-4 bg-amber-50 border-b border-slate-200">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Order Note</p>
-                <p className="text-sm text-slate-700">{confirmedOrderNote}</p>
+              <div className="border-b border-slate-200 px-6 py-4">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Order Note</p>
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-sm text-slate-800">{confirmedOrderNote}</p>
+                </div>
               </div>
             )}
 
@@ -763,26 +848,26 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Email</p>
                   <p className="text-sm font-medium text-slate-900 truncate">{shippingInfo.email}</p>
                 </div>
-                <div>
+                <div className="col-span-2">
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Delivery Address</p>
                   <p className="text-sm font-medium text-slate-900">
-                    {shippingInfo.address}, {shippingInfo.city}, {shippingInfo.zipCode}
+                    {[shippingInfo.address, shippingInfo.city, shippingInfo.zipCode, shippingInfo.country]
+                      .filter(Boolean)
+                      .join(", ")}
                   </p>
                 </div>
               </div>
             </div>
-          </Card>
+          </div>
 
-          {/* Action Button */}
-          <Button 
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12 font-semibold rounded-xl shadow-lg mt-4" 
+          <Button
+            className="mt-4 h-12 w-full rounded-xl bg-blue-600 font-semibold text-white shadow-lg hover:bg-blue-700"
             onClick={onBack}
           >
             Continue Shopping
           </Button>
 
-          {/* Footer Text */}
-          <p className="text-sm text-center text-slate-600 mt-4">
+          <p className="mt-4 text-center text-sm text-slate-600">
             Thanks for purchasing from <span className="font-semibold text-slate-900">{storeName}</span>
           </p>
         </div>
@@ -790,588 +875,452 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
     );
   }
 
+  const checkoutInputClass =
+    "h-11 bg-slate-50 border-slate-200 text-slate-900 text-sm rounded-lg focus:border-slate-900 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0";
+
+  const needsEmailInput = !effectiveUser?.email;
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <div className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="sm" onClick={onBack}>
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Store
-              </Button>
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+        <Button variant="ghost" className="mb-6 hover:bg-white" onClick={onBack}>
+          <ChevronLeft className="mr-2 h-4 w-4" />
+          Continue Shopping
+        </Button>
+
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
+          {/* Form — main marketplace uses 3/5 width */}
+          <div className="lg:col-span-3">
+            <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-6 shadow-md">
+              {/* Contact */}
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">Checkout</h1>
-                <p className="text-sm text-slate-600">{storeName}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Progress Steps */}
-      <div className="bg-white border-b border-slate-200">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                step === "shipping" ? "bg-blue-600 text-white" : "bg-emerald-600 text-white"
-              }`}>
-                {step === "shipping" ? "1" : <Check className="w-6 h-6" />}
-              </div>
-              <span className="font-semibold text-slate-900 hidden sm:inline">Shipping Info</span>
-            </div>
-            <div className="flex-1 h-1 bg-slate-200 mx-4">
-              <div className={`h-full transition-all duration-500 ${
-                step === "payment" || step === "success" ? "bg-blue-600 w-full" : "bg-blue-600 w-0"
-              }`}></div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                step === "payment" ? "bg-blue-600 text-white" : step === "success" ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-600"
-              }`}>
-                {step === "success" ? <Check className="w-6 h-6" /> : "2"}
-              </div>
-              <span className="font-semibold text-slate-900 hidden sm:inline">Payment</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Form Section */}
-          <div className="lg:col-span-2">
-            {step === "shipping" ? (
-              <Card className="p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Truck className="w-6 h-6 text-blue-600" />
-                  </div>
+                <h2 className="mb-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
+                  Contact
+                </h2>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">Shipping Information</h2>
-                    <p className="text-sm text-slate-600">Where should we deliver your order?</p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleShippingSubmit} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">
-                        <User className="w-4 h-4 inline mr-1" />
-                        Full Name *
-                      </label>
-                      <Input
-                        required
-                        placeholder="John Doe"
-                        value={shippingInfo.fullName}
-                        onChange={(e) => setShippingInfo({...shippingInfo, fullName: e.target.value})}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">
-                        <Mail className="w-4 h-4 inline mr-1" />
-                        Email *
-                      </label>
-                      <Input
-                        required
-                        type="email"
-                        placeholder="john@example.com"
-                        value={shippingInfo.email}
-                        onChange={(e) => setShippingInfo({...shippingInfo, email: e.target.value})}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      <Phone className="w-4 h-4 inline mr-1" />
-                      Phone Number *
-                    </label>
+                    <Label htmlFor="vs-name" className="mb-1.5 block text-sm font-normal text-slate-700">
+                      Full Name
+                    </Label>
                     <Input
-                      required
-                      type="number"
+                      id="vs-name"
+                      placeholder="Enter your full name"
+                      value={shippingInfo.fullName}
+                      onChange={(e) => setShippingInfo({ ...shippingInfo, fullName: e.target.value })}
+                      className={checkoutInputClass}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="vs-phone" className="mb-1.5 block text-sm font-normal text-slate-700">
+                      Phone Number
+                    </Label>
+                    <Input
+                      id="vs-phone"
+                      type="tel"
                       placeholder="+95 9 XXX XXX XXX"
                       value={shippingInfo.phone}
-                      onChange={(e) => setShippingInfo({...shippingInfo, phone: e.target.value})}
+                      onChange={(e) => setShippingInfo({ ...shippingInfo, phone: e.target.value })}
+                      className={checkoutInputClass}
                     />
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">
-                      <MapPin className="w-4 h-4 inline mr-1" />
-                      Street Address *
-                    </label>
+                </div>
+                {needsEmailInput && (
+                  <div className="mt-4">
+                    <Label htmlFor="vs-email" className="mb-1.5 block text-sm font-normal text-slate-700">
+                      Email
+                    </Label>
                     <Input
-                      required
-                      placeholder="123 Main Street, Apt 4B"
-                      value={shippingInfo.address}
-                      onChange={(e) => setShippingInfo({...shippingInfo, address: e.target.value})}
+                      id="vs-email"
+                      type="email"
+                      placeholder="you@example.com"
+                      value={shippingInfo.email}
+                      onChange={(e) => setShippingInfo({ ...shippingInfo, email: e.target.value })}
+                      className={checkoutInputClass}
                     />
                   </div>
+                )}
+              </div>
 
+              {/* Address */}
+              <div>
+                <h2 className="mb-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
+                  Address
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="vs-address" className="mb-1.5 block text-sm font-normal text-slate-700">
+                      Address
+                    </Label>
+                    <Input
+                      id="vs-address"
+                      placeholder="No. 123, Main Street"
+                      value={shippingInfo.address}
+                      onChange={(e) => setShippingInfo({ ...shippingInfo, address: e.target.value })}
+                      className={checkoutInputClass}
+                    />
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">City *</label>
+                      <Label htmlFor="vs-city" className="mb-1.5 block text-sm font-normal text-slate-700">
+                        City
+                      </Label>
                       <Input
-                        required
-                        placeholder="New York"
+                        id="vs-city"
+                        placeholder="Yangon"
                         value={shippingInfo.city}
-                        onChange={(e) => setShippingInfo({...shippingInfo, city: e.target.value})}
+                        onChange={(e) => setShippingInfo({ ...shippingInfo, city: e.target.value })}
+                        className={checkoutInputClass}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">ZIP Code *</label>
+                      <div className="mb-1.5 flex items-baseline justify-between">
+                        <Label htmlFor="vs-zip" className="text-sm font-normal text-slate-700">
+                          Postal Code
+                        </Label>
+                        <span className="text-xs text-slate-500">(optional)</span>
+                      </div>
                       <Input
-                        required
-                        placeholder="10001"
+                        id="vs-zip"
+                        placeholder="11011"
                         value={shippingInfo.zipCode}
-                        onChange={(e) => setShippingInfo({...shippingInfo, zipCode: e.target.value})}
+                        onChange={(e) => setShippingInfo({ ...shippingInfo, zipCode: e.target.value })}
+                        className={checkoutInputClass}
                       />
                     </div>
-                  </div>
-
-                  <div className="mt-4">
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Order Note</label>
-                    <Textarea
-                      placeholder="Add any special instructions here"
-                      value={orderNote}
-                      onChange={(e) => setOrderNote(e.target.value)}
-                    />
-                  </div>
-
-                  <Button 
-                    type="submit"
-                    className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white h-12 text-base font-semibold shadow-lg shadow-blue-600/30 mt-6"
-                  >
-                    Continue to Payment
-                  </Button>
-                </form>
-              </Card>
-            ) : (
-              <Card className="p-6">
-                {/* Prepaid Notice Banner */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-6">
-                  <div className="flex items-start gap-3">
-                    <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-semibold text-blue-900 mb-1">💳 Prepaid Payment Required</p>
-                      <p className="text-xs text-blue-800">All orders require payment completion before processing. Your order will be confirmed after successful payment.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Wallet className="w-6 h-6 text-blue-600" />
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-slate-900">Payment Method</h2>
-                    <p className="text-sm text-slate-600">Complete payment to confirm your order</p>
+                    <Label htmlFor="vs-country" className="mb-1.5 block text-sm font-normal text-slate-700">
+                      Country/Region
+                    </Label>
+                    <Input
+                      id="vs-country"
+                      placeholder="Myanmar"
+                      value={shippingInfo.country}
+                      onChange={(e) => setShippingInfo({ ...shippingInfo, country: e.target.value })}
+                      className={checkoutInputClass}
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 flex items-baseline justify-between">
+                      <Label htmlFor="vs-notes" className="text-sm font-normal text-slate-700">
+                        Delivery Notes
+                      </Label>
+                      <span className="text-xs text-slate-500">(optional)</span>
+                    </div>
+                    <Textarea
+                      id="vs-notes"
+                      placeholder="Add delivery instructions..."
+                      value={orderNote}
+                      onChange={(e) => setOrderNote(e.target.value)}
+                      className="min-h-[80px] resize-none rounded-lg border-slate-200 bg-slate-50 text-sm focus:border-slate-900 focus:ring-0"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment */}
+              <div>
+                <h2 className="mb-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
+                  Payment
+                </h2>
+                <div className="mb-4 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-3">
+                  <div className="flex items-start gap-2">
+                    <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" />
+                    <div>
+                      <p className="mb-0.5 text-xs font-semibold text-blue-900">💳 Prepaid Payment Required</p>
+                      <p className="text-xs text-blue-800">All orders require payment completion before processing.</p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Payment Method Selection */}
-                {!paymentMethod ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-4">
-                      {/* Credit/Debit Card */}
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("card")}
-                        className="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group"
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("card")}
+                    className={`w-full rounded-lg border p-4 text-left transition-all ${
+                      paymentMethod === "card"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-300 bg-white hover:border-slate-400"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                          paymentMethod === "card" ? "border-slate-900" : "border-slate-300"
+                        }`}
                       >
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
-                          <CreditCard className="w-6 h-6 text-white" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <h3 className="text-base font-bold text-slate-900 group-hover:text-blue-600">Credit / Debit Card</h3>
-                          <p className="text-sm text-slate-600">Pay securely with your card</p>
-                        </div>
-                        <div className="text-slate-400 group-hover:text-blue-600">
-                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </button>
-
-                      {/* Bank Transfer */}
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("bank")}
-                        className="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all group"
-                      >
-                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg flex items-center justify-center shadow-md">
-                          <Banknote className="w-6 h-6 text-white" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <h3 className="text-base font-bold text-slate-900 group-hover:text-purple-600">Bank Transfer</h3>
-                          <p className="text-sm text-slate-600">Direct bank account transfer</p>
-                        </div>
-                        <div className="text-slate-400 group-hover:text-purple-600">
-                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </button>
-
-                      {/* KPay */}
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod("kpay")}
-                        className="flex items-center gap-4 p-4 border-2 border-slate-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all group"
-                      >
-                        <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-lg flex items-center justify-center shadow-md">
-                          <CreditCard className="w-6 h-6 text-white" />
-                        </div>
-                        <div className="flex-1 text-left">
-                          <h3 className="text-base font-bold text-slate-900 group-hover:text-green-600">KPay</h3>
-                          <p className="text-sm text-slate-600">Pay with KPay</p>
-                        </div>
-                        <div className="text-slate-400 group-hover:text-green-600">
-                          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
-                      </button>
+                        {paymentMethod === "card" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">Credit / Debit Card</span>
                     </div>
-
-                    <Button 
-                      type="button"
-                      variant="outline"
-                      className="w-full mt-4"
-                      onClick={() => setStep("shipping")}
-                    >
-                      Back to Shipping
-                    </Button>
-                  </div>
-                ) : paymentMethod === "card" ? (
-                  /* Credit Card Form */
-                  <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                      <p className="text-sm text-blue-900 font-semibold">💳 Credit / Debit Card Payment</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("kpay")}
+                    className={`w-full rounded-lg border p-4 text-left transition-all ${
+                      paymentMethod === "kpay"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-300 bg-white hover:border-slate-400"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                          paymentMethod === "kpay" ? "border-slate-900" : "border-slate-300"
+                        }`}
+                      >
+                        {paymentMethod === "kpay" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">KPay</span>
                     </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("bank")}
+                    className={`w-full rounded-lg border p-4 text-left transition-all ${
+                      paymentMethod === "bank"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-300 bg-white hover:border-slate-400"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                          paymentMethod === "bank" ? "border-slate-900" : "border-slate-300"
+                        }`}
+                      >
+                        {paymentMethod === "bank" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                      </div>
+                      <span className="text-sm font-medium text-slate-900">Bank Transfer</span>
+                    </div>
+                  </button>
+                </div>
 
-                    {/* Test Mode Banner */}
-                    <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-300 rounded-lg p-4 mb-4">
+                {paymentMethod === "card" && (
+                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
+                    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                      <p className="text-sm font-semibold text-blue-900">💳 Credit / Debit Card Payment</p>
+                    </div>
+                    <div className="mb-4 rounded-lg border border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50 p-4">
                       <div className="flex items-start gap-2">
                         <div className="flex-shrink-0">
-                          <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center">
-                            <span className="text-white text-xs font-bold">T</span>
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500">
+                            <span className="text-xs font-bold text-white">T</span>
                           </div>
                         </div>
                         <div className="flex-1">
-                          <p className="text-sm font-bold text-amber-900 mb-2">🧪 Test Mode - Use These Cards:</p>
+                          <p className="mb-2 text-sm font-bold text-amber-900">🧪 Test Mode - Use These Cards:</p>
                           <div className="space-y-1.5 text-xs text-amber-800">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono bg-white px-2 py-0.5 rounded border border-amber-200">4242 4242 4242 4242</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded border border-amber-200 bg-white px-2 py-0.5 font-mono">4242 4242 4242 4242</span>
                               <span>→ ✅ Success</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono bg-white px-2 py-0.5 rounded border border-amber-200">4000 0000 0000 0002</span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded border border-amber-200 bg-white px-2 py-0.5 font-mono">4000 0000 0000 0002</span>
                               <span>→ ❌ Card Declined</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono bg-white px-2 py-0.5 rounded border border-amber-200">4000 0000 0000 9995</span>
-                              <span>→ ❌ Insufficient Funds</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono bg-white px-2 py-0.5 rounded border border-amber-200">4000 0000 0000 0069</span>
-                              <span>→ ❌ Card Expired</span>
-                            </div>
-                            <p className="text-xs text-amber-700 mt-2 italic">Use any future date for expiry (e.g., 12/28) and any 3-digit CVV</p>
+                            <p className="mt-2 italic text-amber-700">Use any future expiry (e.g. 12/28) and any 3-digit CVV</p>
                           </div>
                         </div>
                       </div>
                     </div>
-
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">Card Number *</label>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">Card Number *</label>
                       <Input
-                        required
                         placeholder="1234 5678 9012 3456"
                         maxLength={19}
                         value={paymentInfo.cardNumber}
                         onChange={(e) => {
-                          const value = e.target.value.replace(/\s/g, '').replace(/(\d{4})/g, '$1 ').trim();
-                          setPaymentInfo({...paymentInfo, cardNumber: value});
+                          const value = e.target.value
+                            .replace(/\s/g, "")
+                            .replace(/(\d{4})/g, "$1 ")
+                            .trim();
+                          setPaymentInfo({ ...paymentInfo, cardNumber: value });
                         }}
+                        className={`${checkoutInputClass} border-slate-300`}
                       />
                     </div>
-
                     <div>
-                      <label className="block text-sm font-semibold text-slate-700 mb-2">Cardholder Name *</label>
+                      <label className="mb-2 block text-sm font-semibold text-slate-700">Cardholder Name *</label>
                       <Input
-                        required
                         placeholder="JOHN DOE"
                         value={paymentInfo.cardName}
-                        onChange={(e) => setPaymentInfo({...paymentInfo, cardName: e.target.value.toUpperCase()})}
+                        onChange={(e) => setPaymentInfo({ ...paymentInfo, cardName: e.target.value.toUpperCase() })}
+                        className={`${checkoutInputClass} border-slate-300`}
                       />
                     </div>
-
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Expiry Date *</label>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">Expiry Date *</label>
                         <Input
-                          required
                           placeholder="MM/YY"
                           maxLength={5}
                           value={paymentInfo.expiryDate}
                           onChange={(e) => {
-                            let value = e.target.value.replace(/\D/g, '');
+                            let value = e.target.value.replace(/\D/g, "");
                             if (value.length >= 2) {
-                              value = value.slice(0, 2) + '/' + value.slice(2, 4);
+                              value = value.slice(0, 2) + "/" + value.slice(2, 4);
                             }
-                            setPaymentInfo({...paymentInfo, expiryDate: value});
+                            setPaymentInfo({ ...paymentInfo, expiryDate: value });
                           }}
+                          className={`${checkoutInputClass} border-slate-300`}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">CVV *</label>
+                        <label className="mb-2 block text-sm font-semibold text-slate-700">CVV *</label>
                         <Input
-                          required
                           type="password"
                           placeholder="123"
                           maxLength={4}
                           value={paymentInfo.cvv}
-                          onChange={(e) => setPaymentInfo({...paymentInfo, cvv: e.target.value.replace(/\D/g, '')})}
+                          onChange={(e) =>
+                            setPaymentInfo({ ...paymentInfo, cvv: e.target.value.replace(/\D/g, "") })
+                          }
+                          className={`${checkoutInputClass} border-slate-300`}
                         />
                       </div>
                     </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
-                      <p className="text-sm text-blue-900">
-                        🔒 Your payment information is encrypted and secure
-                      </p>
+                    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                      <p className="text-sm text-blue-900">🔒 Your payment information is encrypted and secure</p>
                     </div>
+                  </div>
+                )}
 
-                    <div className="flex gap-3 mt-6">
-                      <Button 
-                        type="button"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => setPaymentMethod("")}
-                      >
-                        Back
-                      </Button>
-                      <Button 
-                        type="submit"
-                        className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white h-12 text-base font-semibold shadow-lg shadow-emerald-600/30"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                            Processing...
-                          </>
-                        ) : (
-                          `Pay ${finalTotal.toFixed(0)} MMK`
-                        )}
-                      </Button>
+                {paymentMethod === "bank" && (
+                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
+                    <div className="mb-4 rounded-lg border border-purple-200 bg-purple-50 p-3">
+                      <p className="text-sm font-semibold text-purple-900">🏦 Bank Transfer</p>
                     </div>
-                  </form>
-                ) : paymentMethod === "bank" ? (
-                  /* Bank Transfer Instructions */
-                  <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-4">
-                      <p className="text-sm text-purple-900 font-semibold">🏦 Bank Transfer</p>
-                    </div>
-
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
-                      <h3 className="font-bold text-slate-900 mb-4">Transfer Details</h3>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
+                      <h3 className="mb-4 font-bold text-slate-900">Transfer Details</h3>
                       <div className="space-y-3 text-sm">
-                        <div className="flex justify-between py-2 border-b border-slate-200">
+                        <div className="flex justify-between border-b border-slate-200 py-2">
                           <span className="text-slate-600">Bank Name:</span>
                           <span className="font-semibold text-slate-900">Myanmar Bank</span>
                         </div>
-                        <div className="flex justify-between py-2 border-b border-slate-200">
+                        <div className="flex justify-between border-b border-slate-200 py-2">
                           <span className="text-slate-600">Account Name:</span>
                           <span className="font-semibold text-slate-900">{storeName}</span>
                         </div>
-                        <div className="flex justify-between py-2 border-b border-slate-200">
+                        <div className="flex justify-between border-b border-slate-200 py-2">
                           <span className="text-slate-600">Account Number:</span>
-                          <span className="font-semibold text-slate-900 font-mono">1234-5678-9012</span>
+                          <span className="font-mono font-semibold text-slate-900">1234-5678-9012</span>
                         </div>
                         <div className="flex justify-between py-2">
                           <span className="text-slate-600">Amount:</span>
-                          <span className="font-bold text-blue-600 text-lg">{finalTotal.toFixed(0)} MMK</span>
+                          <span className="text-lg font-bold text-blue-600">{finalTotal.toFixed(0)} MMK</span>
                         </div>
                       </div>
                     </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
                       <p className="text-sm text-blue-900">
-                        📌 <strong>Important:</strong> Please complete the bank transfer and include your order number in the reference. Your order will be processed after payment confirmation.
+                        📌 <strong>Important:</strong> Please complete the bank transfer and include your order number in the
+                        reference. Your order will be processed after payment confirmation.
                       </p>
                     </div>
+                  </div>
+                )}
 
-                    <div className="flex gap-3 mt-6">
-                      <Button 
-                        type="button"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => setPaymentMethod("")}
-                      >
-                        Back
-                      </Button>
-                      <Button 
-                        type="submit"
-                        className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white h-12 text-base font-semibold shadow-lg shadow-emerald-600/30"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                            Processing...
-                          </>
-                        ) : (
-                          "I've Completed Payment"
-                        )}
-                      </Button>
+                {paymentMethod === "kpay" && (
+                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
+                    <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-sm font-semibold text-emerald-900">💳 KPay Payment</p>
                     </div>
-                  </form>
-                ) : (
-                  /* KPay Payment */
-                  <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-4">
-                      <p className="text-sm text-emerald-900 font-semibold">💳 KPay Payment</p>
-                    </div>
-
-                    {/* KPay Payment Instructions */}
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
-                      <h3 className="font-bold text-slate-900 mb-4">Scan QR Code to Pay</h3>
-                      
-                      {/* QR Code - Large Display */}
-                      <div className="flex justify-center mb-6">
-                        <div className="w-64 h-64 bg-white rounded-lg overflow-hidden flex items-center justify-center border-2 border-slate-200">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
+                      <h3 className="mb-4 font-bold text-slate-900">Scan QR Code to Pay</h3>
+                      <div className="mb-6 flex justify-center">
+                        <div className="flex h-64 w-64 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
                           {kpayQrCode ? (
-                            <img src={kpayQrCode} alt="KPay QR Code" className="w-full h-full object-contain" />
+                            <img src={kpayQrCode} alt="KPay QR Code" className="h-full w-full object-contain" />
                           ) : (
-                            <div className="text-center px-4">
-                              <CreditCard className="w-12 h-12 text-slate-400 mx-auto mb-2" />
+                            <div className="px-4 text-center">
+                              <CreditCard className="mx-auto mb-2 h-12 w-12 text-slate-400" />
                               <p className="text-sm text-slate-500">No QR code available</p>
                             </div>
                           )}
                         </div>
                       </div>
-
-                      {/* Payment Details */}
                       <div className="space-y-3 text-sm">
-                        <div className="flex justify-between py-2 border-b border-slate-200">
+                        <div className="flex justify-between border-b border-slate-200 py-2">
                           <span className="text-slate-600">KPay Phone Number:</span>
-                          <span className="font-semibold text-slate-900 font-mono">{kpayPhone}</span>
+                          <span className="font-mono font-semibold text-slate-900">{kpayPhone}</span>
                         </div>
                         <div className="flex justify-between py-2">
                           <span className="text-slate-600">Amount to Pay:</span>
-                          <span className="font-bold text-emerald-600 text-lg">{finalTotal.toFixed(0)} MMK</span>
+                          <span className="text-lg font-bold text-emerald-600">{finalTotal.toFixed(0)} MMK</span>
                         </div>
                       </div>
                     </div>
-
-                    {/* Instructions */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <p className="text-sm text-blue-900">
-                        📱 <strong>How to pay:</strong>
-                      </p>
-                      <ul className="text-sm text-blue-900 mt-2 space-y-1 list-disc list-inside">
-                        <li>Scan the QR code with your KPay app</li>
-                        <li>Or manually transfer to: <strong>{kpayPhone}</strong></li>
-                        <li>Enter amount: <strong>{finalTotal.toFixed(0)} MMK</strong></li>
-                        <li>Click "Confirm Order" after payment</li>
-                      </ul>
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                      <p className="text-sm text-blue-900">📱 Complete payment in KPay, then use Proceed Order below.</p>
                     </div>
-
-                    <div className="flex gap-3 mt-6">
-                      <Button 
-                        type="button"
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => setPaymentMethod("")}
-                      >
-                        Back
-                      </Button>
-                      <Button 
-                        type="submit"
-                        className="flex-1 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white h-12 text-base font-semibold shadow-lg shadow-emerald-600/30"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                            Processing...
-                          </>
-                        ) : (
-                          "I've Completed Payment"
-                        )}
-                      </Button>
-                    </div>
-                  </form>
+                  </div>
                 )}
-              </Card>
-            )}
+              </div>
+            </div>
           </div>
 
-          {/* Order Summary */}
-          <div className="lg:col-span-1">
-            <Card className="p-6 sticky top-24">
-              <div className="flex items-center gap-3 mb-4">
-                <ShoppingBag className="w-5 h-5 text-blue-600" />
-                <h3 className="text-lg font-bold text-slate-900">Order Summary</h3>
+          {/* Order Summary — 2/5 width, sticky (main marketplace layout) */}
+          <div className="lg:col-span-2">
+            <div className="sticky top-24 flex max-h-[calc(100vh-1.75rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-md">
+              <div className="mb-5 flex-shrink-0">
+                <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
+                  Order Summary
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">{storeName}</p>
               </div>
 
-              <div className="space-y-3 mb-4">
+              <div className="scrollbar-thin mb-4 flex-1 space-y-4 overflow-y-auto">
+              <div className="space-y-3 pb-4">
                 {items.map((item) => (
-                  <div key={item.id} className="flex gap-3 pb-3 border-b border-slate-200">
-                    <div className="w-16 h-16 bg-slate-100 rounded-lg overflow-hidden flex-shrink-0">
+                  <div key={item.id} className="flex gap-3 border-b border-slate-200 pb-3">
+                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
                       {item.image ? (
-                        <img src={item.image} alt={item.sku} className="w-full h-full object-cover" />
+                        <img src={item.image} alt={item.sku} className="h-full w-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <Package className="w-6 h-6 text-slate-400" />
+                        <div className="flex h-full w-full items-center justify-center">
+                          <Package className="h-6 w-6 text-slate-400" />
                         </div>
                       )}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900">{item.sku}</p>
-                      <p className="text-xs text-slate-500 mt-1">Qty: {item.quantity} × {Math.round(parseFloat(item.price))} MMK</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-slate-900">
-                        {Math.round(parseFloat(item.price) * item.quantity)} MMK
+                    <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">{item.sku}</p>
+                        <p className="mt-1 text-sm font-medium text-slate-500">
+                          Qty: {item.quantity} × {Math.round(parseFloat(String(item.price)))} MMK
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {Math.round(parseFloat(String(item.price)) * item.quantity)} MMK
                       </p>
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Coupon Code Input - MOVED BEFORE TOTAL */}
-              <div className="mb-4 pb-4 border-b-2 border-slate-300">
-                <h4 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-blue-600" />
-                  Apply Coupon Code
-                </h4>
-                
+              <div className="border-b border-slate-200 pb-4">
+                <h4 className="mb-3 text-sm font-semibold text-slate-900">Coupon Code</h4>
+
                 {!appliedCoupon ? (
                   <div>
                     <div className="flex items-center gap-2">
                       <Input
-                        placeholder="Enter coupon code"
+                        placeholder="ENTER COUPON CODE"
                         value={couponCode}
                         onChange={(e) => {
                           setCouponCode(e.target.value.toUpperCase());
-                          setCouponError('');
+                          setCouponError("");
                         }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleApplyCoupon();
+                          if (e.key === "Enter") handleApplyCoupon();
                         }}
                         disabled={couponLoading}
-                        className="uppercase text-sm"
+                        className={`${checkoutInputClass} flex-1 uppercase`}
                       />
                       <Button
                         type="button"
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6"
+                        className="shrink-0 bg-slate-200 px-5 font-medium text-slate-800 hover:bg-slate-300"
                         onClick={handleApplyCoupon}
                         disabled={couponLoading || !couponCode.trim()}
                       >
@@ -1424,29 +1373,50 @@ export function Checkout({ onBack, storeName, vendorId, vendorName }: CheckoutPr
                 )}
               </div>
 
-              <div className="space-y-2 pt-4 border-t-2 border-slate-300">
+              <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Subtotal</span>
                   <span className="font-semibold text-slate-900">{totalPrice.toFixed(0)} MMK</span>
                 </div>
                 
-                {/* Show discount if coupon applied */}
                 {appliedCoupon && discountAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-emerald-600 flex items-center gap-1">
-                      <Tag className="w-3 h-3" />
-                      Discount ({appliedCoupon.campaign?.code})
-                    </span>
-                    <span className="font-semibold text-emerald-600">-{discountAmount.toFixed(0)} MMK</span>
+                  <div className="flex justify-between text-sm text-emerald-600">
+                    <span className="flex items-center gap-1">Discount</span>
+                    <span className="font-semibold">-{discountAmount.toFixed(0)} MMK</span>
                   </div>
                 )}
-                
-                <div className="flex justify-between text-lg font-bold pt-2 border-t border-slate-300">
-                  <span className="text-slate-900">Total</span>
-                  <span className="text-xl font-bold text-blue-600">{finalTotal.toFixed(0)} MMK</span>
+
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Shipping</span>
+                  <span className="font-bold text-emerald-600">FREE</span>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-sm font-semibold text-slate-900">Total</span>
+                  <span className="text-base font-bold text-slate-900">{finalTotal.toFixed(0)} MMK</span>
                 </div>
               </div>
-            </Card>
+              </div>
+
+              <Button
+                type="button"
+                className="mt-4 flex h-11 w-full shrink-0 items-center justify-center rounded-xl border-2 border-orange-500 bg-transparent text-sm font-semibold leading-normal text-slate-900 transition-all duration-300 hover:border-green-600 hover:bg-green-600 hover:text-white"
+                size="lg"
+                onClick={() => void handlePlaceOrder()}
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : paymentMethod === "card" ? (
+                  `Pay ${finalTotal.toFixed(0)} MMK`
+                ) : (
+                  "I've Completed Payment"
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,9 +1,11 @@
-import { X, Minus, Plus, ShoppingCart, Trash2, Tag } from 'lucide-react';
-import { Button } from './ui/button';
-import { useCart } from './CartContext';
-import { useState, useEffect } from 'react';
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
-import { toast } from 'sonner';
+import { X, Minus, Plus, Trash2, Tag, ArrowRight } from "lucide-react";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
+import { Separator } from "./ui/separator";
+import { useCart } from "./CartContext";
+import { useState, useEffect } from "react";
+import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { toast } from "sonner";
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -13,255 +15,257 @@ interface CartDrawerProps {
   onShowAuthModal?: () => void;
 }
 
+function formatMmk(amount: number): string {
+  return `${Math.round(amount)} MMK`;
+}
+
+/** Matches main marketplace cart sidebar: navy header, white list, slate footer, amber total */
 export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal }: CartDrawerProps) {
   const { items, removeFromCart, updateQuantity, totalItems, totalPrice, clearCart } = useCart();
-  
-  // 🔒 Enhanced body scroll lock when drawer is open
+
   useEffect(() => {
     if (isOpen) {
-      // Save current scroll position
       const scrollY = window.scrollY;
-      
-      // 🔒 NUCLEAR OPTION - Completely freeze background scroll
-      document.body.style.position = 'fixed';
+      document.body.style.position = "fixed";
       document.body.style.top = `-${scrollY}px`;
-      document.body.style.left = '0';
-      document.body.style.right = '0';
-      document.body.style.width = '100%';
-      document.body.style.overflow = 'hidden';
-      
-      // Also lock html element
-      document.documentElement.style.overflow = 'hidden';
-      document.documentElement.style.height = '100%';
-      
+      document.body.style.left = "0";
+      document.body.style.right = "0";
+      document.body.style.width = "100%";
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      document.documentElement.style.height = "100%";
+
       return () => {
-        // Restore everything
-        document.body.style.position = '';
-        document.body.style.top = '';
-        document.body.style.left = '';
-        document.body.style.right = '';
-        document.body.style.width = '';
-        document.body.style.overflow = '';
-        document.documentElement.style.overflow = '';
-        document.documentElement.style.height = '';
-        
+        document.body.style.position = "";
+        document.body.style.top = "";
+        document.body.style.left = "";
+        document.body.style.right = "";
+        document.body.style.width = "";
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+        document.documentElement.style.height = "";
         window.scrollTo(0, scrollY);
       };
     }
   }, [isOpen]);
-  
-  // Coupon state with localStorage persistence
-  const [couponCode, setCouponCode] = useState('');
+
+  const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<any>(() => {
-    const saved = localStorage.getItem('migoo-applied-coupon');
+    const saved = localStorage.getItem("migoo-applied-coupon");
     return saved ? JSON.parse(saved) : null;
   });
   const [couponLoading, setCouponLoading] = useState(false);
-  const [couponError, setCouponError] = useState('');
-  
-  // Persist appliedCoupon to localStorage
+  const [couponError, setCouponError] = useState("");
+
   useEffect(() => {
     if (appliedCoupon) {
-      localStorage.setItem('migoo-applied-coupon', JSON.stringify(appliedCoupon));
+      localStorage.setItem("migoo-applied-coupon", JSON.stringify(appliedCoupon));
     } else {
-      localStorage.removeItem('migoo-applied-coupon');
+      localStorage.removeItem("migoo-applied-coupon");
     }
   }, [appliedCoupon]);
-  
-  // Calculate final price with discount
+
   const discount = appliedCoupon?.campaign?.discountAmount || 0;
   const finalPrice = totalPrice - discount;
-  
-  // Apply coupon
+
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
-      setCouponError('Please enter a coupon code');
+      setCouponError("Please enter a coupon code");
       return;
     }
-    
+
     setCouponLoading(true);
-    setCouponError('');
-    
+    setCouponError("");
+
     try {
       const code = couponCode.trim().toUpperCase();
-      
-      // 🎫 Validate coupon via backend (all coupons now use database)
-      console.log(`🎫 Validating coupon code: \"${code}\" (original: \"${couponCode.trim()}\")`);
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/validate`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
           },
           body: JSON.stringify({
-            code: code, // 🔧 FIX: Send uppercased code to match database
+            code,
             cartTotal: totalPrice,
-            cartItems: items.map(item => ({
+            cartItems: items.map((item) => ({
               id: item.id,
               sku: item.sku || item.id,
               price: item.price,
-              quantity: item.quantity
-            }))
-          })
+              quantity: item.quantity,
+            })),
+          }),
         }
       );
-      
+
       const data = await response.json();
-      
-      console.log('🎫 Coupon validation response:', data);
-      
+
       if (data.valid && data.campaign) {
-        setAppliedCoupon(data); // Store full response with campaign inside
-        setCouponError('');
+        setAppliedCoupon(data);
+        setCouponError("");
       } else {
-        console.error('❌ Coupon validation failed:', data.error);
-        setCouponError(data.error || 'Invalid coupon code');
+        setCouponError(data.error || "Invalid coupon code");
         setAppliedCoupon(null);
       }
-    } catch (error) {
-      console.error('❌ Error applying coupon:', error);
-      setCouponError('Failed to validate coupon');
+    } catch {
+      setCouponError("Failed to validate coupon");
       setAppliedCoupon(null);
     } finally {
       setCouponLoading(false);
     }
   };
-  
-  // Remove coupon
+
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
-    setCouponCode('');
-    setCouponError('');
+    setCouponCode("");
+    setCouponError("");
   };
 
   if (!isOpen) return null;
 
+  const itemCountLabel =
+    totalItems === 1 ? "1 item in cart" : `${totalItems} items in cart`;
+
   return (
     <>
-      {/* Backdrop - Lower z-index, blocks all pointer events */}
-      <div 
-        className="fixed inset-0 bg-black/50 z-[100] transition-opacity"
+      <div
+        className="fixed inset-0 z-[100] bg-black/10 transition-opacity"
         onClick={onClose}
-        style={{ pointerEvents: 'auto' }}
+        aria-hidden
       />
 
-      {/* Drawer - Higher z-index */}
-      <div 
-        className="fixed right-0 top-0 h-full w-full sm:w-96 bg-white shadow-2xl z-[101] flex flex-col"
+      <div
+        className="fixed right-0 top-0 z-[101] flex h-full w-full max-w-md animate-fade-in-right flex-col bg-white shadow-2xl"
         data-drawer="true"
-        style={{ pointerEvents: 'auto' }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cart-drawer-title"
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-200">
-          <div className="flex items-center gap-3">
-            <ShoppingCart className="w-6 h-6 text-blue-600" />
-            <h2 className="text-xl font-bold text-slate-900">
-              Shopping Cart ({totalItems})
+        {/* Navy header — same structure as main marketplace cart sidebar */}
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-800/50 bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-4 text-white">
+          <div>
+            <h2 id="cart-drawer-title" className="text-xl font-semibold">
+              Shopping Cart
             </h2>
+            <p className="text-sm text-slate-300">
+              {totalItems} {totalItems === 1 ? "item" : "items"}
+            </p>
           </div>
-          <Button variant="ghost" size="icon" onClick={onClose}>
-            <X className="w-5 h-5" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="text-white hover:bg-white/10"
+            aria-label="Close cart"
+          >
+            <X className="h-5 w-5" />
           </Button>
         </div>
 
-        {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto p-6 cart-drawer-content">
+        {/* White list area */}
+        <div className="cart-drawer-content min-h-0 flex-1 overflow-y-auto bg-white p-6">
           {items.length === 0 ? (
-            <div className="text-center py-12">
-              <ShoppingCart className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-              <p className="text-slate-600 font-medium mb-2">Your cart is empty</p>
-              <p className="text-sm text-slate-500">Add some products to get started!</p>
+            <div className="py-12 text-center">
+              <p className="mb-2 text-slate-500">Your cart is empty</p>
+              <p className="mb-4 text-sm text-slate-400">Start shopping to add items</p>
+              <Button type="button" className="bg-slate-800 hover:bg-slate-900" onClick={onClose}>
+                Continue Shopping
+              </Button>
             </div>
           ) : (
-            <div className="space-y-4">
-              {items.map((item) => (
-                <div key={`${item.id}-${item.vendorId || 'migoo'}`} className="flex gap-4 bg-slate-50 rounded-lg p-4">
-                  {/* Product Image */}
-                  <div className="w-20 h-20 bg-white rounded-lg overflow-hidden flex-shrink-0 border border-slate-200">
-                    <img 
-                      src={item.image} 
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-
-                  {/* Product Info */}
-                  <div className="flex-1 min-w-0 pl-3">
-                    <h3 className="text-sm font-medium text-slate-900 truncate">{item.sku}</h3>
-                    <p className="text-sm font-bold text-slate-900">
-                      {Math.round((item.price || 0) * item.quantity)} MMK
-                    </p>
-                  </div>
-
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-3 mt-3">
-                    <div className="flex items-center border border-slate-300 rounded-lg">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-none"
-                        onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                      >
-                        <Minus className="w-4 h-4" />
-                      </Button>
-                      <span className="px-3 text-sm font-semibold text-slate-900 min-w-[2rem] text-center">
-                        {item.quantity}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 rounded-none"
-                        onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                        disabled={item.quantity >= item.inventory}
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    </div>
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                      onClick={() => removeFromCart(item.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  {item.quantity >= item.inventory && (
-                    <p className="text-xs text-amber-600 mt-1">Max stock reached</p>
-                  )}
-                </div>
-              ))}
-
-              {/* Clear Cart Button */}
-              {items.length > 0 && (
+            <>
+              <div className="mb-3 flex animate-fade-in items-center justify-between">
+                <span className="text-sm text-slate-600">{itemCountLabel}</span>
                 <Button
-                  variant="outline"
+                  type="button"
+                  variant="ghost"
                   size="sm"
-                  className="w-full text-red-600 border-red-200 hover:bg-red-50"
-                  onClick={clearCart}
+                  className="h-auto gap-1 px-2 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
+                  onClick={() => {
+                    clearCart();
+                    toast.success("Cart cleared");
+                  }}
                 >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Clear Cart
+                  <Trash2 className="h-3 w-3" />
+                  Clear All
                 </Button>
-              )}
-            </div>
+              </div>
+
+              <div className="space-y-2">
+                {items.map((item) => {
+                  const unit = Number(item.price) || 0;
+                  const lineTotal = unit * item.quantity;
+                  return (
+                    <Card
+                      key={`${item.id}-${item.vendorId || "store"}`}
+                      className="border border-slate-200 shadow-sm transition-all hover:shadow-md"
+                    >
+                      <CardContent className="p-2.5">
+                        <div className="flex gap-2.5">
+                          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200">
+                            <img src={item.image} alt="" className="h-full w-full object-cover" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="mb-2 line-clamp-1 text-sm font-semibold text-slate-900">{item.sku}</h3>
+                            <div className="text-sm font-semibold text-slate-900">{formatMmk(lineTotal)}</div>
+                            <div className="mt-2 flex items-center gap-1.5">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 w-6 rounded-full p-0"
+                                onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                              >
+                                <Minus className="h-2.5 w-2.5" />
+                              </Button>
+                              <span className="w-7 text-center text-xs font-medium">{item.quantity}</span>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="h-6 w-6 rounded-full p-0"
+                                onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                                disabled={item.quantity >= item.inventory}
+                              >
+                                <Plus className="h-2.5 w-2.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="ml-auto h-6 w-6 p-0 text-slate-500 hover:bg-red-50 hover:text-red-600"
+                                onClick={() => removeFromCart(item.id)}
+                                aria-label="Remove item"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            {item.quantity >= item.inventory && item.inventory > 0 && (
+                              <p className="mt-1 text-[10px] text-amber-600">Max stock reached</p>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
 
-        {/* Footer with Total and Checkout */}
         {items.length > 0 && (
-          <div className="border-t border-slate-200 p-6 space-y-4 bg-slate-50">
-            {/* Coupon Code Section */}
+          <div className="shrink-0 space-y-4 border-t border-slate-200 bg-slate-50 p-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-                <Tag className="w-4 h-4" />
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
+                <Tag className="h-4 w-4 text-slate-600" />
                 Have a coupon code?
               </label>
-              
+
               {!appliedCoupon ? (
                 <div className="flex gap-2">
                   <input
@@ -269,104 +273,99 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
                     value={couponCode}
                     onChange={(e) => {
                       setCouponCode(e.target.value.toUpperCase());
-                      setCouponError('');
+                      setCouponError("");
                     }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleApplyCoupon();
+                      if (e.key === "Enter") handleApplyCoupon();
                     }}
-                    placeholder="Enter coupon code"
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent uppercase"
+                    placeholder="ENTER COUPON CODE"
+                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm uppercase tracking-wide placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
                     disabled={couponLoading}
                   />
                   <Button
+                    type="button"
                     onClick={handleApplyCoupon}
                     disabled={couponLoading || !couponCode.trim()}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4"
-                    size="sm"
+                    className="shrink-0 bg-slate-500 px-4 text-white hover:bg-slate-600"
                   >
-                    {couponLoading ? 'Applying...' : 'Apply'}
+                    {couponLoading ? "…" : "Apply"}
                   </Button>
                 </div>
               ) : (
-                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-green-600" />
-                    <div>
-                      <p className="text-sm font-semibold text-green-700">{appliedCoupon.campaign?.code}</p>
-                      <p className="text-xs text-green-600">
-                        {appliedCoupon.campaign?.discountType === 'percentage' 
-                          ? `${appliedCoupon.campaign?.discount}% off` 
+                <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Tag className="h-4 w-4 shrink-0 text-green-600" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-green-800">{appliedCoupon.campaign?.code}</p>
+                      <p className="text-xs text-green-700">
+                        {appliedCoupon.campaign?.discountType === "percentage"
+                          ? `${appliedCoupon.campaign?.discount}% off`
                           : `${appliedCoupon.campaign?.discount} MMK off`}
-                        {discount > 0 && ` · You save ${discount.toFixed(0)} MMK!`}
                       </p>
                     </div>
                   </div>
                   <Button
+                    type="button"
                     onClick={handleRemoveCoupon}
                     variant="ghost"
                     size="sm"
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
+                    className="h-8 shrink-0 text-red-600 hover:bg-red-50"
                   >
-                    <X className="w-4 h-4" />
+                    <X className="h-4 w-4" />
                   </Button>
                 </div>
               )}
-              
-              {couponError && (
-                <p className="text-xs text-red-600 mt-1">{couponError}</p>
-              )}
+
+              {couponError && <p className="text-xs font-medium text-red-600">{couponError}</p>}
             </div>
-            
-            {/* Price Summary */}
+
             <div className="space-y-2">
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Subtotal</span>
-                <span className="font-semibold">{totalPrice.toFixed(0)} MMK</span>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-600">Subtotal ({totalItems} items)</span>
+                <span className="font-medium text-slate-900">{formatMmk(totalPrice)}</span>
               </div>
-              
+
               {appliedCoupon && (
-                <div className="flex justify-between text-sm text-green-600">
+                <div className="flex items-center justify-between text-sm text-green-700">
                   <span>Discount ({appliedCoupon.campaign?.code})</span>
-                  <span className="font-semibold">-{discount.toFixed(0)} MMK</span>
+                  <span className="font-semibold">−{formatMmk(discount)}</span>
                 </div>
               )}
-              
-              <div className="flex justify-between text-sm text-slate-600">
-                <span>Shipping</span>
-                <span className="font-semibold">FREE</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold text-slate-900 pt-2 border-t border-slate-300">
-                <span>Total</span>
-                <span className="text-blue-600">{finalPrice.toFixed(0)} MMK</span>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900">Total</span>
+                <p className="text-right text-xl font-bold bg-gradient-to-r from-amber-700 to-amber-600 bg-clip-text text-transparent">
+                  {formatMmk(finalPrice)}
+                </p>
               </div>
             </div>
 
             <Button
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white h-12 text-base font-semibold shadow-lg shadow-blue-600/30 hover:shadow-xl hover:shadow-blue-600/40 transition-all duration-300"
+              type="button"
+              className="h-11 w-full bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
               onClick={() => {
-                // Require authentication for checkout
                 if (!user) {
                   toast.error("Please sign in to proceed with checkout");
                   onClose();
-                  if (onShowAuthModal) {
-                    onShowAuthModal();
-                  }
+                  onShowAuthModal?.();
                   return;
                 }
-                
                 if (onCheckout) {
                   onCheckout();
                 } else {
-                  alert('Checkout functionality coming soon!');
+                  toast("Checkout is not available");
                 }
               }}
             >
               Proceed to Checkout
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
 
             <Button
-              variant="outline"
-              className="w-full"
+              type="button"
+              className="h-11 w-full bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
               onClick={onClose}
             >
               Continue Shopping
