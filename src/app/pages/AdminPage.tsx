@@ -243,10 +243,10 @@ export function AdminPage() {
     initializeUserData();
   }, []);
 
-  // Check server health on mount
+  // Check server health on mount (few retries + slow backoff — avoids edge traffic bursts)
   useEffect(() => {
     let retryCount = 0;
-    const maxRetries = 6;
+    const maxRetries = 3;
     
     const checkServerHealth = async () => {
       try {
@@ -280,7 +280,7 @@ export function AdminPage() {
             setServerStatus('offline');
             setTimeout(() => {
               checkServerHealth();
-            }, 5000);
+            }, 10000);
           } else {
             setServerStatus('offline');
             console.error('❌ Server health check failed after maximum retries');
@@ -298,7 +298,7 @@ export function AdminPage() {
           setServerStatus('offline');
           setTimeout(() => {
             checkServerHealth();
-          }, 5000);
+          }, 10000);
         } else {
           setServerStatus('offline');
           console.error('❌ Server unavailable after maximum retries. The Edge Function may still be deploying.');

@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { notificationsApi } from "../../utils/api";
+import { POLLING_INTERVALS_MS } from "../../constants";
 import { VendorAdminDashboard } from "./vendor-admin/VendorAdminDashboard";
 import { VendorAdminProductsCRUD } from "./vendor-admin/VendorAdminProductsCRUD";
 import { VendorAdminCategories } from "./vendor-admin/VendorAdminCategories";
@@ -146,7 +147,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, adminPathPrefix]);
 
-  // Poll for notifications every 30 seconds
+  // Poll for notifications on a long interval (see POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS)
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
@@ -160,7 +161,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     };
 
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000); // Poll every 30 seconds
+    const interval = setInterval(fetchNotifications, POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS);
 
     return () => clearInterval(interval);
   }, []);

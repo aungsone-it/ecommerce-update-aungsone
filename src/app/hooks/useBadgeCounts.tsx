@@ -4,7 +4,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { ordersApi, chatApi, vendorApplicationsApi } from '../../utils/api';
-import { PENDING_ORDER_STATUSES } from '../../constants';
+import { PENDING_ORDER_STATUSES, POLLING_INTERVALS_MS } from '../../constants';
 import { SmartCache, CACHE_KEYS, CACHE_TTL } from '../../utils/cache';
 import { badgeCircuitBreaker } from '../../utils/circuit-breaker';
 import type { BadgeCounts } from '../../types';
@@ -20,7 +20,7 @@ const INITIAL_BADGE_COUNTS: BadgeCounts = {
  * Hook for managing badge counts across the app
  * Features:
  * - ⚡ Zero loading time with smart caching
- * - 🔄 Auto-refresh every 30 seconds
+ * - 🔄 Auto-refresh on a long interval (see POLLING_INTERVALS_MS.BADGE_COUNTS)
  * - 📊 Dynamic pending orders count
  */
 export function useBadgeCounts() {
@@ -68,8 +68,8 @@ export function useBadgeCounts() {
       return;
     }
 
-    // Check if cache is fresh (90s — was 30s; reduces duplicate edge calls)
-    if (SmartCache.isFresh('badge_counts', 90000)) {
+    // Check if cache is fresh (long TTL — avoids duplicate edge calls between polls)
+    if (SmartCache.isFresh('badge_counts', POLLING_INTERVALS_MS.BADGE_COUNTS_CACHE_FRESH)) {
       console.log('✅ Badge counts cache is fresh, no need to fetch');
       badgeCircuitBreaker.recordSuccess();
       return;
@@ -210,7 +210,7 @@ export function useBadgeCounts() {
     const interval = setInterval(() => {
       console.log('🔄 Auto-refreshing badge counts...');
       tick();
-    }, 120000); // 2 min — orders/chat/vendor apps in one round-trip
+    }, POLLING_INTERVALS_MS.BADGE_COUNTS);
 
     return () => clearInterval(interval);
   }, [loadBadgeCounts]);

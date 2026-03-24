@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { POLLING_INTERVALS_MS } from "../../constants";
 import { Bell, Search, Menu, Check, Clock, Store, Package, Star, ShoppingCart, AlertCircle, User, Edit, Trash2, LogOut, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -61,8 +62,7 @@ export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, 
   useEffect(() => {
     loadNotifications();
     
-    // Poll for new notifications every 2 minutes (reduced from 30 seconds for better performance)
-    const interval = setInterval(loadNotifications, 120000);
+    const interval = setInterval(loadNotifications, POLLING_INTERVALS_MS.TOP_NAV_NOTIFICATIONS);
     return () => clearInterval(interval);
   }, []);
 

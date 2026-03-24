@@ -23,6 +23,23 @@ export const RETRY_CONFIG = {
   MAX_DELAY: 12000,
 } as const;
 
+/**
+ * Client-side polling intervals. Long intervals keep Supabase edge, database, and
+ * storage API counts low for small deployments (e.g. one operator).
+ * Note: each product image loaded from Storage still counts as its own request;
+ * that is separate from these timers.
+ */
+export const POLLING_INTERVALS_MS = {
+  BADGE_COUNTS: 15 * 60 * 1000,
+  /** If badge cache is newer than this, skip network (see useBadgeCounts). */
+  BADGE_COUNTS_CACHE_FRESH: 12 * 60 * 1000,
+  TOP_NAV_NOTIFICATIONS: 15 * 60 * 1000,
+  VENDOR_PORTAL_NOTIFICATIONS: 15 * 60 * 1000,
+  CHAT_HTTP_FALLBACK: 15 * 60 * 1000,
+  /** When Marketing campaign auto-refresh is enabled. */
+  MARKETING_CAMPAIGNS: 10 * 60 * 1000,
+} as const;
+
 // ============================================
 // SERVER CONFIGURATION
 // ============================================

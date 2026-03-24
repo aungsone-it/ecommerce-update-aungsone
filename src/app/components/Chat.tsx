@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { POLLING_INTERVALS_MS } from "../../constants";
 import imageCompression from "browser-image-compression";
 import {
   MessageSquare,
@@ -321,7 +322,7 @@ export function Chat({
       if (selectedConversation) {
         loadMessages(selectedConversation, true); // Silent refresh — fallback if Realtime off
       }
-    }, 120000); // 2 min fallback; Realtime delivers most updates instantly
+    }, POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK); // fallback if Realtime is off
   };
 
   const stopPolling = () => {

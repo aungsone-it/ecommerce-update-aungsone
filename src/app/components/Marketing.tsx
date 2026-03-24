@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { POLLING_INTERVALS_MS } from "../../constants";
 import {
   Select,
   SelectContent,
@@ -153,7 +154,7 @@ export function Marketing() {
   const [campaigns, setCampaigns] = useState<Campaign[]>(() => cachedCampaigns || []);
   const [loading, setLoading] = useState(!cachedCampaigns.length);
   const [error, setError] = useState<string | null>(null);
-  const [autoRefresh, setAutoRefresh] = useState(true); // Enable auto-refresh by default
+  const [autoRefresh, setAutoRefresh] = useState(false); // Off by default — avoids high edge traffic; enable when actively editing campaigns
   
   const [newCampaign, setNewCampaign] = useState({
     name: "",
@@ -388,11 +389,13 @@ export function Marketing() {
   useEffect(() => {
     if (!autoRefresh || currentView !== "list") return;
     
-    console.log("🔄 Setting up auto-refresh for campaigns (every 10s)");
+    console.log(
+      `🔄 Auto-refresh for campaigns (every ${POLLING_INTERVALS_MS.MARKETING_CAMPAIGNS / 60000} min)`
+    );
     const intervalId = setInterval(() => {
       console.log("🔄 Auto-refreshing campaigns...");
       fetchCampaigns();
-    }, 10000); // Refresh every 10 seconds
+    }, POLLING_INTERVALS_MS.MARKETING_CAMPAIGNS);
     
     return () => {
       console.log("🛑 Clearing auto-refresh interval");

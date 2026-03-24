@@ -5,6 +5,7 @@ import { Badge } from "./ui/badge";
 import { Textarea } from "./ui/textarea";
 import { toast } from "sonner";
 import { chatApi } from "../../utils/api";
+import { POLLING_INTERVALS_MS } from "../../constants";
 import {
   broadcastConversationMessage,
   broadcastInboxPing,
@@ -223,7 +224,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     pollingIntervalRef.current = window.setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       pollForNewMessages();
-    }, 120000);
+    }, POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK);
 
     return () => {
       if (pollingIntervalRef.current) {
