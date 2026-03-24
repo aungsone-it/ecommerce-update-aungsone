@@ -1,28 +1,25 @@
 import { AppRouter } from "./AppRouter";
 import { Outlet } from "react-router";
-import { useAuth } from "../contexts/AuthContext";
 import { BackToTop } from "./BackToTop";
 import { useCartVisibility } from "../contexts/CartVisibilityContext";
 import { CartVisibilityProvider } from "../contexts/CartVisibilityContext";
 
 // Protected layout with authentication
-export function ProtectedLayout() {
+export function ProtectedLayout({ children }: { children?: React.ReactNode }) {
   return (
     <CartVisibilityProvider>
-      <ProtectedLayoutContent />
+      <ProtectedLayoutContent>{children}</ProtectedLayoutContent>
     </CartVisibilityProvider>
   );
 }
 
-function ProtectedLayoutContent() {
-  const { user } = useAuth();
+function ProtectedLayoutContent({ children }: { children?: React.ReactNode }) {
   const { isCartOpen } = useCartVisibility();
 
   return (
     <AppRouter>
-      <Outlet />
-      {/* FloatingChat removed - only for storefront, not admin panel */}
-      {/* Global Back to Top - Hidden when cart is open */}
+      {/* AdminSubdomainOrSuper passes AdminPage as children; nested routes use <Outlet /> */}
+      {children ?? <Outlet />}
       {!isCartOpen && <BackToTop />}
     </AppRouter>
   );
