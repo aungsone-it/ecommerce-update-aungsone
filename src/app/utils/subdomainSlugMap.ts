@@ -1,5 +1,14 @@
-/** Optional map: short subdomain label → real store slug (URL segment). Example: gogo → go-go */
-export function parseSubdomainSlugMap(): Record<string, string> {
+/**
+ * Short subdomain host label → real `storeSlug` in /store/:slug.
+ * Shipped defaults so gogo.walwal.online / abcstore.walwal.online work without Vercel env.
+ * Env VENDOR_SUBDOMAIN_SLUG_MAP overrides these keys when set.
+ */
+export const BUILT_IN_SUBDOMAIN_SLUG_MAP: Record<string, string> = {
+  gogo: "go-go",
+  abcstore: "abc-store",
+};
+
+function parseEnvSlugMapOnly(): Record<string, string> {
   const raw = import.meta.env.VITE_VENDOR_SUBDOMAIN_SLUG_MAP;
   if (!raw || typeof raw !== "string") return {};
   try {
@@ -13,6 +22,11 @@ export function parseSubdomainSlugMap(): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+/** Merged built-ins + env (env wins on same key). */
+export function parseSubdomainSlugMap(): Record<string, string> {
+  return { ...BUILT_IN_SUBDOMAIN_SLUG_MAP, ...parseEnvSlugMapOnly() };
 }
 
 export function getStoreSlugFromSubdomainLabel(label: string): string {

@@ -14,6 +14,12 @@
  */
 import { next } from "@vercel/edge";
 
+/** Same as src/app/utils/subdomainSlugMap.ts BUILT_IN — edge bundle cannot rely on env alone. */
+const BUILT_IN_SUBDOMAIN_SLUG_MAP: Record<string, string> = {
+  gogo: "go-go",
+  abcstore: "abc-store",
+};
+
 const RESERVED_SUBDOMAINS = new Set([
   "www",
   "api",
@@ -30,19 +36,29 @@ function normalizeHost(host: string): string {
   return host.split(":")[0].toLowerCase();
 }
 
-/** If label matches a map *value* (real slug), return the map *key* (short host). go-go → gogo */
-function canonicalSubdomainLabelFromSlugMap(
-  slugMapJson: string,
-  label: string
-): string | null {
+function mergeSlugMapFromEnv(envRaw: string): Record<string, string> {
+  let fromEnv: Record<string, string> = {};
   try {
-    const map = JSON.parse(slugMapJson) as Record<string, unknown>;
-    const lower = label.toLowerCase();
-    for (const [k, v] of Object.entries(map)) {
-      if (typeof v === "string" && v.toLowerCase() === lower) return k.toLowerCase();
+    if (envRaw.trim()) {
+      const p = JSON.parse(envRaw) as Record<string, unknown>;
+      for (const [k, v] of Object.entries(p)) {
+        if (typeof v === "string" && v.length) fromEnv[k.toLowerCase()] = v;
+      }
     }
   } catch {
     /* ignore */
+  }
+  return { ...BUILT_IN_SUBDOMAIN_SLUG_MAP, ...fromEnv };
+}
+
+/** If label matches a map *value* (real slug), return the map *key* (short host). go-go → gogo */
+function canonicalSubdomainLabelFromMergedMap(
+  merged: Record<string, string>,
+  label: string
+): string | null {
+  const lower = label.toLowerCase();
+  for (const [k, v] of Object.entries(merged)) {
+    if (v.toLowerCase() === lower) return k.toLowerCase();
   }
   return null;
 }
@@ -58,7 +74,10 @@ export default function middleware(request: Request): Response {
     return next();
   }
 
-  const baseDomain = (process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase();
+  let baseDomain = (process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase();
+  if (!baseDomain && host.endsWith(".walwal.online")) {
+    baseDomain = "walwal.online";
+  }
   if (!baseDomain) {
     return next();
   }
@@ -78,8 +97,8 @@ export default function middleware(request: Request): Response {
     return next();
   }
 
-  const slugMapRaw = (process.env.VENDOR_SUBDOMAIN_SLUG_MAP || "").trim();
-  const preferred = canonicalSubdomainLabelFromSlugMap(slugMapRaw, sub);
+  const mergedMap = mergeSlugMapFromEnv((process.env.VENDOR_SUBDOMAIN_SLUG_MAP || "").trim());
+  const preferred = canonicalSubdomainLabelFromMergedMap(mergedMap, sub);
   if (preferred && preferred !== sub) {
     const url = new URL(request.url);
     url.hostname = `${preferred}.${baseDomain}`;
