@@ -2,8 +2,10 @@
  * Vercel Edge Middleware: map vendor subdomains to existing store routes.
  *
  * Subdomain = same string as the vendor’s store slug (`storeName` in /store/:storeName).
- * Example: vendor sets slug `abcstore` → https://abcstore.walwal.online → /store/abcstore
- * No separate mapping — vendors choose their slug in your app; that label becomes their subdomain.
+ * Example: https://abcstore.walwal.online → /store/abc-store when VENDOR_SUBDOMAIN_SLUG_MAP maps them.
+ *
+ * Optional env VENDOR_SUBDOMAIN_SLUG_MAP: JSON object, short subdomain label → real store slug.
+ * Example: {"gogo":"go-go","abcstore":"abc-store"} so gogo.walwal.online → /store/go-go
  *
  * Apex / www (https://walwal.online, https://www.walwal.online) → no redirect (branding + marketplace paths).
  *
@@ -26,6 +28,21 @@ const RESERVED_SUBDOMAINS = new Set([
 
 function normalizeHost(host: string): string {
   return host.split(":")[0].toLowerCase();
+}
+
+function storeSlugFromSubdomainLabel(label: string): string {
+  const raw = (process.env.VENDOR_SUBDOMAIN_SLUG_MAP || "").trim();
+  if (!raw) return label;
+  try {
+    const map = JSON.parse(raw) as Record<string, unknown>;
+    const lower = label.toLowerCase();
+    for (const [k, v] of Object.entries(map)) {
+      if (k.toLowerCase() === lower && typeof v === "string" && v.length) return v;
+    }
+    return label;
+  } catch {
+    return label;
+  }
 }
 
 export const config = {
@@ -65,10 +82,11 @@ export default function middleware(request: Request): Response {
     return next();
   }
 
+  const storeSlug = storeSlugFromSubdomainLabel(sub);
   if (pathname === "/" || pathname === "") {
-    url.pathname = `/store/${sub}`;
+    url.pathname = `/store/${storeSlug}`;
   } else {
-    url.pathname = `/store/${sub}${pathname}`;
+    url.pathname = `/store/${storeSlug}${pathname}`;
   }
 
   // Use redirect (not rewrite) so the browser URL path is /store/... — the SPA reads pathname and React Router must match /store/:storeName.

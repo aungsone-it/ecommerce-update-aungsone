@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { getVendorSubdomainBase } from "../utils/vendorSubdomainBase";
+import { getStoreSlugFromSubdomainLabel } from "../utils/subdomainSlugMap";
 
 const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -36,7 +37,8 @@ export function SubdomainVendorRedirect() {
     if (path.startsWith("/store/")) return;
 
     const suffix = path === "/" || path === "" ? "" : path;
-    navigate(`/store/${sub}${suffix}`, { replace: true });
+    const storeSlug = getStoreSlugFromSubdomainLabel(sub);
+    navigate(`/store/${storeSlug}${suffix}`, { replace: true });
   }, [navigate, location.pathname]);
 
   return null;

@@ -20,7 +20,9 @@
         if (!m || reserved[m[1]]) return;
         if (path.indexOf("/store/") === 0) return;
         var sub = m[1];
-        location.replace(location.origin + "/store/" + sub + (path === "/" || path === "" ? "" : path) + location.search + location.hash);
+        var map = (typeof window !== "undefined" && window.__VENDOR_SUBDOMAIN_SLUG_MAP__) || {};
+        var storeSlug = map[sub] || sub;
+        location.replace(location.origin + "/store/" + encodeURIComponent(storeSlug).replace(/%2F/g, "/") + (path === "/" || path === "" ? "" : path) + location.search + location.hash);
       })();
     </script>
     <div id="root"></div>

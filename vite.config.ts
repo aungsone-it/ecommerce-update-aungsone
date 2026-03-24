@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite'
+import type { Plugin } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
@@ -20,15 +21,49 @@ const figmaAssetPlugin = () => ({
   }
 });
 
+/** Injects window.__VENDOR_SUBDOMAIN_SLUG_MAP__ for index.html inline redirect (build + dev). */
+function injectSubdomainSlugMapPlugin(): Plugin {
+  return {
+    name: "inject-subdomain-slug-map",
+    transformIndexHtml(html) {
+      const raw =
+        process.env.VENDOR_SUBDOMAIN_SLUG_MAP ||
+        process.env.VITE_VENDOR_SUBDOMAIN_SLUG_MAP ||
+        "{}";
+      let obj: Record<string, string> = {};
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          obj = Object.fromEntries(
+            Object.entries(parsed as Record<string, unknown>)
+              .filter(([, v]) => typeof v === "string" && (v as string).length)
+              .map(([k, v]) => [String(k).toLowerCase(), v as string])
+          );
+        }
+      } catch {
+        obj = {};
+      }
+      const script = `<script>window.__VENDOR_SUBDOMAIN_SLUG_MAP__=${JSON.stringify(obj)}<\/script>`;
+      return html.replace("<head>", `<head>\n    ${script}`);
+    },
+  };
+}
+
 export default defineConfig(() => {
   const vendorSubdomainBase =
     process.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN ||
     process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN ||
     "";
 
+  const slugMapJson =
+    process.env.VENDOR_SUBDOMAIN_SLUG_MAP ||
+    process.env.VITE_VENDOR_SUBDOMAIN_SLUG_MAP ||
+    "{}";
+
   return {
   define: {
     "import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN": JSON.stringify(vendorSubdomainBase),
+    "import.meta.env.VITE_VENDOR_SUBDOMAIN_SLUG_MAP": JSON.stringify(slugMapJson),
   },
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
@@ -36,6 +71,7 @@ export default defineConfig(() => {
     react(),
     tailwindcss(),
     figmaAssetPlugin(),
+    injectSubdomainSlugMapPlugin(),
   ],
   resolve: {
     alias: {
