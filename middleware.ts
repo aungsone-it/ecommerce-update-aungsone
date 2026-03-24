@@ -1,13 +1,14 @@
 /**
  * Vercel Edge Middleware: map vendor subdomains to existing store routes.
  *
- * Example: https://gogo.walwal.online/ → internally serves /store/gogo
- *          https://gogo.walwal.online/product/x → /store/gogo/product/x
+ * Subdomain = same string as the vendor’s store slug (`storeName` in /store/:storeName).
+ * Example: vendor sets slug `abcstore` → https://abcstore.walwal.online → /store/abcstore
+ * No separate mapping — vendors choose their slug in your app; that label becomes their subdomain.
  *
  * Apex / www (https://walwal.online, https://www.walwal.online) → no rewrite (branding + marketplace paths).
  *
  * Set Vercel env: VENDOR_SUBDOMAIN_BASE_DOMAIN=walwal.online (apex only, no protocol)
- * DNS: add *.walwal.online → Vercel (A 76.76.21.21 or nameservers; see Vercel Domains)
+ * DNS: add *.walwal.online → Vercel (see Vercel Domains)
  */
 import { next, rewrite } from "@vercel/edge";
 
