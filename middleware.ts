@@ -30,6 +30,23 @@ function normalizeHost(host: string): string {
   return host.split(":")[0].toLowerCase();
 }
 
+/** If label matches a map *value* (real slug), return the map *key* (short host). go-go → gogo */
+function canonicalSubdomainLabelFromSlugMap(
+  slugMapJson: string,
+  label: string
+): string | null {
+  try {
+    const map = JSON.parse(slugMapJson) as Record<string, unknown>;
+    const lower = label.toLowerCase();
+    for (const [k, v] of Object.entries(map)) {
+      if (typeof v === "string" && v.toLowerCase() === lower) return k.toLowerCase();
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 export const config = {
   matcher: ["/((?!assets/|favicon\\.ico|robots\\.txt|manifest\\.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)"],
 };
@@ -59,6 +76,14 @@ export default function middleware(request: Request): Response {
   const sub = subdomainMatch[1].toLowerCase();
   if (RESERVED_SUBDOMAINS.has(sub)) {
     return next();
+  }
+
+  const slugMapRaw = (process.env.VENDOR_SUBDOMAIN_SLUG_MAP || "").trim();
+  const preferred = canonicalSubdomainLabelFromSlugMap(slugMapRaw, sub);
+  if (preferred && preferred !== sub) {
+    const url = new URL(request.url);
+    url.hostname = `${preferred}.${baseDomain}`;
+    return Response.redirect(url, 307);
   }
 
   // Keep browser on / (or any path) — SPA resolves vendor from Host + slug map.

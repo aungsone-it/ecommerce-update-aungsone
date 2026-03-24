@@ -19,3 +19,16 @@ export function getStoreSlugFromSubdomainLabel(label: string): string {
   const map = parseSubdomainSlugMap();
   return map[label.toLowerCase()] ?? label;
 }
+
+/**
+ * If the hostname label equals a *slug* in the map (e.g. go-go), return the preferred short label (gogo).
+ * Used to redirect go-go.walwal.online → gogo.walwal.online.
+ */
+export function getCanonicalSubdomainLabelIfSlugForm(label: string): string | null {
+  const map = parseSubdomainSlugMap();
+  const lower = label.toLowerCase();
+  for (const [shortLabel, slug] of Object.entries(map)) {
+    if (slug.toLowerCase() === lower) return shortLabel.toLowerCase();
+  }
+  return null;
+}

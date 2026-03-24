@@ -1,5 +1,6 @@
 // Root Layout Component - Public layout wrapper
 import { Outlet, useLocation } from "react-router";
+import { CanonicalSubdomainRedirect } from "./CanonicalSubdomainRedirect";
 import { SubdomainVendorRedirect } from "./SubdomainVendorRedirect";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { FloatingChat } from "./FloatingChat";
@@ -46,6 +47,7 @@ function RootLayoutContent() {
 
   return (
     <>
+      <CanonicalSubdomainRedirect />
       <SubdomainVendorRedirect />
       <Outlet />
       {/* Global Floating Chat - Hidden when cart is open OR when app is loading OR on vendor application page OR on landing page */}
