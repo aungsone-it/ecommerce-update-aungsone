@@ -5,12 +5,12 @@
  * Example: vendor sets slug `abcstore` → https://abcstore.walwal.online → /store/abcstore
  * No separate mapping — vendors choose their slug in your app; that label becomes their subdomain.
  *
- * Apex / www (https://walwal.online, https://www.walwal.online) → no rewrite (branding + marketplace paths).
+ * Apex / www (https://walwal.online, https://www.walwal.online) → no redirect (branding + marketplace paths).
  *
  * Set Vercel env: VENDOR_SUBDOMAIN_BASE_DOMAIN=walwal.online (apex only, no protocol)
  * DNS: add *.walwal.online → Vercel (see Vercel Domains)
  */
-import { next, rewrite } from "@vercel/edge";
+import { next } from "@vercel/edge";
 
 const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -71,5 +71,6 @@ export default function middleware(request: Request): Response {
     url.pathname = `/store/${sub}${pathname}`;
   }
 
-  return rewrite(url);
+  // Use redirect (not rewrite) so the browser URL path is /store/... — the SPA reads pathname and React Router must match /store/:storeName.
+  return Response.redirect(url, 307);
 }
