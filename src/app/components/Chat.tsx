@@ -37,6 +37,12 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { chatApi } from "../../utils/api";
 import { mainStoreConversationIdFromEmail } from "../../utils/chatConversation";
+import {
+  broadcastConversationMessage,
+  broadcastInboxPing,
+  subscribeAdminInbox,
+  subscribeConversationBroadcast,
+} from "../utils/chatRealtime";
 
 const CHAT_MESSAGES_REVEALED_KEY = "admin-chat-messages-revealed-ids";
 
@@ -111,6 +117,8 @@ export function Chat({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollingIntervalRef = useRef<number | null>(null);
+  const loadConversationsRef = useRef<() => Promise<void>>(async () => {});
+  const inboxDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const loadConversations = async () => {
@@ -132,6 +140,8 @@ export function Chat({
       setLoading(false);
     }
   };
+
+  loadConversationsRef.current = loadConversations;
 
   const loadMessages = useCallback(async (conversationId: string, silent = false) => {
     if (!silent) setLoadingMessages(true);
@@ -176,6 +186,31 @@ export function Chat({
       if (!silent) setLoadingMessages(false);
     }
   }, []);
+
+  // Supabase Realtime Broadcast: inbox list + thread messages (reduces HTTP polling)
+  useEffect(() => {
+    return subscribeAdminInbox(() => {
+      if (inboxDebounceRef.current) clearTimeout(inboxDebounceRef.current);
+      inboxDebounceRef.current = setTimeout(() => {
+        void loadConversationsRef.current();
+      }, 400);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedConversation) return;
+    return subscribeConversationBroadcast(selectedConversation, (msg) => {
+      setMessages((prev) => {
+        const id = String(msg.id ?? "");
+        if (!id || prev.some((m) => m.id === id)) return prev;
+        const next = [...prev, msg as unknown as Message];
+        return next.sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      });
+    });
+  }, [selectedConversation]);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -272,7 +307,7 @@ export function Chat({
     };
   }, [initialCustomer, loadMessages, onInitialCustomerHandled]);
 
-  // Poll for new messages every 3 seconds (real-time simulation)
+  // Fallback HTTP poll (Realtime Broadcast handles most updates)
   useEffect(() => {
     startPolling();
     return () => stopPolling();
@@ -281,11 +316,12 @@ export function Chat({
   const startPolling = () => {
     stopPolling(); // Clear any existing interval
     pollingIntervalRef.current = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       loadConversations();
       if (selectedConversation) {
-        loadMessages(selectedConversation, true); // Silent refresh
+        loadMessages(selectedConversation, true); // Silent refresh — fallback if Realtime off
       }
-    }, 5000); // Poll every 5 seconds (reduced frequency to ease server load)
+    }, 120000); // 2 min fallback; Realtime delivers most updates instantly
   };
 
   const stopPolling = () => {
@@ -387,9 +423,8 @@ export function Chat({
 
         setConversations((prev) => patchCustomer(prev));
 
-        await loadConversations();
-        // Re-apply customer identity after fetch (until backend is redeployed, API may still return "Admin")
-        setConversations((prev) => patchCustomer(prev));
+        void broadcastConversationMessage(selectedConversation, response.message);
+        void broadcastInboxPing();
       }
     } catch (error) {
       console.error("Failed to send message:", error);

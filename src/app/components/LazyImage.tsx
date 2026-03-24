@@ -62,6 +62,7 @@ export const LazyImage = React.memo(({ src, alt, className = '', fallbackSrc }: 
         <img
           {...imageProps}
           alt={alt}
+          decoding="async"
           className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-150`}
           onLoad={handleLoad}
           onError={handleError}

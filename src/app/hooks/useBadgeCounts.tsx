@@ -68,8 +68,8 @@ export function useBadgeCounts() {
       return;
     }
 
-    // Check if cache is fresh (less than 30 seconds old)
-    if (SmartCache.isFresh('badge_counts', 30000)) {
+    // Check if cache is fresh (90s — was 30s; reduces duplicate edge calls)
+    if (SmartCache.isFresh('badge_counts', 90000)) {
       console.log('✅ Badge counts cache is fresh, no need to fetch');
       badgeCircuitBreaker.recordSuccess();
       return;
@@ -200,26 +200,22 @@ export function useBadgeCounts() {
     SmartCache.set('badge_counts', INITIAL_BADGE_COUNTS);
   }, []);
 
-  // 🔄 Auto-refresh badge counts every 60 seconds (reduced frequency to ease server load)
+  // 🔄 Auto-refresh while admin tab is visible only (no polling when hidden)
   useEffect(() => {
-    // Initial load on mount
-    loadBadgeCounts();
-
-    // Set up interval to refresh every 60 seconds
+    const tick = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      loadBadgeCounts();
+    };
+    tick();
     const interval = setInterval(() => {
       console.log('🔄 Auto-refreshing badge counts...');
-      loadBadgeCounts();
-    }, 60000); // 60 seconds to reduce server load
+      tick();
+    }, 120000); // 2 min — orders/chat/vendor apps in one round-trip
 
     return () => clearInterval(interval);
   }, [loadBadgeCounts]);
 
-  /** Chat unread updates quickly when customers message (admin may be on any page). */
-  useEffect(() => {
-    refreshChatBadgeOnly();
-    const interval = setInterval(refreshChatBadgeOnly, 30000);
-    return () => clearInterval(interval);
-  }, [refreshChatBadgeOnly]);
+  /** Chat-only polling removed: loadBadgeCounts already loads chat; use `admin-chat-unread-updated` for instant UI. */
 
   /** Instant badge sync when Chat panel polls conversations (same tab). */
   useEffect(() => {

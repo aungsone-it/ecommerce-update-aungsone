@@ -45,14 +45,63 @@ import { BlogPostDetail } from "./BlogPostDetail";
 import { AuthModal } from "./AuthModal";
 import { OrderDetailView } from "./OrderDetailView";
 import { CacheDebugPanel } from "./CacheDebugPanel";
-import { moduleCache, CACHE_KEYS, fetchAllProducts, fetchAllCategories, fetchSiteSettings } from "../utils/module-cache";
-import { loadProductsCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
+import { fetchCatalogPage, fetchProductsByIds } from "../utils/module-cache";
+import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 
 // 🚀 MODULE-LEVEL CACHE - These persist across all navigations and component remounts
 // This is critical for reducing Supabase API calls from 20k → ~100-500
 let cachedProducts: Product[] = [];
 let cachedCategories: any[] = [];
 let cachedSiteSettings: any = null;
+
+/** Throttle catalog background refresh to limit edge/DB traffic (hobby / low-volume projects). */
+const CATALOG_BG_REFRESH_MIN_MS = 15 * 60 * 1000;
+const CATALOG_BG_KEY = 'migoo-catalog-bg-refresh-at';
+
+function shouldSkipCatalogBackgroundRefresh(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(CATALOG_BG_KEY)) || 0;
+    return Date.now() - last < CATALOG_BG_REFRESH_MIN_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markCatalogBackgroundRefreshed() {
+  try {
+    sessionStorage.setItem(CATALOG_BG_KEY, String(Date.now()));
+  } catch {
+    // ignore
+  }
+}
+
+/** Default page size for storefront catalog API (matches bootstrap). */
+const CATALOG_PAGE_SIZE = 24;
+
+function productFromBySkuApi(raw: any): Product {
+  const img =
+    Array.isArray(raw?.images) && raw.images[0]
+      ? raw.images[0]
+      : raw?.image || "";
+  return {
+    id: String(raw.id),
+    image: typeof img === "string" ? img : "",
+    name: String(raw.name || raw.title || ""),
+    price: String(raw.price ?? ""),
+    sku: String(raw.sku || ""),
+    vendor: String(raw.vendor || ""),
+    collaborator: String(raw.collaborator || ""),
+    category: String(raw.category || ""),
+    inventory: Number(raw.inventory ?? raw.stock ?? 0),
+    salesVolume: Number(raw.salesVolume ?? 0),
+    createDate: String(raw.createDate || raw.createdAt || ""),
+    description: raw.description,
+    hasVariants: raw.hasVariants,
+    variantOptions: raw.variantOptions,
+    variants: raw.variants,
+  };
+}
+
 let cachedProductDetails: Map<string, Product> = new Map(); // Cache for full product details
 
 /**
@@ -310,6 +359,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   
   // 🔒 Ref to prevent retry effect from causing race conditions
   const productRetryAttemptedRef = useRef(false);
+  const productRetrySkuRef = useRef("");
   const isSelectingProductRef = useRef(false);
   const isNavigatingAwayRef = useRef(false); // 🆕 NEW: Prevent race conditions during navigation
   
@@ -448,6 +498,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
+  /** Server-backed catalog (paginated); home sections loaded via bootstrap. */
+  const [catalogTotal, setCatalogTotal] = useState(0);
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [catalogHasMore, setCatalogHasMore] = useState(false);
+  const [catalogLoadingMore, setCatalogLoadingMore] = useState(false);
+  const [homeDealProducts, setHomeDealProducts] = useState<Product[]>([]);
+  const [homeNewArrivals, setHomeNewArrivals] = useState<Product[]>([]);
+  const lastCatalogKeyRef = useRef("");
   const [showCart, setShowCart] = useState(false);
   const [scrolled, setScrolled] = useState(false); // Track scroll position for animated sticky nav
   
@@ -554,21 +612,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     } else if (path === "/products") {
       setViewMode("all-products");
     } else if (path.startsWith("/product/")) {
-      const sku = path.replace("/product/", "");
-      // Find product by SKU and show detail
-      // Wait for products to load if needed
-      if (products.length > 0) {
-        const product = products.find(p => p.sku === sku);
-        if (product) {
-          setSelectedProduct(product);
-          setViewMode("product-detail");
-        } else {
-          // Product not found, go to home
-          console.warn(`Product with SKU ${sku} not found`);
-          navigate("/store", { replace: true });
-        }
+      const sku = decodeURIComponent(path.replace("/product/", "").split("/")[0]);
+      const product = products.find((p) => p.sku === sku);
+      if (product) {
+        setSelectedProduct(product);
+        setViewMode("product-detail");
       } else {
-        // Products not loaded yet, will retry when products load
         setViewMode("product-detail");
       }
     } else if (path === "/checkout") {
@@ -722,38 +771,58 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   }, [viewMode, selectedBlogPost, selectedOrder]); // Removed selectedProduct to prevent double transitions
   */
   
-  // 🔗 RETRY LOGIC: When products load, check if we're on a product detail page and need to load the product
+  // Deep link / paginated catalog: resolve product by SKU via API when not on current page.
   useEffect(() => {
-    // Guard: Only run once per product load attempt
-    if (productRetryAttemptedRef.current) return;
-    
-    // Guard: Don't run if user is actively selecting a product
     if (isSelectingProductRef.current) return;
-    
-    // Guard: Don't run if user is navigating away
     if (isNavigatingAwayRef.current) return;
-
     if (!location.pathname.startsWith("/product/")) return;
-    
-    // Guard: Only run if products just loaded and we're in product-detail mode without a selectedProduct
-    if (products.length > 0 && viewMode === "product-detail" && !selectedProduct) {
-      const path = location.pathname;
-      if (path.startsWith("/product/")) {
-        productRetryAttemptedRef.current = true; // Prevent multiple attempts
-        const sku = path.replace("/product/", "");
-        const product = products.find(p => p.sku === sku);
-        if (product) {
-          console.log(`🔄 Retry: Found product ${sku}, loading...`);
-          setSelectedProduct(product);
+    if (viewMode !== "product-detail" || selectedProduct) return;
+
+    const sku = decodeURIComponent(
+      location.pathname.replace("/product/", "").split("/")[0]
+    );
+    if (!sku) return;
+
+    if (productRetrySkuRef.current !== sku) {
+      productRetrySkuRef.current = sku;
+      productRetryAttemptedRef.current = false;
+    }
+
+    const fromList = products.find((p) => p.sku === sku);
+    if (fromList) {
+      setSelectedProduct(fromList);
+      return;
+    }
+
+    if (productRetryAttemptedRef.current) return;
+    productRetryAttemptedRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/by-sku/${encodeURIComponent(sku)}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          navigate("/store", { replace: true });
+          return;
+        }
+        const data = await res.json();
+        if (data.product) {
+          setSelectedProduct(productFromBySkuApi(data.product));
         } else {
-          // Product not found even after products loaded
-          console.warn(`Product with SKU ${sku} not found after products loaded`);
           navigate("/store", { replace: true });
         }
+      } catch {
+        if (!cancelled) navigate("/store", { replace: true });
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [products.length]); // Run when products array changes (loads)
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, products, selectedProduct, viewMode, navigate]);
   
   // 🔒 Simple body scroll lock when mobile menu is open
   useEffect(() => {
@@ -1066,11 +1135,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         console.log('⚡ App already initialized with cached data, skipping loading screen...');
         console.log(`📦 Using cached data: ${cachedProducts.length} products, ${cachedCategories.length} categories`);
         setInitialCatalogFetchDone(true);
-        // ⚡ No need to set loading - serverStatus already handles it
-        // Silently refresh data in background to keep it fresh - PASS TRUE FLAG to prevent race conditions
-        Promise.all([loadProducts(true), loadCategories(), loadSiteSettings(), loadBanners()]).catch(err => {
-          console.error('Background refresh failed:', err);
-        });
+        if (shouldSkipCatalogBackgroundRefresh()) {
+          console.log('⏭️ Skipping catalog background refresh (throttled)');
+          return;
+        }
+        Promise.all([loadProducts(true), loadCategories(), loadSiteSettings(), loadBanners()])
+          .then(() => markCatalogBackgroundRefreshed())
+          .catch((err) => {
+            console.error('Background refresh failed:', err);
+          });
         return;
       }
       
@@ -1092,6 +1165,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         setInitialCatalogFetchDone(true);
         updateServerStatus('healthy');
         sessionStorage.setItem('migoo-initialized', 'true');
+        markCatalogBackgroundRefreshed();
         console.log('✅ All data loaded, app ready!');
       } else {
         setServerStatus('unhealthy');
@@ -1109,6 +1183,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             setInitialCatalogFetchDone(true);
             updateServerStatus('healthy');
             sessionStorage.setItem('migoo-initialized', 'true');
+            markCatalogBackgroundRefreshed();
             toast.success('✅ Connected to server successfully!');
           } else {
             setServerStatus('unhealthy');
@@ -1125,6 +1200,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 setInitialCatalogFetchDone(true);
                 updateServerStatus('healthy');
                 sessionStorage.setItem('migoo-initialized', 'true');
+                markCatalogBackgroundRefreshed();
                 toast.success('✅ Connected to server successfully!');
               } else {
                 setServerStatus('unhealthy');
@@ -1141,6 +1217,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     setInitialCatalogFetchDone(true);
                     updateServerStatus('healthy');
                     sessionStorage.setItem('migoo-initialized', 'true');
+                    markCatalogBackgroundRefreshed();
                     toast.success('✅ Connected to server successfully!');
                   } else {
                     setInitialCatalogFetchDone(true);
@@ -1286,22 +1363,151 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   }, []);
 
+  const catalogSortKey = useCallback(() => {
+    return `${selectedCategory}|${activeSearchQuery}|${sortBy}|${userAppliedFilters}|${priceRange[0]}-${priceRange[1]}`;
+  }, [selectedCategory, activeSearchQuery, sortBy, userAppliedFilters, priceRange]);
+
   const loadProducts = useCallback(async (isBackgroundRefresh = false) => {
     try {
-      const activeProducts = await loadProductsCached(isBackgroundRefresh);
+      const data = await loadCatalogBootstrapCached(isBackgroundRefresh);
+      const activeProducts = data.products;
       cachedProducts = activeProducts;
       if (!isBackgroundRefresh) {
         setProducts(activeProducts);
+        setCatalogTotal(data.total);
+        setCatalogPage(1);
+        setCatalogHasMore(!!data.hasMore);
+        setHomeDealProducts(data.dealProducts as Product[]);
+        setHomeNewArrivals(data.newArrivals as Product[]);
+        lastCatalogKeyRef.current = catalogSortKey();
       }
     } catch (error) {
       console.error("Failed to load products (backend not ready):", error);
-      // Don't show error toast - just use empty list
       if (!isBackgroundRefresh) {
         setProducts([]);
+        setCatalogTotal(0);
+        setCatalogHasMore(false);
+        setHomeDealProducts([]);
+        setHomeNewArrivals([]);
       }
     }
-    // No setLoading(false) here - serverStatus handles loading state
-  }, []);
+  }, [catalogSortKey]);
+
+  const fetchCatalogRefetch = useCallback(async () => {
+    try {
+      const data = await fetchCatalogPage({
+        page: 1,
+        pageSize: CATALOG_PAGE_SIZE,
+        q: activeSearchQuery,
+        category: selectedCategory,
+        sort: sortBy,
+        minPrice: userAppliedFilters ? priceRange[0] : undefined,
+        maxPrice: userAppliedFilters ? priceRange[1] : undefined,
+      });
+      const list = (data.products || []).filter((p: any) => {
+        const status = String(p.status || "").toLowerCase();
+        return !status || status === "active";
+      });
+      cachedProducts = list;
+      setProducts(list);
+      setCatalogTotal(data.total ?? 0);
+      setCatalogPage(1);
+      setCatalogHasMore(!!data.hasMore);
+      lastCatalogKeyRef.current = catalogSortKey();
+    } catch (e) {
+      console.error("Catalog refetch failed:", e);
+    }
+  }, [
+    activeSearchQuery,
+    selectedCategory,
+    sortBy,
+    userAppliedFilters,
+    priceRange,
+    catalogSortKey,
+  ]);
+
+  const loadMoreCatalog = useCallback(async () => {
+    if (!catalogHasMore || catalogLoadingMore) return;
+    setCatalogLoadingMore(true);
+    try {
+      const nextPage = catalogPage + 1;
+      const data = await fetchCatalogPage({
+        page: nextPage,
+        pageSize: CATALOG_PAGE_SIZE,
+        q: activeSearchQuery,
+        category: selectedCategory,
+        sort: sortBy,
+        minPrice: userAppliedFilters ? priceRange[0] : undefined,
+        maxPrice: userAppliedFilters ? priceRange[1] : undefined,
+      });
+      const list = (data.products || []).filter((p: any) => {
+        const status = String(p.status || "").toLowerCase();
+        return !status || status === "active";
+      });
+      setProducts((prev) => {
+        const merged = [...prev, ...list];
+        cachedProducts = merged;
+        return merged;
+      });
+      setCatalogPage(nextPage);
+      setCatalogHasMore(!!data.hasMore);
+    } catch (e) {
+      console.error("Load more catalog failed:", e);
+    } finally {
+      setCatalogLoadingMore(false);
+    }
+  }, [
+    catalogHasMore,
+    catalogLoadingMore,
+    catalogPage,
+    activeSearchQuery,
+    selectedCategory,
+    sortBy,
+    userAppliedFilters,
+    priceRange,
+  ]);
+
+  const catalogFilterMountedRef = useRef(false);
+
+  // Refetch catalog when filters/sort/search change (server-side pagination).
+  useEffect(() => {
+    if (!initialCatalogFetchDone || serverStatus !== "healthy") return;
+    const key = catalogSortKey();
+    if (!catalogFilterMountedRef.current) {
+      catalogFilterMountedRef.current = true;
+      lastCatalogKeyRef.current = key;
+      return;
+    }
+    if (lastCatalogKeyRef.current === key) return;
+    lastCatalogKeyRef.current = key;
+    fetchCatalogRefetch();
+  }, [catalogSortKey, initialCatalogFetchDone, serverStatus, fetchCatalogRefetch]);
+
+  // Merge wishlist product rows (may be off the current catalog page).
+  useEffect(() => {
+    if (viewMode !== "saved-products" || wishlist.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await fetchProductsByIds(wishlist);
+        if (cancelled) return;
+        setProducts((prev) => {
+          const map = new Map(prev.map((p) => [p.id, p]));
+          for (const p of rows) {
+            map.set(p.id, p as Product);
+          }
+          const next = Array.from(map.values());
+          cachedProducts = next;
+          return next;
+        });
+      } catch (e) {
+        console.error("Wishlist hydrate failed:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, wishlist]);
 
   // Load site settings from database
   const loadSiteSettings = useCallback(async () => {
@@ -2785,104 +2991,31 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   };
 
-  // ⚡ Memoize categories extraction
-  const categories = useMemo(() => 
-    Array.from(new Set(products.map(p => p.category).filter(Boolean))),
-    [products]
-  );
+  const categories = useMemo(() => {
+    const fromDb = allCategories.map((c: any) => c.name).filter(Boolean);
+    if (fromDb.length > 0) return fromDb as string[];
+    return Array.from(new Set(products.map((p) => p.category).filter(Boolean))) as string[];
+  }, [allCategories, products]);
 
-  // ⚡ Memoize filtered products - search only triggers on Enter key
-  const filteredProducts = useMemo(() => {
-    const filtered = products.filter(product => {
-      // Safe Unicode text handling for Burmese and other languages
-      let matchesSearch = true;
-      try {
-        const productName = String(product.name || '').toLowerCase();
-        const searchQuery = String(activeSearchQuery || '').toLowerCase();
-        matchesSearch = productName.includes(searchQuery);
-      } catch (e) {
-        console.error('❌ Search filter error for product:', product.id, e);
-        matchesSearch = true; // Show product if search fails
-      }
-      
-      const matchesCategory = selectedCategory === "all" || product.category?.toLowerCase() === selectedCategory.toLowerCase();
-      
-      // Calculate price for both filtering and debugging
-      const priceStr = String(product.price || '0').replace(/[^0-9.]/g, ''); // Remove all non-numeric except dots
-      const price = parseFloat(priceStr) || 0;
-      
-      // Only apply price filter if user explicitly applied filters
-      let matchesPrice = true;
-      if (userAppliedFilters) {
-        matchesPrice = !isNaN(price) && price >= priceRange[0] && price <= priceRange[1];
-      }
-      
-      const passes = matchesSearch && matchesCategory && matchesPrice;
-      
-      // Debug logging for MW04842 and TB00171
-      if (product.sku === 'MW04842' || product.sku === 'TB00171') {
-        console.log(`�� Product ${product.sku}:`, {
-          name: product.name,
-          nameType: typeof product.name,
-          category: product.category,
-          price: product.price,
-          priceStr,
-          parsedPrice: price,
-          matchesSearch,
-          matchesCategory,
-          matchesPrice,
-          passes,
-          selectedCategory,
-          priceRange,
-          userAppliedFilters
-        });
-      }
-      
-      return passes;
-    });
-    
-    console.log(`📊 Filtered ${filtered.length} products from ${products.length} total`);
-    console.log('📦 Filtered products:', filtered.map(p => ({ 
-      sku: p.sku, 
-      name: p.name?.substring(0, 30),
-      price: p.price,
-      category: p.category 
-    })));
-    return filtered;
-  }, [products, activeSearchQuery, selectedCategory, priceRange, userAppliedFilters]);
+  // Search/category/sort are applied on the server (paginated catalog).
+  const filteredProducts = products;
+  const sortedProducts = products;
 
-  // ⚡ Memoize sorted products
-  const sortedProducts = useMemo(() => {
-    return [...filteredProducts].sort((a, b) => {
-      switch (sortBy) {
-        case "price-low":
-          return (parseFloat(String(a.price || '0').replace(/[^0-9.]/g, '')) || 0) - (parseFloat(String(b.price || '0').replace(/[^0-9.]/g, '')) || 0);
-        case "price-high":
-          return (parseFloat(String(b.price || '0').replace(/[^0-9.]/g, '')) || 0) - (parseFloat(String(a.price || '0').replace(/[^0-9.]/g, '')) || 0);
-        case "popular":
-          return b.salesVolume - a.salesVolume;
-        case "newest":
-          return new Date(b.createDate).getTime() - new Date(a.createDate).getTime();
-        default:
-          return 0;
-      }
-    });
-  }, [filteredProducts, sortBy]);
-
-  // ⚡ Memoize deal products - Show all products if no sales data, otherwise top selling
   const dealProducts = useMemo(() => {
-    const topSelling = products.filter(p => p.salesVolume > 100).slice(0, 10);
-    // If no products with sales > 100, show first 10 products
+    if (homeDealProducts.length > 0) return homeDealProducts;
+    const topSelling = products.filter((p) => p.salesVolume > 100).slice(0, 10);
     return topSelling.length > 0 ? topSelling : products.slice(0, 10);
-  }, [products]);
+  }, [homeDealProducts, products]);
 
-  // ⚡ Memoize new arrivals
-  const newArrivals = useMemo(() => 
-    [...products].sort((a, b) => 
-      new Date(b.createDate).getTime() - new Date(a.createDate).getTime()
-    ).slice(0, 6),
-    [products]
-  );
+  const newArrivals = useMemo(() => {
+    if (homeNewArrivals.length > 0) return homeNewArrivals;
+    return [...products]
+      .sort(
+        (a, b) =>
+          new Date(b.createDate).getTime() - new Date(a.createDate).getTime()
+      )
+      .slice(0, 6);
+  }, [homeNewArrivals, products]);
 
   // ⚡ Memoize related products function
   const getRelatedProducts = useCallback((currentProduct: Product) => {
@@ -6693,7 +6826,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               </h1>
             </div>
             <p className="text-slate-300 text-sm">
-              Browse our {selectedCategory === "all" ? "complete " : ""}collection of {filteredProducts.length} {selectedCategory === "all" ? "" : selectedCategory.toLowerCase()} products
+              Browse our {selectedCategory === "all" ? "complete " : ""}collection of {catalogTotal || sortedProducts.length} {selectedCategory === "all" ? "" : selectedCategory.toLowerCase()} products
             </p>
           </div>
         </div>
@@ -6715,7 +6848,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 {showFilters ? "Hide Filters" : "Show Filters"}
               </Button>
               <p className="text-[11px] sm:text-xs md:text-sm text-slate-600">
-                Showing {sortedProducts.length} of {products.length} products
+                Showing {sortedProducts.length} of {catalogTotal || sortedProducts.length} products
               </p>
             </div>
 
@@ -6873,7 +7006,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   <h3 className="text-xl font-semibold text-slate-700 mb-2">No products found</h3>
                   <p className="text-slate-500">Try adjusting your filters</p>
                 </div>
-              ) : viewType === "grid" ? (
+              ) : (
+                <>
+                {viewType === "grid" ? (
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children">
                   {sortedProducts.map((product) => (
                     <ProductCard
@@ -6898,7 +7033,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     />
                   ))}
                 </div>
-              ) : (
+                ) : (
                 <div className="space-y-3 sm:space-y-4 lg:space-y-6">
                   {sortedProducts.map((product) => (
                     <Card key={product.id} className="group overflow-hidden hover:shadow-lg transition-all cursor-pointer border border-slate-200 animate-slide-up">
@@ -6979,6 +7114,28 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     </Card>
                   ))}
                 </div>
+                )}
+                {catalogHasMore && (
+                  <div className="flex justify-center mt-8 md:mt-10">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-w-[140px]"
+                      onClick={() => loadMoreCatalog()}
+                      disabled={catalogLoadingMore}
+                    >
+                      {catalogLoadingMore ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />
+                          Loading…
+                        </>
+                      ) : (
+                        "Load more"
+                      )}
+                    </Button>
+                  </div>
+                )}
+                </>
               )}
             </div>
           </div>
@@ -8373,7 +8530,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           </div>
           
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-slate-600">{sortedProducts.length} products</span>
+            <span className="text-sm font-medium text-slate-600">{catalogTotal || sortedProducts.length} products</span>
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-48 rounded-full border-2">
                 <SelectValue placeholder="Sort by" />
@@ -8461,6 +8618,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 </Button>
               </Card>
             ) : (
+              <>
               <div className={viewType === "grid" 
                 ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children" 
                 : "space-y-4"
@@ -8564,6 +8722,27 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   )
                 ))}
               </div>
+              {catalogHasMore && (
+                <div className="flex justify-center mt-8 md:mt-10">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-w-[140px]"
+                    onClick={() => loadMoreCatalog()}
+                    disabled={catalogLoadingMore}
+                  >
+                    {catalogLoadingMore ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin inline" />
+                        Loading…
+                      </>
+                    ) : (
+                      "Load more"
+                    )}
+                  </Button>
+                </div>
+              )}
+              </>
             )}
           </div>
         </div>

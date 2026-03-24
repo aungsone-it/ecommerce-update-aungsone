@@ -2418,95 +2418,238 @@ app.get("/make-server-16010b6f/check-sku/:sku", async (c) => {
   }
 });
 
+// --- Storefront catalog: shared list mapping + pagination (reduces egress vs. shipping full catalog) ---
+function mapPlatformProductToListRow(product: any) {
+  return {
+    id: product.id,
+    name: product.name || product.title,
+    price: product.price,
+    sku: product.sku,
+    category: product.category,
+    vendor: product.vendor,
+    collaborator: product.collaborator,
+    status: product.status,
+    inventory: product.inventory ?? product.stock ?? 0,
+    stock: product.inventory ?? product.stock ?? 0,
+    salesVolume: product.salesVolume || 0,
+    createDate: product.createDate || product.createdAt,
+    image: product.images?.[0] || product.image || null,
+    images: product.images?.[0] ? [product.images[0]] : [],
+    description: product.description || "",
+    hasVariants: product.hasVariants || false,
+    variantOptions: product.variantOptions || [],
+    variants: product.variants || [],
+    vendorId: product.vendorId,
+    commissionRate: product.commissionRate || 0,
+    selectedVendors: product.selectedVendors || [],
+  };
+}
+
+function storefrontParsePriceRow(p: any): number {
+  const s = String(p?.price ?? "0").replace(/[^0-9.]/g, "");
+  return parseFloat(s) || 0;
+}
+
+function sortStorefrontProductRows(rows: any[], sort: string): any[] {
+  const copy = [...rows];
+  switch (sort) {
+    case "price-low":
+      copy.sort((a, b) => storefrontParsePriceRow(a) - storefrontParsePriceRow(b));
+      break;
+    case "price-high":
+      copy.sort((a, b) => storefrontParsePriceRow(b) - storefrontParsePriceRow(a));
+      break;
+    case "popular":
+      copy.sort((a, b) => (b.salesVolume || 0) - (a.salesVolume || 0));
+      break;
+    case "newest":
+      copy.sort(
+        (a, b) =>
+          new Date(b.createDate || 0).getTime() - new Date(a.createDate || 0).getTime()
+      );
+      break;
+    default:
+      break;
+  }
+  return copy;
+}
+
+/** Slim list payload for grid cards — full detail loads via GET /products/:id */
+function toSlimListRow(p: any) {
+  return {
+    id: p.id,
+    name: p.name,
+    price: p.price,
+    sku: p.sku,
+    category: p.category,
+    vendor: p.vendor,
+    collaborator: p.collaborator,
+    status: p.status,
+    inventory: p.inventory,
+    stock: p.stock,
+    salesVolume: p.salesVolume,
+    createDate: p.createDate,
+    image: p.image,
+    images: p.images,
+    description: "",
+    hasVariants: p.hasVariants,
+    variantOptions: [],
+    variants: [],
+    vendorId: p.vendorId,
+    commissionRate: p.commissionRate,
+    selectedVendors: [],
+  };
+}
+
+async function ensureProductsListResponse(): Promise<{ products: any[]; total: number }> {
+  const cached = getCached("products", 120000);
+  if (cached && Array.isArray(cached.products)) {
+    return cached;
+  }
+
+  let productsData;
+  try {
+    productsData = await withRetry(
+      () => withTimeout(kv.getByPrefix("product:"), 30000),
+      5,
+      1500
+    );
+  } catch (timeoutError) {
+    console.error("⚠️ Database query failed - returning empty array");
+    const emptyResponse = { products: [], total: 0 };
+    setCache("products", emptyResponse);
+    return emptyResponse;
+  }
+
+  const products = Array.isArray(productsData) ? productsData.filter((p) => p != null) : [];
+  const platformProducts = products.filter((p) => !p.vendorId || p.vendorId === "migoo");
+  const productsForList = platformProducts.map((product) => mapPlatformProductToListRow(product));
+  const response = { products: productsForList, total: productsForList.length };
+  setCache("products", response);
+  return response;
+}
+
 app.get("/make-server-16010b6f/products", async (c) => {
   try {
     console.log("📦 Fetching products...");
-    
-    // Check cache first - increased cache time to reduce DB load
-    const cached = getCached("products", 120000); // Cache for 2 minutes (was 30 seconds)
+
+    const ids = c.req.query("ids");
+    if (ids) {
+      const idList = ids
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 200);
+      const out: any[] = [];
+      for (const id of idList) {
+        const raw = await withTimeout(kv.get(`product:${id}`), 5000).catch(() => null);
+        if (!raw || typeof raw !== "object") continue;
+        const platform = !(raw as any).vendorId || (raw as any).vendorId === "migoo";
+        const st = String((raw as any).status || "").toLowerCase();
+        const active = !st || st === "active";
+        if (platform && active) {
+          out.push(mapPlatformProductToListRow(raw));
+        }
+      }
+      return c.json({ products: out, total: out.length });
+    }
+
+    const bootstrap = c.req.query("bootstrap") === "1";
+    const catalog = c.req.query("catalog") === "1";
+
+    if (bootstrap || catalog) {
+      const data = await ensureProductsListResponse();
+      const rows = data.products.filter((p) => {
+        const s = String(p.status || "").toLowerCase();
+        return !s || s === "active";
+      });
+
+      const q = (c.req.query("q") || "").trim().toLowerCase();
+      const category = (c.req.query("category") || "").trim();
+      const sort = (c.req.query("sort") || "featured").toLowerCase();
+      const minPrice = parseFloat(c.req.query("minPrice") || "");
+      const maxPrice = parseFloat(c.req.query("maxPrice") || "");
+      const page = Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1);
+      const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "24", 10) || 24));
+
+      const filtered = rows.filter((p) => {
+        if (category && category.toLowerCase() !== "all") {
+          if (String(p.category || "").toLowerCase() !== category.toLowerCase()) return false;
+        }
+        if (q && !String(p.name || "").toLowerCase().includes(q)) return false;
+        if (!Number.isNaN(minPrice) && storefrontParsePriceRow(p) < minPrice) return false;
+        if (!Number.isNaN(maxPrice) && storefrontParsePriceRow(p) > maxPrice) return false;
+        return true;
+      });
+
+      const sorted = sortStorefrontProductRows(filtered, sort);
+
+      if (bootstrap) {
+        const deals = sortStorefrontProductRows(filtered, "popular").slice(0, 10).map(toSlimListRow);
+        const news = sortStorefrontProductRows(filtered, "newest").slice(0, 6).map(toSlimListRow);
+        const firstPage = sorted.slice(0, pageSize).map(toSlimListRow);
+        return c.json({
+          bootstrap: true,
+          products: firstPage,
+          total: sorted.length,
+          page: 1,
+          pageSize,
+          hasMore: sorted.length > pageSize,
+          dealProducts: deals,
+          newArrivals: news,
+          sort,
+        });
+      }
+
+      const total = sorted.length;
+      const slice = sorted.slice((page - 1) * pageSize, page * pageSize).map(toSlimListRow);
+      return c.json({
+        catalog: true,
+        products: slice,
+        total,
+        page,
+        pageSize,
+        hasMore: page * pageSize < total,
+        sort,
+      });
+    }
+
+    const cached = getCached("products", 120000);
     if (cached) {
-      console.log("⚡ Returning cached products");
+      console.log("⚡ Returning cached products (legacy)");
       return c.json(cached);
     }
-    
-    // Try to get products with increased timeout
-    let productsData;
-    try {
-      productsData = await withRetry(
-        () => withTimeout(kv.getByPrefix("product:"), 30000), // Increased from 15s to 30s
-        5, // Increased retries to 5
-        1500 // Increased delay to 1500ms
-      );
-    } catch (timeoutError) {
-      console.error("⚠️ Database query failed - returning empty array");
-      console.error("⚠️ Error details:", timeoutError);
-      
-      // Return empty array immediately
-      const emptyResponse = { products: [], total: 0 };
-      setCache("products", emptyResponse); // Cache briefly
-      return c.json(emptyResponse, 200);
-    }
-    
-    const products = Array.isArray(productsData) ? productsData.filter(p => p != null) : [];
-    
-    console.log(`📊 Raw products count: ${products.length}`);
-    
-    // 🔥 SUPER STOREFRONT RULE: Only show platform products (NOT vendor-specific products)
-    // Vendor products are only visible in:
-    // 1. Super Admin Dashboard (can see ALL)
-    // 2. Vendor's own admin panel
-    // 3. Vendor's own storefront
-    // But NOT on the super storefront (customer-facing main store)
-    const platformProducts = products.filter(p => !p.vendorId || p.vendorId === 'migoo');
-    
-    console.log(`🏪 Platform products (non-vendor): ${platformProducts.length}`);
-    console.log(`🛍️ Vendor products (filtered out): ${products.length - platformProducts.length}`);
-    
-    // Process products - send minimal data
-    const productsForList = platformProducts.map(product => {
-      return {
-        id: product.id,
-        name: product.name || product.title,
-        price: product.price,
-        sku: product.sku,
-        category: product.category,
-        vendor: product.vendor,
-        collaborator: product.collaborator,
-        status: product.status,
-        inventory: product.inventory ?? product.stock ?? 0,
-        stock: product.inventory ?? product.stock ?? 0, // 🔥 Add stock field for compatibility
-        salesVolume: product.salesVolume || 0,
-        createDate: product.createDate || product.createdAt,
-        image: product.images?.[0] || product.image || null,
-        images: product.images?.[0] ? [product.images[0]] : [],
-        description: product.description || '', // ✅ FULL description, no truncation
-        hasVariants: product.hasVariants || false,
-        variantOptions: product.variantOptions || [],
-        variants: product.variants || [],
-        vendorId: product.vendorId,
-        commissionRate: product.commissionRate || 0, // 🔥 Include commission rate in response
-        selectedVendors: product.selectedVendors || [], // 🔥 Include selected vendors array
-      };
-    });
-    
-    console.log(`✅ Returning ${productsForList.length} products`);
-    
-    const response = { 
-      products: productsForList,
-      total: productsForList.length
-    };
-    
-    // Cache the result
-    setCache("products", response);
-    
-    return c.json(response);
+
+    const resp = await ensureProductsListResponse();
+    console.log(`✅ Returning ${resp.products.length} products (legacy)`);
+    return c.json(resp);
   } catch (error) {
     console.error("❌ Error fetching products:", error);
-    
-    // Always return success with empty array to prevent breaking the UI
     const errorResponse = { products: [], total: 0 };
-    setCache("products", errorResponse); // Cache to prevent repeated failures
+    setCache("products", errorResponse);
     return c.json(errorResponse, 200);
+  }
+});
+
+app.get("/make-server-16010b6f/products/by-sku/:sku", async (c) => {
+  try {
+    const sku = decodeURIComponent(c.req.param("sku") || "").trim();
+    if (!sku) {
+      return c.json({ error: "sku required" }, 400);
+    }
+    const data = await ensureProductsListResponse();
+    const row = data.products.find((p) => String(p.sku).toLowerCase() === sku.toLowerCase());
+    if (!row) {
+      return c.json({ error: "Product not found" }, 404);
+    }
+    const full = await withTimeout(kv.get(`product:${row.id}`), 8000).catch(() => null);
+    if (!full || typeof full !== "object") {
+      return c.json({ error: "Product not found" }, 404);
+    }
+    return c.json({ product: { id: row.id, ...full } });
+  } catch (error) {
+    console.error("❌ by-sku:", error);
+    return c.json({ error: "Failed to fetch product" }, 500);
   }
 });
 

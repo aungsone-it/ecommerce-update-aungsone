@@ -3,46 +3,59 @@
  * Import and use these in Storefront.tsx to enable module-level caching
  */
 
-import { moduleCache, CACHE_KEYS, fetchAllProducts, fetchAllCategories, fetchSiteSettings } from "../utils/module-cache";
+import {
+  moduleCache,
+  CACHE_KEYS,
+  fetchCatalogBootstrap,
+  fetchAllCategories,
+  fetchSiteSettings,
+} from "../utils/module-cache";
 
+function filterActiveProducts(list: any[]) {
+  return (list || []).filter((p: any) => {
+    try {
+      const status = String(p.status || "").toLowerCase();
+      return !status || status === "active";
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** Home + first catalog page (slim rows); reduces egress vs. loading entire catalog. */
+export async function loadCatalogBootstrapCached(isBackgroundRefresh = false) {
+  const data = await moduleCache.get(
+    CACHE_KEYS.STOREFRONT_CATALOG_BOOTSTRAP,
+    () => fetchCatalogBootstrap(24),
+    isBackgroundRefresh
+  );
+  return {
+    products: filterActiveProducts(data.products),
+    total: data.total ?? 0,
+    page: data.page ?? 1,
+    pageSize: data.pageSize ?? 24,
+    hasMore: !!data.hasMore,
+    dealProducts: filterActiveProducts(data.dealProducts),
+    newArrivals: filterActiveProducts(data.newArrivals),
+    sort: data.sort,
+  };
+}
+
+/** @deprecated Use loadCatalogBootstrapCached — kept for any legacy import */
 export async function loadProductsCached(isBackgroundRefresh = false) {
-  try {
-    console.log(`Loading products ${isBackgroundRefresh ? '(background)' : ''}...`);
-    
-    const allProducts = await moduleCache.get(
-      CACHE_KEYS.STOREFRONT_PRODUCTS,
-      fetchAllProducts,
-      isBackgroundRefresh
-    );
-    
-    // Only show active products on storefront
-    const activeProducts = (allProducts || []).filter((p: any) => {
-      try {
-        const status = String(p.status || '').toLowerCase();
-        return !status || status === 'active';
-      } catch (e) {
-        console.error('Error checking status for product:', p.id, e);
-        return false;
-      }
-    });
-    
-    console.log(`[STOREFRONT CACHED] Loaded ${activeProducts.length} active products`);
-    return activeProducts;
-  } catch (error) {
-    console.error("Failed to load products:", error);
-    return [];
-  }
+  const b = await loadCatalogBootstrapCached(isBackgroundRefresh);
+  return b.products;
 }
 
 export async function loadCategoriesCached() {
   try {
-    console.log('Loading categories...');
+    console.log("Loading categories...");
     const allCategories = await moduleCache.get(
       CACHE_KEYS.STOREFRONT_CATEGORIES,
       fetchAllCategories,
       false
     );
-    
+
     // Only show active categories on storefront
     const activeCategories = (allCategories || []).filter((c: any) => c.status === "active");
     console.log(`[STOREFRONT CACHED] Loaded ${activeCategories.length} active categories`);
@@ -55,16 +68,16 @@ export async function loadCategoriesCached() {
 
 export async function loadSiteSettingsCached() {
   try {
-    console.log('Loading site settings...');
+    console.log("Loading site settings...");
     const settings = await moduleCache.get(
       CACHE_KEYS.STOREFRONT_SETTINGS,
       fetchSiteSettings,
       false
     );
-    console.log('[STOREFRONT CACHED] Loaded site settings');
+    console.log("[STOREFRONT CACHED] Loaded site settings");
     return settings;
   } catch (error) {
-    console.warn('Could not load site settings, using defaults');
+    console.warn("Could not load site settings, using defaults");
     return null;
   }
 }

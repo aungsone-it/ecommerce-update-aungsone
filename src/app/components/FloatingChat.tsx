@@ -5,6 +5,11 @@ import { Badge } from "./ui/badge";
 import { Textarea } from "./ui/textarea";
 import { toast } from "sonner";
 import { chatApi } from "../../utils/api";
+import {
+  broadcastConversationMessage,
+  broadcastInboxPing,
+  subscribeConversationBroadcast,
+} from "../utils/chatRealtime";
 import imageCompression from "browser-image-compression";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
@@ -119,6 +124,8 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   const pollingIntervalRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
@@ -178,7 +185,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         );
 
         // Create a Set of existing message IDs for O(1) lookup
-        const existingMessageIds = new Set(messages.map(msg => msg.id));
+        const existingMessageIds = new Set(messagesRef.current.map((msg) => msg.id));
 
         // Find new messages that we don't have yet (by ID, not timestamp)
         const newMessages = sortedMessages.filter(msg => 
@@ -204,13 +211,19 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     }
   }, [isOpen]);
 
-  // Poll for new admin messages every 10 seconds when chat is open
+  // Poll for new admin messages when chat is open (~30s, tab visible only — avoids interval reset on every message)
   useEffect(() => {
-    if (isOpen && !isMinimized) {
-      pollingIntervalRef.current = window.setInterval(() => {
-        pollForNewMessages();
-      }, 10000);
+    if (!isOpen || isMinimized) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
     }
+    pollingIntervalRef.current = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      pollForNewMessages();
+    }, 120000);
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -218,7 +231,27 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         pollingIntervalRef.current = null;
       }
     };
-  }, [isOpen, isMinimized, messages]);
+  }, [isOpen, isMinimized, conversationId]);
+
+  // Realtime: admin replies without tight polling
+  useEffect(() => {
+    if (!conversationId) return;
+    return subscribeConversationBroadcast(conversationId, (msg) => {
+      if (String(msg.sender) !== "admin") return;
+      setMessages((prev) => {
+        const id = String(msg.id ?? "");
+        if (!id || prev.some((m) => m.id === id)) return prev;
+        const next = [...prev, msg as unknown as Message];
+        return next.sort(
+          (a, b) =>
+            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+      });
+      if (!isOpen || isMinimized) {
+        setUnreadCount((c) => c + 1);
+      }
+    });
+  }, [conversationId, isOpen, isMinimized]);
 
   // Reset unread count when chat is opened
   useEffect(() => {
@@ -261,21 +294,19 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     localStorage.setItem("migoo-chat-isMinimized", JSON.stringify(isMinimized));
   }, [isMinimized]);
   
-  // 🔒 Keep authentication state in sync with localStorage changes
+  // 🔒 Sync auth: other tabs (storage) + same-tab login/logout (focus — no 10s polling)
   useEffect(() => {
     const checkAuth = () => {
       const storedUser = localStorage.getItem("migoo-user");
       setIsCustomerAuthenticated(storedUser !== null);
     };
-    
-    // Check auth whenever localStorage changes
-    window.addEventListener('storage', checkAuth);
-    // Also check periodically in case localStorage changes in the same tab
-    const interval = setInterval(checkAuth, 10000); // Every 10 seconds instead of 1 second
-    
+
+    window.addEventListener("storage", checkAuth);
+    window.addEventListener("focus", checkAuth);
+
     return () => {
-      window.removeEventListener('storage', checkAuth);
-      clearInterval(interval);
+      window.removeEventListener("storage", checkAuth);
+      window.removeEventListener("focus", checkAuth);
     };
   }, []);
 
@@ -325,18 +356,9 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     setMessageInput("");
     setSelectedImage(null);
 
-    // Update status to delivered after a delay
-    setTimeout(() => {
-      setMessages(prev =>
-        prev.map(msg =>
-          msg.id === newMessage.id ? { ...msg, status: "delivered" } : msg
-        )
-      );
-    }, 500);
-
     // Send to server
     try {
-      await chatApi.sendMessage({
+      const response = (await chatApi.sendMessage({
         text: messageText,
         sender: "customer",
         senderName: actualCustomerName,
@@ -345,7 +367,20 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         imageUrl: imageUrl,
         vendorId: vendorId, // Add vendor context
         customerProfileImage: customerProfileImage // Add customer profile image
-      });
+      })) as { success?: boolean; message?: Message };
+
+      if (response?.message) {
+        setMessages((prev) => {
+          const without = prev.filter((m) => m.id !== newMessage.id);
+          const merged = [...without, response.message!];
+          return merged.sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+        });
+        void broadcastConversationMessage(conversationId, response.message);
+      }
+      void broadcastInboxPing();
     } catch (error) {
       console.error("Failed to send message:", error);
     }

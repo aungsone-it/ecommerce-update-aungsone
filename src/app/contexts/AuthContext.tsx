@@ -1,5 +1,5 @@
 // Auth Context - User authentication management
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 
@@ -56,33 +56,38 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+/** Throttle background profile refresh to avoid a burst of API calls when alt-tabbing (each was 2+ fetches). */
+const PROFILE_BG_REFRESH_MIN_MS = 5 * 60 * 1000;
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastBgProfileRefreshRef = useRef(0);
 
   // Check for existing session on mount
   useEffect(() => {
     checkSession();
   }, []);
 
-  // 🔥 AUTO-REFRESH user data when browser tab becomes visible
+  // 🔥 AUTO-REFRESH user data when browser tab becomes visible (throttled)
   useEffect(() => {
+    const maybeRefreshProfile = () => {
+      if (!user?.id) return;
+      const now = Date.now();
+      if (now - lastBgProfileRefreshRef.current < PROFILE_BG_REFRESH_MIN_MS) return;
+      lastBgProfileRefreshRef.current = now;
+      console.log('🔄 Refreshing user data (throttled background fetch)...');
+      loadUserProfile(user.id, true).catch((err) => {
+        console.error('Failed to refresh user data:', err);
+      });
+    };
+
     const handleVisibilityChange = () => {
-      if (!document.hidden && user?.id) {
-        console.log('🔄 Tab became visible, refreshing user data...');
-        loadUserProfile(user.id, true).catch(err => {
-          console.error('Failed to refresh user data:', err);
-        });
-      }
+      if (!document.hidden) maybeRefreshProfile();
     };
 
     const handleFocus = () => {
-      if (user?.id) {
-        console.log('🔄 Window focused, refreshing user data...');
-        loadUserProfile(user.id, true).catch(err => {
-          console.error('Failed to refresh user data:', err);
-        });
-      }
+      maybeRefreshProfile();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);

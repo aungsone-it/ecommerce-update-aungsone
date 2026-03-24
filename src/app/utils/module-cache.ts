@@ -155,6 +155,60 @@ export async function fetchAllProducts() {
   return data.products || [];
 }
 
+/** Paginated storefront catalog (slim rows) — standard ecommerce pattern. */
+export async function fetchCatalogBootstrap(pageSize = 24) {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products?bootstrap=1&pageSize=${pageSize}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch catalog bootstrap: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchCatalogPage(params: {
+  page: number;
+  pageSize?: number;
+  q?: string;
+  category?: string;
+  sort?: string;
+  minPrice?: number;
+  maxPrice?: number;
+}) {
+  const sp = new URLSearchParams();
+  sp.set("catalog", "1");
+  sp.set("page", String(params.page));
+  sp.set("pageSize", String(params.pageSize ?? 24));
+  if (params.q) sp.set("q", params.q);
+  if (params.category && params.category !== "all") sp.set("category", params.category);
+  if (params.sort) sp.set("sort", params.sort);
+  if (params.minPrice != null && !Number.isNaN(params.minPrice)) sp.set("minPrice", String(params.minPrice));
+  if (params.maxPrice != null && !Number.isNaN(params.maxPrice)) sp.set("maxPrice", String(params.maxPrice));
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products?${sp.toString()}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch catalog page: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchProductsByIds(ids: string[]) {
+  if (!ids.length) return [];
+  const q = encodeURIComponent(ids.slice(0, 200).join(","));
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products?ids=${q}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch products by ids: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.products || [];
+}
+
 // Fetch all vendors (SECURE admin)
 export async function fetchAllVendors() {
   const response = await fetch(
@@ -283,6 +337,8 @@ export async function fetchSiteSettings() {
 export const CACHE_KEYS = {
   // SECURE Storefront
   STOREFRONT_PRODUCTS: 'storefront-products',
+  /** First page + home sections (slim payloads) */
+  STOREFRONT_CATALOG_BOOTSTRAP: 'storefront-catalog-bootstrap-v1',
   STOREFRONT_CATEGORIES: 'storefront-categories',
   STOREFRONT_SETTINGS: 'storefront-settings',
   

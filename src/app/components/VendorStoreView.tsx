@@ -1896,24 +1896,42 @@ export function VendorStoreView({
 
   // Wishlist — same API as main storefront (global product IDs)
   const [wishlist, setWishlist] = useState<string[]>([]);
+  /** Sorted JSON snapshot from last GET/PUT — skip redundant PUTs and block PUT before hydration */
+  const wishlistServerSnapshotRef = useRef<string | null>(null);
 
   useEffect(() => {
     const uid = resolveUserIdFromRecord(user);
     if (!uid) {
       setWishlist([]);
+      wishlistServerSnapshotRef.current = null;
       return;
     }
+    wishlistServerSnapshotRef.current = null;
     void wishlistApi
       .get(uid)
-      .then((res) => setWishlist(res.productIds || []))
-      .catch(() => {});
+      .then((res) => {
+        const ids = res.productIds || [];
+        setWishlist(ids);
+        wishlistServerSnapshotRef.current = JSON.stringify([...ids].sort());
+      })
+      .catch(() => {
+        wishlistServerSnapshotRef.current = "[]";
+      });
   }, [user]);
 
   useEffect(() => {
     const uid = resolveUserIdFromRecord(user);
     if (!uid) return;
+    if (wishlistServerSnapshotRef.current === null) return;
+    const next = JSON.stringify([...wishlist].sort());
+    if (next === wishlistServerSnapshotRef.current) return;
     const t = setTimeout(() => {
-      wishlistApi.update(uid, wishlist).catch(() => {});
+      wishlistApi
+        .update(uid, wishlist)
+        .then(() => {
+          wishlistServerSnapshotRef.current = next;
+        })
+        .catch(() => {});
     }, 500);
     return () => clearTimeout(t);
   }, [wishlist, user]);
