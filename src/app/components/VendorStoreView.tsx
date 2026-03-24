@@ -2084,20 +2084,20 @@ export function VendorStoreView({
                   setSelectedCategory("all");
                   navigate(storeBase, { replace: false });
                 }}
-                className="flex items-center gap-3 group"
+                className="flex items-center gap-2 sm:gap-3 group min-w-0 flex-1 mr-2"
               >
                 {storeLogo ? (
                   <img 
                     src={storeLogo} 
                     alt={storeName}
-                    className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100"
+                    className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                   />
                 ) : (
-                  <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center">
+                  <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center shrink-0">
                     <Store className="w-5 h-5 text-white" />
                   </div>
                 )}
-                <span className="text-xl font-bold text-slate-900 hidden sm:block">
+                <span className="text-sm sm:text-xl font-bold text-slate-900 truncate text-left min-w-0">
                   {storeName}
                 </span>
               </button>
@@ -2155,25 +2155,26 @@ export function VendorStoreView({
                   )}
                 </Button>
 
-                {/* Login / Register Button (Desktop only) */}
+                {/* Login / Register — visible on mobile (compact) and desktop */}
                 {!user && (
                   <Button
                     variant="ghost"
-                    className="hidden md:flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 px-4 whitespace-nowrap"
+                    className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 px-2 sm:px-4 whitespace-nowrap shrink-0 text-xs sm:text-sm"
                     onClick={() => {
                       setShowAuthModal(true);
                       setAuthMode('login');
                     }}
                   >
-                    Login / Register
+                    <span className="sm:hidden">Login</span>
+                    <span className="hidden sm:inline">Login / Register</span>
                   </Button>
                 )}
 
-                {/* User Profile Menu (Desktop only) */}
+                {/* User Profile Menu */}
                 {user && (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" className="hidden md:flex hover:bg-slate-100 rounded-full w-10 h-10 p-0">
+                      <Button variant="ghost" size="icon" className="flex hover:bg-slate-100 rounded-full w-10 h-10 p-0 shrink-0">
                         {userProfileImageUrl && !profileImageLoadFailed ? (
                           <img
                             src={userProfileImageUrl}
@@ -2818,20 +2819,20 @@ export function VendorStoreView({
                 setSelectedCategory("all");
                 navigate(storeBase);
               }}
-              className="flex items-center gap-3 group"
+              className="flex items-center gap-2 sm:gap-3 group min-w-0 flex-1 mr-2"
             >
               {storeLogo ? (
                 <img 
                   src={storeLogo} 
                   alt={storeName}
-                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100"
+                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                 />
               ) : (
-                <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center">
+                <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center shrink-0">
                   <Store className="w-5 h-5 text-white" />
                 </div>
               )}
-              <span className="text-xl font-bold text-slate-900 hidden sm:block">
+              <span className="text-sm sm:text-xl font-bold text-slate-900 truncate text-left min-w-0">
                 {storeName}
               </span>
             </button>
@@ -2850,7 +2851,7 @@ export function VendorStoreView({
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
@@ -2889,25 +2890,26 @@ export function VendorStoreView({
                 )}
               </Button>
 
-              {/* Login / Register Button (Desktop only) */}
+              {/* Login / Register — visible on mobile (compact) and desktop */}
               {!user && (
                 <Button
                   variant="ghost"
-                  className="hidden md:flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 px-4 whitespace-nowrap"
+                  className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 px-2 sm:px-4 whitespace-nowrap shrink-0 text-xs sm:text-sm"
                   onClick={() => {
                     setShowAuthModal(true);
                     setAuthMode('login');
                   }}
                 >
-                  Login / Register
+                  <span className="sm:hidden">Login</span>
+                  <span className="hidden sm:inline">Login / Register</span>
                 </Button>
               )}
 
-              {/* User Profile Menu (Desktop only) */}
+              {/* User Profile Menu */}
               {user && (
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="hidden md:flex hover:bg-slate-100 rounded-full w-10 h-10 p-0">
+                    <Button variant="ghost" size="icon" className="flex hover:bg-slate-100 rounded-full w-10 h-10 p-0 shrink-0">
                       {userProfileImageUrl && !profileImageLoadFailed ? (
                         <img
                           src={userProfileImageUrl}
