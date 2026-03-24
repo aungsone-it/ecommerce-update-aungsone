@@ -13,6 +13,7 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { resolveVendorSubdomainStoreSlug } from "./utils/vendorSubdomainHooks";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
@@ -57,6 +58,13 @@ const VendorAuthPage = lazy(() =>
   import("./pages/VendorAuthPage").then((m) => ({ default: m.VendorAuthPage }))
 );
 
+function VendorSubdomainIndexOrLanding() {
+  if (resolveVendorSubdomainStoreSlug()) {
+    return <VendorStorefrontPage />;
+  }
+  return <LandingPage />;
+}
+
 function LazyBoundary({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
 }
@@ -99,7 +107,7 @@ export const router = createBrowserRouter([
         children: [
           {
             index: true,
-            element: <LandingPage />,
+            element: <VendorSubdomainIndexOrLanding />,
           },
           {
             path: "store",

@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
+import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
@@ -27,7 +28,10 @@ function vendorProfileSegmentFromPathname(
 }
 
 export function VendorStorefrontPage() {
-  const { storeName, productSlug } = useParams();
+  const params = useParams();
+  const subdomainSlug = resolveVendorSubdomainStoreSlug();
+  const storeName = params.storeName ?? subdomainSlug ?? undefined;
+  const productSlug = params.productSlug;
   const location = useLocation();
   const navigate = useNavigate();
 

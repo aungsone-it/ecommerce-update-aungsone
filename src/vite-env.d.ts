@@ -8,7 +8,3 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
-
-interface Window {
-  __VENDOR_SUBDOMAIN_SLUG_MAP__?: Record<string, string>;
-}

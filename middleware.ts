@@ -2,7 +2,7 @@
  * Vercel Edge Middleware: map vendor subdomains to existing store routes.
  *
  * Subdomain = same string as the vendor’s store slug (`storeName` in /store/:storeName).
- * Example: https://abcstore.walwal.online → /store/abc-store when VENDOR_SUBDOMAIN_SLUG_MAP maps them.
+ * Vendor subdomains serve the SPA at / (clean URL). No redirect to /store/... — routing uses hostname + optional VENDOR_SUBDOMAIN_SLUG_MAP.
  *
  * Optional env VENDOR_SUBDOMAIN_SLUG_MAP: JSON object, short subdomain label → real store slug.
  * Example: {"gogo":"go-go","abcstore":"abc-store"} so gogo.walwal.online → /store/go-go
@@ -30,27 +30,11 @@ function normalizeHost(host: string): string {
   return host.split(":")[0].toLowerCase();
 }
 
-function storeSlugFromSubdomainLabel(label: string): string {
-  const raw = (process.env.VENDOR_SUBDOMAIN_SLUG_MAP || "").trim();
-  if (!raw) return label;
-  try {
-    const map = JSON.parse(raw) as Record<string, unknown>;
-    const lower = label.toLowerCase();
-    for (const [k, v] of Object.entries(map)) {
-      if (k.toLowerCase() === lower && typeof v === "string" && v.length) return v;
-    }
-    return label;
-  } catch {
-    return label;
-  }
-}
-
 export const config = {
   matcher: ["/((?!assets/|favicon\\.ico|robots\\.txt|manifest\\.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)"],
 };
 
 export default function middleware(request: Request): Response {
-  const url = new URL(request.url);
   const host = normalizeHost(request.headers.get("host") || "");
 
   if (host === "localhost" || host.startsWith("127.0.0.1")) {
@@ -77,18 +61,6 @@ export default function middleware(request: Request): Response {
     return next();
   }
 
-  let pathname = url.pathname;
-  if (pathname.startsWith("/store/")) {
-    return next();
-  }
-
-  const storeSlug = storeSlugFromSubdomainLabel(sub);
-  if (pathname === "/" || pathname === "") {
-    url.pathname = `/store/${storeSlug}`;
-  } else {
-    url.pathname = `/store/${storeSlug}${pathname}`;
-  }
-
-  // Use redirect (not rewrite) so the browser URL path is /store/... — the SPA reads pathname and React Router must match /store/:storeName.
-  return Response.redirect(url, 307);
+  // Keep browser on / (or any path) — SPA resolves vendor from Host + slug map.
+  return next();
 }

@@ -1,6 +1,7 @@
 // Root Layout Component - Public layout wrapper
 import { Outlet, useLocation } from "react-router";
 import { SubdomainVendorRedirect } from "./SubdomainVendorRedirect";
+import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { FloatingChat } from "./FloatingChat";
 import { BackToTop } from "./BackToTop";
 import { useState } from "react";
@@ -28,13 +29,19 @@ function RootLayoutContent() {
   const { isCartOpen } = useCartVisibility();
   const { isLoading } = useLoading();
 
-  // Extract vendor ID from URL if on vendor storefront - support both /store/ and /vendor/ paths
-  const isVendorStorefront = (location.pathname.startsWith('/store/') || location.pathname.startsWith('/vendor/')) && !location.pathname.includes('/admin');
-  const vendorId = isVendorStorefront ? location.pathname.split('/')[2] : undefined;
+  const subdomainStoreSlug = resolveVendorSubdomainStoreSlug();
+  const isPathVendorStorefront =
+    (location.pathname.startsWith("/store/") || location.pathname.startsWith("/vendor/")) &&
+    !location.pathname.includes("/admin");
+  const isSubdomainStorefrontHome = subdomainStoreSlug != null && location.pathname === "/";
+  const isVendorStorefront = isPathVendorStorefront || isSubdomainStorefrontHome;
+  const vendorId =
+    subdomainStoreSlug ??
+    (isPathVendorStorefront ? location.pathname.split("/")[2] : undefined);
 
   // Hide chat button and back to top on vendor application page, landing page, and reset password page
   const isVendorApplicationPage = location.pathname === '/vendor/application';
-  const isLandingPage = location.pathname === '/';
+  const isLandingPage = location.pathname === '/' && subdomainStoreSlug == null;
   const isResetPasswordPage = location.pathname === '/store/reset-password';
 
   return (
