@@ -10,7 +10,9 @@ import {
   FileText, 
   Upload, 
   X, 
-  Globe 
+  Globe,
+  Mail,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
@@ -397,22 +399,44 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
   // Success state
   if (isSubmitted) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
-          <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 className="w-12 h-12 text-green-600" />
-          </div>
-          <h2 className="text-3xl font-bold text-slate-900 mb-4">
-            Application Submitted!
-          </h2>
-          <p className="text-slate-600 mb-8">
-            Thank you for applying to become a vendor on SECURE. We'll review your application and get back to you within 3-5 business days.
-          </p>
-          <div className="bg-orange-50 rounded-lg p-4">
-            <p className="text-sm text-orange-800">
-              <strong>What's next?</strong><br />
-              Our team will verify your documents and contact you via email at <strong>{formData.email}</strong>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-amber-50/40 flex items-center justify-center p-4 sm:p-8">
+        <div className="relative w-full max-w-3xl">
+          <div
+            aria-hidden
+            className="pointer-events-none absolute -inset-px rounded-[2rem] bg-gradient-to-br from-amber-200/60 via-orange-100/40 to-slate-200/60 opacity-80 blur-sm"
+          />
+          <div className="relative bg-white rounded-[1.75rem] shadow-[0_25px_60px_-15px_rgba(15,23,42,0.12)] border border-slate-100/80 px-8 py-12 sm:px-14 sm:py-16 text-center">
+            <div className="mx-auto mb-8 flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-green-100 ring-[10px] ring-emerald-50/80 shadow-inner">
+              <CheckCircle2 className="h-14 w-14 text-emerald-600" strokeWidth={1.75} />
+            </div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-slate-100/90 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600">
+              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+              All set
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900 mb-5">
+              Application Submitted!
+            </h2>
+            <p className="text-base sm:text-lg text-slate-600 leading-relaxed max-w-xl mx-auto mb-10">
+              Thank you for applying to become a vendor on SECURE. We&apos;ll review your application and get back to you within{" "}
+              <span className="font-medium text-slate-800">3–5 business days</span>.
             </p>
+            <div className="rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50/90 border border-orange-100/80 px-6 py-7 sm:px-8 sm:py-8 text-left shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-widest text-orange-700/90 mb-3">
+                What&apos;s next?
+              </p>
+              <p className="text-slate-700 text-sm sm:text-base leading-relaxed">
+                Our team will verify your documents and contact you via email.
+              </p>
+              <div className="mt-5 flex items-center gap-3 rounded-xl bg-white/70 border border-orange-100/60 px-4 py-3.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
+                  <Mail className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 text-left">
+                  <p className="text-xs font-medium text-slate-500">We&apos;ll reach you at</p>
+                  <p className="text-sm sm:text-base font-semibold text-slate-900 truncate">{formData.email}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -370,7 +370,7 @@ export function VendorSetup() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-11 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg shadow-lg shadow-green-600/30 transition-all duration-200 hover:shadow-xl hover:shadow-green-600/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-12 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-semibold rounded-full transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Setting up...' : 'Complete Setup'}
                 </Button>
