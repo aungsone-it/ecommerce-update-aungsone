@@ -10,6 +10,19 @@
     <title>SECURE.OS - E-commerce Admin Dashboard</title>
   </head>
   <body>
+    <!-- Runs before React/Vite — no env required. Fixes vendor subdomains when build env is missing. -->
+    <script>
+      (function () {
+        var reserved = { www: 1, api: 1, admin: 1, app: 1, cdn: 1, mail: 1, ftp: 1, staging: 1, preview: 1 };
+        var host = location.hostname.toLowerCase();
+        var path = location.pathname || "/";
+        var m = host.match(/^([a-z0-9-]+)\.walwal\.online$/);
+        if (!m || reserved[m[1]]) return;
+        if (path.indexOf("/store/") === 0) return;
+        var sub = m[1];
+        location.replace(location.origin + "/store/" + sub + (path === "/" || path === "" ? "" : path) + location.search + location.hash);
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

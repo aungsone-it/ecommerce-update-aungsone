@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
+import { getVendorSubdomainBase } from "../utils/vendorSubdomainBase";
 
 const RESERVED_SUBDOMAINS = new Set([
   "www",
@@ -22,7 +23,7 @@ export function SubdomainVendorRedirect() {
   const location = useLocation();
 
   useEffect(() => {
-    const base = (import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase();
+    const base = getVendorSubdomainBase();
     if (!base) return;
 
     const host = window.location.hostname.toLowerCase();
