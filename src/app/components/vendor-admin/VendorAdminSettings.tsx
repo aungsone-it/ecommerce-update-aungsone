@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { compressImage } from "../../../utils/imageCompression";
 import { cacheManager } from "../../utils/cacheManager";
+import { storeSlugFromBusinessName } from "../../../utils/storeSlug";
 
 interface StoreSettings {
   vendorId: string;
@@ -43,7 +44,7 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
   const [settings, setSettings] = useState<StoreSettings>({
     vendorId,
     storeName: vendorName,
-    storeSlug: vendorName.toLowerCase().replace(/\s+/g, "-"),
+    storeSlug: storeSlugFromBusinessName(vendorName),
     storeDescription: "Welcome to our store",
     storeTagline: "",
     logo: "",

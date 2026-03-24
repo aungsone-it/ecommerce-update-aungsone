@@ -111,6 +111,41 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs = 60000): Promise<T
   return promise;
 }
 
+/**
+ * Store slug for URLs + subdomains: lowercase a-z0-9 only (no spaces/hyphens).
+ * "City Mart Online Store" → citymartonlinestore — matches citymartonlinestore.walwal.online
+ */
+function storeSlugFromBusinessName(name: string): string {
+  const raw = String(name || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  const s = raw.replace(/[^a-z0-9]+/g, "");
+  const trimmed = s.slice(0, 63);
+  return trimmed.length > 0 ? trimmed : "store";
+}
+
+/** First free vendor_slug_* key for this vendor (collision → citymart1, citymart2, …). */
+async function allocateUniqueVendorSlugFromName(
+  storeName: string,
+  vendorId: string
+): Promise<string> {
+  const base = storeSlugFromBusinessName(storeName);
+  for (let i = 0; i < 500; i++) {
+    const slug = i === 0 ? base : `${base}${i}`;
+    if (slug.length > 63) break;
+    const key = `vendor_slug_${slug}`;
+    const existing = await withTimeout(kv.get(key), 5000);
+    if (
+      !existing ||
+      String((existing as { vendorId?: string }).vendorId) === String(vendorId)
+    ) {
+      return slug;
+    }
+  }
+  return `${base}${Date.now().toString(36)}`.slice(0, 63);
+}
+
 // Server version and initialization  
 const SERVER_VERSION = "1.5.1-FIXED";
 console.log(`🚀 SECURE server v${SERVER_VERSION} starting...`);
@@ -2249,12 +2284,14 @@ app.post("/make-server-16010b6f/vendor-auth/setup-credentials", async (c) => {
     
     // 🔥 AUTO-CREATE SLUG MAPPING if it doesn't exist
     const storeName = vendor.businessName || vendor.name || "Vendor Store";
-    const baseSlug = storeName
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-      .trim();
+    const existingSettings = await withTimeout(
+      kv.get(`vendor_settings:${vendor.id}`),
+      5000
+    );
+    const baseSlug =
+      existingSettings?.storeSlug && String(existingSettings.storeSlug).trim()
+        ? String(existingSettings.storeSlug).trim()
+        : await allocateUniqueVendorSlugFromName(storeName, vendor.id);
     
     // Check if slug mapping already exists
     const existingMapping = await kv.get(`vendor_slug_${baseSlug}`);
@@ -4676,13 +4713,7 @@ app.post("/make-server-16010b6f/vendors", async (c) => {
     
     // Create default vendor settings with store name from business name
     const storeName = (typeof body.businessName === "string" && body.businessName.trim()) || name || "Vendor Store";
-    // Generate a friendly slug from the store name
-    const baseSlug = storeName
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
-      .replace(/\s+/g, '-') // Replace spaces with hyphens
-      .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-      .trim();
+    const baseSlug = await allocateUniqueVendorSlugFromName(storeName, id);
     
     const defaultSettings = {
       vendorId: id,
@@ -4932,14 +4963,9 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
         5000
       );
       
-      // Create vendor settings with friendly slug
+      // Create vendor settings with friendly slug (subdomain-safe: a-z0-9 only)
       const storeName = application.companyName || application.businessName || "Vendor Store";
-      const baseSlug = storeName
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
-        .replace(/\s+/g, '-') // Replace spaces with hyphens
-        .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-        .trim();
+      const baseSlug = await allocateUniqueVendorSlugFromName(storeName, vendorId);
       
       const vendorSettings = {
         vendorId: vendorId,
@@ -4958,6 +4984,15 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
         kv.set(`vendor_settings:${vendorId}`, vendorSettings),
         5000
       );
+
+      const slugMappingApproved = {
+        slug: baseSlug,
+        vendorId: vendorId,
+        businessName: storeName,
+        createdAt: new Date().toISOString(),
+      };
+      await withTimeout(kv.set(`vendor_slug_${baseSlug}`, slugMappingApproved), 5000);
+      console.log(`✅ Slug mapping created for approved application: ${baseSlug} → ${vendorId}`);
       
       console.log(`✅ Vendor account created: ${vendorId} for ${newVendor.name} with slug: ${baseSlug}`);
     }

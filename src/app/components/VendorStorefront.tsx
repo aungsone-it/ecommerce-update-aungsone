@@ -378,15 +378,15 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
                         id="storeSlug"
                         value={settings.storeSlug}
                         onChange={(e) => {
-                          const slug = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+                          const slug = e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '');
                           updateSettings('storeSlug', slug);
                         }}
-                        placeholder="store-slug"
+                        placeholder="storeslug"
                         className="border-0 bg-transparent p-0 focus-visible:ring-0 font-medium"
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">Only lowercase letters, numbers, and hyphens</p>
+                    <p className="text-xs text-slate-500 mt-1">Lowercase letters and numbers only (matches your subdomain, e.g. citymart.walwal.online)</p>
                 </div>
 
                 <div>

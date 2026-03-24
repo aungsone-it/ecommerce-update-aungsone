@@ -1,6 +1,7 @@
 // Vendor Auth Context - Vendor authentication management
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { storeSlugFromBusinessName } from '../../utils/storeSlug';
 
 export interface VendorUser {
   id: string;
@@ -83,12 +84,10 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
       if (data.success && data.vendor) {
         console.log('✅ [VendorAuth] Login successful for vendor:', data.vendor.email);
         
-        // Generate storeSlug if missing
-        const storeSlug = data.vendor.storeSlug || 
-          (data.vendor.storeName || data.vendor.name)
-            .toLowerCase()
-            .replace(/\s+/g, '-')
-            .replace(/[^a-z0-9-]/g, '');
+        // Generate storeSlug if missing (same algorithm as server)
+        const storeSlug =
+          data.vendor.storeSlug ||
+          storeSlugFromBusinessName(data.vendor.storeName || data.vendor.name || "");
         
         const vendorData: VendorUser = {
           id: data.vendor.id,
