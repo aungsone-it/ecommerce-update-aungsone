@@ -1,5 +1,6 @@
 // Root Layout Component - Public layout wrapper
 import { Outlet, useLocation } from "react-router";
+import { SubdomainVendorRedirect } from "./SubdomainVendorRedirect";
 import { FloatingChat } from "./FloatingChat";
 import { BackToTop } from "./BackToTop";
 import { useState } from "react";
@@ -38,6 +39,7 @@ function RootLayoutContent() {
 
   return (
     <>
+      <SubdomainVendorRedirect />
       <Outlet />
       {/* Global Floating Chat - Hidden when cart is open OR when app is loading OR on vendor application page OR on landing page */}
       {!isCartOpen && !isLoading && !isVendorApplicationPage && !isLandingPage && !isResetPasswordPage && (

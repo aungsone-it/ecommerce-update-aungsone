@@ -20,7 +20,16 @@ const figmaAssetPlugin = () => ({
   }
 });
 
-export default defineConfig({
+export default defineConfig(() => {
+  const vendorSubdomainBase =
+    process.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN ||
+    process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN ||
+    "";
+
+  return {
+  define: {
+    "import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN": JSON.stringify(vendorSubdomainBase),
+  },
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
     // Tailwind is not being actively used – do not remove them
@@ -65,4 +74,5 @@ export default defineConfig({
       },
     },
   },
+};
 })
