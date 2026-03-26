@@ -42,6 +42,12 @@ import { BannerSlider } from "./BannerSlider";
 import { checkServerHealth } from "../../utils/server-health";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import { ProductCard } from "./ProductCard";
+import {
+  ProductVariantChips,
+  initVariantSelections,
+  matchVariantForProduct,
+  productHasVariantPicker,
+} from "./ProductVariantChips";
 import { BlogPostDetail } from "./BlogPostDetail";
 import { AuthModal } from "./AuthModal";
 import { OrderDetailView } from "./OrderDetailView";
@@ -95,6 +101,7 @@ function productFromBySkuApi(raw: any): Product {
   return {
     id: String(raw.id),
     image: typeof img === "string" ? img : "",
+    images: Array.isArray(raw?.images) ? raw.images : undefined,
     name: String(raw.name || raw.title || ""),
     price: String(raw.price ?? ""),
     sku: String(raw.sku || ""),
@@ -108,6 +115,7 @@ function productFromBySkuApi(raw: any): Product {
     hasVariants: raw.hasVariants,
     variantOptions: raw.variantOptions,
     variants: raw.variants,
+    compareAtPrice: raw.compareAtPrice,
   };
 }
 
@@ -351,6 +359,177 @@ function CountdownTimer({ endDate }: { endDate: string }) {
   );
 }
 
+type MarketplaceListLayout = "search" | "catalog";
+
+function MarketplaceListProductRow({
+  product,
+  formatPriceMMK,
+  onProductClick,
+  onAddToCart,
+  onToggleWishlist,
+  isWishlisted,
+  layout,
+}: {
+  product: Product;
+  formatPriceMMK: (price: string) => string;
+  onProductClick: () => void;
+  onAddToCart: (e: React.MouseEvent, v?: { sku: string; price: string; image?: string }) => void;
+  onToggleWishlist: (e: React.MouseEvent) => void;
+  isWishlisted: boolean;
+  layout: MarketplaceListLayout;
+}) {
+  const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setVariantSelections(initVariantSelections(product));
+  }, [product.id, product.variantOptions?.length, product.variants?.length]);
+
+  const resolvedVariant = useMemo(
+    () => matchVariantForProduct(product, variantSelections),
+    [product, variantSelections]
+  );
+  const showVariants = productHasVariantPicker(product);
+  const displayPrice = resolvedVariant?.price ?? product.price;
+  const displayStock =
+    resolvedVariant != null
+      ? resolvedVariant.inventory
+      : product.inventory ?? (product as { stock?: number }).stock ?? 0;
+  const imgSrc = product.images && product.images.length > 0 ? product.images[0] : product.image;
+
+  const isSearch = layout === "search";
+  const rowGap = isSearch ? "gap-3 sm:gap-4 lg:gap-8" : "gap-3 sm:gap-4 md:gap-6";
+  const rowPad = isSearch ? "p-3 sm:p-4 lg:p-8" : "p-3 sm:p-4 md:p-6";
+  const imgWrap = isSearch
+    ? "w-24 h-24 sm:w-32 sm:h-32 lg:w-48 lg:h-48 rounded-lg lg:rounded-2xl"
+    : "w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-lg md:rounded-xl";
+  const titleCls = isSearch
+    ? "font-semibold text-slate-900 line-clamp-2 mb-1 sm:mb-2 lg:mb-3 text-sm"
+    : "font-semibold text-slate-900 line-clamp-2 mb-0.5 text-sm sm:text-base md:text-lg";
+  const priceCls = isSearch
+    ? "text-sm font-bold text-gray-700 mb-1 sm:mb-2 lg:mb-4"
+    : "text-base sm:text-lg md:text-xl font-bold text-gray-700 mb-1 sm:mb-2";
+  const soldLabel = isSearch
+    ? `(${product.salesVolume || 0} sold)`
+    : `(${product.salesVolume} sold)`;
+
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (showVariants && resolvedVariant) {
+      onAddToCart(e, {
+        sku: resolvedVariant.sku,
+        price: resolvedVariant.price,
+        image: imgSrc,
+      });
+    } else {
+      onAddToCart(e);
+    }
+  };
+
+  return (
+    <Card className="group overflow-hidden hover:shadow-lg transition-all cursor-pointer border border-slate-200 animate-slide-up">
+      <div className={`flex ${rowGap} ${rowPad}`} onClick={onProductClick}>
+        <div className={`${imgWrap} overflow-hidden border border-slate-200 flex-shrink-0`}>
+          <LazyImage src={imgSrc} alt={product.name} className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0 flex flex-col justify-between">
+          <div>
+            <h4 className={titleCls}>{product.name}</h4>
+            <div
+              className={
+                isSearch
+                  ? "flex items-center gap-1 sm:gap-2 lg:gap-3 mb-2 sm:mb-3 lg:mb-4"
+                  : "flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3"
+              }
+            >
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={
+                      isSearch
+                        ? "w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-2.5 lg:h-2.5 fill-amber-400 text-amber-400"
+                        : "w-3 h-3 sm:w-3.5 sm:h-3.5 fill-amber-400 text-amber-400"
+                    }
+                  />
+                ))}
+              </div>
+              <span
+                className={
+                  isSearch
+                    ? "text-[10px] text-slate-600 font-medium"
+                    : "text-xs sm:text-sm text-slate-600 font-medium"
+                }
+              >
+                {soldLabel}
+              </span>
+            </div>
+            {showVariants && (
+              <div className="mb-2">
+                <ProductVariantChips
+                  product={product}
+                  selections={variantSelections}
+                  onChange={setVariantSelections}
+                  size="list"
+                />
+              </div>
+            )}
+            <p className={priceCls}>{formatPriceMMK(displayPrice)}</p>
+            <div
+              className={
+                isSearch
+                  ? "hidden sm:flex items-center gap-4 lg:gap-6 mt-2 lg:mt-6 text-xs sm:text-sm lg:text-base text-slate-600"
+                  : "hidden sm:flex items-center gap-4 mt-2 md:mt-4 text-xs sm:text-sm text-slate-600"
+              }
+            >
+              <span className={`flex items-center ${isSearch ? "gap-1 lg:gap-2" : "gap-1"}`}>
+                <Store
+                  className={
+                    isSearch ? "w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5" : "w-3.5 h-3.5 sm:w-4 sm:h-4"
+                  }
+                />
+                <span
+                  className={`truncate ${isSearch ? "max-w-[120px] lg:max-w-[200px]" : "max-w-[120px]"}`}
+                >
+                  {product.vendor || "Store"}
+                </span>
+              </span>
+              <span className="text-emerald-700 font-medium">Stock: {displayStock}</span>
+            </div>
+            <div className="flex sm:hidden items-center gap-1.5 text-xs text-slate-600 mt-1">
+              <Store className="w-3.5 h-3.5" />
+              <span>Stock: {displayStock}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
+            onClick={handleAdd}
+          >
+            <Plus className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 text-orange-600 group-hover/btn:text-white transition-colors" />
+          </button>
+          <button
+            type="button"
+            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleWishlist(e);
+            }}
+          >
+            <Heart
+              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors ${
+                isWishlisted
+                  ? "fill-amber-600 text-amber-600 group-hover/btn:fill-white group-hover/btn:text-white"
+                  : "text-slate-600 group-hover/btn:text-white"
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplication }: StorefrontProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -371,6 +550,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const productRetrySkuRef = useRef("");
   const isSelectingProductRef = useRef(false);
   const isNavigatingAwayRef = useRef(false); // 🆕 NEW: Prevent race conditions during navigation
+  /** Avoid duplicate variant hydration when product/URL already applied. */
+  const productDetailHydratedRef = useRef<string>("");
   
   // �� MODULE-CACHE: Load from module-level cache (survives unmount/remount)
   const [products, setProducts] = useState<Product[]>(() => {
@@ -622,7 +803,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setViewMode("all-products");
     } else if (path.startsWith("/product/")) {
       const sku = decodeURIComponent(path.replace("/product/", "").split("/")[0]);
-      const product = products.find((p) => p.sku === sku);
+      const lowerSku = sku.toLowerCase();
+      const product =
+        products.find((p) => String(p.sku).toLowerCase() === lowerSku) ||
+        products.find(
+          (p) =>
+            Array.isArray(p.variants) &&
+            p.variants.some((v: { sku?: string }) => String(v?.sku || "").toLowerCase() === lowerSku)
+        );
       if (product) {
         setSelectedProduct(product);
         setViewMode("product-detail");
@@ -780,58 +968,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   }, [viewMode, selectedBlogPost, selectedOrder]); // Removed selectedProduct to prevent double transitions
   */
   
-  // Deep link / paginated catalog: resolve product by SKU via API when not on current page.
-  useEffect(() => {
-    if (isSelectingProductRef.current) return;
-    if (isNavigatingAwayRef.current) return;
-    if (!location.pathname.startsWith("/product/")) return;
-    if (viewMode !== "product-detail" || selectedProduct) return;
-
-    const sku = decodeURIComponent(
-      location.pathname.replace("/product/", "").split("/")[0]
-    );
-    if (!sku) return;
-
-    if (productRetrySkuRef.current !== sku) {
-      productRetrySkuRef.current = sku;
-      productRetryAttemptedRef.current = false;
-    }
-
-    const fromList = products.find((p) => p.sku === sku);
-    if (fromList) {
-      setSelectedProduct(fromList);
-      return;
-    }
-
-    if (productRetryAttemptedRef.current) return;
-    productRetryAttemptedRef.current = true;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/by-sku/${encodeURIComponent(sku)}`,
-          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
-        );
-        if (cancelled) return;
-        if (!res.ok) {
-          navigate("/store", { replace: true });
-          return;
-        }
-        const data = await res.json();
-        if (data.product) {
-          setSelectedProduct(productFromBySkuApi(data.product));
-        } else {
-          navigate("/store", { replace: true });
-        }
-      } catch {
-        if (!cancelled) navigate("/store", { replace: true });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [location.pathname, products, selectedProduct, viewMode, navigate]);
+  // Deep link + product-detail hydration: defined after fetchProductDetails / initializeVariantSelections (see below).
   
   // 🔒 Simple body scroll lock when mobile menu is open
   useEffect(() => {
@@ -1569,6 +1706,153 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   }, []);
 
+  const initializeVariantSelections = useCallback((product: Product) => {
+    if (product.hasVariants && product.variantOptions) {
+      const initialSelections: Record<string, string> = {};
+      product.variantOptions.forEach((option: any) => {
+        if (option.values && option.values.length > 0) {
+          initialSelections[option.name] = option.values[0];
+        }
+      });
+      setSelectedVariants(initialSelections);
+    } else {
+      setSelectedVariants({});
+    }
+  }, []);
+
+  /** When URL is /product/{variantSku}, select matching option values (e.g. Color = Coffee). */
+  const seedVariantSelectionFromUrlSku = useCallback((product: Product, urlSku: string) => {
+    if (!product.hasVariants || !product.variants?.length || !product.variantOptions?.length) return;
+    const lower = urlSku.trim().toLowerCase();
+    const v = (product.variants as { sku?: string; option1?: string; option2?: string; option3?: string }[]).find(
+      (x) => String(x.sku || "").toLowerCase() === lower
+    );
+    if (!v) return;
+    const next: Record<string, string> = {};
+    product.variantOptions.forEach((opt: { name: string }, idx: number) => {
+      const rawVal = [v.option1, v.option2, v.option3][idx];
+      if (rawVal != null && rawVal !== "") next[opt.name] = String(rawVal);
+    });
+    if (Object.keys(next).length > 0) setSelectedVariants(next);
+  }, []);
+
+  useEffect(() => {
+    productDetailHydratedRef.current = "";
+  }, [location.pathname, selectedProduct?.id, selectedProduct?.variantOptions?.length, selectedProduct?.variants?.length]);
+
+  // Deep link / paginated catalog: resolve product by parent or variant SKU via list or by-sku API.
+  useEffect(() => {
+    if (isSelectingProductRef.current) return;
+    if (isNavigatingAwayRef.current) return;
+    if (!location.pathname.startsWith("/product/")) return;
+    if (viewMode !== "product-detail" || selectedProduct) return;
+
+    const sku = decodeURIComponent(
+      location.pathname.replace("/product/", "").split("/")[0]
+    );
+    if (!sku) return;
+    const lowerSku = sku.toLowerCase();
+
+    if (productRetrySkuRef.current !== sku) {
+      productRetrySkuRef.current = sku;
+      productRetryAttemptedRef.current = false;
+    }
+
+    const fromList =
+      products.find((p) => String(p.sku).toLowerCase() === lowerSku) ||
+      products.find(
+        (p) =>
+          Array.isArray(p.variants) &&
+          p.variants.some((v: { sku?: string }) => String(v?.sku || "").toLowerCase() === lowerSku)
+      );
+    if (fromList) {
+      setSelectedProduct(fromList);
+      return;
+    }
+
+    if (productRetryAttemptedRef.current) return;
+    productRetryAttemptedRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/by-sku/${encodeURIComponent(sku)}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          navigate("/store", { replace: true });
+          return;
+        }
+        const data = await res.json();
+        if (data.product) {
+          setSelectedProduct(productFromBySkuApi(data.product));
+        } else {
+          navigate("/store", { replace: true });
+        }
+      } catch {
+        if (!cancelled) navigate("/store", { replace: true });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [location.pathname, products, selectedProduct, viewMode, navigate]);
+
+  // Load full variant metadata when the catalog row or URL sync left variantOptions/variants empty.
+  useEffect(() => {
+    if (isSelectingProductRef.current) return;
+    if (isNavigatingAwayRef.current) return;
+    if (!location.pathname.startsWith("/product/")) return;
+    if (!selectedProduct) return;
+
+    const sku = decodeURIComponent(
+      location.pathname.replace("/product/", "").split("/")[0]
+    );
+    if (!sku) return;
+
+    const key = `${selectedProduct.id}:${sku}:${selectedProduct.variantOptions?.length ?? 0}:${selectedProduct.variants?.length ?? 0}`;
+    if (productDetailHydratedRef.current === key) return;
+
+    const needsFull =
+      Boolean(selectedProduct.hasVariants) &&
+      (!selectedProduct.variantOptions?.length || !selectedProduct.variants?.length);
+
+    if (!needsFull) {
+      initializeVariantSelections(selectedProduct);
+      seedVariantSelectionFromUrlSku(selectedProduct, sku);
+      productDetailHydratedRef.current = key;
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const full = await fetchProductDetails(selectedProduct.id);
+      if (cancelled) return;
+      if (!full) return;
+      if (isNavigatingAwayRef.current) return;
+      if (!location.pathname.startsWith("/product/")) return;
+      const seg = decodeURIComponent(
+        location.pathname.replace("/product/", "").split("/")[0]
+      );
+      if (seg !== sku) return;
+      setSelectedProduct(full);
+      initializeVariantSelections(full);
+      seedVariantSelectionFromUrlSku(full, sku);
+      productDetailHydratedRef.current = `${full.id}:${sku}:${full.variantOptions?.length ?? 0}:${full.variants?.length ?? 0}`;
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedProduct,
+    location.pathname,
+    fetchProductDetails,
+    initializeVariantSelections,
+    seedVariantSelectionFromUrlSku,
+  ]);
+
   // Handle product selection - fetch full details
   const handleProductSelect = useCallback(async (product: Product) => {
     // Guard: Don't allow product selection if we're navigating away
@@ -1627,7 +1911,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       stopFaviconLoading();
       isSelectingProductRef.current = false;
     }
-  }, [fetchProductDetails, navigate, startFaviconLoading, stopFaviconLoading, location.pathname]);
+  }, [fetchProductDetails, navigate, startFaviconLoading, stopFaviconLoading, location.pathname, initializeVariantSelections]);
 
   // 🆕 RACE CONDITION FIX: Safe navigation away from product detail
   // This prevents state mismatch when navigating between pages
@@ -2312,13 +2596,26 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   };
 
   // ⚡ Optimize cart operations with useCallback
-  const addToCart = useCallback((product: Product, quantity: number = 1, variantSku?: string, variantImage?: string) => {
+  const addToCart = useCallback((
+    product: Product,
+    quantity: number = 1,
+    variantSku?: string,
+    variantImage?: string,
+    variantPrice?: string
+  ) => {
     setCart(prev => {
       // 🔥 Use variant SKU if provided, otherwise use product SKU
       const effectiveSku = variantSku || product.sku;
-      
+
+      let productWithVariant: Product = { ...product };
+      if (variantSku) {
+        productWithVariant = { ...productWithVariant, sku: variantSku };
+      }
+      if (variantPrice !== undefined && variantPrice !== "") {
+        productWithVariant = { ...productWithVariant, price: String(variantPrice) };
+      }
+
       // 🎨 If variant image is provided, update both image and images array
-      let productWithVariant = variantSku ? { ...product, sku: variantSku } : product;
       if (variantImage && variantSku) {
         productWithVariant = {
           ...productWithVariant,
@@ -2393,21 +2690,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     // Update main image if variant has an image
     if (imageIndex !== undefined) {
       setSelectedImageIndex(imageIndex);
-    }
-  };
-
-  // Initialize variant selections with first values
-  const initializeVariantSelections = (product: Product) => {
-    if (product.hasVariants && product.variantOptions) {
-      const initialSelections: Record<string, string> = {};
-      product.variantOptions.forEach((option: any) => {
-        if (option.values && option.values.length > 0) {
-          initialSelections[option.name] = option.values[0];
-        }
-      });
-      setSelectedVariants(initialSelections);
-    } else {
-      setSelectedVariants({});
     }
   };
 
@@ -6321,15 +6603,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               </Card>
 
               {/* Variant Selector - NEW STRUCTURE */}
-              {(() => {
-                console.log('🔍 Variant Selector Check:', {
-                  hasVariants: selectedProduct.hasVariants,
-                  variantOptions: selectedProduct.variantOptions,
-                  variantOptionsLength: selectedProduct.variantOptions?.length,
-                  shouldShow: selectedProduct.hasVariants && selectedProduct.variantOptions && selectedProduct.variantOptions.length > 0
-                });
-                return null;
-              })()}
               {selectedProduct.hasVariants && selectedProduct.variantOptions && selectedProduct.variantOptions.length > 0 && (
                 <div className="space-y-6">
                   {selectedProduct.variantOptions.map((option: any) => (
@@ -6657,9 +6930,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     onProductClick={() => {
                       handleProductSelect(product);
                     }}
-                    onAddToCart={(e) => {
+                    onAddToCart={(e, v) => {
                       e.stopPropagation();
-                      addToCart(product);
+                      addToCart(product, 1, v?.sku, v?.image, v?.price);
                     }}
                     onToggleWishlist={(e) => {
                       e.stopPropagation();
@@ -7001,9 +7274,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       onProductClick={() => {
                         handleProductSelect(product);
                       }}
-                      onAddToCart={(e) => {
+                      onAddToCart={(e, v) => {
                         e.stopPropagation();
-                        addToCart(product);
+                        addToCart(product, 1, v?.sku, v?.image, v?.price);
                       }}
                       onToggleWishlist={(e) => {
                         e.stopPropagation();
@@ -7017,82 +7290,22 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 ) : (
                 <div className="space-y-3 sm:space-y-4 lg:space-y-6">
                   {sortedProducts.map((product) => (
-                    <Card key={product.id} className="group overflow-hidden hover:shadow-lg transition-all cursor-pointer border border-slate-200 animate-slide-up">
-                      <div className="flex gap-3 sm:gap-4 lg:gap-8 p-3 sm:p-4 lg:p-8" onClick={() => {
-                        handleProductSelect(product);
-                      }}>
-                        {/* Product Image - Responsive sizing */}
-                        <div className="w-24 h-24 sm:w-32 sm:h-32 lg:w-48 lg:h-48 rounded-lg lg:rounded-2xl overflow-hidden border border-slate-200 flex-shrink-0">
-                          <LazyImage
-                            src={product.images && product.images.length > 0 ? product.images[0] : product.image}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        
-                        {/* Product Info */}
-                        <div className="flex-1 min-w-0 flex flex-col justify-between">
-                          {/* Top Section */}
-                          <div>
-                            <h4 className="font-semibold text-slate-900 line-clamp-2 mb-1 sm:mb-2 lg:mb-3 text-sm">{product.name}</h4>
-                            
-                            {/* Star Rating */}
-                            <div className="flex items-center gap-1 sm:gap-2 lg:gap-3 mb-2 sm:mb-3 lg:mb-4">
-                              <div className="flex items-center gap-0.5 sm:gap-1">
-                                {[...Array(5)].map((_, i) => (
-                                  <Star key={i} className="w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-2.5 lg:h-2.5 fill-amber-400 text-amber-400" />
-                                ))}
-                              </div>
-                              <span className="text-[10px] text-slate-600 font-medium">({product.salesVolume || 0} sold)</span>
-                            </div>
-                            
-                            {/* Price - Bold and prominent */}
-                            <p className="text-sm font-bold text-gray-700 mb-1 sm:mb-2 lg:mb-4">{formatPriceMMK(product.price)}</p>
-                            
-                            {/* Vendor & Stock - Hide on very small screens */}
-                            <div className="hidden sm:flex items-center gap-4 lg:gap-6 mt-2 lg:mt-6 text-xs sm:text-sm lg:text-base text-slate-600">
-                              <span className="flex items-center gap-1 lg:gap-2">
-                                <Store className="w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5" />
-                                <span className="truncate max-w-[120px] lg:max-w-[200px]">{product.vendor || 'Store'}</span>
-                              </span>
-                              <span className="text-emerald-700 font-medium">Stock: {product.inventory ?? product.stock ?? 0}</span>
-                            </div>
-                            
-                            {/* Stock only on mobile */}
-                            <div className="flex sm:hidden items-center gap-1.5 text-xs text-slate-600 mt-1">
-                              <Store className="w-3.5 h-3.5" />
-                              <span>Stock: {product.inventory ?? product.stock ?? 0}</span>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Action Buttons - Vertical on Right (Grid View Styling) */}
-                        <div className="flex flex-col gap-1.5 flex-shrink-0">
-                          <button
-                            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addToCart(product);
-                            }}
-                          >
-                            <Plus className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 text-orange-600 group-hover/btn:text-white transition-colors" />
-                          </button>
-                          <button
-                            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleWishlist(product.id);
-                            }}
-                          >
-                            <Heart
-                              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors ${
-                                wishlist.includes(product.id) ? "fill-amber-600 text-amber-600 group-hover/btn:fill-white group-hover/btn:text-white" : "text-slate-600 group-hover/btn:text-white"
-                              }`}
-                            />
-                          </button>
-                        </div>
-                      </div>
-                    </Card>
+                    <MarketplaceListProductRow
+                      key={product.id}
+                      product={product}
+                      layout="search"
+                      formatPriceMMK={formatPriceMMK}
+                      onProductClick={() => handleProductSelect(product)}
+                      onAddToCart={(e, v) => {
+                        e.stopPropagation();
+                        addToCart(product, 1, v?.sku, v?.image, v?.price);
+                      }}
+                      onToggleWishlist={(e) => {
+                        e.stopPropagation();
+                        toggleWishlist(product.id);
+                      }}
+                      isWishlisted={wishlist.includes(product.id)}
+                    />
                   ))}
                 </div>
                 )}
@@ -7777,9 +7990,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   onProductClick={() => {
                     handleProductSelect(product);
                   }}
-                  onAddToCart={(e) => {
+                  onAddToCart={(e, v) => {
                     e.stopPropagation();
-                    addToCart(product);
+                    addToCart(product, 1, v?.sku, v?.image, v?.price);
                   }}
                   onToggleWishlist={(e) => {
                     e.stopPropagation();
@@ -7869,9 +8082,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     onProductClick={() => {
                       handleProductSelect(product);
                     }}
-                    onAddToCart={(e) => {
+                    onAddToCart={(e, v) => {
                       e.stopPropagation();
-                      addToCart(product);
+                      addToCart(product, 1, v?.sku, v?.image, v?.price);
                     }}
                     onToggleWishlist={(e) => {
                       e.stopPropagation();
@@ -7884,89 +8097,23 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               </div>
             ) : (
               <div className="space-y-3 md:space-y-4 stagger-children">
-                {dealProducts.map(product => (
-                  <Card key={product.id} className="group overflow-hidden hover:shadow-lg transition-all cursor-pointer border border-slate-200 animate-slide-up">
-                    <div className="flex gap-3 sm:gap-4 md:gap-6 p-3 sm:p-4 md:p-6" onClick={() => {
-                      handleProductSelect(product);
-                    }}>
-                      {/* Product Image - Responsive sizing */}
-                      <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-lg md:rounded-xl overflow-hidden border border-slate-200 flex-shrink-0">
-                        <LazyImage
-                          src={product.image}
-                          alt={product.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      
-                      {/* Product Info */}
-                      <div className="flex-1 min-w-0 flex flex-col justify-between">
-                        {/* Top Section */}
-                        <div>
-                          <h4 className="font-semibold text-slate-900 line-clamp-2 mb-0.5 text-sm sm:text-base md:text-lg">{product.name}</h4>
-                          
-                          {/* Star Rating */}
-                          <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3">
-                            <div className="flex items-center gap-0.5 sm:gap-1">
-                              {[...Array(5)].map((_, i) => (
-                                <Star key={i} className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-amber-400 text-amber-400" />
-                              ))}
-                            </div>
-                            <span className="text-xs sm:text-sm text-slate-600 font-medium">({product.salesVolume} sold)</span>
-                          </div>
-                          
-                          {/* Price - Bold and prominent */}
-                          <p className="text-base sm:text-lg md:text-xl font-bold text-gray-700 mb-1 sm:mb-2">{formatPriceMMK(product.price)}</p>
-                          
-                          {/* Vendor & Stock - Hide on very small screens */}
-                          <div className="hidden sm:flex items-center gap-4 mt-2 md:mt-4 text-xs sm:text-sm text-slate-600">
-                            <span className="flex items-center gap-1">
-                              <Store className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                              <span className="truncate max-w-[120px]">{product.vendor}</span>
-                            </span>
-                            <span className="text-emerald-700 font-medium">Stock: {product.inventory}</span>
-                          </div>
-                          
-                          {/* Stock only on mobile */}
-                          <div className="flex sm:hidden items-center gap-1.5 text-xs text-slate-600 mt-1">
-                            <Store className="w-3.5 h-3.5" />
-                            <span>Stock: {product.inventory}</span>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Action Buttons - Vertical on all screens */}
-                      <div className="flex flex-col gap-1.5 flex-shrink-0">
-                        <button
-                          className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addToCart(product);
-                          }}
-                          title="Add to Cart"
-                        >
-                          <ShoppingCart className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600 group-hover/btn:text-white transition-colors" />
-                        </button>
-                        <button
-                          className={`w-7 h-7 sm:w-9 sm:h-9 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all ${
-                            wishlist.includes(product.id)
-                              ? "bg-red-50 hover:bg-red-100"
-                              : "bg-white/90 hover:bg-slate-100"
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleWishlist(product.id);
-                          }}
-                          title={wishlist.includes(product.id) ? "Remove from Wishlist" : "Add to Wishlist"}
-                        >
-                          <Heart className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors ${
-                            wishlist.includes(product.id)
-                              ? "fill-red-500 text-red-500"
-                              : "text-slate-600"
-                          }`} />
-                        </button>
-                      </div>
-                    </div>
-                  </Card>
+                {dealProducts.map((product) => (
+                  <MarketplaceListProductRow
+                    key={product.id}
+                    product={product}
+                    layout="catalog"
+                    formatPriceMMK={formatPriceMMK}
+                    onProductClick={() => handleProductSelect(product)}
+                    onAddToCart={(e, v) => {
+                      e.stopPropagation();
+                      addToCart(product, 1, v?.sku, v?.image, v?.price);
+                    }}
+                    onToggleWishlist={(e) => {
+                      e.stopPropagation();
+                      toggleWishlist(product.id);
+                    }}
+                    isWishlisted={wishlist.includes(product.id)}
+                  />
                 ))}
               </div>
             )}
@@ -8147,9 +8294,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         onProductClick={() => {
                           handleProductSelect(product);
                         }}
-                        onAddToCart={(e) => {
+                        onAddToCart={(e, v) => {
                           e.stopPropagation();
-                          addToCart(product);
+                          addToCart(product, 1, v?.sku, v?.image, v?.price);
                         }}
                         onToggleWishlist={(e) => {
                           e.stopPropagation();
@@ -8249,9 +8396,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           onProductClick={() => {
                             handleProductSelect(product);
                           }}
-                          onAddToCart={(e) => {
+                          onAddToCart={(e, v) => {
                             e.stopPropagation();
-                            addToCart(product);
+                            addToCart(product, 1, v?.sku, v?.image, v?.price);
                           }}
                           onToggleWishlist={(e) => {
                             e.stopPropagation();
@@ -8353,9 +8500,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         onProductClick={() => {
                           handleProductSelect(product);
                         }}
-                        onAddToCart={(e) => {
+                        onAddToCart={(e, v) => {
                           e.stopPropagation();
-                          addToCart(product);
+                          addToCart(product, 1, v?.sku, v?.image, v?.price);
                         }}
                         onToggleWishlist={(e) => {
                           e.stopPropagation();
@@ -8452,9 +8599,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         onProductClick={() => {
                           handleProductSelect(product);
                         }}
-                        onAddToCart={(e) => {
+                        onAddToCart={(e, v) => {
                           e.stopPropagation();
-                          addToCart(product);
+                          addToCart(product, 1, v?.sku, v?.image, v?.price);
                         }}
                         onToggleWishlist={(e) => {
                           e.stopPropagation();
@@ -8612,9 +8759,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       onProductClick={() => {
                         handleProductSelect(product);
                       }}
-                      onAddToCart={(e) => {
+                      onAddToCart={(e, v) => {
                         e.stopPropagation();
-                        addToCart(product);
+                        addToCart(product, 1, v?.sku, v?.image, v?.price);
                       }}
                       onToggleWishlist={(e) => {
                         e.stopPropagation();
@@ -8624,82 +8771,22 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       formatPriceMMK={formatPriceMMK}
                     />
                   ) : (
-                    <Card key={product.id} className="group overflow-hidden hover:shadow-lg transition-all cursor-pointer border border-slate-200 animate-slide-up">
-                      <div className="flex gap-3 sm:gap-4 md:gap-6 p-3 sm:p-4 md:p-6" onClick={() => {
-                        handleProductSelect(product);
-                      }}>
-                        {/* Product Image - Responsive sizing */}
-                        <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-lg md:rounded-xl overflow-hidden border border-slate-200 flex-shrink-0">
-                          <LazyImage
-                            src={product.image}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        
-                        {/* Product Info */}
-                        <div className="flex-1 min-w-0 flex flex-col justify-between">
-                          {/* Top Section */}
-                          <div>
-                            <h4 className="font-semibold text-slate-900 line-clamp-2 mb-0.5 text-sm sm:text-base md:text-lg">{product.name}</h4>
-                            
-                            {/* Star Rating */}
-                            <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3">
-                              <div className="flex items-center gap-0.5 sm:gap-1">
-                                {[...Array(5)].map((_, i) => (
-                                  <Star key={i} className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-amber-400 text-amber-400" />
-                                ))}
-                              </div>
-                              <span className="text-xs sm:text-sm text-slate-600 font-medium">({product.salesVolume} sold)</span>
-                            </div>
-                            
-                            {/* Price - Bold and prominent */}
-                            <p className="text-base sm:text-lg md:text-xl font-bold text-gray-700 mb-1 sm:mb-2">{formatPriceMMK(product.price)}</p>
-                            
-                            {/* Vendor & Stock - Hide on very small screens */}
-                            <div className="hidden sm:flex items-center gap-4 mt-2 md:mt-4 text-xs sm:text-sm text-slate-600">
-                              <span className="flex items-center gap-1">
-                                <Store className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                <span className="truncate max-w-[120px]">{product.vendor}</span>
-                              </span>
-                              <span className="text-emerald-700 font-medium">Stock: {product.inventory}</span>
-                            </div>
-                            
-                            {/* Stock only on mobile */}
-                            <div className="flex sm:hidden items-center gap-1.5 text-xs text-slate-600 mt-1">
-                              <Store className="w-3.5 h-3.5" />
-                              <span>Stock: {product.inventory}</span>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Action Buttons - Vertical on all screens (Grid View Styling) */}
-                        <div className="flex flex-col gap-1.5 flex-shrink-0">
-                          <button
-                            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addToCart(product);
-                            }}
-                          >
-                            <Plus className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 text-orange-600 group-hover/btn:text-white transition-colors" />
-                          </button>
-                          <button
-                            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleWishlist(product.id);
-                            }}
-                          >
-                            <Heart
-                              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors ${
-                                wishlist.includes(product.id) ? "fill-amber-600 text-amber-600 group-hover/btn:fill-white group-hover/btn:text-white" : "text-slate-600 group-hover/btn:text-white"
-                              }`}
-                            />
-                          </button>
-                        </div>
-                      </div>
-                    </Card>
+                    <MarketplaceListProductRow
+                      key={product.id}
+                      product={product}
+                      layout="catalog"
+                      formatPriceMMK={formatPriceMMK}
+                      onProductClick={() => handleProductSelect(product)}
+                      onAddToCart={(e, v) => {
+                        e.stopPropagation();
+                        addToCart(product, 1, v?.sku, v?.image, v?.price);
+                      }}
+                      onToggleWishlist={(e) => {
+                        e.stopPropagation();
+                        toggleWishlist(product.id);
+                      }}
+                      isWishlisted={wishlist.includes(product.id)}
+                    />
                   )
                 ))}
               </div>

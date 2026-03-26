@@ -1,19 +1,29 @@
+import { useState, useEffect, useMemo } from "react";
 import { Plus, Heart, Star } from "lucide-react";
 import { Card } from "./ui/card";
 import { LazyImage } from "./LazyImage";
 import { motion } from "motion/react";
+import {
+  ProductVariantChips,
+  initVariantSelections,
+  matchVariantForProduct,
+  productHasVariantPicker,
+  type VariantProduct,
+} from "./ProductVariantChips";
+
+export type ProductCardProduct = VariantProduct & {
+  image: string;
+  images?: string[];
+  name: string;
+  price: string;
+  salesVolume?: number;
+  sku?: string;
+};
 
 interface ProductCardProps {
-  product: {
-    id: string;
-    image: string;
-    name: string;
-    price: string;
-    salesVolume?: number;
-    sku?: string;
-  };
+  product: ProductCardProduct;
   onProductClick: () => void;
-  onAddToCart: (e: React.MouseEvent) => void;
+  onAddToCart: (e: React.MouseEvent, cartVariant?: { sku: string; price: string; image?: string }) => void;
   onToggleWishlist: (e: React.MouseEvent) => void;
   isWishlisted: boolean;
   formatPriceMMK: (price: string) => string;
@@ -29,6 +39,34 @@ export const ProductCard = ({
   formatPriceMMK,
   viewType = "grid" // Default to grid
 }: ProductCardProps) => {
+  const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setVariantSelections(initVariantSelections(product));
+  }, [product.id, product.variantOptions?.length, product.variants?.length]);
+
+  const resolvedVariant = useMemo(
+    () => matchVariantForProduct(product, variantSelections),
+    [product, variantSelections]
+  );
+  const showVariantPicker = productHasVariantPicker(product);
+  const displayPrice = resolvedVariant?.price ?? product.price;
+  const heroImage =
+    product.images && product.images.length > 0 ? product.images[0] : product.image;
+
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (showVariantPicker && resolvedVariant) {
+      onAddToCart(e, {
+        sku: resolvedVariant.sku,
+        price: resolvedVariant.price,
+        image: heroImage,
+      });
+    } else {
+      onAddToCart(e);
+    }
+  };
+
   // List view layout
   if (viewType === "list") {
     return (
@@ -44,7 +82,7 @@ export const ProductCard = ({
           {/* Product Image */}
           <div className="w-24 h-24 md:w-32 md:h-32 flex-shrink-0 overflow-hidden bg-white relative rounded">
             <LazyImage
-              src={product.image}
+              src={heroImage}
               alt={product.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
@@ -67,12 +105,23 @@ export const ProductCard = ({
                   ({product.salesVolume || 0})
                 </span>
               </div>
+
+              {showVariantPicker && (
+                <div className="mb-2 mt-1">
+                  <ProductVariantChips
+                    product={product}
+                    selections={variantSelections}
+                    onChange={setVariantSelections}
+                    size="list"
+                  />
+                </div>
+              )}
             </div>
             
             {/* Price and Actions */}
             <div className="flex items-center justify-between">
               <p className="text-base md:text-lg font-bold text-gray-700">
-                {formatPriceMMK(product.price)}
+                {formatPriceMMK(displayPrice)}
               </p>
               
               {/* Action Buttons */}
@@ -92,7 +141,7 @@ export const ProductCard = ({
                 {/* Add to Cart Button */}
                 <motion.button
                   className="w-9 h-9 bg-amber-600 hover:bg-amber-700 rounded-lg flex items-center justify-center transition-all"
-                  onClick={onAddToCart}
+                  onClick={handleAdd}
                   whileTap={{ scale: 0.92 }}
                   transition={{ duration: 0.1 }}
                 >
@@ -120,7 +169,7 @@ export const ProductCard = ({
       {/* Product Image */}
       <div className="aspect-square overflow-hidden bg-white relative">
         <LazyImage
-          src={product.image}
+          src={heroImage}
           alt={product.name}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
         />
@@ -130,7 +179,7 @@ export const ProductCard = ({
           {/* Add to Cart Button */}
           <motion.button
             className="w-7 h-7 md:w-9 md:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
-            onClick={onAddToCart}
+            onClick={handleAdd}
             whileTap={{ scale: 0.92 }}
             transition={{ duration: 0.1 }}
           >
@@ -173,10 +222,21 @@ export const ProductCard = ({
             ({product.salesVolume || 0})
           </span>
         </div>
+
+        {showVariantPicker && (
+          <div className="mb-1.5" onClick={(e) => e.stopPropagation()}>
+            <ProductVariantChips
+              product={product}
+              selections={variantSelections}
+              onChange={setVariantSelections}
+              size="grid"
+            />
+          </div>
+        )}
         
         {/* Price */}
         <div className="text-sm text-gray-700">
-          <span className="text-base font-bold">{formatPriceMMK(product.price).replace(' MMK', '')}</span>
+          <span className="text-base font-bold">{formatPriceMMK(displayPrice).replace(' MMK', '')}</span>
           <span className="text-[11px] ml-1 text-orange-600 font-semibold">MMK</span>
         </div>
       </div>

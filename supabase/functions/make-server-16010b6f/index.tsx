@@ -2675,7 +2675,15 @@ app.get("/make-server-16010b6f/products/by-sku/:sku", async (c) => {
       return c.json({ error: "sku required" }, 400);
     }
     const data = await ensureProductsListResponse();
-    const row = data.products.find((p) => String(p.sku).toLowerCase() === sku.toLowerCase());
+    const lower = sku.toLowerCase();
+    let row = data.products.find((p) => String(p.sku).toLowerCase() === lower);
+    if (!row) {
+      row = data.products.find(
+        (p) =>
+          Array.isArray(p.variants) &&
+          p.variants.some((v: { sku?: string }) => String(v?.sku || "").toLowerCase() === lower)
+      );
+    }
     if (!row) {
       return c.json({ error: "Product not found" }, 404);
     }
@@ -3612,6 +3620,86 @@ app.get("/make-server-16010b6f/user/:userId/orders", async (c) => {
   }
 });
 
+/** Normalize order status (e.g. "Ready to Ship" → "ready-to-ship") */
+function normalizeOrderStatus(s: string | undefined): string {
+  if (s == null || s === "") return "";
+  return String(s).trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+function isInventoryCommitStatus(status: string | undefined): boolean {
+  const n = normalizeOrderStatus(status);
+  return n === "ready-to-ship" || n === "fulfilled";
+}
+
+/**
+ * false = new order: inventory not yet reduced (deduct when admin sets ready-to-ship / fulfilled).
+ * true / undefined = stock already reflected (admin committed, or legacy order deducted at checkout).
+ */
+function physicallyReducedInventory(order: { inventoryDeducted?: boolean }): boolean {
+  return order.inventoryDeducted !== false;
+}
+
+async function validateStockForOrderLineItems(
+  items: any[]
+): Promise<{ ok: true } | { ok: false; stockIssues: any[] }> {
+  const stockIssues: any[] = [];
+  for (const item of items) {
+    try {
+      const productKey = `product:${item.productId}`;
+      const product = await withTimeout(kv.get(productKey), 5000);
+      if (!product) continue;
+      const requestedQty = item.quantity || 1;
+      const availableStock = product.inventory ?? product.stock ?? 0;
+      if (availableStock < requestedQty) {
+        stockIssues.push({
+          productId: item.productId,
+          productName: product.name || item.name,
+          requested: requestedQty,
+          available: availableStock,
+          issue: "Insufficient stock",
+        });
+      }
+    } catch {
+      stockIssues.push({
+        productId: item.productId,
+        productName: item.name || "Unknown Product",
+        issue: "Error checking stock",
+      });
+    }
+  }
+  if (stockIssues.length > 0) return { ok: false, stockIssues };
+  return { ok: true };
+}
+
+async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "restore") {
+  for (const item of items) {
+    try {
+      const productKey = `product:${item.productId}`;
+      const product = await withTimeout(kv.get(productKey), 5000);
+      if (!product) {
+        console.warn(`  ⚠️ Product not found: ${item.productId}`);
+        continue;
+      }
+      const qty = item.quantity || 1;
+      const currentStock = product.inventory ?? product.stock ?? 0;
+      const newStock =
+        direction === "deduct"
+          ? Math.max(0, currentStock - qty)
+          : currentStock + qty;
+      product.inventory = newStock;
+      product.stock = newStock;
+      product.updatedAt = new Date().toISOString();
+      await withTimeout(kv.set(productKey, product), 5000);
+      console.log(
+        `  ✅ ${item.name || "Unknown"}: ${currentStock} → ${newStock} (${direction} ${qty})`
+      );
+    } catch (stockError) {
+      console.error(`  ❌ Stock ${direction} failed for ${item.name || item.productId}:`, stockError);
+    }
+  }
+  serverCache.delete("all_products");
+}
+
 app.post("/make-server-16010b6f/orders", async (c) => {
   try {
     console.log("📦 Creating new order...");
@@ -3700,45 +3788,11 @@ app.post("/make-server-16010b6f/orders", async (c) => {
       date: body.date || new Date().toISOString().split('T')[0],
       paymentStatus: body.paymentStatus || 'unpaid',
       shippingStatus: body.shippingStatus || 'pending',
+      /** Inventory is reduced only when admin sets status to ready-to-ship or fulfilled */
+      inventoryDeducted: false,
     };
     
-    console.log(`💾 Saving order ${orderData.orderNumber} with total: ${orderData.total}, discount: ${orderData.discount}, couponCode: ${orderData.couponCode || 'NONE'}`);
-    
-    // 🔥 STEP 2: AUTOMATIC STOCK DEDUCTION - Reduce stock quantity for each ordered item
-    if (orderData.items && Array.isArray(orderData.items)) {
-      console.log(`📉 Deducting stock for ${orderData.items.length} items...`);
-      
-      for (const item of orderData.items) {
-        try {
-          const productKey = `product:${item.productId}`;
-          const product = await withTimeout(kv.get(productKey), 5000);
-          
-          if (product) {
-            const quantityOrdered = item.quantity || 1;
-            // 🔥 Use inventory field (primary) or stock field (fallback)
-            const currentStock = product.inventory ?? product.stock ?? 0;
-            const newStock = Math.max(0, currentStock - quantityOrdered); // Prevent negative stock
-            
-            // Update both fields for compatibility
-            product.inventory = newStock;
-            product.stock = newStock;
-            product.updatedAt = new Date().toISOString();
-            
-            await withTimeout(kv.set(productKey, product), 5000);
-            console.log(`  ✅ ${item.name || 'Unknown'}: ${currentStock} → ${newStock} (ordered: ${quantityOrdered})`);
-          } else {
-            console.warn(`  ⚠️ Product not found: ${item.productId}`);
-          }
-        } catch (stockError) {
-          console.error(`  ❌ Failed to update stock for ${item.name || item.productId}:`, stockError);
-          // Continue with other items even if one fails
-        }
-      }
-      
-      // Clear product cache to reflect new stock levels
-      serverCache.delete('all_products');
-      console.log(`✅ Stock deduction complete for order ${orderData.orderNumber}`);
-    }
+    console.log(`💾 Saving order ${orderData.orderNumber} with total: ${orderData.total}, discount: ${orderData.discount}, couponCode: ${orderData.couponCode || 'NONE'} (inventory unchanged until ready-to-ship/fulfilled)`);
     
     await withTimeout(kv.set(`order:${id}`, orderData), 5000);
     
@@ -3771,50 +3825,83 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
       return c.json({ error: "Order not found" }, 404);
     }
     
-    // 🔥 AUTOMATIC STOCK RESTORATION: Check if order is being cancelled
-    const wasNotCancelled = existingOrder.status !== 'cancelled';
-    const isNowCancelled = body.status === 'cancelled';
-    
-    if (wasNotCancelled && isNowCancelled && existingOrder.items && Array.isArray(existingOrder.items)) {
+    const prevNorm = normalizeOrderStatus(existingOrder.status);
+    const newStatusRaw = body.status !== undefined ? body.status : existingOrder.status;
+    const newNorm = normalizeOrderStatus(newStatusRaw);
+    const wasCancelled = prevNorm === "cancelled";
+    const isNowCancelled = newNorm === "cancelled";
+    const items = existingOrder.items && Array.isArray(existingOrder.items) ? existingOrder.items : [];
+
+    let nextInventoryFlag: boolean | undefined = existingOrder.inventoryDeducted;
+    let inventoryRestored = false;
+    let inventoryDeducted = false;
+
+    // 1) Cancel → restore only if inventory had already been reduced (legacy checkout deduct or admin commit)
+    if (!wasCancelled && isNowCancelled && items.length > 0 && physicallyReducedInventory(existingOrder)) {
       console.log(`📈 Restoring stock for cancelled order ${existingOrder.orderNumber}...`);
-      
-      for (const item of existingOrder.items) {
-        try {
-          const productKey = `product:${item.productId}`;
-          const product = await withTimeout(kv.get(productKey), 5000);
-          
-          if (product) {
-            const quantityToRestore = item.quantity || 1;
-            // 🔥 Use inventory field (primary) or stock field (fallback)
-            const currentStock = product.inventory ?? product.stock ?? 0;
-            const newStock = currentStock + quantityToRestore;
-            
-            // Update both fields for compatibility
-            product.inventory = newStock;
-            product.stock = newStock;
-            product.updatedAt = new Date().toISOString();
-            
-            await withTimeout(kv.set(productKey, product), 5000);
-            console.log(`  ✅ ${item.name || 'Unknown'}: ${currentStock} → ${newStock} (restored: ${quantityToRestore})`);
-          } else {
-            console.warn(`  ⚠️ Product not found: ${item.productId}`);
-          }
-        } catch (stockError) {
-          console.error(`  ❌ Failed to restore stock for ${item.name || item.productId}:`, stockError);
-          // Continue with other items even if one fails
-        }
-      }
-      
-      // Clear product cache to reflect new stock levels
-      serverCache.delete('all_products');
-      console.log(`✅ Stock restoration complete for cancelled order ${existingOrder.orderNumber}`);
+      await applyOrderItemsStockDelta(items, "restore");
+      inventoryRestored = true;
+      nextInventoryFlag = false;
     }
-    
+
+    // 2) Admin moved away from ready-to-ship / fulfilled → restore (new flow only; inventoryDeducted === true)
+    else if (
+      !inventoryRestored &&
+      items.length > 0 &&
+      isInventoryCommitStatus(existingOrder.status) &&
+      !isInventoryCommitStatus(newStatusRaw) &&
+      !isNowCancelled &&
+      existingOrder.inventoryDeducted === true
+    ) {
+      console.log(`📈 Restoring stock for order ${existingOrder.orderNumber} (status reverted before fulfilment)...`);
+      await applyOrderItemsStockDelta(items, "restore");
+      inventoryRestored = true;
+      nextInventoryFlag = false;
+    }
+
+    // 3) First move to ready-to-ship or fulfilled → deduct once (orders with inventoryDeducted === false)
+    if (
+      !isNowCancelled &&
+      body.status !== undefined &&
+      isInventoryCommitStatus(body.status) &&
+      existingOrder.inventoryDeducted === false &&
+      items.length > 0
+    ) {
+      console.log(`📉 Deducting stock for order ${existingOrder.orderNumber} (status → ${body.status})...`);
+      const chk = await validateStockForOrderLineItems(items);
+      if (!chk.ok) {
+        return c.json(
+          {
+            success: false,
+            error: "Insufficient stock",
+            stockIssues: chk.stockIssues,
+            message: chk.stockIssues
+              .map((issue: any) =>
+                `${issue.productName}: ${issue.issue}${issue.requested != null ? ` (need ${issue.requested}, only ${issue.available} available)` : ""}`
+              )
+              .join("; "),
+          },
+          400
+        );
+      }
+      await applyOrderItemsStockDelta(items, "deduct");
+      inventoryDeducted = true;
+      nextInventoryFlag = true;
+    }
+
+    if (inventoryRestored) {
+      console.log(`✅ Stock restore complete for order ${existingOrder.orderNumber}`);
+    }
+    if (inventoryDeducted) {
+      console.log(`✅ Stock deduction complete for order ${existingOrder.orderNumber}`);
+    }
+
     const updatedOrder = {
       ...existingOrder,
       ...body,
       id,
       updatedAt: new Date().toISOString(),
+      inventoryDeducted: nextInventoryFlag,
     };
     
     await withTimeout(kv.set(`order:${id}`, updatedOrder), 5000);
@@ -3843,39 +3930,15 @@ app.delete("/make-server-16010b6f/orders/:id", async (c) => {
       return c.json({ error: "Order not found" }, 404);
     }
     
-    // 🔥 AUTOMATIC STOCK RESTORATION: Restore stock when order is deleted (only if not already cancelled)
-    if (existingOrder.status !== 'cancelled' && existingOrder.items && Array.isArray(existingOrder.items)) {
+    // Restore stock when deleting only if inventory had been reduced (legacy, admin-committed, or checkout-time)
+    if (
+      existingOrder.status !== "cancelled" &&
+      existingOrder.items &&
+      Array.isArray(existingOrder.items) &&
+      physicallyReducedInventory(existingOrder)
+    ) {
       console.log(`📈 Restoring stock for deleted order ${existingOrder.orderNumber}...`);
-      
-      for (const item of existingOrder.items) {
-        try {
-          const productKey = `product:${item.productId}`;
-          const product = await withTimeout(kv.get(productKey), 5000);
-          
-          if (product) {
-            const quantityToRestore = item.quantity || 1;
-            // 🔥 Use inventory field (primary) or stock field (fallback)
-            const currentStock = product.inventory ?? product.stock ?? 0;
-            const newStock = currentStock + quantityToRestore;
-            
-            // Update both fields for compatibility
-            product.inventory = newStock;
-            product.stock = newStock;
-            product.updatedAt = new Date().toISOString();
-            
-            await withTimeout(kv.set(productKey, product), 5000);
-            console.log(`  ✅ ${item.name || 'Unknown'}: ${currentStock} → ${newStock} (restored: ${quantityToRestore})`);
-          } else {
-            console.warn(`  ⚠️ Product not found: ${item.productId}`);
-          }
-        } catch (stockError) {
-          console.error(`  ❌ Failed to restore stock for ${item.name || item.productId}:`, stockError);
-          // Continue with other items even if one fails
-        }
-      }
-      
-      // Clear product cache to reflect new stock levels
-      serverCache.delete('all_products');
+      await applyOrderItemsStockDelta(existingOrder.items, "restore");
       console.log(`✅ Stock restoration complete for deleted order ${existingOrder.orderNumber}`);
     }
     
