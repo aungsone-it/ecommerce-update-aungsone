@@ -4,7 +4,8 @@ import {
   Plus, 
   Search, 
   Eye,
-  Package
+  Package,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -16,7 +17,10 @@ import { toast } from "sonner";
 import {
   getCachedVendorProductsAdmin,
   invalidateVendorProductsAdminCache,
+  primeVendorProductsAdminCache,
   invalidateProductByIdCache,
+  moduleCache,
+  CACHE_KEYS,
 } from "../../utils/module-cache";
 import { VendorAdminAddProduct } from "./VendorAdminAddProduct";
 import {
@@ -65,7 +69,11 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
   const location = useLocation();
   const adminPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () =>
+      moduleCache.peek(CACHE_KEYS.vendorProductsAdmin(vendorId)) == null
+  );
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "off-shelf">("all");
   const [sortBy, setSortBy] = useState("newest");
@@ -77,20 +85,33 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
 
   useEffect(() => {
     if (currentView === "list") {
-      loadProducts();
+      loadProducts(false);
     }
   }, [vendorId, currentView]);
 
-  const loadProducts = async () => {
+  const loadProducts = async (forceRefresh = false) => {
+    if (!forceRefresh && currentView === "list") {
+      const cached = moduleCache.peek<{ products?: Product[] }>(
+        CACHE_KEYS.vendorProductsAdmin(vendorId)
+      );
+      if (cached != null && Array.isArray(cached.products)) {
+        setProducts(cached.products);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
+    setListRefreshing(forceRefresh);
     try {
-      const data = await getCachedVendorProductsAdmin(vendorId);
+      const data = await getCachedVendorProductsAdmin(vendorId, forceRefresh);
       setProducts(data.products || []);
     } catch (error) {
       console.error("Error loading products:", error);
       toast.error("Failed to load products");
     } finally {
       setLoading(false);
+      setListRefreshing(false);
     }
   };
 
@@ -104,10 +125,30 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
     setCurrentView("list");
   };
 
-  const handleProductSaved = () => {
+  const handleProductSaved = (responseData?: unknown) => {
+    const saved =
+      responseData &&
+      typeof responseData === "object" &&
+      responseData !== null &&
+      "product" in responseData
+        ? (responseData as { product?: Product }).product
+        : undefined;
     const savedId = editingProduct?.id;
-    invalidateVendorProductsAdminCache(vendorId);
     if (savedId) invalidateProductByIdCache(savedId);
+    if (saved) {
+      const patch = saved;
+      setProducts((prev) => {
+        const idx = prev.findIndex((x) => x.id === patch.id);
+        const next =
+          idx >= 0
+            ? prev.map((x, i) => (i === idx ? { ...x, ...patch } : x))
+            : [patch, ...prev];
+        primeVendorProductsAdminCache(vendorId, next);
+        return next;
+      });
+    } else {
+      invalidateVendorProductsAdminCache(vendorId);
+    }
     setEditingProduct(null);
     setCurrentView("list");
   };
@@ -239,10 +280,22 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
           <h1 className="text-3xl font-bold text-slate-900">Products</h1>
           <p className="text-slate-500 mt-1">Manage your product inventory</p>
         </div>
-        <Button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white" disabled>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Product (Read-Only)
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={listRefreshing || loading}
+            onClick={() => loadProducts(true)}
+            className="border-slate-300"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button onClick={handleAddClick} className="bg-blue-600 hover:bg-blue-700 text-white" disabled>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Product (Read-Only)
+          </Button>
+        </div>
       </div>
 
       {/* Search + Filters Bar */}

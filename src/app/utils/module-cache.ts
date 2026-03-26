@@ -88,6 +88,13 @@ class ModuleCache {
   }
 
   /**
+   * Store data without a network fetch (keeps session cache in sync after local mutations).
+   */
+  prime<T>(key: string, data: T): void {
+    this.cache.set(key, { data, timestamp: Date.now() });
+  }
+
+  /**
    * Check if key is cached
    */
   has(key: string): boolean {
@@ -100,6 +107,19 @@ class ModuleCache {
   invalidate(key: string): void {
     console.log(`🗑️ [MODULE CACHE] Invalidated ${key}`);
     this.cache.delete(key);
+  }
+
+  invalidatePrefix(prefix: string): void {
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
+    }
+    for (const key of [...this.loading.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.loading.delete(key);
+      }
+    }
   }
 
   /**
@@ -226,8 +246,8 @@ export async function fetchAllVendors() {
   return data.vendors || [];
 }
 
-// Fetch all orders (SECURE admin)
-export async function fetchAllOrders() {
+/** Super Admin orders API — full payload (supports warning + order shape for Vendor Profile). */
+export async function fetchAdminOrdersPayload(): Promise<{ orders: any[]; warning?: string }> {
   const response = await fetch(
     `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`,
     {
@@ -240,7 +260,74 @@ export async function fetchAllOrders() {
   }
 
   const data = await response.json();
-  return data.orders || [];
+  return { orders: data.orders || [], warning: data.warning };
+}
+
+/** @deprecated Prefer fetchAdminOrdersPayload + cache; returns orders array only */
+export async function fetchAllOrders() {
+  const p = await fetchAdminOrdersPayload();
+  return p.orders;
+}
+
+export async function fetchAdminAllCategoriesList(): Promise<any[]> {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/admin/all-categories`,
+    {
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch admin categories: ${response.status}`);
+  }
+  const data = await response.json();
+  return data.categories || [];
+}
+
+export async function fetchAdminCustomersPayload(): Promise<{ customers: any[] }> {
+  const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${publicAnonKey}`,
+    },
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to fetch customers');
+  }
+  return { customers: data.customers || [] };
+}
+
+export type AdminDashboardFilters = {
+  revenue: string;
+  orders: string;
+  customers: string;
+  products: string;
+};
+
+const DASH_STATS_PREFIX = 'admin-dashboard-stats:';
+
+export function adminDashboardStatsCacheKey(filters: AdminDashboardFilters): string {
+  return `${DASH_STATS_PREFIX}${filters.revenue}|${filters.orders}|${filters.customers}|${filters.products}`;
+}
+
+export async function fetchAdminDashboardStatsRaw(filters: AdminDashboardFilters): Promise<Record<string, unknown>> {
+  const params = new URLSearchParams({
+    revenueFilter: filters.revenue,
+    ordersFilter: filters.orders,
+    customersFilter: filters.customers,
+    productsFilter: filters.products,
+  });
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/dashboard/stats?${params}`,
+    {
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    }
+  );
+  if (!response.ok) {
+    throw new Error('Failed to fetch dashboard stats');
+  }
+  return response.json();
 }
 
 // Fetch vendor products (vendor admin/storefront)
@@ -388,7 +475,12 @@ export const CACHE_KEYS = {
   /** Bump when vendor list semantics change (e.g. API no longer returns audience rows as vendors). */
   ADMIN_VENDORS: 'admin-vendors-v2',
   ADMIN_PRODUCTS: 'admin-products',
-  ADMIN_ORDERS: 'admin-orders',
+  /** Full `/orders` JSON: `{ orders, warning? }` — bumped key when shape changed */
+  ADMIN_ORDERS: 'admin-orders-v2-payload',
+  /** Super Admin merged categories (admin/all-categories) */
+  ADMIN_ALL_CATEGORIES: 'admin-all-categories-v1',
+  /** Super Admin /customers list */
+  ADMIN_CUSTOMERS: 'admin-customers-v1',
   
   // Vendor specific (append vendorId)
   vendorProducts: (vendorId: string) => `vendor-products-${vendorId}`,
@@ -456,6 +548,84 @@ export function invalidateProductByIdCache(productId: string): void {
 
 export function invalidateVendorProductsAdminCache(vendorId: string): void {
   moduleCache.invalidate(CACHE_KEYS.vendorProductsAdmin(vendorId));
+}
+
+/** Super Admin `/products` grid — one fetch per session until Refresh or invalidation */
+export async function getCachedAdminAllProducts(forceRefresh = false) {
+  return moduleCache.get(CACHE_KEYS.ADMIN_PRODUCTS, () => fetchAllProducts(), forceRefresh);
+}
+
+export function invalidateAdminAllProductsCache(): void {
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_PRODUCTS);
+}
+
+/** Super Admin products grid — after create/delete without refetch */
+export function primeAdminAllProductsCache(products: unknown[]): void {
+  moduleCache.prime(CACHE_KEYS.ADMIN_PRODUCTS, products);
+}
+
+/** Vendor admin product list JSON shape — merge `products` into existing cached payload if any */
+export function primeVendorProductsAdminCache(vendorId: string, products: unknown[]): void {
+  const key = CACHE_KEYS.vendorProductsAdmin(vendorId);
+  const prev = moduleCache.peek<Record<string, unknown>>(key);
+  const base =
+    prev && typeof prev === "object" && prev !== null && !Array.isArray(prev) ? prev : {};
+  moduleCache.prime(key, { ...base, products });
+}
+
+/** Super Admin vendor name map source — same as Vendor list cache */
+export async function getCachedAdminVendorsForProductList(forceRefresh = false) {
+  return moduleCache.get(CACHE_KEYS.ADMIN_VENDORS, () => fetchAllVendors(), forceRefresh);
+}
+
+export async function getCachedAdminOrdersPayload(forceRefresh = false) {
+  return moduleCache.get(CACHE_KEYS.ADMIN_ORDERS, () => fetchAdminOrdersPayload(), forceRefresh);
+}
+
+export function invalidateAdminOrdersCache(): void {
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_ORDERS);
+}
+
+export async function getCachedAdminAllCategories(forceRefresh = false) {
+  return moduleCache.get(CACHE_KEYS.ADMIN_ALL_CATEGORIES, () => fetchAdminAllCategoriesList(), forceRefresh);
+}
+
+export function primeAdminAllCategoriesCache(categories: unknown[]): void {
+  moduleCache.prime(CACHE_KEYS.ADMIN_ALL_CATEGORIES, categories);
+}
+
+export function invalidateAdminAllCategoriesCache(): void {
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_ALL_CATEGORIES);
+}
+
+export async function getCachedAdminCustomersPayload(forceRefresh = false) {
+  return moduleCache.get(CACHE_KEYS.ADMIN_CUSTOMERS, () => fetchAdminCustomersPayload(), forceRefresh);
+}
+
+export function invalidateAdminCustomersCache(): void {
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_CUSTOMERS);
+}
+
+export async function getCachedAdminDashboardStats(filters: AdminDashboardFilters, forceRefresh = false) {
+  const key = adminDashboardStatsCacheKey(filters);
+  return moduleCache.get(key, () => fetchAdminDashboardStatsRaw(filters), forceRefresh);
+}
+
+export function invalidateAdminDashboardStatsCaches(): void {
+  moduleCache.invalidatePrefix(DASH_STATS_PREFIX);
+}
+
+/** Vendor `/vendor/orders/:id` list — session cache per vendor */
+export async function getCachedVendorOrders(vendorId: string, forceRefresh = false) {
+  return moduleCache.get(CACHE_KEYS.vendorOrders(vendorId), () => fetchVendorOrders(vendorId), forceRefresh);
+}
+
+export function invalidateVendorOrdersCache(vendorId: string): void {
+  moduleCache.invalidate(CACHE_KEYS.vendorOrders(vendorId));
+}
+
+export function primeVendorOrdersCache(vendorId: string, orders: unknown[]): void {
+  moduleCache.prime(CACHE_KEYS.vendorOrders(vendorId), orders);
 }
 
 /**

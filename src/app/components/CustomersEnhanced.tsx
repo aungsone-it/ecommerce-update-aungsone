@@ -3,6 +3,7 @@ import {
   Search,
   Filter,
   Download,
+  RefreshCw,
   MoreVertical,
   Mail,
   Phone,
@@ -79,9 +80,12 @@ import { CustomerProfile } from "./CustomerProfile";
 import { useNavigate } from "react-router";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { ConfirmDialog } from "./ConfirmDialog";
-
-// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
-let cachedCustomers: any[] = [];
+import {
+  getCachedAdminCustomersPayload,
+  invalidateAdminCustomersCache,
+  moduleCache,
+  CACHE_KEYS as MODULE_CACHE_KEYS,
+} from "../utils/module-cache";
 
 interface Customer {
   id: string;
@@ -126,9 +130,11 @@ export function CustomersEnhanced({
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
-  // 🚀 Initialize from cache if available
-  const [customersList, setCustomersList] = useState<Customer[]>(() => cachedCustomers || []);
-  const [isLoading, setIsLoading] = useState(!cachedCustomers.length);
+  const [customersList, setCustomersList] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(
+    () => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_CUSTOMERS)
+  );
+  const [listRefreshing, setListRefreshing] = useState(false);
 
   // 🎯 Alert Modal State
   const [alertOpen, setAlertOpen] = useState(false);
@@ -158,79 +164,57 @@ export function CustomersEnhanced({
     fetchCustomers();
   }, []);
 
-  const fetchCustomers = async () => {
-    // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
+  const normalizeCustomers = (raw: any[]): Customer[] => {
+    return (raw || []).filter((c: any) => {
+      if (!c || typeof c !== "object" || Array.isArray(c)) return false;
+      if (!c.id || typeof c.id !== "string") return false;
+      return true;
+    });
+  };
+
+  const fetchCustomers = async (forceRefresh = false) => {
     let showLoadingTimer: NodeJS.Timeout | null = null;
-    
     showLoadingTimer = setTimeout(() => {
       setIsLoading(true);
     }, 300);
-    
+
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<{ customers: any[] }>(MODULE_CACHE_KEYS.ADMIN_CUSTOMERS);
+      if (peeked != null && Array.isArray(peeked.customers)) {
+        const validCustomers = normalizeCustomers(peeked.customers) as Customer[];
+        setCustomersList(validCustomers);
+        if (showLoadingTimer) clearTimeout(showLoadingTimer);
+        setIsLoading(false);
+        setListRefreshing(false);
+        return;
+      }
+    }
+
+    setListRefreshing(forceRefresh);
     try {
       console.log("📥 Fetching customers from backend...");
-      
-      // 🔥 REMOVED AUTO-SYNC - It was re-adding deleted customers!
-      // Auto-sync should only be done manually via a button, not on every load
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
+      const data = await getCachedAdminCustomersPayload(forceRefresh);
+      const validCustomers = normalizeCustomers(data.customers || []) as Customer[];
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch customers");
-      }
-
-      console.log(`✅ Fetched ${data.customers.length} customers from backend`);
-      
-      // 🔥 FILTER OUT INVALID DATA - Only keep proper customer objects
-      const validCustomers = (data.customers || []).filter((c: any) => {
-        // Must be an object (not array, not null, not primitive)
-        if (!c || typeof c !== 'object' || Array.isArray(c)) {
-          // 🔇 SILENTLY SKIP corrupted entries - backend already handles cleanup
-          return false;
-        }
-        // Must have an ID
-        if (!c.id || typeof c.id !== 'string') {
-          // 🔇 SILENTLY SKIP invalid entries
-          return false;
-        }
-        return true;
-      });
-      
       console.log(`✅ ${validCustomers.length} valid customers after filtering`);
-      
-      // 🐛 DEBUG: Log ghost customers (valid customers with missing name/email)
       const ghostCustomers = validCustomers.filter((c: any) => !c.name || !c.email);
       if (ghostCustomers.length > 0) {
         console.warn(`👻 Found ${ghostCustomers.length} ghost customers with missing data:`, ghostCustomers);
       }
-      
+
       setCustomersList(validCustomers);
-      
-      // 🚀 CACHE THE CUSTOMERS FOR FUTURE USE
-      cachedCustomers = validCustomers;
     } catch (error: any) {
-      // 🔇 Silently ignore "Failed to fetch" errors during server warmup
-      const isWarmupError = error instanceof TypeError && error.message === 'Failed to fetch';
+      const isWarmupError = error instanceof TypeError && error.message === "Failed to fetch";
       if (!isWarmupError) {
         console.error("❌ Error fetching customers:", error);
       }
-      // Set empty array on error
       setCustomersList([]);
     } finally {
       if (showLoadingTimer) {
         clearTimeout(showLoadingTimer);
       }
       setIsLoading(false);
+      setListRefreshing(false);
     }
   };
 
@@ -461,9 +445,8 @@ export function CustomersEnhanced({
 
       console.log(`✅ Customer blocked: ${customerId}`);
       
-      // Refresh customer list
-      await fetchCustomers();
-      
+      await fetchCustomers(true);
+
       showAlert(
         "Customer Blocked Successfully!",
         `${customerName} has been blocked and can no longer access your store`,
@@ -501,12 +484,12 @@ export function CustomersEnhanced({
       const data = await response.json();
 
       if (!response.ok) {
-        // 🔥 If backend fails, restore the customer to the list
-        await fetchCustomers();
+        await fetchCustomers(true);
         throw new Error(data.error || "Failed to delete customer");
       }
 
       console.log(`✅ Customer deleted from backend: ${customerId}`);
+      invalidateAdminCustomersCache();
       
       // Convert customer name to Title Case
       const titleCaseName = (customerName || 'Customer')
@@ -557,12 +540,12 @@ export function CustomersEnhanced({
       const data = await response.json();
 
       if (!response.ok) {
-        // 🔥 If backend fails, restore the customers by refetching
-        await fetchCustomers();
+        await fetchCustomers(true);
         throw new Error(data.error || "Failed to delete customers");
       }
 
       console.log(`✅ Bulk deleted ${count} customers from backend`);
+      invalidateAdminCustomersCache();
       
       // Clear selection
       setSelectedCustomers([]);
@@ -620,12 +603,12 @@ export function CustomersEnhanced({
       const data = await response.json();
 
       if (!response.ok) {
-        // 🔥 If backend fails, restore the customers by refetching
-        await fetchCustomers();
+        await fetchCustomers(true);
         throw new Error(data.error || "Failed to delete ghost customers");
       }
 
       console.log(`✅ Cleaned up ${count} ghost customers`);
+      invalidateAdminCustomersCache();
       
       showAlert(
         "Ghost Customers Cleaned Up!",
@@ -666,9 +649,8 @@ export function CustomersEnhanced({
 
       console.log(`✅ Deduplication complete:`, data);
       
-      // Refresh customer list
-      await fetchCustomers();
-      
+      await fetchCustomers(true);
+
       if (data.duplicatesRemoved > 0) {
         showAlert(
           "Duplicates Merged!",
@@ -716,9 +698,8 @@ export function CustomersEnhanced({
 
       console.log(`✅ Cleanup complete:`, data);
       
-      // Refresh customer list
-      await fetchCustomers();
-      
+      await fetchCustomers(true);
+
       if (data.cleanedCount > 0) {
         showAlert(
           "Corrupted Data Cleaned!",
@@ -796,6 +777,15 @@ export function CustomersEnhanced({
               <Button variant="outline" className="gap-2">
                 <Download className="w-4 h-4" />
                 Export
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2 border-slate-300"
+                disabled={listRefreshing || isLoading}
+                onClick={() => fetchCustomers(true)}
+              >
+                <RefreshCw className={`w-4 h-4 ${listRefreshing ? "animate-spin" : ""}`} />
+                Refresh
               </Button>
               {/* 🐛 Clean up ghost customers button */}
               {customersList.some((c) => !c.name || !c.email) && (

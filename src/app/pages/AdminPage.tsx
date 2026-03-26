@@ -70,7 +70,6 @@ export function AdminPage() {
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [serverChecked, setServerChecked] = useState(false);
   const [appKey] = useState(() => Date.now());
-  const [productRefreshKey, setProductRefreshKey] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** When set, Chat opens this customer's thread (from Customers → Message). */
   const [chatHandoff, setChatHandoff] = useState<{
@@ -365,10 +364,8 @@ export function AdminPage() {
     loadBadgeCounts();
   };
 
-  const handleProductsChanged = () => {
-    console.log("🔄 Products changed - triggering refresh...");
-    setProductRefreshKey(prev => prev + 1);
-  };
+  /** ProductList refreshes its own data; remounting forced a refetch every visit — leave empty */
+  const handleProductsChanged = () => {};
 
   const handleViewVendorStorefront = (vendorId: string, storeSlug: string) => {
     // Always use vendor ID for navigation (e.g., /vendor/vendcr-177082261392)
@@ -380,7 +377,7 @@ export function AdminPage() {
       case ADMIN_PAGES.HOME:
         return <Dashboard />;
       case ADMIN_PAGES.PRODUCT:
-        return <ProductList key={productRefreshKey} onProductsChanged={handleProductsChanged} />;
+        return <ProductList onProductsChanged={handleProductsChanged} />;
       case ADMIN_PAGES.CATEGORIES:
         return <Categories />;
       case ADMIN_PAGES.INVENTORY:

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User } from "lucide-react";
+import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -42,6 +42,12 @@ import { ordersApi } from "../../utils/api";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
+import {
+  getCachedAdminOrdersPayload,
+  invalidateAdminOrdersCache,
+  moduleCache,
+  CACHE_KEYS as MODULE_CACHE_KEYS,
+} from "../utils/module-cache";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -373,8 +379,44 @@ const getShippingBadge = (status: ShippingStatus) => {
   );
 };
 
-// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
-let cachedOrders: any[] = [];
+function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
+  return (apiOrders || []).map((order: any) => ({
+    id: order.id,
+    orderNumber: order.orderNumber || order.id,
+    date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    createdAt: order.createdAt || new Date().toISOString(),
+    customer: order.customer?.fullName || order.customer?.name || order.customerName || (typeof order.customer === 'string' ? order.customer : null) || (order.customer?.firstName && order.customer?.lastName ? `${order.customer.firstName} ${order.customer.lastName}` : order.customer?.firstName || order.customer?.lastName || 'Guest Customer'),
+    email: order.email || order.customer?.email || '',
+    phone: order.phone || order.customer?.phone || '',
+    vendor: order.vendor || 'SECURE Store',
+    total: parseFloat(order.total) || 0,
+    subtotal: order.subtotal != null && order.subtotal !== '' ? parseFloat(String(order.subtotal)) : undefined,
+    discount: order.discount != null && order.discount !== '' ? parseFloat(String(order.discount)) : undefined,
+    couponCode: order.couponCode,
+    items: order.items?.length || 0,
+    status: order.status || 'pending',
+    paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : 'paid',
+    shippingStatus: order.status === 'delivered' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
+    products: (order.items || []).map((item: any) => ({
+      id: item.productId || item.id,
+      name: item.name || 'Product',
+      quantity: item.quantity || 1,
+      price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0').replace(/[$,]/g, '')) || 0,
+      image: item.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop',
+      sku: item.sku || 'N/A'
+    })),
+    shippingAddress: order.shippingAddress || '',
+    trackingNumber: order.trackingNumber,
+    notes: order.notes,
+    deliveryService: order.deliveryService,
+    deliveryServiceLogo: order.deliveryServiceLogo,
+    paymentMethod: order.paymentMethod === 'Cash on Delivery' ? 'cod' : 'credit-card',
+    timeline: [
+      { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
+      ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
+    ]
+  }));
+}
 
 export function Orders({ onViewOrder, onOrderUpdate }: { 
   onViewOrder?: (order: OrderItem) => void;
@@ -394,9 +436,9 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
   const [bulkStatus, setBulkStatus] = useState<OrderStatus>("processing");
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   
-  // 🚀 Initialize from cache if available
-  const [orders, setOrders] = useState<OrderItem[]>(() => cachedOrders || []);
-  const [isLoading, setIsLoading] = useState(!cachedOrders.length);
+  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [isLoading, setIsLoading] = useState(() => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_ORDERS));
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false); // For printing multiple invoices
 
@@ -422,27 +464,39 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
     triggerCacheRebuild();
   }, []);
 
-  const loadOrders = async () => {
-    // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
+  const loadOrders = async (forceRefresh = false) => {
     let showLoadingTimer: NodeJS.Timeout | null = null;
-    
     showLoadingTimer = setTimeout(() => {
       setIsLoading(true);
     }, 300);
-    
+
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<{ orders: any[]; warning?: string }>(MODULE_CACHE_KEYS.ADMIN_ORDERS);
+      if (peeked != null && Array.isArray(peeked.orders)) {
+        const transformedOrders = mapApiOrdersToOrderItems(peeked.orders);
+        setOrders(transformedOrders);
+        if (peeked.warning) {
+          toast.warning(peeked.warning, { duration: 4000 });
+        }
+        if (showLoadingTimer) clearTimeout(showLoadingTimer);
+        setIsLoading(false);
+        setListRefreshing(false);
+        return;
+      }
+    }
+
+    setListRefreshing(forceRefresh);
     try {
-      // First, try a health check to see if server is running
       try {
         const healthCheck = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/health`,
           {
             method: 'GET',
             headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
+              Authorization: `Bearer ${publicAnonKey}`,
             },
           }
         );
-        
         if (!healthCheck.ok) {
           console.warn("⚠️ Server health check failed, but continuing anyway...");
         } else {
@@ -452,68 +506,22 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
         console.warn("⚠️ Server health check failed:", healthError);
         toast.warning("Server is starting up, this may take a moment...", { duration: 3000 });
       }
-      
-      const response = await ordersApi.getAll();
-      console.log("Orders loaded:", response);
-      
-      // Check if there's a warning (e.g., timeout)
-      if (response.warning) {
-        console.warn("⚠️ Server warning:", response.warning);
-        toast.warning(response.warning, { duration: 4000 });
+
+      const payload = await getCachedAdminOrdersPayload(forceRefresh);
+      console.log("Orders loaded:", payload);
+
+      if (payload.warning) {
+        console.warn("⚠️ Server warning:", payload.warning);
+        toast.warning(payload.warning, { duration: 4000 });
       }
-      
-      // Transform API orders to match OrderItem interface
-      const transformedOrders = (response.orders || []).map((order: any) => ({
-        id: order.id,
-        orderNumber: order.orderNumber || order.id,
-        date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        createdAt: order.createdAt || new Date().toISOString(), // Store full timestamp
-        customer: order.customer?.fullName || order.customer?.name || order.customerName || (typeof order.customer === 'string' ? order.customer : null) || (order.customer?.firstName && order.customer?.lastName ? `${order.customer.firstName} ${order.customer.lastName}` : order.customer?.firstName || order.customer?.lastName || 'Guest Customer'),
-        email: order.email || order.customer?.email || '',
-        phone: order.phone || order.customer?.phone || '',
-        vendor: order.vendor || 'SECURE Store', // 🔥 Use vendor from order data
-        total: parseFloat(order.total) || 0,
-        items: order.items?.length || 0,
-        status: order.status || 'pending',
-        paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : 'paid',
-        shippingStatus: order.status === 'delivered' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
-        products: (order.items || []).map((item: any) => ({
-          id: item.productId || item.id,
-          name: item.name || 'Product',
-          quantity: item.quantity || 1,
-          price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0').replace(/[$,]/g, '')) || 0,
-          image: item.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop',
-          sku: item.sku || 'N/A'
-        })),
-        shippingAddress: order.shippingAddress || '',
-        trackingNumber: order.trackingNumber,
-        notes: order.notes,
-        deliveryService: order.deliveryService,
-        deliveryServiceLogo: order.deliveryServiceLogo,
-        paymentMethod: order.paymentMethod === 'Cash on Delivery' ? 'cod' : 'credit-card',
-        timeline: [
-          { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
-          ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
-        ]
-      }));
-      
+
+      const transformedOrders = mapApiOrdersToOrderItems(payload.orders || []);
       setOrders(transformedOrders);
-      
-      // 🚀 CACHE THE ORDERS FOR FUTURE USE
-      cachedOrders = transformedOrders;
-      
       if (transformedOrders.length > 0) {
         toast.success(`Loaded ${transformedOrders.length} orders`);
       }
     } catch (error: any) {
       console.error("Failed to load orders:", error);
-      console.error("Error details:", {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      });
-      
-      // Show user-friendly message with more details
       if (error.message?.includes("Failed to fetch")) {
         toast.error(
           "Cannot connect to server. The Edge Function may still be deploying. Please wait 30 seconds and refresh the page.",
@@ -530,6 +538,7 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
         clearTimeout(showLoadingTimer);
       }
       setIsLoading(false);
+      setListRefreshing(false);
     }
   };
 
@@ -647,6 +656,7 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
         )
       );
       console.log(`✅ ${updatedCount} orders synced to server: ${bulkStatus}`);
+      invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error
       console.error("❌ Failed to bulk update orders:", error);
@@ -687,6 +697,7 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
     try {
       await ordersApi.update(orderId, { status: newStatus });
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
+      invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error
       console.error("❌ Failed to update order status:", error);
@@ -706,6 +717,7 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
       const response = await ordersApi.deleteAll();
       toast.success(response.message || "All orders cleared successfully!");
       setOrders([]);
+      invalidateAdminOrdersCache();
       onOrderUpdate?.();
     } catch (error) {
       console.error("❌ Failed to clear orders:", error);
@@ -885,6 +897,16 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
                   <Button variant="outline" size="sm" onClick={exportOrders}>
                     <Download className="w-4 h-4 mr-2" />
                     Export
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={listRefreshing || isLoading}
+                    onClick={() => loadOrders(true)}
+                    className="border-slate-300"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+                    Refresh
                   </Button>
                 </div>
               </div>

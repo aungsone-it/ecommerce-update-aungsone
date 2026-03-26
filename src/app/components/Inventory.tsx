@@ -7,9 +7,11 @@ import { Badge } from "./ui/badge";
 import { useLanguage } from "../contexts/LanguageContext";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { toast } from "sonner";
-
-// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
-let cachedInventory: any[] = [];
+import {
+  getCachedAdminAllProducts,
+  moduleCache,
+  CACHE_KEYS as MODULE_CACHE_KEYS,
+} from "../utils/module-cache";
 
 interface InventoryItem {
   id: string;
@@ -23,16 +25,73 @@ interface InventoryItem {
   location: string;
   vendorId?: string;
   isVariant?: boolean;
+  parentId?: string;
   parentName?: string;
+}
+
+function productsToInventoryItems(products: any[]): InventoryItem[] {
+  const inventoryData: InventoryItem[] = [];
+  (products || []).forEach((product: any) => {
+    const inventoryQty = product.inventory || 0;
+    const committed = Math.floor(inventoryQty * 0.05);
+    const available = inventoryQty - committed;
+    inventoryData.push({
+      id: product.id,
+      product: product.name || product.title,
+      sku: product.sku,
+      image:
+        product.image ||
+        product.images?.[0] ||
+        "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop",
+      available,
+      committed,
+      onHand: inventoryQty,
+      reorderPoint: 50,
+      location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
+      vendorId: product.vendor,
+      isVariant: false,
+    });
+    if (product.hasVariants && product.variants && Array.isArray(product.variants)) {
+      product.variants.forEach((variant: any) => {
+        const variantInventory = variant.inventory || 0;
+        const variantCommitted = Math.floor(variantInventory * 0.05);
+        const variantAvailable = variantInventory - variantCommitted;
+        const variantName =
+          variant.name || (variant.options ? Object.values(variant.options).join(" / ") : "Variant");
+        inventoryData.push({
+          id: variant.id,
+          product: `${product.name || product.title} - ${variantName}`,
+          sku: variant.sku,
+          image:
+            variant.image ||
+            product.image ||
+            product.images?.[0] ||
+            "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop",
+          available: variantAvailable,
+          committed: variantCommitted,
+          onHand: variantInventory,
+          reorderPoint: 50,
+          location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
+          vendorId: product.vendor,
+          isVariant: true,
+          parentId: product.id,
+          parentName: product.name || product.title,
+        });
+      });
+    }
+  });
+  return inventoryData;
 }
 
 export function Inventory() {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
-  
-  // 🚀 Initialize from cache if available
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(() => cachedInventory || []);
-  const [loading, setLoading] = useState(!cachedInventory.length);
+
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(
+    () => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_PRODUCTS)
+  );
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   
@@ -44,126 +103,55 @@ export function Inventory() {
     loadInventory();
   }, []);
 
-  const loadInventory = async (retryCount = 0) => {
-    // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
+  const loadInventory = async (forceRefresh = false, retryCount = 0) => {
     let showLoadingTimer: NodeJS.Timeout | null = null;
-    
     showLoadingTimer = setTimeout(() => {
       setLoading(true);
     }, 300);
-    
-    try {
-      console.log(`🔄 Loading inventory from database (attempt ${retryCount + 1})...`);
-      console.log("📍 Using Products API to fetch inventory data");
-      
-      const controller = new AbortController();
-      // Increase timeout to 20 seconds to handle cold starts
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
-      
-      // USE PRODUCTS ENDPOINT INSTEAD - it works!
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-      
-      clearTimeout(timeoutId);
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log("✅ Received products data:", data);
-
-      if (data.products && Array.isArray(data.products)) {
-        // Convert products to inventory format
-        const inventoryData: InventoryItem[] = [];
-        
-        data.products.forEach((product: any) => {
-          const inventoryQty = product.inventory || 0;
-          const committed = Math.floor(inventoryQty * 0.05);
-          const available = inventoryQty - committed;
-          
-          // Add main product
-          inventoryData.push({
-            id: product.id,
-            product: product.name || product.title,
-            sku: product.sku,
-            image: product.image || product.images?.[0] || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop",
-            available: available,
-            committed: committed,
-            onHand: inventoryQty,
-            reorderPoint: 50,
-            location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
-            vendorId: product.vendor,
-            isVariant: false,
-          });
-          
-          // Add variants if they exist
-          if (product.hasVariants && product.variants && Array.isArray(product.variants)) {
-            product.variants.forEach((variant: any) => {
-              const variantInventory = variant.inventory || 0;
-              const variantCommitted = Math.floor(variantInventory * 0.05);
-              const variantAvailable = variantInventory - variantCommitted;
-              
-              const variantName = variant.name || 
-                (variant.options ? Object.values(variant.options).join(' / ') : 'Variant');
-              
-              inventoryData.push({
-                id: variant.id,
-                product: `${product.name || product.title} - ${variantName}`,
-                sku: variant.sku,
-                image: variant.image || product.image || product.images?.[0] || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop",
-                available: variantAvailable,
-                committed: variantCommitted,
-                onHand: variantInventory,
-                reorderPoint: 50,
-                location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
-                vendorId: product.vendor,
-                isVariant: true,
-                parentId: product.id,
-                parentName: product.name || product.title,
-              });
-            });
-          }
-        });
-        
-        console.log(`📦 Loaded ${data.products.length} products → ${inventoryData.length} inventory items`);
-        setInventoryItems(inventoryData);
-        
-        // 🚀 CACHE THE INVENTORY FOR FUTURE USE
-        cachedInventory = inventoryData;
-        
-        if (inventoryData.length === 0) {
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<any[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
+      if (peeked != null && Array.isArray(peeked)) {
+        const rows = productsToInventoryItems(peeked);
+        setInventoryItems(rows);
+        if (showLoadingTimer) clearTimeout(showLoadingTimer);
+        setLoading(false);
+        setListRefreshing(false);
+        if (rows.length === 0) {
           toast.error("No products found! Please create products first in the Products section.");
-        } else {
-          toast.success(`✅ Loaded ${inventoryData.length} items (${data.products.length} products)`);
         }
-      } else {
-        console.warn("⚠️ No products data received");
-        setInventoryItems([]);
+        return;
+      }
+    }
+
+    setListRefreshing(forceRefresh);
+    try {
+      console.log(`🔄 Loading inventory (attempt ${retryCount + 1})...`);
+      const products = await getCachedAdminAllProducts(forceRefresh);
+      const inventoryData = productsToInventoryItems(products);
+      console.log(`📦 Loaded ${products.length} products → ${inventoryData.length} inventory items`);
+      setInventoryItems(inventoryData);
+      if (inventoryData.length === 0) {
         toast.error("No products found! Please create products first in the Products section.");
+      } else if (forceRefresh || retryCount === 0) {
+        toast.success(`✅ Loaded ${inventoryData.length} items (${products.length} products)`);
       }
     } catch (error: any) {
       console.error("❌ Error loading inventory:", error);
-      
-      if (error.name === 'AbortError') {
-        toast.error("Request timeout. Please try again.");
-      } else {
-        toast.error("Failed to load inventory. Check console for details.");
+      if (retryCount < 2) {
+        await new Promise((r) => setTimeout(r, 1500));
+        if (showLoadingTimer) clearTimeout(showLoadingTimer);
+        setLoading(false);
+        return loadInventory(forceRefresh, retryCount + 1);
       }
-      
+      toast.error("Failed to load inventory. Check console for details.");
       setInventoryItems([]);
     } finally {
       if (showLoadingTimer) {
         clearTimeout(showLoadingTimer);
       }
       setLoading(false);
+      setListRefreshing(false);
     }
   };
 
@@ -362,15 +350,15 @@ export function Inventory() {
             </p>
           </div>
           <Button
-            onClick={loadInventory}
+            onClick={() => loadInventory(true)}
             variant="outline"
-            disabled={loading}
+            disabled={loading && !listRefreshing}
             className="border-slate-300"
           >
-            {loading ? (
+            {listRefreshing ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Loading...
+                Refreshing...
               </>
             ) : (
               <>

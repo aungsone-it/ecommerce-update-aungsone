@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, Edit, Trash2, X, FolderOpen, Info, Eye } from "lucide-react";
+import { Search, Plus, Edit, Trash2, X, FolderOpen, Info, Eye, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card } from "../ui/card";
@@ -10,6 +10,12 @@ import { VendorAdminCategoryForm } from "./VendorAdminCategoryForm";
 import { cacheManager } from "../../utils/cacheManager";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import {
+  getCachedVendorProductsAdmin,
+  invalidateVendorProductsAdminCache,
+  moduleCache,
+  CACHE_KEYS,
+} from "../../utils/module-cache";
 
 interface Product {
   id: string;
@@ -35,13 +41,35 @@ interface VendorAdminCategoriesProps {
   vendorName: string;
 }
 
-// 🔥 MODULE-LEVEL CACHE - Load once and persist
-const categoriesCache: Record<string, { categories: CategoryInfo[]; timestamp: number }> = {};
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes cache
+function buildCategoryInfosFromProducts(products: Product[]): CategoryInfo[] {
+  const categoryMap = new Map<string, Product[]>();
+  products.forEach((product: Product) => {
+    if (!product || !product.id) return;
+    const categoryName = product.category?.trim() || "Uncategorized";
+    if (!categoryMap.has(categoryName)) {
+      categoryMap.set(categoryName, []);
+    }
+    categoryMap.get(categoryName)?.push(product);
+  });
+  const categoriesArray: CategoryInfo[] = Array.from(categoryMap.entries()).map(([name, prods]) => ({
+    name,
+    productCount: prods.length,
+    products: prods,
+    activeProducts: prods.filter(
+      (p) => p?.status && (p.status === "active" || p.status === "Active")
+    ).length,
+    description: name,
+  }));
+  categoriesArray.sort((a, b) => a.name.localeCompare(b.name));
+  return categoriesArray;
+}
 
 export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCategoriesProps) {
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => !moduleCache.peek(CACHE_KEYS.vendorProductsAdmin(vendorId))
+  );
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
@@ -49,8 +77,8 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
   useEffect(() => {
     const clearCache = () => {
       console.log("🗑️ Clearing categories cache for vendor:", vendorId);
-      delete categoriesCache[vendorId];
-      loadCategories();
+      invalidateVendorProductsAdminCache(vendorId);
+      loadCategories(true);
     };
 
     cacheManager.registerInvalidation(`vendor:${vendorId}:categories`, clearCache);
@@ -69,114 +97,43 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
     };
   }, [vendorId]);
 
-  const loadCategories = async () => {
-    // Check cache first
-    const cached = categoriesCache[vendorId];
-    const now = Date.now();
-    
-    if (cached && (now - cached.timestamp) < CACHE_DURATION) {
-      console.log("📦 Loading categories from cache for vendor:", vendorId);
-      setCategories(cached.categories);
-      setLoading(false);
-      return;
+  const loadCategories = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<{ products?: Product[] }>(
+        CACHE_KEYS.vendorProductsAdmin(vendorId)
+      );
+      if (peeked != null && Array.isArray(peeked.products)) {
+        console.log("📦 Categories from session cache (vendor products) for vendor:", vendorId);
+        setCategories(buildCategoryInfosFromProducts(peeked.products));
+        setLoading(false);
+        setListRefreshing(false);
+        return;
+      }
     }
 
+    setListRefreshing(forceRefresh);
     setLoading(true);
     try {
-      console.log("🔄 Fetching categories from API for vendor:", vendorId);
-      
-      // Fetch products assigned to this vendor with longer timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout to match backend
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${vendorId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-      
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        const products = data.products || [];
-        
-        console.log(`✅ Loaded ${products.length} products for vendor ${vendorId}`);
-        
-        // Extract unique categories from products
-        const categoryMap = new Map<string, Product[]>();
-        
-        products.forEach((product: Product) => {
-          // Safety check for valid product
-          if (!product || !product.id) return;
-          
-          const categoryName = product.category?.trim() || "Uncategorized";
-          if (!categoryMap.has(categoryName)) {
-            categoryMap.set(categoryName, []);
-          }
-          categoryMap.get(categoryName)?.push(product);
-        });
-
-        // Convert to array and calculate stats
-        const categoriesArray: CategoryInfo[] = Array.from(categoryMap.entries()).map(([name, products]) => ({
-          name,
-          productCount: products.length,
-          products,
-          activeProducts: products.filter(p => p?.status && (p.status === "active" || p.status === "Active")).length,
-          description: name, // Use category name as description
-        }));
-
-        // Sort by name
-        categoriesArray.sort((a, b) => a.name.localeCompare(b.name));
-        
-        // Store in cache
-        categoriesCache[vendorId] = {
-          categories: categoriesArray,
-          timestamp: now,
-        };
-        
-        console.log(`💾 Cached ${categoriesArray.length} categories for vendor ${vendorId}`);
-        
-        setCategories(categoriesArray);
-      } else {
-        console.error("Failed to load categories, status:", response.status);
-        
-        // If we have stale cache, use it
-        if (cached) {
-          console.log("⚠️ Using stale cache due to error");
-          setCategories(cached.categories);
-        } else {
-          toast.error("Failed to load categories");
-        }
-      }
+      console.log("🔄 Loading categories via cached vendor products for vendor:", vendorId);
+      const data = await getCachedVendorProductsAdmin(vendorId, forceRefresh);
+      const products = data.products || [];
+      setCategories(buildCategoryInfosFromProducts(products));
+      console.log(`✅ Derived ${products.length} products into categories for vendor ${vendorId}`);
     } catch (error: any) {
       console.error("Failed to load categories:", error);
-      
-      // Handle timeout specifically
-      if (error.name === 'AbortError') {
-        console.error("⏱️ Request timed out");
-        toast.error("Request timed out. Using cached data if available.");
-      }
-      
-      // If we have cached data (even stale), use it
-      const cached = categoriesCache[vendorId];
-      if (cached) {
-        console.log("⚠️ Using cached data due to error");
-        setCategories(cached.categories);
+      if (error.name === "AbortError") {
+        toast.error("Request timed out.");
       } else {
         toast.error("Failed to load categories");
       }
     } finally {
       setLoading(false);
+      setListRefreshing(false);
     }
   };
 
   useEffect(() => {
-    loadCategories();
+    loadCategories(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
@@ -250,10 +207,20 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Categories</h1>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="border-slate-300"
+          disabled={listRefreshing || loading}
+          onClick={() => loadCategories(true)}
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
 
       {/* Info Banner */}

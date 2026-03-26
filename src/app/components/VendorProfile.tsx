@@ -43,7 +43,7 @@ import { Input } from "./ui/input";
 import { Checkbox } from "./ui/checkbox";
 import { VendorStorefront } from "./VendorStorefront";
 import { toast } from "sonner";
-import { moduleCache, CACHE_KEYS, fetchAllOrders } from "../utils/module-cache";
+import { getCachedAdminOrdersPayload } from "../utils/module-cache";
 
 type VendorStatus = "active" | "inactive" | "pending" | "suspended" | "banned";
 
@@ -232,14 +232,10 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   const loadOrders = async () => {
     setIsLoadingOrders(true);
     try {
-      const allOrders = await moduleCache.get(
-        CACHE_KEYS.ADMIN_ORDERS,
-        fetchAllOrders,
-        false
-      );
-      
+      const payload = await getCachedAdminOrdersPayload(false);
+
       // Filter orders that contain products from this vendor
-      const vendorOrders = (allOrders || []).filter((order: any) => {
+      const vendorOrders = (payload.orders || []).filter((order: any) => {
         return order.items?.some((item: any) => {
           const itemVendors = item.product?.selectedVendors || item.selectedVendors || [];
           const itemVendorId = item.product?.vendorId || item.vendorId;

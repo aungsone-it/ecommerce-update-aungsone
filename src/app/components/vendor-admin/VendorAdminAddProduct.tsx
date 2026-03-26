@@ -82,7 +82,8 @@ interface VendorAdminAddProductProps {
   vendorName: string;
   editingProduct?: Product | null;
   onBack: () => void;
-  onProductSaved?: () => void;
+  /** Pass-through API JSON so parent can update session cache without refetch */
+  onProductSaved?: (responseData?: unknown) => void;
 }
 
 export function VendorAdminAddProduct({ 
@@ -429,7 +430,7 @@ export function VendorAdminAddProduct({
         console.log(`✅ Product saved successfully:`, responseData);
         toast.success(mode === "edit" ? "Product updated successfully!" : "Product created successfully!");
         if (onProductSaved) {
-          onProductSaved();
+          onProductSaved(responseData);
         }
       } else {
         const errorData = await response.json().catch(() => ({ error: response.statusText }));

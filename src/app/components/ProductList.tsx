@@ -12,11 +12,12 @@ import {
   TrendingUp, 
   CalendarDays, 
   MoreVertical, 
-  Eye 
+  Eye,
+  RefreshCw,
 } from "lucide-react";
-import { productsApi, apiClient } from "../../utils/api";
-import { Product, ProductsResponse } from "../../types";
-import { API_TIMEOUTS, PRODUCT_STATUSES } from "../../constants";
+import { productsApi } from "../../utils/api";
+import { Product } from "../../types";
+import { PRODUCT_STATUSES } from "../../constants";
 import { SmartCache, CACHE_KEYS, CACHE_TTL } from "../../utils/cache";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -46,7 +47,15 @@ import { ProductFormPage } from "./ProductFormPage";
 import { StorefrontProductDetail } from "./StorefrontProductDetail";
 import { useLanguage } from "../contexts/LanguageContext";
 import { formatNumber, formatMMK } from "../../utils/formatNumber"; // 🔥 Import number formatting
-import { getCachedProductById, invalidateProductByIdCache } from "../utils/module-cache";
+import {
+  getCachedProductById,
+  invalidateProductByIdCache,
+  getCachedAdminAllProducts,
+  getCachedAdminVendorsForProductList,
+  primeAdminAllProductsCache,
+  moduleCache,
+  CACHE_KEYS as MODULE_CACHE_KEYS,
+} from "../utils/module-cache";
 
 interface ProductListProps {
   onProductsChanged?: () => void; // 🔥 NEW: Callback when products change
@@ -55,7 +64,8 @@ interface ProductListProps {
 export function ProductList({ onProductsChanged }: ProductListProps) {
   const { t } = useLanguage();
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_PRODUCTS));
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -95,7 +105,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
     // 🔥 Listen for vendor updates to refresh vendor names
     const handleVendorUpdate = () => {
       console.log("📣 Vendor updated, reloading vendor names in product list...");
-      loadVendors();
+      loadVendors(true);
     };
     
     window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
@@ -105,55 +115,61 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
     };
   }, []);
 
-  const loadProducts = async () => {
-    // 🔄 ALWAYS FETCH FRESH DATA - No cache display
+  /** Session cache: no network when revisiting Products tab unless forceRefresh or Refresh button */
+  const loadProducts = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<Product[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
+      if (peeked != null && Array.isArray(peeked)) {
+        setProducts(peeked);
+        SmartCache.set(CACHE_KEYS.PRODUCTS, peeked);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
-    
+    setListRefreshing(forceRefresh);
     try {
-      console.log('🔄 Loading products from database...');
-      const response = await apiClient.get<ProductsResponse>('/products', {
-        timeout: API_TIMEOUTS.LIST,
-      });
-      const productsData = response.products || [];
-      
-      // Update UI with fresh data
-      setProducts(productsData);
-      
-      // Cache for next time
-      SmartCache.set(CACHE_KEYS.PRODUCTS, productsData);
-      
-      console.log(`✅ Loaded ${productsData.length} products from server`);
+      const productsData = await getCachedAdminAllProducts(forceRefresh);
+      setProducts(productsData || []);
+      SmartCache.set(CACHE_KEYS.PRODUCTS, productsData || []);
+      console.log(`✅ Products list (${forceRefresh ? "refreshed" : "loaded"}): ${(productsData || []).length} items`);
     } catch (error: any) {
       console.error("❌ Failed to load products:", error);
-      console.log("ℹ️ No products found. Click the seed button on Dashboard to create sample products.");
       setProducts([]);
-      // Show helpful toast message
       toast.info("No products yet. Go to Dashboard to create sample products!", {
         duration: 5000,
       });
     } finally {
       setLoading(false);
+      setListRefreshing(false);
     }
   };
 
-  // 🔥 Load vendors to map IDs to names
-  const loadVendors = async () => {
-    try {
-      const response = await apiClient.get('/vendors');
-      if (response.vendors && Array.isArray(response.vendors)) {
-        // Create a map of vendor ID to vendor name
+  const loadVendors = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS);
+      if (peeked != null && Array.isArray(peeked)) {
         const map: Record<string, string> = {};
-        response.vendors.forEach((vendor: any) => {
-          if (vendor.id && vendor.name) {
-            map[vendor.id] = vendor.name;
-          }
+        peeked.forEach((vendor: any) => {
+          if (vendor.id && vendor.name) map[vendor.id] = vendor.name;
         });
         setVendorsMap(map);
-        console.log(`✅ Loaded ${response.vendors.length} vendors for name mapping`);
+        return;
+      }
+    }
+    try {
+      const vendorsList = await getCachedAdminVendorsForProductList(forceRefresh);
+      if (Array.isArray(vendorsList)) {
+        const map: Record<string, string> = {};
+        vendorsList.forEach((vendor: any) => {
+          if (vendor.id && vendor.name) map[vendor.id] = vendor.name;
+        });
+        setVendorsMap(map);
+        console.log(`✅ Loaded ${vendorsList.length} vendors for name mapping`);
       }
     } catch (error) {
       console.error("❌ Failed to load vendors:", error);
-      // Not critical - just means vendor names won't display
     }
   };
 
@@ -229,6 +245,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
         
         // Update cache with real data
         SmartCache.set(CACHE_KEYS.PRODUCTS, finalProducts);
+        primeAdminAllProductsCache(finalProducts);
       }
       
       // Clear storefront cache so new products appear immediately
@@ -268,7 +285,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
       console.log("🗑️ Cleared storefront cache");
       
-      await loadProducts();
+      await loadProducts(true);
       if (onProductsChanged) onProductsChanged(); // 🔥 NEW: Notify parent component
       setCurrentView("list");
     } catch (error) {
@@ -301,6 +318,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
     try {
       await productsApi.delete(id);
       invalidateProductByIdCache(id);
+      primeAdminAllProductsCache(updatedProducts);
       console.log(`✅ Product ${id} deleted from server`);
       
       if (onProductsChanged) onProductsChanged();
@@ -311,6 +329,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
       // If product not found on server, that's fine (it's already gone)
       if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
         console.log("Product already deleted from server");
+        primeAdminAllProductsCache(updatedProducts);
       } else {
         // Real error - revert the optimistic delete
         toast.error(`Failed to delete: ${errorMessage}`);
@@ -331,71 +350,81 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
   const executeDelete = async () => {
     try {
       if (productToDelete === "BULK_DELETE") {
-        // Bulk delete with error handling for each product
         let successCount = 0;
         let errorCount = 0;
         let alreadyDeletedCount = 0;
-        
+        const removedIds = new Set<string>();
+
         for (const productId of selectedProducts) {
           try {
             await productsApi.delete(productId);
             invalidateProductByIdCache(productId);
             successCount++;
+            removedIds.add(productId);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "";
             if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
               alreadyDeletedCount++;
+              removedIds.add(productId);
             } else {
               console.error(`Failed to delete product ${productId}:`, error);
               errorCount++;
             }
           }
         }
-        
+
+        if (removedIds.size > 0) {
+          const next = products.filter((p) => !removedIds.has(p.id));
+          setProducts(next);
+          SmartCache.set(CACHE_KEYS.PRODUCTS, next);
+          primeAdminAllProductsCache(next);
+          SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+        }
+
         if (successCount > 0) {
           toast.success(`${successCount} product(s) deleted successfully!`);
-          // Clear both storefront and admin cache
-          SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-          SmartCache.delete(CACHE_KEYS.PRODUCTS); // FIXED: Use PRODUCTS not ADMIN_PRODUCTS
-          console.log("🗑️ Cleared product caches");
         }
         if (alreadyDeletedCount > 0) {
           toast.info(`${alreadyDeletedCount} product(s) were already deleted`);
         }
         if (errorCount > 0) {
           toast.error(`${errorCount} product(s) could not be deleted`);
+          await loadProducts(true);
         }
         setSelectedProducts([]);
       } else if (productToDelete) {
-        // Single delete
+        let removedOk = false;
         try {
           await productsApi.delete(productToDelete);
           invalidateProductByIdCache(productToDelete);
+          removedOk = true;
           toast.success("Product deleted successfully!");
-          // Clear both storefront and admin cache
-          SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-          SmartCache.delete(CACHE_KEYS.PRODUCTS); // FIXED: Use PRODUCTS not ADMIN_PRODUCTS
-          console.log("🗑️ Cleared product caches");
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "";
           if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
             toast.info("Product already deleted");
+            removedOk = true;
           } else {
-            throw error; // Re-throw if it's a real error
+            throw error;
           }
         }
+        if (removedOk) {
+          const next = products.filter((p) => p.id !== productToDelete);
+          setProducts(next);
+          SmartCache.set(CACHE_KEYS.PRODUCTS, next);
+          primeAdminAllProductsCache(next);
+          SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+        }
       }
-      await loadProducts();
       if (onProductsChanged) onProductsChanged();
       setDeleteDialogOpen(false);
       setProductToDelete(null);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete product(s)";
-      
-      // If product not found, just refresh the list (it's already gone)
+
       if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
         toast.info("Product already deleted");
-        await loadProducts();
+        await loadProducts(true);
       } else {
         console.error("Failed to delete product(s):", error);
         toast.error(errorMessage);
@@ -539,14 +568,26 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
       {currentView === "list" && (
         <div className="p-8 space-y-6">
           {/* Header */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <div>
               <h1 className="text-3xl font-bold text-slate-900">{t('products.title')}</h1>
               <p className="text-slate-500 mt-1">{t('products.subtitle')}</p>
             </div>
-            <Button className="bg-slate-900 hover:bg-slate-800" onClick={() => setCurrentView("add")}>
-              {t('products.addProduct')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={listRefreshing || loading}
+                onClick={() => loadProducts(true)}
+                className="border-slate-300"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button className="bg-slate-900 hover:bg-slate-800" onClick={() => setCurrentView("add")}>
+                {t('products.addProduct')}
+              </Button>
+            </div>
           </div>
 
           {/* Loading State */}

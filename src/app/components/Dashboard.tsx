@@ -1,14 +1,20 @@
 // Dashboard Component - Main dashboard view
-import { DollarSign, ShoppingCart, Users, Package, TrendingUp, ArrowUpRight, ArrowDownRight, Sparkles } from "lucide-react";
+import { DollarSign, ShoppingCart, Users, Package, TrendingUp, ArrowUpRight, ArrowDownRight, Sparkles, RefreshCw } from "lucide-react";
 import { StatCard } from "./StatCard";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useState, useEffect } from "react";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { toast } from "sonner";
 import { productsApi } from "../../utils/api";
+import {
+  getCachedAdminDashboardStats,
+  invalidateAdminDashboardStatsCaches,
+  moduleCache,
+  adminDashboardStatsCacheKey,
+  type AdminDashboardFilters,
+} from "../utils/module-cache";
 // TEMPORARY: Recharts disabled for production build fix
 // import {
 //   AreaChart,
@@ -23,29 +29,34 @@ import { productsApi } from "../../utils/api";
 //   Legend,
 // } from "recharts";
 
-// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
-let cachedStats: any = null;
+const defaultStats = {
+  totalRevenue: 0,
+  totalOrders: 0,
+  totalCustomers: 0,
+  totalProducts: 0,
+  revenueChange: 0,
+  ordersChange: 0,
+  customersChange: 0,
+  productsChange: 0,
+  salesTrend: [] as any[],
+  topProducts: [] as any[],
+  recentOrders: [] as any[],
+};
 
 export function Dashboard() {
   const { t } = useLanguage();
   
-  // 🚀 Initialize state from cache if available
-  const [stats, setStats] = useState(() => cachedStats || {
-    totalRevenue: 0,
-    totalOrders: 0,
-    totalCustomers: 0,
-    totalProducts: 0,
-    revenueChange: 0,
-    ordersChange: 0,
-    customersChange: 0,
-    productsChange: 0,
-    salesTrend: [],
-    topProducts: [],
-    recentOrders: [],
-  });
-  
-  // Only show loading on first mount when no cache exists
-  const [loading, setLoading] = useState(!cachedStats);
+  const [stats, setStats] = useState(defaultStats);
+  const initialFilters: AdminDashboardFilters = {
+    revenue: "Last 30 days",
+    orders: "Last 30 days",
+    customers: "Last 30 days",
+    products: "Last 30 days",
+  };
+  const [loading, setLoading] = useState(
+    () => !moduleCache.peek(adminDashboardStatsCacheKey(initialFilters))
+  );
+  const [statsRefreshing, setStatsRefreshing] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [filters, setFilters] = useState({
     revenue: "Last 30 days",
@@ -58,88 +69,66 @@ export function Dashboard() {
     fetchDashboardStats();
   }, [filters.revenue, filters.orders, filters.customers, filters.products]);
   
-  const fetchDashboardStats = async () => {
-    // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
+  const applyDashboardPayload = (data: Record<string, unknown>) => {
+    if (data.cached) {
+      console.log(
+        `⚡ Dashboard loaded from SERVER CACHE (age: ${data.cacheAge}s) - ZERO database queries!`
+      );
+    } else {
+      console.log(`🔄 Dashboard loaded from DATABASE - Fresh data fetched`);
+    }
+    setStats({
+      totalRevenue: (data.totalRevenue as number) || 0,
+      totalOrders: (data.totalOrders as number) || 0,
+      totalCustomers: (data.totalCustomers as number) || 0,
+      totalProducts: (data.totalProducts as number) || 0,
+      revenueChange: (data.revenueChange as number) || 0,
+      ordersChange: (data.ordersChange as number) || 0,
+      customersChange: (data.customersChange as number) || 0,
+      productsChange: (data.productsChange as number) || 0,
+      salesTrend: Array.isArray(data.salesTrend) ? data.salesTrend : [],
+      topProducts: Array.isArray(data.topProducts) ? data.topProducts : [],
+      recentOrders: Array.isArray(data.recentOrders) ? data.recentOrders : [],
+    });
+  };
+
+  const fetchDashboardStats = async (forceRefresh = false) => {
     let showLoadingTimer: NodeJS.Timeout | null = null;
-    
     showLoadingTimer = setTimeout(() => {
       setLoading(true);
     }, 300);
-    
+
+    const filterKey: AdminDashboardFilters = {
+      revenue: filters.revenue,
+      orders: filters.orders,
+      customers: filters.customers,
+      products: filters.products,
+    };
+    const cacheKey = adminDashboardStatsCacheKey(filterKey);
+
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<Record<string, unknown>>(cacheKey);
+      if (peeked != null && typeof peeked === "object") {
+        applyDashboardPayload(peeked);
+        if (showLoadingTimer) clearTimeout(showLoadingTimer);
+        setLoading(false);
+        setStatsRefreshing(false);
+        return;
+      }
+    }
+
+    setStatsRefreshing(forceRefresh);
     try {
-      // Build query params with filters
-      const params = new URLSearchParams({
-        revenueFilter: filters.revenue,
-        ordersFilter: filters.orders,
-        customersFilter: filters.customers,
-        productsFilter: filters.products,
-      });
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000); // 20 second timeout
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/dashboard/stats?${params}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error("Failed to fetch dashboard stats");
-      }
-      
-      const data = await response.json();
-      
-      // 🚀 Log cache status for monitoring
-      if (data.cached) {
-        console.log(`⚡ Dashboard loaded from SERVER CACHE (age: ${data.cacheAge}s) - ZERO database queries!`);
-      } else {
-        console.log(`🔄 Dashboard loaded from DATABASE - Fresh data fetched`);
-      }
-      
-      // Safety: Ensure all required fields exist with proper defaults
-      setStats({
-        totalRevenue: data.totalRevenue || 0,
-        totalOrders: data.totalOrders || 0,
-        totalCustomers: data.totalCustomers || 0,
-        totalProducts: data.totalProducts || 0,
-        revenueChange: data.revenueChange || 0,
-        ordersChange: data.ordersChange || 0,
-        customersChange: data.customersChange || 0,
-        productsChange: data.productsChange || 0,
-        salesTrend: Array.isArray(data.salesTrend) ? data.salesTrend : [],
-        topProducts: Array.isArray(data.topProducts) ? data.topProducts : [],
-        recentOrders: Array.isArray(data.recentOrders) ? data.recentOrders : [],
-      });
-      
-      // 🚀 CACHE THE STATS FOR FUTURE USE
-      cachedStats = {
-        totalRevenue: data.totalRevenue || 0,
-        totalOrders: data.totalOrders || 0,
-        totalCustomers: data.totalCustomers || 0,
-        totalProducts: data.totalProducts || 0,
-        revenueChange: data.revenueChange || 0,
-        ordersChange: data.ordersChange || 0,
-        customersChange: data.customersChange || 0,
-        productsChange: data.productsChange || 0,
-        salesTrend: Array.isArray(data.salesTrend) ? data.salesTrend : [],
-        topProducts: Array.isArray(data.topProducts) ? data.topProducts : [],
-        recentOrders: Array.isArray(data.recentOrders) ? data.recentOrders : [],
-      };
+      const data = await getCachedAdminDashboardStats(filterKey, forceRefresh);
+      applyDashboardPayload(data);
     } catch (error) {
       console.error("Error fetching dashboard stats:", error);
-      // Keep default values on error - don't crash the UI
     } finally {
       if (showLoadingTimer) {
         clearTimeout(showLoadingTimer);
       }
       setLoading(false);
+      setStatsRefreshing(false);
     }
   };
   
@@ -195,9 +184,9 @@ export function Dashboard() {
         { duration: 10000 }
       );
       
-      // 🚀 Server invalidates cache automatically - just fetch with cache cleared
+      invalidateAdminDashboardStatsCaches();
       setTimeout(() => {
-        fetchDashboardStats();
+        fetchDashboardStats(true);
       }, 1000);
     } catch (error) {
       console.error("Error seeding products:", error);
@@ -215,6 +204,16 @@ export function Dashboard() {
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Analytics</h1>
           <p className="text-slate-500 mt-1">{t('dashboard.welcome').replace('{name}', 'Aung Sone')}</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="border-slate-300 self-start sm:self-auto"
+          disabled={statsRefreshing || loading}
+          onClick={() => fetchDashboardStats(true)}
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${statsRefreshing ? "animate-spin" : ""}`} />
+          Refresh stats
+        </Button>
       </div>
 
       {/* Quick Actions Card - Show only if no products */}

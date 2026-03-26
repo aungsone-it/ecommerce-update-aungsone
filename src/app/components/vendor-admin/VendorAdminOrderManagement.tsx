@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User } from "lucide-react";
+import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -41,7 +41,12 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { Skeleton } from "../ui/skeleton";
-import { fetchVendorOrders } from "../../utils/module-cache";
+import {
+  getCachedVendorOrders,
+  invalidateVendorOrdersCache,
+  moduleCache,
+  CACHE_KEYS,
+} from "../../utils/module-cache";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -83,6 +88,49 @@ interface OrderItem {
     date: string;
     time: string;
   }[];
+}
+
+function mapVendorMgmtApiOrders(apiOrders: any[]): OrderItem[] {
+  return (apiOrders || []).map((order: any) => ({
+    id: order.id,
+    orderNumber: order.orderNumber || order.id,
+    date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    createdAt: order.createdAt || new Date().toISOString(),
+    customer: order.customerName || (typeof order.customer === 'string' ? order.customer : (order.customer?.fullName || order.customer?.name)) || 'Guest Customer',
+    email: order.customerEmail || order.email || order.customer?.email || '',
+    phone: order.customerPhone || order.phone || order.customer?.phone || '',
+    total: parseFloat(order.total) || 0,
+    subtotal:
+      order.subtotal != null && order.subtotal !== ""
+        ? parseFloat(String(order.subtotal))
+        : undefined,
+    discount:
+      order.discount != null && order.discount !== ""
+        ? parseFloat(String(order.discount))
+        : undefined,
+    items: order.items?.length || 0,
+    status: order.status || 'pending',
+    paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : order.paymentStatus === 'paid' ? 'paid' : 'unpaid',
+    shippingStatus: order.status === 'fulfilled' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
+    products: (order.items || []).map((item: any) => ({
+      id: item.productId || item.id,
+      name: item.productName || item.name || 'Product',
+      quantity: item.quantity || 1,
+      price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0').replace('$', '')) || 0,
+      image: item.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop',
+      sku: item.sku || 'N/A'
+    })),
+    shippingAddress: order.shippingAddress || '',
+    trackingNumber: order.trackingNumber,
+    notes: order.notes,
+    deliveryService: order.deliveryService,
+    deliveryServiceLogo: order.deliveryServiceLogo,
+    paymentMethod: order.paymentMethod === 'Cash on Delivery' ? 'cod' : 'credit-card',
+    timeline: [
+      { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
+      ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
+    ]
+  }));
 }
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
@@ -152,68 +200,33 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
   const [bulkStatus, setBulkStatus] = useState<OrderStatus>("processing");
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !moduleCache.peek(CACHE_KEYS.vendorOrders(vendorId)));
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
 
-  // Load orders from backend
   useEffect(() => {
-    loadOrders();
+    loadOrders(false);
   }, [vendorId]);
 
-  const loadOrders = async () => {
+  const loadOrders = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
+      if (peeked != null && Array.isArray(peeked)) {
+        setOrders(mapVendorMgmtApiOrders(peeked));
+        setIsLoading(false);
+        setListRefreshing(false);
+        return;
+      }
+    }
+
+    setListRefreshing(forceRefresh);
     try {
       setIsLoading(true);
-      
       console.log(`📦 Loading orders for vendor: ${vendorId}`);
-      
-      // Do not use module cache here: orders change often and an empty first response was cached for the whole session.
-      const data = await fetchVendorOrders(vendorId);
-      
+      const data = await getCachedVendorOrders(vendorId, forceRefresh);
       console.log(`📊 Received ${data.length} orders from API`);
-      
-      // Transform API orders to match OrderItem interface
-      const transformedOrders = (data || []).map((order: any) => ({
-        id: order.id,
-        orderNumber: order.orderNumber || order.id,
-        date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        createdAt: order.createdAt || new Date().toISOString(), // Store full timestamp
-        customer: order.customerName || (typeof order.customer === 'string' ? order.customer : (order.customer?.fullName || order.customer?.name)) || 'Guest Customer',
-        email: order.customerEmail || order.email || order.customer?.email || '',
-        phone: order.customerPhone || order.phone || order.customer?.phone || '',
-        total: parseFloat(order.total) || 0,
-        subtotal:
-          order.subtotal != null && order.subtotal !== ""
-            ? parseFloat(String(order.subtotal))
-            : undefined,
-        discount:
-          order.discount != null && order.discount !== ""
-            ? parseFloat(String(order.discount))
-            : undefined,
-        items: order.items?.length || 0,
-        status: order.status || 'pending',
-        paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : order.paymentStatus === 'paid' ? 'paid' : 'unpaid',
-        shippingStatus: order.status === 'fulfilled' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
-        products: (order.items || []).map((item: any) => ({
-          id: item.productId || item.id,
-          name: item.productName || item.name || 'Product',
-          quantity: item.quantity || 1,
-          price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0').replace('$', '')) || 0,
-          image: item.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop',
-          sku: item.sku || 'N/A'
-        })),
-        shippingAddress: order.shippingAddress || '',
-        trackingNumber: order.trackingNumber,
-        notes: order.notes,
-        deliveryService: order.deliveryService,
-        deliveryServiceLogo: order.deliveryServiceLogo,
-        paymentMethod: order.paymentMethod === 'Cash on Delivery' ? 'cod' : 'credit-card',
-        timeline: [
-          { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
-          ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
-        ]
-      }));
-      
+      const transformedOrders = mapVendorMgmtApiOrders(data);
       console.log(`✅ Transformed ${transformedOrders.length} orders`);
       setOrders(transformedOrders);
       if (transformedOrders.length > 0) {
@@ -244,6 +257,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
       setOrders([]);
     } finally {
       setIsLoading(false);
+      setListRefreshing(false);
     }
   };
 
@@ -384,6 +398,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
           )
         )
       );
+      invalidateVendorOrdersCache(vendorId);
     } catch (error) {
       console.error("Failed to update orders:", error);
       setOrders(previousOrders);
@@ -418,6 +433,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
           body: JSON.stringify({ status: newStatus }),
         }
       );
+      invalidateVendorOrdersCache(vendorId);
     } catch (error) {
       console.error("Failed to update order:", error);
       setOrders(previousOrders);
@@ -879,6 +895,16 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
                   <Button variant="outline" size="sm" onClick={exportOrders} disabled className="opacity-50 cursor-not-allowed">
                     <Download className="w-4 h-4 mr-2" />
                     Export
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={listRefreshing || isLoading}
+                    onClick={() => loadOrders(true)}
+                    className="border-slate-300"
+                  >
+                    <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+                    Refresh
                   </Button>
                 </div>
               </div>

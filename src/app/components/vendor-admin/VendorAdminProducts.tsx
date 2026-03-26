@@ -6,7 +6,8 @@ import {
   Trash2,
   Package,
   Eye,
-  MoreVertical
+  MoreVertical,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -16,8 +17,10 @@ import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import {
   getCachedVendorProductsAdmin,
-  invalidateVendorProductsAdminCache,
+  primeVendorProductsAdminCache,
   invalidateProductByIdCache,
+  moduleCache,
+  CACHE_KEYS,
 } from "../../utils/module-cache";
 
 interface Product {
@@ -43,25 +46,41 @@ interface VendorAdminProductsProps {
 
 export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdit }: VendorAdminProductsProps) {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(
+    () => moduleCache.peek(CACHE_KEYS.vendorProductsAdmin(vendorId)) == null
+  );
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    loadProducts();
+    loadProducts(false);
   }, [vendorId]);
 
-  const loadProducts = async () => {
+  const loadProducts = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const cached = moduleCache.peek<{ products?: Product[] }>(
+        CACHE_KEYS.vendorProductsAdmin(vendorId)
+      );
+      if (cached != null && Array.isArray(cached.products)) {
+        setProducts(cached.products);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
+    setListRefreshing(forceRefresh);
     console.log(`🛠️ [VendorAdminProducts] Loading products for vendor: ${vendorId}`);
     try {
-      const data = await getCachedVendorProductsAdmin(vendorId);
+      const data = await getCachedVendorProductsAdmin(vendorId, forceRefresh);
       console.log(`✅ [VendorAdminProducts] Loaded ${data.products?.length || 0} products (module cache)`);
       setProducts(data.products || []);
     } catch (error) {
       console.error("❌ [VendorAdminProducts] Error loading products:", error);
     } finally {
       setLoading(false);
+      setListRefreshing(false);
     }
   };
 
@@ -92,7 +111,8 @@ export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdi
       toast.dismiss();
 
       if (response.ok) {
-        invalidateVendorProductsAdminCache(vendorId);
+        const nextProducts = previousProducts.filter((p) => p.id !== productId);
+        primeVendorProductsAdminCache(vendorId, nextProducts);
         invalidateProductByIdCache(productId);
         console.log(`✅ [VendorAdminProducts] Product deleted successfully`);
         toast.success(`"${productName}" deleted successfully!`);
@@ -142,13 +162,25 @@ export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdi
           <h1 className="text-2xl font-semibold text-slate-900">Products</h1>
           <p className="text-sm text-slate-500 mt-1">Manage your product inventory</p>
         </div>
-        <Button 
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-          onClick={onNavigateToAdd}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Add Product
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={listRefreshing || loading}
+            onClick={() => loadProducts(true)}
+            className="border-slate-300"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={onNavigateToAdd}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Product
+          </Button>
+        </div>
       </div>
 
       {/* Search */}

@@ -4,7 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Skeleton } from "../ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import {
+  getCachedVendorProductsAdmin,
+  getCachedVendorOrders,
+  moduleCache,
+  CACHE_KEYS,
+} from "../../utils/module-cache";
 
 interface DashboardStats {
   totalProducts: number;
@@ -67,93 +72,91 @@ export function VendorAdminDashboard({
   });
 
   useEffect(() => {
-    loadDashboardData();
+    loadDashboardData(false);
   }, [vendorId]);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const pPeek = moduleCache.peek<{ products?: any[] }>(CACHE_KEYS.vendorProductsAdmin(vendorId));
+      const oPeek = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
+      if (
+        pPeek != null &&
+        Array.isArray(pPeek.products) &&
+        oPeek != null &&
+        Array.isArray(oPeek)
+      ) {
+        applyDashboardFromData(pPeek.products || [], oPeek);
+        setLoading(false);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      // Load products with timeout protection
-      const productsPromise = fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${vendorId}`,
-        { 
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-          signal: AbortSignal.timeout(10000)
-        }
-      ).then(res => res.json()).catch(() => ({ products: [] }));
-      
-      // Load vendor-specific orders with timeout protection
-      const ordersPromise = fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/orders/${vendorId}`,
-        { 
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-          signal: AbortSignal.timeout(10000)
-        }
-      ).then(res => res.json()).catch(() => ({ orders: [] }));
-      
-      // Fetch both in parallel
-      const [productsData, ordersData] = await Promise.all([productsPromise, ordersPromise]);
-      
-      const vendorProducts = productsData.products || [];
-      const vendorOrders = ordersData.orders || [];
-      
-      // Calculate stats
-      const totalRevenue = vendorOrders
-        .filter((order: any) => order.status !== "cancelled")
-        .reduce((sum: number, order: any) => sum + order.total, 0);
-      
-      const totalCustomers = new Set(vendorOrders.map((o: any) => o.email)).size;
-      
-      // Calculate top products by sales
-      const productSales = new Map<string, { name: string; sales: number; revenue: number }>();
-      vendorOrders.forEach((order: any) => {
-        if (order.status !== "cancelled" && order.items) {
-          order.items.forEach((item: any) => {
-            const existing = productSales.get(item.productId) || { name: item.name, sales: 0, revenue: 0 };
-            existing.sales += item.quantity;
-            existing.revenue += item.price * item.quantity;
-            productSales.set(item.productId, existing);
-          });
-        }
-      });
-      
-      const topProductsList = Array.from(productSales.entries())
-        .map(([id, data]) => ({ id, ...data }))
-        .sort((a, b) => b.sales - a.sales)
-        .slice(0, 4);
-      
-      // Get recent orders
-      const recentOrdersList = vendorOrders
-        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .slice(0, 5)
-        .map((order: any) => ({
-          id: order.id,
-          customerName: order.name,
-          items: order.items?.length || 0,
-          total: order.total,
-          status: order.status,
-          date: order.createdAt,
-        }));
+      const [productsData, vendorOrders] = await Promise.all([
+        getCachedVendorProductsAdmin(vendorId, forceRefresh).catch(() => ({ products: [] as any[] })),
+        getCachedVendorOrders(vendorId, forceRefresh).catch(() => [] as any[]),
+      ]);
 
-      setStats({
-        totalProducts: vendorProducts.length,
-        totalOrders: vendorOrders.length,
-        totalRevenue,
-        totalCustomers,
-        revenueChange: 0.9,
-        ordersChange: 0.9,
-        customersChange: 0.9,
-        productsChange: 0.9,
-      });
-      
-      setTopProducts(topProductsList);
-      setRecentOrders(recentOrdersList);
+      const vendorProducts = productsData.products || [];
+      applyDashboardFromData(vendorProducts, vendorOrders);
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     } finally {
       setLoading(false);
     }
   };
+
+  function applyDashboardFromData(vendorProducts: any[], vendorOrders: any[]) {
+    const totalRevenue = vendorOrders
+      .filter((order: any) => order.status !== "cancelled")
+      .reduce((sum: number, order: any) => sum + (parseFloat(order.total) || 0), 0);
+
+    const totalCustomers = new Set(vendorOrders.map((o: any) => o.email)).size;
+
+    const productSales = new Map<string, { name: string; sales: number; revenue: number }>();
+    vendorOrders.forEach((order: any) => {
+      if (order.status !== "cancelled" && order.items) {
+        order.items.forEach((item: any) => {
+          const existing = productSales.get(item.productId) || { name: item.name, sales: 0, revenue: 0 };
+          existing.sales += item.quantity;
+          existing.revenue += item.price * item.quantity;
+          productSales.set(item.productId, existing);
+        });
+      }
+    });
+
+    const topProductsList = Array.from(productSales.entries())
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) => b.sales - a.sales)
+      .slice(0, 4);
+
+    const recentOrdersList = vendorOrders
+      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 5)
+      .map((order: any) => ({
+        id: order.id,
+        customerName: order.name,
+        items: order.items?.length || 0,
+        total: order.total,
+        status: order.status,
+        date: order.createdAt,
+      }));
+
+    setStats({
+      totalProducts: vendorProducts.length,
+      totalOrders: vendorOrders.length,
+      totalRevenue,
+      totalCustomers,
+      revenueChange: 0.9,
+      ordersChange: 0.9,
+      customersChange: 0.9,
+      productsChange: 0.9,
+    });
+
+    setTopProducts(topProductsList);
+    setRecentOrders(recentOrdersList);
+  }
 
   // Format currency - Myanmar Kyat (MMK)
   const formatCurrency = (num: number) => {

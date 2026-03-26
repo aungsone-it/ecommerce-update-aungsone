@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Edit, Trash2, Folder } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Folder, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card } from "./ui/card";
@@ -21,9 +21,13 @@ import { CategoryForm } from "./CategoryForm";
 import { useLanguage } from "../contexts/LanguageContext";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { cacheManager } from "../utils/cacheManager";
-
-// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
-let cachedCategories: any[] = [];
+import {
+  getCachedAdminAllCategories,
+  primeAdminAllCategoriesCache,
+  invalidateAdminAllCategoriesCache,
+  moduleCache,
+  CACHE_KEYS as MODULE_CACHE_KEYS,
+} from "../utils/module-cache";
 
 interface Category {
   id: string;
@@ -45,9 +49,11 @@ export function Categories() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   
-  // 🚀 Initialize from cache if available
-  const [categories, setCategories] = useState<Category[]>(() => cachedCategories || []);
-  const [isLoading, setIsLoading] = useState(!cachedCategories.length);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoading, setIsLoading] = useState(
+    () => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_ALL_CATEGORIES)
+  );
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
@@ -71,7 +77,7 @@ export function Categories() {
     // Listen for vendor data updates to refresh category vendor names
     const handleVendorUpdate = () => {
       console.log("📣 Vendor data updated, reloading categories...");
-      loadCategories();
+      loadCategories(true);
     };
     
     window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
@@ -79,8 +85,8 @@ export function Categories() {
     // Register cache invalidation
     const clearCache = () => {
       console.log("🗑️ Clearing categories cache");
-      cachedCategories = [];
-      loadCategories();
+      invalidateAdminAllCategoriesCache();
+      loadCategories(true);
     };
     
     cacheManager.registerInvalidation('categories', clearCache);
@@ -90,42 +96,30 @@ export function Categories() {
     };
   }, []);
 
-  const loadCategories = async () => {
-    // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
+  const loadCategories = async (forceRefresh = false) => {
     let showLoadingTimer: NodeJS.Timeout | null = null;
-    
     showLoadingTimer = setTimeout(() => {
       setIsLoading(true);
     }, 300);
-    
-    try {
-      // Use the new admin endpoint that includes vendor categories with vendor names
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/admin/all-categories`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log("Categories loaded:", data);
-        
-        if (data && data.categories && Array.isArray(data.categories)) {
-          setCategories(data.categories);
-          
-          // 🚀 CACHE THE CATEGORIES FOR FUTURE USE
-          cachedCategories = data.categories;
-          cacheManager.set('categories', data.categories);
-        } else {
-          setCategories([]);
-        }
-      } else {
-        console.error("Failed to load categories");
-        setCategories([]);
+
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<Category[]>(MODULE_CACHE_KEYS.ADMIN_ALL_CATEGORIES);
+      if (peeked != null && Array.isArray(peeked)) {
+        setCategories(peeked);
+        cacheManager.set("categories", peeked);
+        if (showLoadingTimer) clearTimeout(showLoadingTimer);
+        setIsLoading(false);
+        setListRefreshing(false);
+        return;
       }
+    }
+
+    setListRefreshing(forceRefresh);
+    try {
+      const list = await getCachedAdminAllCategories(forceRefresh);
+      console.log("Categories loaded:", list?.length);
+      setCategories(list);
+      cacheManager.set("categories", list);
     } catch (error: any) {
       console.error("Failed to load categories:", error);
       setCategories([]);
@@ -134,6 +128,7 @@ export function Categories() {
         clearTimeout(showLoadingTimer);
       }
       setIsLoading(false);
+      setListRefreshing(false);
     }
   };
 
@@ -190,9 +185,9 @@ export function Categories() {
           
           console.log(`✅ Deleted ${previousSelected.length} categories successfully`);
           
-          // Update cache
-          cachedCategories = cachedCategories.filter(cat => !previousSelected.includes(cat.id));
-          cacheManager.set('categories', cachedCategories);
+          const next = previousCategories.filter((cat) => !previousSelected.includes(cat.id));
+          primeAdminAllCategoriesCache(next);
+          cacheManager.set("categories", next);
           
           showAlert(
             "Categories Deleted Successfully!",
@@ -204,8 +199,8 @@ export function Categories() {
           console.error("Failed to delete categories:", error);
           setCategories(previousCategories);
           setSelectedCategories(previousSelected);
-          cachedCategories = previousCategories;
-          cacheManager.set('categories', cachedCategories);
+          primeAdminAllCategoriesCache(previousCategories);
+          cacheManager.set("categories", previousCategories);
           showAlert(
             "Failed to Delete Categories",
             "An error occurred. Please try again.",
@@ -231,6 +226,11 @@ export function Categories() {
         selectedCategories.map(id => categoriesApi.update(id, { status }))
       );
       console.log(`✅ Updated ${previousSelected.length} categories to ${status}`);
+      const next = previousCategories.map((cat) =>
+        previousSelected.includes(cat.id) ? { ...cat, status } : cat
+      );
+      primeAdminAllCategoriesCache(next);
+      cacheManager.set("categories", next);
       showAlert(
         "Status Updated Successfully!",
         `${previousSelected.length} ${previousSelected.length === 1 ? 'category' : 'categories'} ${previousSelected.length === 1 ? 'has' : 'have'} been set to ${status === "active" ? "Active" : "Hidden"}`,
@@ -241,6 +241,8 @@ export function Categories() {
       console.error("Failed to update category status:", error);
       setCategories(previousCategories);
       setSelectedCategories(previousSelected);
+      primeAdminAllCategoriesCache(previousCategories);
+      cacheManager.set("categories", previousCategories);
       showAlert(
         "Failed to Update Status",
         "An error occurred while updating category status. Please try again.",
@@ -277,9 +279,9 @@ export function Categories() {
           
           console.log("✅ Category deleted successfully");
           
-          // Update cache
-          cachedCategories = cachedCategories.filter(cat => cat.id !== id);
-          cacheManager.set('categories', cachedCategories);
+          const next = previousCategories.filter((cat) => cat.id !== id);
+          primeAdminAllCategoriesCache(next);
+          cacheManager.set("categories", next);
           
           showAlert(
             "Category Deleted Successfully!",
@@ -290,8 +292,8 @@ export function Categories() {
           // Revert on error
           console.error("Failed to delete category:", error);
           setCategories(previousCategories);
-          cachedCategories = previousCategories;
-          cacheManager.set('categories', cachedCategories);
+          primeAdminAllCategoriesCache(previousCategories);
+          cacheManager.set("categories", previousCategories);
           showAlert(
             "Failed to Delete Category",
             "An error occurred. Please try again.",
@@ -333,8 +335,8 @@ export function Categories() {
           
           setCategories([]);
           setSelectedCategories([]);
-          cachedCategories = [];
-          cacheManager.set('categories', cachedCategories);
+          primeAdminAllCategoriesCache([]);
+          cacheManager.set("categories", []);
           
           showAlert(
             "All Categories Deleted!",
@@ -344,8 +346,8 @@ export function Categories() {
         } catch (error) {
           console.error("Failed to delete all categories:", error);
           setCategories(previousCategories);
-          cachedCategories = previousCategories;
-          cacheManager.set('categories', cachedCategories);
+          primeAdminAllCategoriesCache(previousCategories);
+          cacheManager.set("categories", previousCategories);
           showAlert(
             "Failed to Delete All Categories",
             "An error occurred. Please try again.",
@@ -410,9 +412,9 @@ export function Categories() {
           
           console.log(`✅ Deleted ${testCategories.length} test categories successfully`);
           
-          // Update cache
-          cachedCategories = cachedCategories.filter(cat => !testCategoryIds.includes(cat.id));
-          cacheManager.set('categories', cachedCategories);
+          const next = previousCategories.filter((cat) => !testCategoryIds.includes(cat.id));
+          primeAdminAllCategoriesCache(next);
+          cacheManager.set("categories", next);
           
           showAlert(
             "Test Categories Deleted Successfully!",
@@ -423,8 +425,8 @@ export function Categories() {
           // Revert on error
           console.error("Failed to delete test categories:", error);
           setCategories(previousCategories);
-          cachedCategories = previousCategories;
-          cacheManager.set('categories', cachedCategories);
+          primeAdminAllCategoriesCache(previousCategories);
+          cacheManager.set("categories", previousCategories);
           showAlert(
             "Failed to Delete Test Categories",
             "An error occurred. Please try again.",
@@ -453,7 +455,8 @@ export function Categories() {
   const handleFormSave = () => {
     setShowForm(false);
     setEditingCategory(null);
-    loadCategories();
+    invalidateAdminAllCategoriesCache();
+    loadCategories(true);
   };
 
   // 🎯 Alert Modal Helper Functions
@@ -647,6 +650,15 @@ export function Categories() {
                 </Button>
               </>
             )}
+            <Button
+              variant="outline"
+              className="border-slate-300"
+              disabled={listRefreshing || isLoading}
+              onClick={() => loadCategories(true)}
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
             <Button 
               className="bg-slate-900 hover:bg-slate-800 text-white"
               onClick={handleAddCategory}
