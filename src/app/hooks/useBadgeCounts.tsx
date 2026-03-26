@@ -3,7 +3,8 @@
 // ============================================
 
 import { useState, useCallback, useEffect } from 'react';
-import { ordersApi, chatApi, vendorApplicationsApi } from '../../utils/api';
+import { chatApi, vendorApplicationsApi } from '../../utils/api';
+import { getCachedAdminOrdersPayload } from '../utils/module-cache';
 import { PENDING_ORDER_STATUSES, POLLING_INTERVALS_MS } from '../../constants';
 import { SmartCache, CACHE_KEYS, CACHE_TTL } from '../../utils/cache';
 import { badgeCircuitBreaker } from '../../utils/circuit-breaker';
@@ -78,26 +79,25 @@ export function useBadgeCounts() {
     console.log('🔄 Fetching fresh badge counts from server...');
     setLoading(true);
     try {
-      // Get pending orders count with retry logic for resilience
-      let ordersResponse;
+      // Pending orders — reuse module cache (same key as Super Admin Orders) to avoid duplicate /orders edge calls
+      let ordersPayload: { orders: any[]; warning?: string };
       try {
-        ordersResponse = await ordersApi.getAll();
+        ordersPayload = await getCachedAdminOrdersPayload(false);
       } catch (ordersError) {
         console.warn('⚠️ Orders fetch failed, retrying once...', ordersError);
-        // Retry once after 1 second
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        ordersResponse = await ordersApi.getAll();
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        ordersPayload = await getCachedAdminOrdersPayload(true);
       }
-      
-      // 🚨 If server returns empty/error, use cached data silently
-      if (!ordersResponse.orders || ordersResponse.orders.length === 0) {
+
+      const ordersList = ordersPayload.orders ?? [];
+      if (ordersList.length === 0) {
         console.log('ℹ️ Orders data not ready yet, keeping cached counts');
-        badgeCircuitBreaker.recordSuccess(); // Don't penalize the circuit breaker
-        return; // Keep existing cached counts
+        badgeCircuitBreaker.recordSuccess();
+        return;
       }
-      
+
       const pendingStatuses: readonly string[] = PENDING_ORDER_STATUSES;
-      const pendingOrders = ordersResponse.orders.filter((order: any) =>
+      const pendingOrders = ordersList.filter((order: any) =>
         pendingStatuses.includes(order.status)
       );
 
