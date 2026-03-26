@@ -392,8 +392,13 @@ export const CACHE_KEYS = {
   
   // Vendor specific (append vendorId)
   vendorProducts: (vendorId: string) => `vendor-products-${vendorId}`,
+  /** Vendor admin list (all statuses) — separate from public storefront vendor catalog */
+  vendorProductsAdmin: (vendorId: string) => `vendor-products-admin-${vendorId}`,
   vendorCategories: (vendorId: string) => `vendor-categories-${vendorId}`,
   vendorOrders: (vendorId: string) => `vendor-orders-${vendorId}`,
+
+  /** Full product by id (GET /products/:id) — Super Admin + shared with storefront shape */
+  productById: (productId: string) => `product-by-id-${productId}`,
   
   // 🚀 NEW: Image/Asset caching to prevent 699 storage requests/day!
   // Cache signed URLs for 24 hours (they're valid for 1-10 years anyway)
@@ -402,6 +407,56 @@ export const CACHE_KEYS = {
   vendorLogo: (vendorId: string) => `vendor-logo-${vendorId}`,
   profileImage: (userId: string) => `profile-image-${userId}`,
 };
+
+/** Full product JSON (GET /products/:id) — same payload Super Admin uses via productsApi.getById */
+export async function fetchProductByIdFromApi(productId: string) {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/${encodeURIComponent(productId)}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch product: ${response.status}`);
+  }
+  return response.json();
+}
+
+/** Vendor admin: all products (all statuses) for one vendor */
+export async function fetchVendorProductsAdmin(vendorId: string) {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${encodeURIComponent(vendorId)}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch vendor products (admin): ${response.status}`);
+  }
+  return response.json();
+}
+
+/** Cached GET /products/:id — revisit = no duplicate edge/DB hit (invalidate on admin edit/delete). */
+export async function getCachedProductById(productId: string, forceRefresh = false) {
+  return moduleCache.get(
+    CACHE_KEYS.productById(productId),
+    () => fetchProductByIdFromApi(productId),
+    forceRefresh
+  );
+}
+
+/** Cached vendor admin product list — same pattern as storefront vendor catalog cache */
+export async function getCachedVendorProductsAdmin(vendorId: string, forceRefresh = false) {
+  return moduleCache.get(
+    CACHE_KEYS.vendorProductsAdmin(vendorId),
+    () => fetchVendorProductsAdmin(vendorId),
+    forceRefresh
+  );
+}
+
+export function invalidateProductByIdCache(productId: string): void {
+  moduleCache.invalidate(CACHE_KEYS.productById(productId));
+}
+
+export function invalidateVendorProductsAdminCache(vendorId: string): void {
+  moduleCache.invalidate(CACHE_KEYS.vendorProductsAdmin(vendorId));
+}
 
 /**
  * 🖼️ CACHED IMAGE URL GETTER

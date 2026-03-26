@@ -4,7 +4,7 @@ import { ArrowLeft, Package, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { getCachedVendorProductsAdmin } from "../utils/module-cache";
 import { useVendorAuth } from "../contexts/VendorAuthContext";
 
 interface Product {
@@ -57,17 +57,10 @@ export function VendorAdminProductViewPage() {
 
   const loadProduct = async () => {
     if (!vendor?.vendorId || !productId) return;
-    
+
     setLoading(true);
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${vendor.vendorId}`,
-        {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        }
-      );
-      
-      const data = await response.json();
+      const data = await getCachedVendorProductsAdmin(vendor.vendorId);
       if (data.products) {
         const foundProduct = data.products.find((p: Product) => p.id === productId);
         setProduct(foundProduct || null);

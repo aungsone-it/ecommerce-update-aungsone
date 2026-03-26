@@ -46,6 +46,7 @@ import { ProductFormPage } from "./ProductFormPage";
 import { StorefrontProductDetail } from "./StorefrontProductDetail";
 import { useLanguage } from "../contexts/LanguageContext";
 import { formatNumber, formatMMK } from "../../utils/formatNumber"; // 🔥 Import number formatting
+import { getCachedProductById, invalidateProductByIdCache } from "../utils/module-cache";
 
 interface ProductListProps {
   onProductsChanged?: () => void; // 🔥 NEW: Callback when products change
@@ -260,6 +261,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
   const handleUpdateProduct = async (id: string, data: any) => {
     try {
       await productsApi.update(id, data);
+      invalidateProductByIdCache(id);
       toast.success("Product updated successfully!");
       
       // Clear storefront cache so updated products appear immediately
@@ -298,6 +300,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
     // Sync with server in background
     try {
       await productsApi.delete(id);
+      invalidateProductByIdCache(id);
       console.log(`✅ Product ${id} deleted from server`);
       
       if (onProductsChanged) onProductsChanged();
@@ -336,6 +339,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
         for (const productId of selectedProducts) {
           try {
             await productsApi.delete(productId);
+            invalidateProductByIdCache(productId);
             successCount++;
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "";
@@ -366,6 +370,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
         // Single delete
         try {
           await productsApi.delete(productToDelete);
+          invalidateProductByIdCache(productToDelete);
           toast.success("Product deleted successfully!");
           // Clear both storefront and admin cache
           SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
@@ -400,11 +405,10 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
     }
   };
 
-  // Load full product details when editing (to get all images)
+  // Load full product details when editing (to get all images) — module cache: revisit = no refetch
   const handleEditProduct = async (productId: string) => {
     try {
-      // Don't show full-screen loading - just load the product details silently
-      const response = await productsApi.getById(productId);
+      const response = await getCachedProductById(productId);
       if (response.product) {
         setSelectedProduct(response.product);
         setCurrentView("edit");
@@ -418,8 +422,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
   // Load full product details when viewing
   const handleViewProduct = async (productId: string) => {
     try {
-      // Don't show full-screen loading - just load the product details silently
-      const response = await productsApi.getById(productId);
+      const response = await getCachedProductById(productId);
       if (response.product) {
         setSelectedProduct(response.product);
         setCurrentView("storefront");

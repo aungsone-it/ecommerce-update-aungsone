@@ -14,6 +14,11 @@ import { Input } from "../ui/input";
 import { Badge } from "../ui/badge";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import {
+  getCachedVendorProductsAdmin,
+  invalidateVendorProductsAdminCache,
+  invalidateProductByIdCache,
+} from "../../utils/module-cache";
 
 interface Product {
   id: string;
@@ -50,25 +55,9 @@ export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdi
     setLoading(true);
     console.log(`🛠️ [VendorAdminProducts] Loading products for vendor: ${vendorId}`);
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${vendorId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      console.log(`📨 [VendorAdminProducts] Response status: ${response.status}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`✅ [VendorAdminProducts] Loaded ${data.products?.length || 0} products:`, data.products);
-        setProducts(data.products || []);
-      } else {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        console.error(`❌ [VendorAdminProducts] Failed to load products:`, errorData);
-      }
+      const data = await getCachedVendorProductsAdmin(vendorId);
+      console.log(`✅ [VendorAdminProducts] Loaded ${data.products?.length || 0} products (module cache)`);
+      setProducts(data.products || []);
     } catch (error) {
       console.error("❌ [VendorAdminProducts] Error loading products:", error);
     } finally {
@@ -103,6 +92,8 @@ export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdi
       toast.dismiss();
 
       if (response.ok) {
+        invalidateVendorProductsAdminCache(vendorId);
+        invalidateProductByIdCache(productId);
         console.log(`✅ [VendorAdminProducts] Product deleted successfully`);
         toast.success(`"${productName}" deleted successfully!`);
       } else {

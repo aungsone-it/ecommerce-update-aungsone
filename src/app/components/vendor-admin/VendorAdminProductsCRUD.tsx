@@ -13,7 +13,11 @@ import { Badge } from "../ui/badge";
 import { Skeleton } from "../ui/skeleton";
 import { Checkbox } from "../ui/checkbox";
 import { toast } from "sonner";
-import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import {
+  getCachedVendorProductsAdmin,
+  invalidateVendorProductsAdminCache,
+  invalidateProductByIdCache,
+} from "../../utils/module-cache";
 import { VendorAdminAddProduct } from "./VendorAdminAddProduct";
 import {
   Select,
@@ -80,22 +84,8 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
   const loadProducts = async () => {
     setLoading(true);
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${vendorId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data.products || []);
-      } else {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }));
-        toast.error(`Failed to load products: ${errorData.error || response.statusText}`);
-      }
+      const data = await getCachedVendorProductsAdmin(vendorId);
+      setProducts(data.products || []);
     } catch (error) {
       console.error("Error loading products:", error);
       toast.error("Failed to load products");
@@ -115,6 +105,9 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
   };
 
   const handleProductSaved = () => {
+    const savedId = editingProduct?.id;
+    invalidateVendorProductsAdminCache(vendorId);
+    if (savedId) invalidateProductByIdCache(savedId);
     setEditingProduct(null);
     setCurrentView("list");
   };

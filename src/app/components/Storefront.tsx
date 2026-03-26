@@ -60,6 +60,7 @@ import {
   fetchBannersApi,
   fetchFeaturedCampaignsApi,
   fetchAppearanceSettingsApi,
+  getCachedProductById,
 } from "../utils/module-cache";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 
@@ -118,8 +119,6 @@ function productFromBySkuApi(raw: any): Product {
     compareAtPrice: raw.compareAtPrice,
   };
 }
-
-let cachedProductDetails: Map<string, Product> = new Map(); // Cache for full product details
 
 /**
  * ContentAnimationWrapper - REMOVED ALL ANIMATIONS FOR INSTANT TRANSITIONS
@@ -1665,43 +1664,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   }, []);
 
-  // Fetch full product details by ID
+  // Fetch full product details by ID (shared module cache with Super Admin product-by-id)
   const fetchProductDetails = useCallback(async (productId: string) => {
     try {
-      // 🚀 Check cache first for instant loading
-      if (cachedProductDetails.has(productId)) {
-        console.log(`⚡ INSTANT LOAD: Using cached product details for ${productId}`);
-        return cachedProductDetails.get(productId);
-      }
-      
-      console.log(`🔍 Fetching full details for product: ${productId}`);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/${productId}`,
-        {
-          headers: {
-            "Authorization": `Bearer ${publicAnonKey}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      console.log(`✅ Loaded full product details:`, data.product);
-      console.log(`📝 DESCRIPTION FROM API:`, data.product?.description);
-      console.log(`📏 Description length from API:`, data.product?.description?.length || 0);
-      
-      // 🚀 Cache the product details
-      if (data.product) {
-        cachedProductDetails.set(productId, data.product);
-      }
-      
-      return data.product;
-    } catch (error) {
-      // Silently catch errors - product list already has complete data, this fetch is just a fallback
+      const data = await getCachedProductById(productId);
+      return data?.product ?? null;
+    } catch {
       return null;
     }
   }, []);
