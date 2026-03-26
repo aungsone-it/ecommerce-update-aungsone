@@ -331,6 +331,45 @@ export async function fetchSiteSettings() {
   return await response.json();
 }
 
+export async function fetchBannersApi() {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/settings/banners`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch banners: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchFeaturedCampaignsApi() {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/featured`,
+    {
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+      signal: AbortSignal.timeout(8000),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch featured campaigns: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function fetchAppearanceSettingsApi() {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/appearance-settings`,
+    {
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+      signal: AbortSignal.timeout(8000),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch appearance settings: ${response.status}`);
+  }
+  return response.json();
+}
+
 /**
  * 🎯 CACHE KEYS - Use these consistently across the app
  */
@@ -341,6 +380,9 @@ export const CACHE_KEYS = {
   STOREFRONT_CATALOG_BOOTSTRAP: 'storefront-catalog-bootstrap-v1',
   STOREFRONT_CATEGORIES: 'storefront-categories',
   STOREFRONT_SETTINGS: 'storefront-settings',
+  STOREFRONT_BANNERS: 'storefront-banners-v1',
+  STOREFRONT_FEATURED_CAMPAIGNS: 'storefront-featured-campaigns-v1',
+  STOREFRONT_APPEARANCE: 'storefront-appearance-v1',
   
   // SECURE Admin
   /** Bump when vendor list semantics change (e.g. API no longer returns audience rows as vendors). */

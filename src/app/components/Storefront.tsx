@@ -33,6 +33,7 @@ import { useFaviconLoader } from "../hooks/useFaviconLoader";
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { ProductGridSkeleton, ProductListSkeleton, BannerSkeleton } from "./SkeletonLoader";
 import { LazyImage } from "./LazyImage";
+import { CacheFriendlyImg } from "./CacheFriendlyImg";
 import { apiCache, SmartCache } from "../utils/cache";
 import { NotificationCenter } from "./NotificationCenter";
 import { useCartVisibility } from "../contexts/CartVisibilityContext";
@@ -45,7 +46,15 @@ import { BlogPostDetail } from "./BlogPostDetail";
 import { AuthModal } from "./AuthModal";
 import { OrderDetailView } from "./OrderDetailView";
 import { CacheDebugPanel } from "./CacheDebugPanel";
-import { fetchCatalogPage, fetchProductsByIds } from "../utils/module-cache";
+import {
+  fetchCatalogPage,
+  fetchProductsByIds,
+  moduleCache,
+  CACHE_KEYS,
+  fetchBannersApi,
+  fetchFeaturedCampaignsApi,
+  fetchAppearanceSettingsApi,
+} from "../utils/module-cache";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 
 // 🚀 MODULE-LEVEL CACHE - These persist across all navigations and component remounts
@@ -55,7 +64,7 @@ let cachedCategories: any[] = [];
 let cachedSiteSettings: any = null;
 
 /** Throttle catalog background refresh to limit edge/DB traffic (hobby / low-volume projects). */
-const CATALOG_BG_REFRESH_MIN_MS = 15 * 60 * 1000;
+const CATALOG_BG_REFRESH_MIN_MS = 45 * 60 * 1000;
 const CATALOG_BG_KEY = 'migoo-catalog-bg-refresh-at';
 
 function shouldSkipCatalogBackgroundRefresh(): boolean {
@@ -1099,8 +1108,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         }
       };
       
-      // Debounce database writes (wait 500ms after last change)
-      const timeoutId = setTimeout(syncCartToDB, 500);
+      // Debounce database writes — longer window = fewer edge writes while browsing
+      const timeoutId = setTimeout(syncCartToDB, 2500);
       return () => clearTimeout(timeoutId);
     } else {
       // Guest user → Save to localStorage ONLY (temporary, merged on login)
@@ -1139,7 +1148,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           console.log('⏭️ Skipping catalog background refresh (throttled)');
           return;
         }
-        Promise.all([loadProducts(true), loadCategories(), loadSiteSettings(), loadBanners()])
+        Promise.all([loadProducts(true), loadCategories(), loadSiteSettings()])
           .then(() => markCatalogBackgroundRefreshed())
           .catch((err) => {
             console.error('Background refresh failed:', err);
@@ -1275,25 +1284,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const loadBanners = useCallback(async () => {
     try {
       console.log('🎨 Loading banners...');
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/settings/banners`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
+      const bannersData = await moduleCache.get(
+        CACHE_KEYS.STOREFRONT_BANNERS,
+        fetchBannersApi,
+        false
       );
-
-      if (response.ok) {
-        const bannersData = await response.json();
-        if (Array.isArray(bannersData) && bannersData.length > 0) {
-          setBanners(bannersData);
-          console.log(`✅ Loaded ${bannersData.length} banners`);
-        }
+      if (Array.isArray(bannersData) && bannersData.length > 0) {
+        setBanners(bannersData);
+        console.log(`✅ Loaded ${bannersData.length} banners`);
       }
     } catch (error) {
       console.warn("⚠️ Could not load banners from server, using defaults");
-      // Keep default banners on error - this is fine for initial setup
     }
   }, []);
 
@@ -1302,32 +1303,20 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     try {
       setCampaignsLoading(true);
       console.log('🎯 Loading featured campaigns...');
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/featured`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          signal: AbortSignal.timeout(8000), // 8 second timeout
-        }
+      const data = await moduleCache.get(
+        CACHE_KEYS.STOREFRONT_FEATURED_CAMPAIGNS,
+        fetchFeaturedCampaignsApi,
+        false
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (Array.isArray(data.campaigns) && data.campaigns.length > 0) {
-          setFeaturedCampaigns(data.campaigns);
-          console.log(`✅ Loaded ${data.campaigns.length} featured campaigns`);
-        } else {
-          console.log('ℹ️ No featured campaigns available');
-          setFeaturedCampaigns([]);
-        }
+      if (Array.isArray(data.campaigns) && data.campaigns.length > 0) {
+        setFeaturedCampaigns(data.campaigns);
+        console.log(`✅ Loaded ${data.campaigns.length} featured campaigns`);
       } else {
-        console.warn('⚠️ Failed to load featured campaigns:', response.status);
+        console.log('ℹ️ No featured campaigns available');
         setFeaturedCampaigns([]);
       }
     } catch (error) {
       console.error("❌ Failed to load featured campaigns:", error);
-      // Keep empty array on error - don't show the section if no campaigns
       setFeaturedCampaigns([]);
     } finally {
       setCampaignsLoading(false);
@@ -1337,29 +1326,20 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Load appearance settings for promotional section
   const loadAppearanceSettings = useCallback(async () => {
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/appearance-settings`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          signal: AbortSignal.timeout(8000), // 8 second timeout
-        }
+      const data = await moduleCache.get(
+        CACHE_KEYS.STOREFRONT_APPEARANCE,
+        fetchAppearanceSettingsApi,
+        false
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.image || data.title || data.description) {
-          setAppearanceSettings({
-            image: data.image || null,
-            title: data.title || "Special Offers &\nPromotions",
-            description: data.description || "Don't miss out on our latest deals and exclusive discounts. Save on your favorite products with our limited-time promotional campaigns.",
-          });
-        }
+      if (data.image || data.title || data.description) {
+        setAppearanceSettings({
+          image: data.image || null,
+          title: data.title || "Special Offers &\nPromotions",
+          description: data.description || "Don't miss out on our latest deals and exclusive discounts. Save on your favorite products with our limited-time promotional campaigns.",
+        });
       }
-      // Silently use default settings if fetch fails - no error logging needed
-    } catch (error) {
-      // Silently use default settings on error - this is expected on first load
+    } catch {
+      // Silently use default settings on error
     }
   }, []);
 
@@ -6265,10 +6245,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             {/* Product Images */}
             <div className="space-y-2 sm:space-y-3 md:space-y-4">
               <div className="aspect-square bg-slate-50 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-slate-200 shadow-lg">
-                <img
+                <CacheFriendlyImg
                   key={`${selectedProduct.id}-${selectedImageIndex}`}
                   src={productImages[selectedImageIndex]}
                   alt={selectedProduct.name}
+                  priority
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -6282,7 +6263,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         index === selectedImageIndex ? "border-amber-600 ring-2 ring-amber-200" : "border-slate-200 hover:border-slate-400"
                       }`}
                     >
-                      <img
+                      <CacheFriendlyImg
                         src={img}
                         alt={`${selectedProduct.name} ${index + 1}`}
                         className="w-full h-full object-cover"
@@ -6613,7 +6594,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                                         setLightboxImage(src);
                                       }}
                                     >
-                                      <img 
+                                      <CacheFriendlyImg 
                                         src={src} 
                                         alt={`Product detail ${index + 1}`}
                                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"

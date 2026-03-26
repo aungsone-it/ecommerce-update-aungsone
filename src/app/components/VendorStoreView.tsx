@@ -1,6 +1,7 @@
 // Minimalist Vendor Storefront - MVP Design
 import { moduleCache, CACHE_KEYS, fetchVendorProducts, fetchVendorCategories } from "../utils/module-cache";
 import { ProductCard } from "./ProductCard";
+import { CacheFriendlyImg } from "./CacheFriendlyImg";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
 import { 
@@ -847,7 +848,7 @@ export function VendorStoreView({
             <CardContent className="pt-6">
               <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
                 {userProfileImageUrl && !profileImageLoadFailed ? (
-                  <img
+                  <CacheFriendlyImg
                     src={userProfileImageUrl}
                     alt={user.name || "Profile"}
                     className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
@@ -971,13 +972,13 @@ export function VendorStoreView({
             <CardContent className="space-y-6">
               <div className="flex items-center gap-6">
                 {profileForm.profileImage ? (
-                  <img
+                  <CacheFriendlyImg
                     src={profileForm.profileImage}
                     alt="Profile preview"
                     className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
                   />
                 ) : userProfileImageUrl && !profileImageLoadFailed ? (
-                  <img
+                  <CacheFriendlyImg
                     src={userProfileImageUrl}
                     alt={user.name || "Profile"}
                     className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
@@ -2087,9 +2088,10 @@ export function VendorStoreView({
                 className="flex items-center gap-2 sm:gap-3 group min-w-0 flex-1 mr-2"
               >
                 {storeLogo ? (
-                  <img 
+                  <CacheFriendlyImg 
                     src={storeLogo} 
                     alt={storeName}
+                    priority
                     className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                   />
                 ) : (
@@ -2176,7 +2178,7 @@ export function VendorStoreView({
                     <PopoverTrigger asChild>
                       <Button variant="ghost" size="icon" className="flex hover:bg-slate-100 rounded-full w-10 h-10 p-0 shrink-0">
                         {userProfileImageUrl && !profileImageLoadFailed ? (
-                          <img
+                          <CacheFriendlyImg
                             src={userProfileImageUrl}
                             alt={user.name}
                             className="w-8 h-8 rounded-full object-cover"
@@ -2191,7 +2193,7 @@ export function VendorStoreView({
                       <div className="space-y-1">
                         <div className="px-3 py-2 border-b border-slate-200 mb-2 flex items-center gap-3">
                           {userProfileImageUrl && !profileImageLoadFailed ? (
-                            <img
+                            <CacheFriendlyImg
                               src={userProfileImageUrl}
                               alt={user.name}
                               className="w-8 h-8 rounded-full object-cover flex-shrink-0"
@@ -2323,10 +2325,11 @@ export function VendorStoreView({
             {/* Product Images */}
             <div className="space-y-2 sm:space-y-3 md:space-y-4">
               <div className="aspect-square bg-slate-50 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-slate-200 shadow-lg">
-                <img
+                <CacheFriendlyImg
                   key={`${selectedProduct.id}-${safeMainIdx}`}
                   src={galleryImages[safeMainIdx] || selectedProduct.images[0]}
                   alt={selectedProduct.name}
+                  priority
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -2343,7 +2346,7 @@ export function VendorStoreView({
                           : "border-slate-200 hover:border-amber-600"
                       }`}
                     >
-                      <img src={image} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                      <CacheFriendlyImg src={image} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
@@ -2622,7 +2625,7 @@ export function VendorStoreView({
                                         setDescLightboxOpen(true);
                                       }}
                                     >
-                                      <img 
+                                      <CacheFriendlyImg 
                                         src={src} 
                                         alt={`Product detail ${index + 1}`}
                                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
@@ -2733,9 +2736,10 @@ export function VendorStoreView({
               className="relative flex max-h-[90vh] max-w-[min(96vw,1200px)] flex-col items-center justify-center"
               onClick={(e) => e.stopPropagation()}
             >
-              <img
+              <CacheFriendlyImg
                 src={lightboxImages[lightboxIndex]}
                 alt=""
+                priority
                 className="max-h-[min(85vh,900px)] w-auto max-w-full object-contain shadow-2xl"
               />
               <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1.5 text-sm font-medium tabular-nums text-white backdrop-blur-sm">
@@ -2822,9 +2826,10 @@ export function VendorStoreView({
               className="flex items-center gap-2 sm:gap-3 group min-w-0 flex-1 mr-2"
             >
               {storeLogo ? (
-                <img 
+                <CacheFriendlyImg 
                   src={storeLogo} 
                   alt={storeName}
+                  priority
                   className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                 />
               ) : (
@@ -2911,7 +2916,7 @@ export function VendorStoreView({
                   <PopoverTrigger asChild>
                     <Button variant="ghost" size="icon" className="flex hover:bg-slate-100 rounded-full w-10 h-10 p-0 shrink-0">
                       {userProfileImageUrl && !profileImageLoadFailed ? (
-                        <img
+                        <CacheFriendlyImg
                           src={userProfileImageUrl}
                           alt={user.name}
                           className="w-8 h-8 rounded-full object-cover"
@@ -2926,7 +2931,7 @@ export function VendorStoreView({
                     <div className="space-y-1">
                       <div className="px-3 py-2 border-b border-slate-200 mb-2 flex items-center gap-3">
                         {userProfileImageUrl && !profileImageLoadFailed ? (
-                          <img
+                          <CacheFriendlyImg
                             src={userProfileImageUrl}
                             alt={user.name}
                             className="w-8 h-8 rounded-full object-cover flex-shrink-0"
