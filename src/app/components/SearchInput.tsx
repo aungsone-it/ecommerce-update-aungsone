@@ -4,6 +4,8 @@ import { Search, X } from 'lucide-react';
 interface SearchInputProps {
   placeholder: string;
   onSearch: (query: string) => void;
+  /** Fires on every keystroke / clear — use for instant client-side filtering (vendor storefront pattern). */
+  onQueryChange?: (query: string) => void;
   className?: string;
   inputClassName?: string;
   variant?: 'desktop' | 'mobile' | 'menu';
@@ -15,6 +17,7 @@ interface SearchInputProps {
 export const SearchInput = React.memo(({ 
   placeholder, 
   onSearch, 
+  onQueryChange,
   className = '',
   inputClassName = '',
   variant = 'desktop',
@@ -36,6 +39,7 @@ export const SearchInput = React.memo(({
 
   const handleClear = () => {
     setLocalValue('');
+    onQueryChange?.('');
     onSearch('');
   };
 
@@ -49,7 +53,11 @@ export const SearchInput = React.memo(({
         placeholder={placeholder}
         className={inputClassName}
         value={localValue}
-        onChange={(e) => setLocalValue(e.target.value)}
+        onChange={(e) => {
+          const v = e.target.value;
+          setLocalValue(v);
+          onQueryChange?.(v);
+        }}
         onKeyDown={handleKeyDown}
         autoFocus={autoFocus}
       />

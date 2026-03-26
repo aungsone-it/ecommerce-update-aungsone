@@ -684,7 +684,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     description: "Don't miss out on our latest deals and exclusive discounts. Save on your favorite products with our limited-time promotional campaigns.",
   });
   
-  const [activeSearchQuery, setActiveSearchQuery] = useState(""); // What is actually searched (triggered on Enter)
+  /** Live search text — same pattern as vendor storefront: instant client filter on name, SKU, id, category, variant SKUs. */
+  const [storeSearchQuery, setStoreSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
@@ -1481,8 +1482,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   }, []);
 
   const catalogSortKey = useCallback(() => {
-    return `${selectedCategory}|${activeSearchQuery}|${sortBy}|${userAppliedFilters}|${priceRange[0]}-${priceRange[1]}`;
-  }, [selectedCategory, activeSearchQuery, sortBy, userAppliedFilters, priceRange]);
+    return `${selectedCategory}|${sortBy}|${userAppliedFilters}|${priceRange[0]}-${priceRange[1]}`;
+  }, [selectedCategory, sortBy, userAppliedFilters, priceRange]);
 
   const loadProducts = useCallback(async (isBackgroundRefresh = false) => {
     try {
@@ -1515,7 +1516,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const data = await fetchCatalogPage({
         page: 1,
         pageSize: CATALOG_PAGE_SIZE,
-        q: activeSearchQuery,
+        q: "",
         category: selectedCategory,
         sort: sortBy,
         minPrice: userAppliedFilters ? priceRange[0] : undefined,
@@ -1534,14 +1535,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     } catch (e) {
       console.error("Catalog refetch failed:", e);
     }
-  }, [
-    activeSearchQuery,
-    selectedCategory,
-    sortBy,
-    userAppliedFilters,
-    priceRange,
-    catalogSortKey,
-  ]);
+  }, [selectedCategory, sortBy, userAppliedFilters, priceRange, catalogSortKey]);
 
   const loadMoreCatalog = useCallback(async () => {
     if (!catalogHasMore || catalogLoadingMore) return;
@@ -1551,7 +1545,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const data = await fetchCatalogPage({
         page: nextPage,
         pageSize: CATALOG_PAGE_SIZE,
-        q: activeSearchQuery,
+        q: "",
         category: selectedCategory,
         sort: sortBy,
         minPrice: userAppliedFilters ? priceRange[0] : undefined,
@@ -1577,7 +1571,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     catalogHasMore,
     catalogLoadingMore,
     catalogPage,
-    activeSearchQuery,
     selectedCategory,
     sortBy,
     userAppliedFilters,
@@ -2204,28 +2197,37 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   }, [viewMode, user?.id]);
 
-  // Handle search - save current state before searching
+  // Handle search (Enter / clear) — text also updates live via onQueryChange (vendor storefront pattern).
   const handleSearch = (query: string) => {
     if (query) {
-      // Save current state only if we're not already searching
-      if (!activeSearchQuery) {
+      if (!preSearchState) {
         setPreSearchState({
           viewMode,
-          selectedCategory
+          selectedCategory,
         });
       }
-      setActiveSearchQuery(query);
+      setStoreSearchQuery(query);
       setShowSearchSuggestions(false);
       setViewMode("all-products");
     } else {
-      // Clear search - restore previous state
       handleClearSearch();
     }
   };
 
+  const handleStoreSearchQueryChange = useCallback(
+    (q: string) => {
+      setStoreSearchQuery(q);
+      if (q.trim() && viewMode === "home") {
+        setPreSearchState((prev) => prev ?? { viewMode: "home", selectedCategory });
+        setViewMode("all-products");
+      }
+    },
+    [viewMode, selectedCategory]
+  );
+
   // Clear search and restore previous view state
   const handleClearSearch = () => {
-    setActiveSearchQuery("");
+    setStoreSearchQuery("");
     
     // Restore previous state if it exists
     if (preSearchState) {
@@ -3230,9 +3232,30 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     return Array.from(new Set(products.map((p) => p.category).filter(Boolean))) as string[];
   }, [allCategories, products]);
 
-  // Search/category/sort are applied on the server (paginated catalog).
-  const filteredProducts = products;
-  const sortedProducts = products;
+  /** Vendor-style instant filter on loaded catalog rows (name, SKU, id, category, variant SKUs). */
+  const catalogFilteredProducts = useMemo(() => {
+    const q = storeSearchQuery.trim().toLowerCase();
+    return products.filter((product) => {
+      const matchesCategory =
+        selectedCategory === "all" || product.category === selectedCategory;
+      if (!matchesCategory) return false;
+      if (!q) return true;
+      const name = String(product.name || "").toLowerCase();
+      const sku = String(product.sku || "").toLowerCase();
+      const id = String(product.id || "").toLowerCase();
+      const cat = String(product.category || "").toLowerCase();
+      if (name.includes(q) || sku.includes(q) || id.includes(q) || cat.includes(q)) {
+        return true;
+      }
+      if (product.hasVariants && Array.isArray(product.variants)) {
+        for (const v of product.variants) {
+          const vs = String((v as { sku?: string }).sku || "").toLowerCase();
+          if (vs.includes(q)) return true;
+        }
+      }
+      return false;
+    });
+  }, [products, selectedCategory, storeSearchQuery]);
 
   const dealProducts = useMemo(() => {
     if (homeDealProducts.length > 0) return homeDealProducts;
@@ -3291,8 +3314,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   ]);
 
-  // Header Component
-  const Header = () => (
+  // Header markup — must NOT be a nested `const Header = () => ...` component (new type every render remounts SearchInput and kills focus).
+  const renderHeader = () => (
     <header className={`${isNavbarSticky ? 'sticky top-0' : 'relative'} z-50 bg-white shadow-md transition-all duration-300`}>
       {/* Main Header */}
       <div className="border-b border-slate-200">
@@ -3315,12 +3338,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             {/* Search Bar */}
             <div className="hidden md:flex flex-1 max-w-2xl relative">
               <SearchInput
-                placeholder="Search for luxury products... (Press Enter)"
+                placeholder="Search products..."
                 onSearch={handleSearch}
+                onQueryChange={handleStoreSearchQueryChange}
                 className="w-full"
                 inputClassName="h-11 pl-11 pr-11 rounded-full border-0 bg-slate-100/60 hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-amber-500/20 transition-all text-sm text-slate-700 placeholder:text-slate-400 shadow-sm backdrop-blur-sm w-full"
                 variant="desktop"
-                value={activeSearchQuery}
+                value={storeSearchQuery}
               />
             </div>
 
@@ -3334,7 +3358,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           <button
                             key={term}
                             onClick={() => {
-                              setActiveSearchQuery(term);
+                              setStoreSearchQuery(term);
                               setShowSearchSuggestions(false);
                               setViewMode("all-products");
                             }}
@@ -3377,7 +3401,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 {showSearchSuggestions && searchQuery && debouncedSearchQuery && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-50 backdrop-blur-sm max-h-96 overflow-y-auto">
                     {(() => {
-                      // Create preview list based on what user is typing (not activeSearchQuery)
+                      // Create preview list based on what user is typing (not storeSearchQuery)
                       const previewProducts = products.filter(product => {
                         const productName = String(product.name || '').toLowerCase();
                         const query = String(debouncedSearchQuery || '').toLowerCase();
@@ -3415,7 +3439,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           {previewProducts.length > 5 && (
                             <button
                               onClick={() => {
-                                setActiveSearchQuery(searchQuery);
+                                setStoreSearchQuery(searchQuery);
                                 setViewMode("all-products");
                                 setShowSearchSuggestions(false);
                               }}
@@ -3903,13 +3927,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               </Button>
               <div className="flex-1">
                 <SearchInput
-                  placeholder="Search... (Press Enter)"
+                  placeholder="Search products..."
                   onSearch={(query) => {
                     handleSearch(query);
                     setUserAppliedFilters(false);
                     setShowMobileSearch(false);
                   }}
-                  value={activeSearchQuery}
+                  onQueryChange={handleStoreSearchQueryChange}
+                  value={storeSearchQuery}
                   autoFocus
                   variant="mobile"
                   inputClassName="w-full px-4 py-2.5 pr-10 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm"
@@ -3919,11 +3944,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
             {/* Search Content/Suggestions */}
             <div className="flex-1 overflow-y-auto p-4">
-              {activeSearchQuery ? (
+              {storeSearchQuery ? (
                 <div className="space-y-2">
-                  <p className="text-sm font-semibold text-slate-600 mb-3">Search Results</p>
+                  <p className="text-sm font-semibold text-slate-600 mb-3">Search</p>
                   <p className="text-sm text-slate-500">
-                    Press Enter to search for "{activeSearchQuery}"
+                    Results update as you type. Close to return to the store.
                   </p>
                 </div>
               ) : (
@@ -3935,7 +3960,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         <button
                           key={term}
                           onClick={() => {
-                            setActiveSearchQuery(term);
+                            setStoreSearchQuery(term);
                             setViewMode("all-products");
                             setUserAppliedFilters(false);
                             setShowMobileSearch(false);
@@ -4458,7 +4483,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   if (viewMode === "view-profile") {
     return (
       <div className="min-h-screen bg-slate-50">
-        <Header />
+        {renderHeader()}
         {CartSidebar}
         
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -4618,7 +4643,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   if (viewMode === "edit-profile") {
     return (
       <div className="min-h-screen bg-slate-50">
-        <Header />
+        {renderHeader()}
         {CartSidebar}
         
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -4845,7 +4870,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   if (viewMode === "order-history") {
     return (
       <div className="min-h-screen bg-slate-50">
-        <Header />
+        {renderHeader()}
         {CartSidebar}
         
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -5017,7 +5042,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   if (viewMode === "shipping-addresses") {
     return (
       <div className="min-h-screen bg-slate-50">
-        <Header />
+        {renderHeader()}
         {CartSidebar}
         
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -5384,7 +5409,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   if (viewMode === "security-settings") {
     return (
       <div className="min-h-screen bg-slate-50">
-        <Header />
+        {renderHeader()}
         {CartSidebar}
         
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -5779,7 +5804,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             }
           }}
         />
-        <Header />
+        {renderHeader()}
         {CartSidebar}
         
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -6399,7 +6424,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     
     return (
       <div className="min-h-screen bg-white">
-        <Header />
+        {renderHeader()}
         {CartSidebar}
 
         {/* 🔥 SKELETON LOADING OVERLAY - Covers loading and scroll-to-top */}
@@ -7034,7 +7059,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             }
           }}
         />
-        <Header />
+        {renderHeader()}
         {CartSidebar}
 
         {/* Page Header */}
@@ -7053,7 +7078,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               </h1>
             </div>
             <p className="text-slate-300 text-sm">
-              Browse our {selectedCategory === "all" ? "complete " : ""}collection of {catalogTotal || sortedProducts.length} {selectedCategory === "all" ? "" : selectedCategory.toLowerCase()} products
+              Browse our {selectedCategory === "all" ? "complete " : ""}collection of{" "}
+              {storeSearchQuery.trim()
+                ? `${catalogFilteredProducts.length} matching`
+                : catalogTotal || catalogFilteredProducts.length}{" "}
+              {selectedCategory === "all" ? "" : selectedCategory.toLowerCase()} products
             </p>
           </div>
         </div>
@@ -7075,7 +7104,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 {showFilters ? "Hide Filters" : "Show Filters"}
               </Button>
               <p className="text-[11px] sm:text-xs md:text-sm text-slate-600">
-                Showing {sortedProducts.length} of {catalogTotal || sortedProducts.length} products
+                {storeSearchQuery.trim()
+                  ? `${catalogFilteredProducts.length} matching products`
+                  : `Showing ${catalogFilteredProducts.length} of ${catalogTotal || catalogFilteredProducts.length} products`}
               </p>
             </div>
 
@@ -7126,12 +7157,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   <div>
                     <h4 className="font-medium mb-3 text-sm text-slate-900">Search</h4>
                     <SearchInput
-                      placeholder="Search... (Enter)"
+                      placeholder="Search products..."
                       onSearch={handleSearch}
+                      onQueryChange={handleStoreSearchQueryChange}
                       className="w-full"
                       inputClassName="w-full pl-10 pr-9 py-2 border-0 bg-slate-100/60 hover:bg-slate-100 focus:bg-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 transition-all"
                       variant="menu"
-                      value={activeSearchQuery}
+                      value={storeSearchQuery}
                     />
                   </div>
 
@@ -7227,7 +7259,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="w-8 h-8 text-amber-600 animate-spin" />
                 </div>
-              ) : sortedProducts.length === 0 ? (
+              ) : catalogFilteredProducts.length === 0 ? (
                 <div className="text-center py-20">
                   <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                   <h3 className="text-xl font-semibold text-slate-700 mb-2">No products found</h3>
@@ -7237,7 +7269,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 <>
                 {viewType === "grid" ? (
                 <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children">
-                  {sortedProducts.map((product) => (
+                  {catalogFilteredProducts.map((product) => (
                     <ProductCard
                       key={product.id}
                       product={{
@@ -7262,7 +7294,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 </div>
                 ) : (
                 <div className="space-y-3 sm:space-y-4 lg:space-y-6">
-                  {sortedProducts.map((product) => (
+                  {catalogFilteredProducts.map((product) => (
                     <MarketplaceListProductRow
                       key={product.id}
                       product={product}
@@ -7380,7 +7412,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             }
           }}
         />
-        <Header />
+        {renderHeader()}
         {CartSidebar}
 
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -7627,7 +7659,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             }
           }}
         />
-        <Header />
+        {renderHeader()}
         {CartSidebar}
 
         {/* Main content with smooth fade-in animation - header stays stable */}
@@ -7801,7 +7833,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         }}
       />
       
-      <Header />
+      {renderHeader()}
       {CartSidebar}
       
       {/* Hero Banner - Only show on home/products views */}
@@ -8652,7 +8684,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           </div>
           
           <div className="flex items-center gap-4">
-            <span className="text-sm font-medium text-slate-600">{catalogTotal || sortedProducts.length} products</span>
+            <span className="text-sm font-medium text-slate-600">{catalogTotal || catalogFilteredProducts.length} products</span>
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-48 rounded-full border-2">
                 <SelectValue placeholder="Sort by" />
@@ -8727,13 +8759,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           {/* Products */}
           <div className="flex-1">
             {/* 🚀 FIXED: Removed skeleton loaders when serverStatus === 'checking' because ServerStatusBanner already shows full-screen loading */}
-            {sortedProducts.length === 0 ? (
+            {catalogFilteredProducts.length === 0 ? (
               <Card className="text-center py-20 border-0 shadow-md">
                 <Package className="w-16 h-16 mx-auto text-slate-300 mb-4" />
                 <p className="text-lg text-slate-500 mb-2">No products found</p>
                 <p className="text-sm text-slate-400 mb-6">Try adjusting your search or filters</p>
                 <Button onClick={() => {
-                  setActiveSearchQuery("");
+                  setStoreSearchQuery("");
                   setSelectedCategory("all");
                 }} className="bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800">
                   Clear All Filters
@@ -8745,7 +8777,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children" 
                 : "space-y-4"
               }>
-                {sortedProducts.map(product => (
+                {catalogFilteredProducts.map(product => (
                   viewType === "grid" ? (
                     <ProductCard
                       key={product.id}
