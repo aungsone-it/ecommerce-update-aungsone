@@ -1772,7 +1772,7 @@ export function VendorStoreView({
     );
   };
 
-  // 🚀 LOAD DATA WITH MODULE-LEVEL CACHING - Load once and persist forever
+  // 🚀 LOAD DATA WITH MODULE-LEVEL CACHING — products are required; categories are best-effort (avoid blank storefront if categories fail).
   const loadVendorData = async (forceRefresh: boolean = false) => {
     console.log(`🚀 [VENDOR STORE] Loading data for vendorId: ${vendorId}`);
     
@@ -1781,21 +1781,24 @@ export function VendorStoreView({
     }
 
     try {
-      // Use module cache to fetch data (auto-handles caching)
-      const [productsData, categoriesData] = await Promise.all([
-        moduleCache.get(
-          CACHE_KEYS.vendorProducts(vendorId),
-          () => fetchVendorProducts(vendorId),
-          forceRefresh
-        ),
-        moduleCache.get(
+      const productsData = await moduleCache.get(
+        CACHE_KEYS.vendorProducts(vendorId),
+        () => fetchVendorProducts(vendorId),
+        forceRefresh
+      );
+
+      let categoriesData: any[] = [];
+      try {
+        categoriesData = await moduleCache.get(
           CACHE_KEYS.vendorCategories(vendorId),
           () => fetchVendorCategories(vendorId),
           forceRefresh
-        ),
-      ]);
+        );
+      } catch (catErr) {
+        console.warn("⚠️ [VENDOR STORE] Categories fetch failed (non-fatal):", catErr);
+        categoriesData = [];
+      }
 
-      // Update component state
       setProducts(productsData.products || []);
       setVendorCategories(categoriesData || []);
       setStoreName(productsData.storeName || "Vendor Store");
@@ -3120,6 +3123,24 @@ export function VendorStoreView({
           </>
         ) : (
           <>
+            {/* Failed load: main area was empty (only header/footer) — always show retry */}
+            {serverStatus === 'unhealthy' && (
+              <div className="text-center py-16 sm:py-24 max-w-lg mx-auto px-4">
+                <Store className="w-16 h-16 text-amber-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">Couldn&apos;t load this store</h3>
+                <p className="text-slate-600 mb-6 text-sm sm:text-base">
+                  The product catalog didn&apos;t load. Check your connection, wait a moment, or tap retry.
+                </p>
+                <Button
+                  onClick={() => loadVendorData(true)}
+                  className="bg-amber-600 hover:bg-amber-700"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Retry
+                </Button>
+              </div>
+            )}
+
             {/* Show skeleton loaders while checking server status - Shopify style */}
             {serverStatus === 'checking' && (
               <div className="animate-smooth-fade">
