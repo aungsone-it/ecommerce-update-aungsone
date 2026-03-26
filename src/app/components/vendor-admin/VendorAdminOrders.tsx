@@ -44,8 +44,10 @@ import {
   getCachedVendorOrders,
   invalidateVendorOrdersCache,
   moduleCache,
+  dispatchAdminProductsCachePatched,
   CACHE_KEYS,
 } from "../../utils/module-cache";
+import { syncAdminInventoryCacheAfterOrderStatusChange } from "../../utils/orderInventoryCacheSync";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -85,6 +87,7 @@ interface OrderItem {
     date: string;
     time: string;
   }[];
+  inventoryDeducted?: boolean;
 }
 
 function mapVendorApiOrdersToItems(apiOrders: any[]): OrderItem[] {
@@ -118,7 +121,8 @@ function mapVendorApiOrdersToItems(apiOrders: any[]): OrderItem[] {
     timeline: [
       { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
       ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
-    ]
+    ],
+    inventoryDeducted: order.inventoryDeducted,
   }));
 }
 
@@ -362,9 +366,27 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
               },
               body: JSON.stringify({ status: bulkStatus }),
             }
-          )
+          ).then(async (res) => {
+            if (!res.ok) throw new Error(await res.text());
+            return res;
+          })
         )
       );
+      for (const orderId of orderIds) {
+        const o = previousOrders.find((x) => x.id === orderId);
+        if (o) {
+          syncAdminInventoryCacheAfterOrderStatusChange(
+            {
+              status: o.status,
+              inventoryDeducted: o.inventoryDeducted,
+              products: o.products,
+            },
+            bulkStatus,
+            { skipDispatch: true }
+          );
+        }
+      }
+      dispatchAdminProductsCachePatched();
       invalidateVendorOrdersCache(vendorId);
     } catch (error) {
       console.error("Failed to update orders:", error);
@@ -374,6 +396,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
   };
 
   const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+    const orderBeingUpdated = orders.find((o) => o.id === orderId);
     const previousOrders = [...orders];
     
     setOrders(prevOrders =>
@@ -389,7 +412,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
     toast.success(`Order status updated to ${newStatus}`);
 
     try {
-      await fetch(
+      const res = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${orderId}`,
         {
           method: "PUT",
@@ -400,6 +423,34 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
           body: JSON.stringify({ status: newStatus }),
         }
       );
+      if (!res.ok) {
+        throw new Error(await res.text());
+      }
+      const result = (await res.json().catch(() => ({}))) as {
+        order?: { inventoryDeducted?: boolean };
+      };
+      if (orderBeingUpdated) {
+        syncAdminInventoryCacheAfterOrderStatusChange(
+          {
+            status: orderBeingUpdated.status,
+            inventoryDeducted: orderBeingUpdated.inventoryDeducted,
+            products: orderBeingUpdated.products,
+          },
+          newStatus
+        );
+      }
+      if (result?.order?.inventoryDeducted !== undefined) {
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, inventoryDeducted: result.order!.inventoryDeducted } : o
+          )
+        );
+        if (selectedOrder?.id === orderId) {
+          setSelectedOrder((s) =>
+            s ? { ...s, inventoryDeducted: result.order!.inventoryDeducted } : s
+          );
+        }
+      }
       invalidateVendorOrdersCache(vendorId);
     } catch (error) {
       console.error("Failed to update order:", error);

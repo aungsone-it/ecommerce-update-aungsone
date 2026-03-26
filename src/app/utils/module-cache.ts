@@ -564,6 +564,89 @@ export function primeAdminAllProductsCache(products: unknown[]): void {
   moduleCache.prime(CACHE_KEYS.ADMIN_PRODUCTS, products);
 }
 
+/**
+ * After inventory adjust in Super Admin (no refetch). Keeps session cache aligned with UI.
+ * Does not hit Supabase — safe to call on every +/- or save.
+ */
+export function patchAdminProductInventoryInCache(
+  itemId: string,
+  newInventory: number,
+  opts?: { isVariant?: boolean; parentId?: string }
+): void {
+  const peeked = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+  if (!peeked || !Array.isArray(peeked)) return;
+
+  const next = peeked.map((p: any) => {
+    if (opts?.isVariant && opts.parentId && p.id === opts.parentId) {
+      const variants = (p.variants || []).map((v: any) =>
+        v.id === itemId ? { ...v, inventory: newInventory } : v
+      );
+      const total = variants.reduce((s: number, v: any) => s + (Number(v.inventory) || 0), 0);
+      return { ...p, variants, inventory: total };
+    }
+    if (!opts?.isVariant && p.id === itemId) {
+      return { ...p, inventory: newInventory };
+    }
+    return p;
+  });
+
+  moduleCache.prime(CACHE_KEYS.ADMIN_PRODUCTS, next);
+}
+
+/** Notify listeners (e.g. Inventory) to re-derive rows from patched ADMIN_PRODUCTS — no network. */
+export function dispatchAdminProductsCachePatched(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("migoo-admin-products-cache-patched"));
+}
+
+/**
+ * Apply a signed delta to one product or variant row in the admin products session cache.
+ * Matches server `applyOrderItemsStockDelta` (single product KV key per line item).
+ */
+export function applyDeltaToAdminProductInventoryInCache(productId: string, delta: number): void {
+  const peeked = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+  if (!peeked || !Array.isArray(peeked)) return;
+
+  const next = peeked.map((p: any) => {
+    if (p.id === productId) {
+      const cur = Number(p.inventory ?? p.stock ?? 0);
+      const nv = Math.max(0, cur + delta);
+      return { ...p, inventory: nv, stock: nv };
+    }
+    if (Array.isArray(p.variants) && p.variants.some((v: any) => v.id === productId)) {
+      const variants = p.variants.map((v: any) =>
+        v.id === productId
+          ? { ...v, inventory: Math.max(0, (Number(v.inventory) || 0) + delta) }
+          : v
+      );
+      const total = variants.reduce((s: number, v: any) => s + (Number(v.inventory) || 0), 0);
+      return { ...p, variants, inventory: total, stock: total };
+    }
+    return p;
+  });
+
+  moduleCache.prime(CACHE_KEYS.ADMIN_PRODUCTS, next);
+}
+
+/**
+ * Apply stock movement for order line items (deduct or restore). No Supabase calls.
+ */
+export function applyOrderLineStockDeltasToAdminCache(
+  items: { productId: string; quantity: number }[],
+  direction: "deduct" | "restore",
+  options?: { skipDispatch?: boolean }
+): void {
+  const sign = direction === "deduct" ? -1 : 1;
+  for (const it of items) {
+    const qty = Math.max(0, Number(it.quantity) || 0);
+    if (qty <= 0) continue;
+    applyDeltaToAdminProductInventoryInCache(it.productId, sign * qty);
+  }
+  if (!options?.skipDispatch) {
+    dispatchAdminProductsCachePatched();
+  }
+}
+
 /** Vendor admin product list JSON shape — merge `products` into existing cached payload if any */
 export function primeVendorProductsAdminCache(vendorId: string, products: unknown[]): void {
   const key = CACHE_KEYS.vendorProductsAdmin(vendorId);

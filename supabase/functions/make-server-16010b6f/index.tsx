@@ -2511,7 +2511,11 @@ function sortStorefrontProductRows(rows: any[], sort: string): any[] {
   return copy;
 }
 
-/** Slim list payload for grid cards — full detail loads via GET /products/:id */
+/**
+ * Slim list payload for bootstrap/catalog pages — trims description etc., but MUST keep
+ * variantOptions + variants so product detail can render selectors without waiting on GET /products/:id.
+ * (Stripping them caused hasVariants === true with no chips on PDP.)
+ */
 function toSlimListRow(p: any) {
   return {
     id: p.id,
@@ -2530,11 +2534,11 @@ function toSlimListRow(p: any) {
     images: p.images,
     description: "",
     hasVariants: p.hasVariants,
-    variantOptions: [],
-    variants: [],
+    variantOptions: Array.isArray(p.variantOptions) ? p.variantOptions : [],
+    variants: Array.isArray(p.variants) ? p.variants : [],
     vendorId: p.vendorId,
     commissionRate: p.commissionRate,
-    selectedVendors: [],
+    selectedVendors: p.selectedVendors || [],
   };
 }
 

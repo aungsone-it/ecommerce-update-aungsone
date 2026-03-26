@@ -47,6 +47,7 @@ import {
   initVariantSelections,
   matchVariantForProduct,
   productHasVariantPicker,
+  getEffectiveVariantOptions,
 } from "./ProductVariantChips";
 import { BlogPostDetail } from "./BlogPostDetail";
 import { AuthModal } from "./AuthModal";
@@ -1675,9 +1676,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   }, []);
 
   const initializeVariantSelections = useCallback((product: Product) => {
-    if (product.hasVariants && product.variantOptions) {
+    const opts = getEffectiveVariantOptions(product);
+    if (product.hasVariants && opts.length > 0) {
       const initialSelections: Record<string, string> = {};
-      product.variantOptions.forEach((option: any) => {
+      opts.forEach((option: any) => {
         if (option.values && option.values.length > 0) {
           initialSelections[option.name] = option.values[0];
         }
@@ -1690,14 +1692,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   /** When URL is /product/{variantSku}, select matching option values (e.g. Color = Coffee). */
   const seedVariantSelectionFromUrlSku = useCallback((product: Product, urlSku: string) => {
-    if (!product.hasVariants || !product.variants?.length || !product.variantOptions?.length) return;
+    const opts = getEffectiveVariantOptions(product);
+    if (!product.hasVariants || !product.variants?.length || !opts.length) return;
     const lower = urlSku.trim().toLowerCase();
     const v = (product.variants as { sku?: string; option1?: string; option2?: string; option3?: string }[]).find(
       (x) => String(x.sku || "").toLowerCase() === lower
     );
     if (!v) return;
     const next: Record<string, string> = {};
-    product.variantOptions.forEach((opt: { name: string }, idx: number) => {
+    opts.forEach((opt: { name: string }, idx: number) => {
       const rawVal = [v.option1, v.option2, v.option3][idx];
       if (rawVal != null && rawVal !== "") next[opt.name] = String(rawVal);
     });
@@ -6354,11 +6357,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
     
     const relatedProducts = getRelatedProducts(selectedProduct);
+    const effectiveVariantOptions = getEffectiveVariantOptions(selectedProduct);
     
     // 🔍 DEBUG: Log product data to see variant structure
     console.log('🔍 Selected Product Data:', {
       hasVariants: selectedProduct.hasVariants,
       variantOptions: selectedProduct.variantOptions,
+      effectiveVariantOptions,
       variants: selectedProduct.variants,
       productImages: productImages,
       fullProduct: selectedProduct
@@ -6370,10 +6375,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     let displayInventory = selectedProduct.inventory;
     let displaySku = selectedProduct.sku;
     
-    if (selectedProduct.hasVariants && selectedProduct.variants && selectedProduct.variantOptions) {
+    if (selectedProduct.hasVariants && selectedProduct.variants && effectiveVariantOptions.length > 0) {
       // Find the matching variant based on selected options
       const currentVariant = selectedProduct.variants.find((v: any) => {
-        const optionNames = selectedProduct.variantOptions!.map((opt: any) => opt.name);
+        const optionNames = effectiveVariantOptions.map((opt: any) => opt.name);
         const variantValues = [v.option1, v.option2, v.option3].filter(Boolean);
         
         return optionNames.every((optionName: string, idx: number) => {
@@ -6570,10 +6575,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 </CardContent>
               </Card>
 
-              {/* Variant Selector - NEW STRUCTURE */}
-              {selectedProduct.hasVariants && selectedProduct.variantOptions && selectedProduct.variantOptions.length > 0 && (
+              {/* Variant Selector - NEW STRUCTURE (uses effectiveVariantOptions so slim bootstrap rows still show chips) */}
+              {selectedProduct.hasVariants && effectiveVariantOptions.length > 0 && (
                 <div className="space-y-6">
-                  {selectedProduct.variantOptions.map((option: any) => (
+                  {effectiveVariantOptions.map((option: any) => (
                     <div key={option.name}>
                       <div className="mb-2.5">
                         <span className="text-sm font-semibold text-slate-900">{option.name}</span>

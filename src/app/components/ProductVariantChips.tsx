@@ -42,14 +42,39 @@ export function matchVariantForProduct(
   return row ?? null;
 }
 
+/** When list/bootstrap rows omit variantOptions but variants exist (legacy slim rows). */
+export function deriveVariantOptionsFromVariants(
+  variants: NonNullable<VariantProduct["variants"]>
+): { name: string; values: string[] }[] {
+  const buckets: [Set<string>, Set<string>, Set<string>] = [new Set(), new Set(), new Set()];
+  for (const v of variants) {
+    if (v.option1 != null && String(v.option1).trim() !== "") buckets[0].add(String(v.option1));
+    if (v.option2 != null && String(v.option2).trim() !== "") buckets[1].add(String(v.option2));
+    if (v.option3 != null && String(v.option3).trim() !== "") buckets[2].add(String(v.option3));
+  }
+  const names = ["Color", "Style", "Size"];
+  const out: { name: string; values: string[] }[] = [];
+  for (let i = 0; i < 3; i++) {
+    if (buckets[i].size > 0) {
+      out.push({ name: names[i], values: [...buckets[i]] });
+    }
+  }
+  return out;
+}
+
+/** Prefer API variantOptions; else derive from variant rows so PDP selectors can render. */
+export function getEffectiveVariantOptions(product: VariantProduct): { name: string; values: string[] }[] {
+  if (product.variantOptions && product.variantOptions.length > 0) {
+    return product.variantOptions;
+  }
+  if (product.variants && product.variants.length > 0) {
+    return deriveVariantOptionsFromVariants(product.variants);
+  }
+  return [];
+}
+
 export function productHasVariantPicker(product: VariantProduct): boolean {
-  return Boolean(
-    product.hasVariants &&
-      product.variantOptions &&
-      product.variantOptions.length > 0 &&
-      product.variants &&
-      product.variants.length > 0
-  );
+  return Boolean(product.hasVariants && getEffectiveVariantOptions(product).length > 0 && product.variants?.length);
 }
 
 type ProductVariantChipsProps = {

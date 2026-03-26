@@ -53,6 +53,7 @@ import { ProductGridSkeleton, ProductDetailSkeleton } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
 import { authApi, wishlistApi } from "../../utils/api";
 import { toast } from "sonner";
+import { getEffectiveVariantOptions } from "./ProductVariantChips";
 
 interface Product {
   id: string;
@@ -160,14 +161,14 @@ function safeDecodePathSegment(slug: string): string {
 
 function defaultVariantSelections(product: Product): Record<string, string> {
   const out: Record<string, string> = {};
-  (product.variantOptions || []).forEach((opt: { name: string; values?: string[] }) => {
+  getEffectiveVariantOptions(product as any).forEach((opt: { name: string; values?: string[] }) => {
     if (opt.values && opt.values.length > 0) out[opt.name] = opt.values[0];
   });
   return out;
 }
 
 function variantSelectionsFromSlug(product: Product, decodedSlug: string): Record<string, string> | null {
-  const variantOptions = product.variantOptions || [];
+  const variantOptions = getEffectiveVariantOptions(product as any);
   const variants = product.variants || [];
   if (!product.hasVariants || !variants.length || !variantOptions.length) return null;
 
@@ -191,8 +192,9 @@ function findMatchingVariant(
   product: Product,
   selections: Record<string, string>
 ): any | null {
-  if (!product.hasVariants || !product.variants?.length || !product.variantOptions?.length) return null;
-  const optionNames = product.variantOptions.map((o: any) => o.name);
+  const opts = getEffectiveVariantOptions(product as any);
+  if (!product.hasVariants || !product.variants?.length || !opts.length) return null;
+  const optionNames = opts.map((o: any) => o.name);
   const sel = Object.keys(selections).length
     ? selections
     : defaultVariantSelections(product);
@@ -276,6 +278,11 @@ export function VendorStoreView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+
+  const vendorEffectiveVariantOptions = useMemo(
+    () => (selectedProduct ? getEffectiveVariantOptions(selectedProduct as any) : []),
+    [selectedProduct]
+  );
 
   useEffect(() => {
     if (savedPage) {
@@ -1998,7 +2005,7 @@ export function VendorStoreView({
   }, [selectedProduct?.id]);
 
   useEffect(() => {
-    if (!selectedProduct?.hasVariants || !selectedProduct.variantOptions?.length) {
+    if (!selectedProduct?.hasVariants || vendorEffectiveVariantOptions.length === 0) {
       setVendorVariantSelections({});
       return;
     }
@@ -2006,7 +2013,7 @@ export function VendorStoreView({
     const decoded = slug ? safeDecodePathSegment(slug) : "";
     const fromSlug = decoded ? variantSelectionsFromSlug(selectedProduct, decoded) : null;
     setVendorVariantSelections(fromSlug ?? defaultVariantSelections(selectedProduct));
-  }, [selectedProduct?.id, productSlugFromPath, initialProductSlug]);
+  }, [selectedProduct?.id, productSlugFromPath, initialProductSlug, vendorEffectiveVariantOptions.length]);
 
   useEffect(() => {
     if (!selectedProduct?.hasVariants || !selectedProduct.variants?.length) return;
@@ -2411,11 +2418,9 @@ export function VendorStoreView({
                 </CardContent>
               </Card>
 
-              {selectedProduct.hasVariants &&
-                selectedProduct.variantOptions &&
-                selectedProduct.variantOptions.length > 0 && (
+              {selectedProduct.hasVariants && vendorEffectiveVariantOptions.length > 0 && (
                   <div className="space-y-6">
-                    {selectedProduct.variantOptions.map((option: { name: string; values: string[] }) => (
+                    {vendorEffectiveVariantOptions.map((option: { name: string; values: string[] }) => (
                       <div key={option.name}>
                         <div className="mb-2.5">
                           <span className="text-sm font-semibold text-slate-900">{option.name}</span>

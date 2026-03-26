@@ -46,8 +46,10 @@ import {
   getCachedAdminOrdersPayload,
   invalidateAdminOrdersCache,
   moduleCache,
+  dispatchAdminProductsCachePatched,
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
+import { syncAdminInventoryCacheAfterOrderStatusChange } from "../utils/orderInventoryCacheSync";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -91,6 +93,8 @@ interface OrderItem {
     date: string;
     time: string;
   }[];
+  /** Mirrors server order payload — false until fulfilled/ready-to-ship deducts stock */
+  inventoryDeducted?: boolean;
 }
 
 const orders: OrderItem[] = [
@@ -414,7 +418,8 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
     timeline: [
       { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
       ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
-    ]
+    ],
+    inventoryDeducted: order.inventoryDeducted,
   }));
 }
 
@@ -656,6 +661,21 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
         )
       );
       console.log(`✅ ${updatedCount} orders synced to server: ${bulkStatus}`);
+      for (const orderId of orderIds) {
+        const o = previousOrders.find((x) => x.id === orderId);
+        if (o) {
+          syncAdminInventoryCacheAfterOrderStatusChange(
+            {
+              status: o.status,
+              inventoryDeducted: o.inventoryDeducted,
+              products: o.products,
+            },
+            bulkStatus,
+            { skipDispatch: true }
+          );
+        }
+      }
+      dispatchAdminProductsCachePatched();
       invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error
@@ -695,8 +715,27 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
     
     // Sync with server in background
     try {
-      await ordersApi.update(orderId, { status: newStatus });
+      const result = (await ordersApi.update(orderId, { status: newStatus })) as {
+        order?: { inventoryDeducted?: boolean };
+      };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
+      if (orderBeingUpdated) {
+        syncAdminInventoryCacheAfterOrderStatusChange(
+          {
+            status: orderBeingUpdated.status,
+            inventoryDeducted: orderBeingUpdated.inventoryDeducted,
+            products: orderBeingUpdated.products,
+          },
+          newStatus
+        );
+      }
+      if (result?.order?.inventoryDeducted !== undefined) {
+        setOrders((prev) =>
+          prev.map((o) =>
+            o.id === orderId ? { ...o, inventoryDeducted: result.order!.inventoryDeducted } : o
+          )
+        );
+      }
       invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error

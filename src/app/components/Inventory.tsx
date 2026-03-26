@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import {
   getCachedAdminAllProducts,
   moduleCache,
+  patchAdminProductInventoryInCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
 
@@ -179,6 +180,18 @@ export function Inventory() {
     setCurrentPage(1);
   }, [searchQuery]);
 
+  /** Rebuild rows when orders / manual edits patch ADMIN_PRODUCTS in memory (no fetch). */
+  useEffect(() => {
+    const onPatched = () => {
+      const peeked = moduleCache.peek<any[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
+      if (peeked && Array.isArray(peeked)) {
+        setInventoryItems(productsToInventoryItems(peeked));
+      }
+    };
+    window.addEventListener("migoo-admin-products-cache-patched", onPatched);
+    return () => window.removeEventListener("migoo-admin-products-cache-patched", onPatched);
+  }, []);
+
   // Inline editing - click number to edit
   const startEditing = (item: InventoryItem) => {
     setEditingId(item.id);
@@ -205,7 +218,13 @@ export function Inventory() {
         : i
     ));
 
+    patchAdminProductInventoryInCache(item.id, newQuantity, {
+      isVariant: item.isVariant,
+      parentId: item.parentId,
+    });
+
     setEditingId(null);
+    setEditValue("");
     toast.success(`✅ Updated ${item.product} to ${newQuantity} units`);
 
     // Sync with backend in background
@@ -253,6 +272,17 @@ export function Inventory() {
         ? { ...i, onHand: newQuantity, available: newQuantity - i.committed }
         : i
     ));
+
+    patchAdminProductInventoryInCache(item.id, newQuantity, {
+      isVariant: item.isVariant,
+      parentId: item.parentId,
+    });
+
+    /** Input shows `editValue` while editing — clear so it reflects new `onHand` */
+    if (editingId === item.id) {
+      setEditingId(null);
+      setEditValue("");
+    }
 
     toast.success(`${amount > 0 ? '+' : ''}${amount} → ${item.product}`);
 
