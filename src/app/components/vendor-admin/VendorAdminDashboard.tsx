@@ -38,11 +38,92 @@ interface RecentOrder {
   date: string;
 }
 
+const defaultVendorDashboardStats: DashboardStats = {
+  totalProducts: 0,
+  totalOrders: 0,
+  totalRevenue: 0,
+  totalCustomers: 0,
+  revenueChange: 0,
+  ordersChange: 0,
+  customersChange: 0,
+  productsChange: 0,
+};
+
+function computeVendorDashboardFromSource(
+  vendorProducts: any[],
+  vendorOrders: any[]
+): { stats: DashboardStats; topProducts: TopProduct[]; recentOrders: RecentOrder[] } {
+  const totalRevenue = vendorOrders
+    .filter((order: any) => order.status !== "cancelled")
+    .reduce((sum: number, order: any) => sum + (parseFloat(order.total) || 0), 0);
+
+  const totalCustomers = new Set(vendorOrders.map((o: any) => o.email)).size;
+
+  const productSales = new Map<string, { name: string; sales: number; revenue: number }>();
+  vendorOrders.forEach((order: any) => {
+    if (order.status !== "cancelled" && order.items) {
+      order.items.forEach((item: any) => {
+        const existing = productSales.get(item.productId) || { name: item.name, sales: 0, revenue: 0 };
+        existing.sales += item.quantity;
+        existing.revenue += item.price * item.quantity;
+        productSales.set(item.productId, existing);
+      });
+    }
+  });
+
+  const topProducts = Array.from(productSales.entries())
+    .map(([id, data]) => ({ id, ...data }))
+    .sort((a, b) => b.sales - a.sales)
+    .slice(0, 4);
+
+  const recentOrders = vendorOrders
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 5)
+    .map((order: any) => ({
+      id: order.id,
+      customerName: order.name,
+      items: order.items?.length || 0,
+      total: order.total,
+      status: order.status,
+      date: order.createdAt,
+    }));
+
+  return {
+    stats: {
+      totalProducts: vendorProducts.length,
+      totalOrders: vendorOrders.length,
+      totalRevenue,
+      totalCustomers,
+      revenueChange: 0.9,
+      ordersChange: 0.9,
+      customersChange: 0.9,
+      productsChange: 0.9,
+    },
+    topProducts,
+    recentOrders,
+  };
+}
+
 interface VendorAdminDashboardProps {
   vendorId: string;
   vendorName: string;
   onNavigate: (page: string) => void;
   onPreviewStore?: (vendorId: string, storeSlug: string) => void;
+}
+
+/** Session cache hit for both products and orders — avoids skeleton flash on revisit. */
+function peekCachedVendorDashboardData(vendorId: string): { products: any[]; orders: any[] } | null {
+  const pPeek = moduleCache.peek<{ products?: any[] }>(CACHE_KEYS.vendorProductsAdmin(vendorId));
+  const oPeek = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
+  if (
+    pPeek != null &&
+    Array.isArray(pPeek.products) &&
+    oPeek != null &&
+    Array.isArray(oPeek)
+  ) {
+    return { products: pPeek.products || [], orders: oPeek };
+  }
+  return null;
 }
 
 export function VendorAdminDashboard({ 
@@ -51,19 +132,22 @@ export function VendorAdminDashboard({
   onNavigate,
   onPreviewStore 
 }: VendorAdminDashboardProps) {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalProducts: 0,
-    totalOrders: 0,
-    totalRevenue: 0,
-    totalCustomers: 0,
-    revenueChange: 0,
-    ordersChange: 0,
-    customersChange: 0,
-    productsChange: 0,
+  const [stats, setStats] = useState<DashboardStats>(() => {
+    const cached = peekCachedVendorDashboardData(vendorId);
+    if (!cached) return defaultVendorDashboardStats;
+    return computeVendorDashboardFromSource(cached.products, cached.orders).stats;
   });
-  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
-  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [topProducts, setTopProducts] = useState<TopProduct[]>(() => {
+    const cached = peekCachedVendorDashboardData(vendorId);
+    if (!cached) return [];
+    return computeVendorDashboardFromSource(cached.products, cached.orders).topProducts;
+  });
+  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>(() => {
+    const cached = peekCachedVendorDashboardData(vendorId);
+    if (!cached) return [];
+    return computeVendorDashboardFromSource(cached.products, cached.orders).recentOrders;
+  });
+  const [loading, setLoading] = useState(() => peekCachedVendorDashboardData(vendorId) == null);
   const [dateFilter, setDateFilter] = useState({
     revenue: "Last 30 days",
     orders: "Last 30 days",
@@ -77,15 +161,9 @@ export function VendorAdminDashboard({
 
   const loadDashboardData = async (forceRefresh = false) => {
     if (!forceRefresh) {
-      const pPeek = moduleCache.peek<{ products?: any[] }>(CACHE_KEYS.vendorProductsAdmin(vendorId));
-      const oPeek = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
-      if (
-        pPeek != null &&
-        Array.isArray(pPeek.products) &&
-        oPeek != null &&
-        Array.isArray(oPeek)
-      ) {
-        applyDashboardFromData(pPeek.products || [], oPeek);
+      const cached = peekCachedVendorDashboardData(vendorId);
+      if (cached != null) {
+        applyDashboardFromData(cached.products, cached.orders);
         setLoading(false);
         return;
       }
@@ -108,54 +186,11 @@ export function VendorAdminDashboard({
   };
 
   function applyDashboardFromData(vendorProducts: any[], vendorOrders: any[]) {
-    const totalRevenue = vendorOrders
-      .filter((order: any) => order.status !== "cancelled")
-      .reduce((sum: number, order: any) => sum + (parseFloat(order.total) || 0), 0);
-
-    const totalCustomers = new Set(vendorOrders.map((o: any) => o.email)).size;
-
-    const productSales = new Map<string, { name: string; sales: number; revenue: number }>();
-    vendorOrders.forEach((order: any) => {
-      if (order.status !== "cancelled" && order.items) {
-        order.items.forEach((item: any) => {
-          const existing = productSales.get(item.productId) || { name: item.name, sales: 0, revenue: 0 };
-          existing.sales += item.quantity;
-          existing.revenue += item.price * item.quantity;
-          productSales.set(item.productId, existing);
-        });
-      }
-    });
-
-    const topProductsList = Array.from(productSales.entries())
-      .map(([id, data]) => ({ id, ...data }))
-      .sort((a, b) => b.sales - a.sales)
-      .slice(0, 4);
-
-    const recentOrdersList = vendorOrders
-      .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5)
-      .map((order: any) => ({
-        id: order.id,
-        customerName: order.name,
-        items: order.items?.length || 0,
-        total: order.total,
-        status: order.status,
-        date: order.createdAt,
-      }));
-
-    setStats({
-      totalProducts: vendorProducts.length,
-      totalOrders: vendorOrders.length,
-      totalRevenue,
-      totalCustomers,
-      revenueChange: 0.9,
-      ordersChange: 0.9,
-      customersChange: 0.9,
-      productsChange: 0.9,
-    });
-
-    setTopProducts(topProductsList);
-    setRecentOrders(recentOrdersList);
+    const { stats: nextStats, topProducts: nextTop, recentOrders: nextRecent } =
+      computeVendorDashboardFromSource(vendorProducts, vendorOrders);
+    setStats(nextStats);
+    setTopProducts(nextTop);
+    setRecentOrders(nextRecent);
   }
 
   // Format currency - Myanmar Kyat (MMK)

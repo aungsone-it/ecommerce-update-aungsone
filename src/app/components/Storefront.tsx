@@ -8290,6 +8290,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         const clothingProducts = products.filter(p => 
           p.category?.toLowerCase() === "clothing" && p.status === "active"
         );
+        /** Home only has the first catalog page; empty slice ≠ empty store. */
+        const catalogIncomplete =
+          catalogHasMore || (catalogTotal > 0 && products.length < catalogTotal);
         return (
           <div className="bg-slate-50/60 pt-3 sm:pt-6 md:pt-8 pb-6 sm:pb-8 md:pb-10 lg:pb-12">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -8376,6 +8379,24 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           formatPriceMMK={formatPriceMMK}
                         />
                       ))
+                    ) : catalogIncomplete ? (
+                      <div className="col-span-2 md:col-span-3 lg:col-span-4 flex flex-col items-center justify-center gap-3 py-8 text-center text-slate-600">
+                        <p className="text-sm max-w-md">
+                          Highlights show a sample of the catalog. Open the category to see every item.
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="border-amber-600 text-amber-800 hover:bg-amber-50"
+                          onClick={() => {
+                            setSelectedCategory(clothingCategory?.name || "Clothing");
+                            setViewMode("all-products");
+                          }}
+                        >
+                          View all in Clothing
+                          <ChevronRight className="w-4 h-4 ml-1" />
+                        </Button>
+                      </div>
                     ) : (
                       <div className="col-span-2 md:col-span-3 lg:col-span-4 text-center py-8 text-slate-500">
                         No products available yet
