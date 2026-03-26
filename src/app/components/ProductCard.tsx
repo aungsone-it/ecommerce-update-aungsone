@@ -75,7 +75,7 @@ export const ProductCard = ({
         transition={{ duration: 0.15, ease: "easeOut" }}
       >
         <Card 
-          className="group overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer bg-white shadow-md rounded-2xl animate-scale-in w-full"
+          className="group overflow-hidden border-0 hover:shadow-xl transition-all duration-300 cursor-pointer bg-white shadow-md rounded-2xl animate-scale-in w-full"
           onClick={onProductClick}
         >
         <div className="flex gap-4 p-3 md:p-4">
@@ -163,7 +163,7 @@ export const ProductCard = ({
       transition={{ duration: 0.15, ease: "easeOut" }}
     >
       <Card 
-        className="group overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col gap-3 bg-white shadow-md rounded-lg animate-scale-in w-full"
+        className="group overflow-hidden border-0 hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col gap-3 bg-white shadow-md rounded-lg animate-scale-in w-full"
         onClick={onProductClick}
       >
       {/* Product Image */}

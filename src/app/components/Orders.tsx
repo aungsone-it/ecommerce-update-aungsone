@@ -1094,7 +1094,7 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
 
           {/* Orders Table */}
           <Card>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto scrollbar-thin">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">

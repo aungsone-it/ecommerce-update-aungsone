@@ -24,7 +24,6 @@ interface InventoryItem {
   committed: number;
   onHand: number;
   reorderPoint: number;
-  location: string;
   vendorId?: string;
   isVariant?: boolean;
   parentId?: string;
@@ -60,7 +59,6 @@ function productsToInventoryItems(products: any[]): InventoryItem[] {
           committed: variantCommitted,
           onHand: variantInventory,
           reorderPoint: 50,
-          location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
           vendorId: product.vendor,
           isVariant: true,
           parentId: product.id,
@@ -85,7 +83,6 @@ function productsToInventoryItems(products: any[]): InventoryItem[] {
       committed,
       onHand: inventoryQty,
       reorderPoint: 50,
-      location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
       vendorId: product.vendor,
       isVariant: false,
     });
@@ -509,9 +506,6 @@ export function Inventory() {
                 <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">
                   Stock
                 </th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
-                  Location
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
@@ -600,9 +594,6 @@ export function Inventory() {
                           <Plus className="w-4 h-4 text-slate-600" />
                         </Button>
                       </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-sm text-slate-600">{item.location}</span>
                     </td>
                   </tr>
                 );

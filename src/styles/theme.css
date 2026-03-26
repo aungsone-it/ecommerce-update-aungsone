@@ -329,6 +329,7 @@
 
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
+    height: 6px; /* horizontal bar under wide tables — same thickness as vertical */
   }
 
   .scrollbar-thin::-webkit-scrollbar-track {

@@ -2,7 +2,7 @@
 
 export function ProductCardSkeleton() {
   return (
-    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white animate-pulse">
+    <div className="border-0 rounded-lg overflow-hidden bg-white shadow-md animate-pulse">
       {/* Image Skeleton */}
       <div className="aspect-square bg-slate-200" />
       

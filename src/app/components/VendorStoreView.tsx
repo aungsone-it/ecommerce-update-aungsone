@@ -2035,7 +2035,7 @@ export function VendorStoreView({
   // Checkout must render before product detail — otherwise selectedProduct keeps the detail view mounted and checkout never shows
   if (showCheckout) {
     return (
-      <div className="min-h-screen bg-slate-50">
+      <div className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 scrollbar-thin">
         <Checkout
           onBack={() => setShowCheckout(false)}
           storeName={storeName}
@@ -2062,7 +2062,7 @@ export function VendorStoreView({
     const displayInventoryVal = dd?.inventory ?? selectedProduct.inventory;
 
     return (
-      <div className="min-h-screen bg-white flex flex-col">
+      <div className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-white scrollbar-thin flex flex-col">
         <ServerStatusBanner 
           status={serverStatus} 
           onRetry={() => loadVendorData(true)}
@@ -2083,7 +2083,7 @@ export function VendorStoreView({
         />
 
         {/* Header - Same as main storefront */}
-        <header className="sticky top-0 bg-white border-b z-40">
+        <header className="sticky top-0 z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)]">
           <div className="max-w-7xl mx-auto px-4">
             {/* Top Bar */}
             <div className="flex items-center h-16 gap-2 md:gap-3">
@@ -2773,9 +2773,13 @@ export function VendorStoreView({
     );
   }
 
-  // Main Storefront
+  // Main Storefront — h-screen + overflow-y-auto so scrollbar-thin applies (not the default body bar)
   return (
-    <div className={vendorViewMode !== "storefront" ? "min-h-screen bg-slate-50" : "min-h-screen bg-white"}>
+    <div
+      className={`h-screen min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin flex flex-col ${
+        vendorViewMode !== "storefront" ? "bg-slate-50" : "bg-white"
+      }`}
+    >
       {/* Show error banner ONLY when server is unhealthy */}
       {serverStatus === 'unhealthy' && (
         <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-amber-50 to-orange-50 border-b-2 border-amber-300 shadow-lg">
@@ -2820,7 +2824,7 @@ export function VendorStoreView({
       />
 
       {/* Header */}
-      <header className="sticky top-0 bg-white border-b z-40">
+      <header className="sticky top-0 z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)]">
         <div className="max-w-7xl mx-auto px-4">
           {/* Top Bar */}
           <div className="flex items-center h-16 gap-2 md:gap-3">

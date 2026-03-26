@@ -44,14 +44,15 @@ function RootLayoutContent() {
   const isVendorApplicationPage = location.pathname === '/vendor/application';
   const isLandingPage = location.pathname === '/' && subdomainStoreSlug == null;
   const isResetPasswordPage = location.pathname === '/store/reset-password';
+  const isAdminPortal = location.pathname.startsWith('/admin');
 
   return (
     <>
       <CanonicalSubdomainRedirect />
       <SubdomainVendorRedirect />
       <Outlet />
-      {/* Global Floating Chat - Hidden when cart is open OR when app is loading OR on vendor application page OR on landing page */}
-      {!isCartOpen && !isLoading && !isVendorApplicationPage && !isLandingPage && !isResetPasswordPage && (
+      {/* Global Floating Chat — not on Super Admin (/admin); storefront chat only */}
+      {!isCartOpen && !isLoading && !isVendorApplicationPage && !isLandingPage && !isResetPasswordPage && !isAdminPortal && (
         <FloatingChat 
           customerName={user?.fullName || user?.firstName || "Guest"}
           customerEmail={user?.email || ""}

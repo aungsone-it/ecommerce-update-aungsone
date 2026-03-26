@@ -2,7 +2,7 @@ import React from 'react';
 
 // Product Card Skeleton
 export const ProductCardSkeleton = () => (
-  <div className="group bg-white rounded-xl shadow-md overflow-hidden border border-slate-200 animate-pulse">
+  <div className="group bg-white rounded-xl shadow-md overflow-hidden border-0 animate-pulse">
     <div className="relative bg-slate-200 h-64"></div>
     <div className="p-4 space-y-3">
       <div className="h-4 bg-slate-200 rounded w-3/4"></div>
@@ -28,7 +28,7 @@ export const ProductGridSkeleton = ({ count = 8 }: { count?: number }) => (
 export const ProductListSkeleton = ({ count = 5 }: { count?: number }) => (
   <div className="space-y-4">
     {Array.from({ length: count }).map((_, i) => (
-      <div key={i} className="bg-white rounded-xl shadow-md border border-slate-200 p-4 animate-pulse">
+      <div key={i} className="bg-white rounded-xl shadow-md border-0 p-4 animate-pulse">
         <div className="flex gap-4">
           <div className="w-32 h-32 bg-slate-200 rounded-lg flex-shrink-0"></div>
           <div className="flex-1 space-y-3">

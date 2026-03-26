@@ -30,6 +30,7 @@ import { TopNav } from "../components/TopNav";
 import { UserProfile } from "../components/UserProfile";
 import { OrderDetails } from "../components/OrderDetails";
 import { ServerDiagnostics } from "../components/ServerDiagnostics";
+import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { useBadgeCounts } from "../hooks/useBadgeCounts";
 
 const ADMIN_PAGES = {
@@ -538,6 +539,15 @@ export function AdminPage() {
             />
             
             <main className="flex-1 overflow-auto pt-16 scrollbar-custom">
+              <div className="sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm px-4 sm:px-8 py-3">
+                <AdminBreadcrumb
+                  currentPage={currentPage}
+                  onNavigate={(page) => {
+                    setCurrentPage(page as AdminPage);
+                    setSidebarOpen(false);
+                  }}
+                />
+              </div>
               {renderContent()}
             </main>
           </div>
