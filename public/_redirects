@@ -1,0 +1,2 @@
+# SPA fallback — React Router handles /store, /admin, etc. Vite copies this file into dist/.
+/*    /index.html   200
