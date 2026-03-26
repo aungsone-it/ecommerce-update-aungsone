@@ -601,14 +601,34 @@ export function dispatchAdminProductsCachePatched(): void {
 
 /**
  * Apply a signed delta to one product or variant row in the admin products session cache.
- * Matches server `applyOrderItemsStockDelta` (single product KV key per line item).
+ * When `sku` is set and the product has variants, adjusts the matching variant and recomputes parent totals.
+ * When `productId` matches a variant id, adjusts that variant row (legacy line items).
  */
-export function applyDeltaToAdminProductInventoryInCache(productId: string, delta: number): void {
+export function applyLineItemStockDeltaToAdminCache(
+  productId: string,
+  sku: string | undefined,
+  delta: number
+): void {
   const peeked = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
   if (!peeked || !Array.isArray(peeked)) return;
 
   const next = peeked.map((p: any) => {
     if (p.id === productId) {
+      if (Array.isArray(p.variants) && p.variants.length > 0 && sku && String(sku).trim() !== "" && sku !== "N/A") {
+        const skuNorm = String(sku).trim().toLowerCase();
+        const vi = p.variants.findIndex(
+          (v: any) => String(v.sku || "").trim().toLowerCase() === skuNorm
+        );
+        if (vi >= 0) {
+          const variants = p.variants.map((v: any, i: number) =>
+            i === vi
+              ? { ...v, inventory: Math.max(0, (Number(v.inventory) || 0) + delta) }
+              : v
+          );
+          const total = variants.reduce((s: number, v: any) => s + (Number(v.inventory) || 0), 0);
+          return { ...p, variants, inventory: total, stock: total };
+        }
+      }
       const cur = Number(p.inventory ?? p.stock ?? 0);
       const nv = Math.max(0, cur + delta);
       return { ...p, inventory: nv, stock: nv };
@@ -629,10 +649,18 @@ export function applyDeltaToAdminProductInventoryInCache(productId: string, delt
 }
 
 /**
+ * Apply a signed delta to one product or variant row in the admin products session cache.
+ * Matches server `applyOrderItemsStockDelta` (single product KV key per line item).
+ */
+export function applyDeltaToAdminProductInventoryInCache(productId: string, delta: number): void {
+  applyLineItemStockDeltaToAdminCache(productId, undefined, delta);
+}
+
+/**
  * Apply stock movement for order line items (deduct or restore). No Supabase calls.
  */
 export function applyOrderLineStockDeltasToAdminCache(
-  items: { productId: string; quantity: number }[],
+  items: { productId: string; quantity: number; sku?: string }[],
   direction: "deduct" | "restore",
   options?: { skipDispatch?: boolean }
 ): void {
@@ -640,7 +668,7 @@ export function applyOrderLineStockDeltasToAdminCache(
   for (const it of items) {
     const qty = Math.max(0, Number(it.quantity) || 0);
     if (qty <= 0) continue;
-    applyDeltaToAdminProductInventoryInCache(it.productId, sign * qty);
+    applyLineItemStockDeltaToAdminCache(it.productId, it.sku, sign * qty);
   }
   if (!options?.skipDispatch) {
     dispatchAdminProductsCachePatched();

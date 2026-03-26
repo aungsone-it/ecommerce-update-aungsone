@@ -16,15 +16,16 @@ function isInventoryCommitStatus(status: string | undefined): boolean {
   return n === "ready-to-ship" || n === "fulfilled";
 }
 
-/** Same as server: false = not yet committed at order level */
+/** Same as server: stock was committed only when flag is explicitly true. */
 function physicallyReducedInventory(order: { inventoryDeducted?: boolean }): boolean {
-  return order.inventoryDeducted !== false;
+  return order.inventoryDeducted === true;
 }
 
 export type OrderSnapshotForInventory = {
   status: string;
   inventoryDeducted?: boolean;
-  products: { id: string; quantity: number }[];
+  /** Line ids are parent product ids from checkout; `sku` identifies the variant row when applicable. */
+  products: { id: string; quantity: number; sku?: string }[];
 };
 
 /**
@@ -42,6 +43,7 @@ export function syncAdminInventoryCacheAfterOrderStatusChange(
   const items = existingOrder.products.map((p) => ({
     productId: p.id,
     quantity: p.quantity || 1,
+    sku: p.sku,
   }));
 
   // 1) Cancel → restore only if stock had already been reduced
@@ -66,7 +68,7 @@ export function syncAdminInventoryCacheAfterOrderStatusChange(
   if (
     !isNowCancelled &&
     isInventoryCommitStatus(newStatusRaw) &&
-    existingOrder.inventoryDeducted === false &&
+    existingOrder.inventoryDeducted !== true &&
     items.length > 0
   ) {
     applyOrderLineStockDeltasToAdminCache(items, "deduct", options);

@@ -33,6 +33,42 @@ interface InventoryItem {
 function productsToInventoryItems(products: any[]): InventoryItem[] {
   const inventoryData: InventoryItem[] = [];
   (products || []).forEach((product: any) => {
+    const hasVariantRows =
+      product.hasVariants &&
+      product.variants &&
+      Array.isArray(product.variants) &&
+      product.variants.length > 0;
+
+    if (hasVariantRows) {
+      product.variants.forEach((variant: any) => {
+        const variantInventory = variant.inventory || 0;
+        const variantCommitted = Math.floor(variantInventory * 0.05);
+        const variantAvailable = variantInventory - variantCommitted;
+        const variantName =
+          variant.name || (variant.options ? Object.values(variant.options).join(" / ") : "Variant");
+        inventoryData.push({
+          id: variant.id,
+          product: `${product.name || product.title} — ${variantName}`,
+          sku: variant.sku,
+          image:
+            variant.image ||
+            product.image ||
+            product.images?.[0] ||
+            "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop",
+          available: variantAvailable,
+          committed: variantCommitted,
+          onHand: variantInventory,
+          reorderPoint: 50,
+          location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
+          vendorId: product.vendor,
+          isVariant: true,
+          parentId: product.id,
+          parentName: product.name || product.title,
+        });
+      });
+      return;
+    }
+
     const inventoryQty = product.inventory || 0;
     const committed = Math.floor(inventoryQty * 0.05);
     const available = inventoryQty - committed;
@@ -52,34 +88,6 @@ function productsToInventoryItems(products: any[]): InventoryItem[] {
       vendorId: product.vendor,
       isVariant: false,
     });
-    if (product.hasVariants && product.variants && Array.isArray(product.variants)) {
-      product.variants.forEach((variant: any) => {
-        const variantInventory = variant.inventory || 0;
-        const variantCommitted = Math.floor(variantInventory * 0.05);
-        const variantAvailable = variantInventory - variantCommitted;
-        const variantName =
-          variant.name || (variant.options ? Object.values(variant.options).join(" / ") : "Variant");
-        inventoryData.push({
-          id: variant.id,
-          product: `${product.name || product.title} - ${variantName}`,
-          sku: variant.sku,
-          image:
-            variant.image ||
-            product.image ||
-            product.images?.[0] ||
-            "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop",
-          available: variantAvailable,
-          committed: variantCommitted,
-          onHand: variantInventory,
-          reorderPoint: 50,
-          location: product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A",
-          vendorId: product.vendor,
-          isVariant: true,
-          parentId: product.id,
-          parentName: product.name || product.title,
-        });
-      });
-    }
   });
   return inventoryData;
 }
