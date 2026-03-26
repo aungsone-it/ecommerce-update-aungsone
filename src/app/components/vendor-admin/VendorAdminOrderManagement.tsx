@@ -47,8 +47,13 @@ import {
   moduleCache,
   dispatchAdminProductsCachePatched,
   CACHE_KEYS,
+  getCachedAdminAllProducts,
 } from "../../utils/module-cache";
-import { syncAdminInventoryCacheAfterOrderStatusChange } from "../../utils/orderInventoryCacheSync";
+import {
+  refreshAdminInventoryAfterOrderStatusPut,
+  syncAdminInventoryCacheAfterOrderStatusChange,
+  isMainMarketplaceVendorName,
+} from "../../utils/orderInventoryCacheSync";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -405,18 +410,53 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
           })
         )
       );
-      for (const orderId of orderIds) {
-        const o = previousOrders.find((x) => x.id === orderId);
-        if (o) {
-          syncAdminInventoryCacheAfterOrderStatusChange(
-            {
-              status: o.status,
-              inventoryDeducted: o.inventoryDeducted,
-              products: o.products,
-            },
-            bulkStatus,
-            { skipDispatch: true }
-          );
+      const peeked = moduleCache.peek<unknown[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+      const anyVendorShopOrder = orderIds.some((id) => {
+        const o = previousOrders.find((x) => x.id === id);
+        return o && !isMainMarketplaceVendorName(o.vendor);
+      });
+      if (!peeked || !Array.isArray(peeked) || peeked.length === 0) {
+        try {
+          await getCachedAdminAllProducts(true);
+        } catch (e) {
+          console.warn("[inventory] Vendor bulk: could not refresh admin products", e);
+        }
+      } else if (anyVendorShopOrder) {
+        try {
+          await getCachedAdminAllProducts(true);
+        } catch (e) {
+          console.warn("[inventory] Vendor bulk: refetch failed; applying in-memory mirror", e);
+          for (const orderId of orderIds) {
+            const o = previousOrders.find((x) => x.id === orderId);
+            if (o) {
+              syncAdminInventoryCacheAfterOrderStatusChange(
+                {
+                  status: o.status,
+                  inventoryDeducted: o.inventoryDeducted,
+                  vendor: o.vendor,
+                  products: o.products,
+                },
+                bulkStatus,
+                { skipDispatch: true }
+              );
+            }
+          }
+        }
+      } else {
+        for (const orderId of orderIds) {
+          const o = previousOrders.find((x) => x.id === orderId);
+          if (o) {
+            syncAdminInventoryCacheAfterOrderStatusChange(
+              {
+                status: o.status,
+                inventoryDeducted: o.inventoryDeducted,
+                vendor: o.vendor,
+                products: o.products,
+              },
+              bulkStatus,
+              { skipDispatch: true }
+            );
+          }
         }
       }
       dispatchAdminProductsCachePatched();
@@ -463,10 +503,11 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
         order?: { inventoryDeducted?: boolean };
       };
       if (orderBeingUpdated) {
-        syncAdminInventoryCacheAfterOrderStatusChange(
+        await refreshAdminInventoryAfterOrderStatusPut(
           {
             status: orderBeingUpdated.status,
             inventoryDeducted: orderBeingUpdated.inventoryDeducted,
+            vendor: orderBeingUpdated.vendor,
             products: orderBeingUpdated.products,
           },
           newStatus

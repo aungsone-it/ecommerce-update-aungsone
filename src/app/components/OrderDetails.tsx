@@ -1,10 +1,14 @@
-import { ArrowLeft, Printer, Mail, User, ShoppingCart, Clock, FileText, MapPin, Phone, Truck, CreditCard, Package } from "lucide-react";
+import { ArrowLeft, Printer, Mail, User, ShoppingCart, Clock, FileText, MapPin, Phone, Truck, CreditCard, Package, Loader2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Invoice } from "./Invoice";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { ordersApi } from "../../utils/api";
+import { refreshAdminInventoryAfterOrderStatusPut } from "../utils/orderInventoryCacheSync";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -47,11 +51,14 @@ interface OrderItem {
     date: string;
     time: string;
   }[];
+  inventoryDeducted?: boolean;
 }
 
 interface OrderDetailsProps {
   order: OrderItem;
   onBack: () => void;
+  /** Called after a successful order status update (e.g. refresh badges). */
+  onOrderUpdated?: () => void;
 }
 
 const getStatusBadge = (status: OrderStatus) => {
@@ -86,8 +93,14 @@ const getShippingBadge = (status: ShippingStatus) => {
   return <Badge className={`${config.className} border`}>{config.label}</Badge>;
 };
 
-export function OrderDetails({ order, onBack }: OrderDetailsProps) {
+export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProps) {
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
+  const [orderStatus, setOrderStatus] = useState<OrderStatus>(order.status);
+  const [statusSaving, setStatusSaving] = useState(false);
+
+  useEffect(() => {
+    setOrderStatus(order.status);
+  }, [order.id, order.status]);
 
   // Calculate actual product total from individual product prices with safety checks
   const calculateProductTotal = () => {
@@ -108,6 +121,33 @@ export function OrderDetails({ order, onBack }: OrderDetailsProps) {
   
   // Calculate discount percentage
   const discountPercentage = displaySubtotal > 0 ? Math.round((actualDiscount / displaySubtotal) * 100) : 0;
+
+  const handleOrderStatusChange = async (newStatus: OrderStatus) => {
+    if (newStatus === orderStatus) return;
+    const snapshot = {
+      status: orderStatus,
+      inventoryDeducted: order.inventoryDeducted,
+      vendor: typeof order.vendor === "string" ? order.vendor : undefined,
+      products: order.products.map((p) => ({
+        id: p.id,
+        quantity: p.quantity,
+        sku: p.sku,
+      })),
+    };
+    setStatusSaving(true);
+    try {
+      await ordersApi.update(order.id, { status: newStatus });
+      await refreshAdminInventoryAfterOrderStatusPut(snapshot, newStatus);
+      setOrderStatus(newStatus);
+      toast.success("Order status updated");
+      onOrderUpdated?.();
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to update order status");
+    } finally {
+      setStatusSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -154,10 +194,35 @@ export function OrderDetails({ order, onBack }: OrderDetailsProps) {
               <Card>
                 <CardContent className="p-6">
                   <h3 className="text-lg font-semibold text-slate-900 mb-4">Order Status</h3>
+                  <div className="mb-4 max-w-xs">
+                    <p className="text-sm text-slate-500 mb-2">Update status</p>
+                    <Select
+                      value={orderStatus}
+                      onValueChange={(v) => handleOrderStatusChange(v as OrderStatus)}
+                      disabled={statusSaving}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="processing">Processing</SelectItem>
+                        <SelectItem value="ready-to-ship">Ready to Ship</SelectItem>
+                        <SelectItem value="fulfilled">Fulfilled</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {statusSaving && (
+                      <p className="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Updating…
+                      </p>
+                    )}
+                  </div>
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Order Status</p>
-                      {getStatusBadge(order.status)}
+                      {getStatusBadge(orderStatus)}
                     </div>
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Payment Status</p>

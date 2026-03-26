@@ -36,12 +36,17 @@ class ModuleCache {
     fetcher: () => Promise<T>,
     forceRefresh: boolean = false
   ): Promise<T> {
-    // Check if we're already loading this key (prevent duplicate requests)
+    // Coalesce in-flight fetches — but never for forceRefresh: that must see post-mutation server data
+    // (e.g. inventory after order status PUT). Waiting on an older in-flight request returns stale rows.
     const existingLoad = this.loading.get(key);
     if (existingLoad) {
-      console.log(`⏳ [MODULE CACHE] Already loading ${key}, waiting...`);
-      this.hits++; // Count as hit since we're reusing the request
-      return existingLoad;
+      if (!forceRefresh) {
+        console.log(`⏳ [MODULE CACHE] Already loading ${key}, waiting...`);
+        this.hits++; // Count as hit since we're reusing the request
+        return existingLoad;
+      }
+      // Force refresh: await in-flight load first so we don't clobber loading map / race; then fetch fresh.
+      await existingLoad.catch(() => {});
     }
 
     // Check cache
@@ -593,10 +598,20 @@ export function patchAdminProductInventoryInCache(
   moduleCache.prime(CACHE_KEYS.ADMIN_PRODUCTS, next);
 }
 
+/** Cross-tab: Inventory in other tabs listens on this channel (session cache is not shared between tabs). */
+export const ADMIN_PRODUCTS_BROADCAST_CHANNEL = "migoo-admin-products-cache";
+
 /** Notify listeners (e.g. Inventory) to re-derive rows from patched ADMIN_PRODUCTS — no network. */
 export function dispatchAdminProductsCachePatched(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("migoo-admin-products-cache-patched"));
+  try {
+    const bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
+    bc.postMessage({ type: "admin-products-updated" });
+    bc.close();
+  } catch {
+    /* BroadcastChannel unsupported */
+  }
 }
 
 /**

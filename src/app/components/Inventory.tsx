@@ -12,6 +12,7 @@ import {
   moduleCache,
   patchAdminProductInventoryInCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
+  ADMIN_PRODUCTS_BROADCAST_CHANNEL,
 } from "../utils/module-cache";
 
 interface InventoryItem {
@@ -188,16 +189,41 @@ export function Inventory() {
     setCurrentPage(1);
   }, [searchQuery]);
 
-  /** Rebuild rows when orders / manual edits patch ADMIN_PRODUCTS in memory (no fetch). */
+  /** Same tab: rebuild from session cache. Other tabs: refetch (cache is not shared). */
   useEffect(() => {
-    const onPatched = () => {
+    const rebuildFromCache = () => {
       const peeked = moduleCache.peek<any[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
       if (peeked && Array.isArray(peeked)) {
         setInventoryItems(productsToInventoryItems(peeked));
       }
     };
-    window.addEventListener("migoo-admin-products-cache-patched", onPatched);
-    return () => window.removeEventListener("migoo-admin-products-cache-patched", onPatched);
+
+    const onWindowPatched = () => rebuildFromCache();
+
+    const refetchFromServer = () => {
+      void (async () => {
+        try {
+          const products = await getCachedAdminAllProducts(true);
+          setInventoryItems(productsToInventoryItems(products));
+        } catch {
+          rebuildFromCache();
+        }
+      })();
+    };
+
+    window.addEventListener("migoo-admin-products-cache-patched", onWindowPatched);
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
+      bc.onmessage = () => refetchFromServer();
+    } catch {
+      /* BroadcastChannel unsupported */
+    }
+
+    return () => {
+      window.removeEventListener("migoo-admin-products-cache-patched", onWindowPatched);
+      bc?.close();
+    };
   }, []);
 
   // Inline editing - click number to edit

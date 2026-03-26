@@ -47,9 +47,14 @@ import {
   invalidateAdminOrdersCache,
   moduleCache,
   dispatchAdminProductsCachePatched,
+  getCachedAdminAllProducts,
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
-import { syncAdminInventoryCacheAfterOrderStatusChange } from "../utils/orderInventoryCacheSync";
+import {
+  refreshAdminInventoryAfterOrderStatusPut,
+  syncAdminInventoryCacheAfterOrderStatusChange,
+  isMainMarketplaceVendorName,
+} from "../utils/orderInventoryCacheSync";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -392,7 +397,12 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
     customer: order.customer?.fullName || order.customer?.name || order.customerName || (typeof order.customer === 'string' ? order.customer : null) || (order.customer?.firstName && order.customer?.lastName ? `${order.customer.firstName} ${order.customer.lastName}` : order.customer?.firstName || order.customer?.lastName || 'Guest Customer'),
     email: order.email || order.customer?.email || '',
     phone: order.phone || order.customer?.phone || '',
-    vendor: order.vendor || 'SECURE Store',
+    vendor:
+      order.vendor ??
+      order.vendorName ??
+      order.storeName ??
+      (typeof order.vendorId === "string" ? order.vendorId : "") ??
+      "",
     total: parseFloat(order.total) || 0,
     subtotal: order.subtotal != null && order.subtotal !== '' ? parseFloat(String(order.subtotal)) : undefined,
     discount: order.discount != null && order.discount !== '' ? parseFloat(String(order.discount)) : undefined,
@@ -547,10 +557,12 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
     }
   };
 
-  // Get unique vendors for the filter dropdown
-  const uniqueVendors = Array.from(new Set(orders.map(order => order.vendor))).sort();
+  // Get unique vendors for the filter dropdown (empty vendor = main storefront for display)
+  const uniqueVendors = Array.from(
+    new Set(orders.map((order) => order.vendor || "SECURE Store"))
+  ).sort();
 
-  const filteredOrders = orders.filter(order => {
+  const filteredOrders = orders.filter((order) => {
     const matchesSearch = 
       order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -558,7 +570,8 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
     
     const matchesStatusFilter = statusFilter === "all" || order.status === statusFilter;
     const matchesPaymentFilter = paymentFilter === "all" || order.paymentStatus === paymentFilter;
-    const matchesVendorFilter = vendorFilter === "all" || order.vendor === vendorFilter;
+    const vendorLabel = order.vendor || "SECURE Store";
+    const matchesVendorFilter = vendorFilter === "all" || vendorLabel === vendorFilter;
     
     const orderDate = new Date(order.date);
     const matchesDateFrom = !dateFrom || orderDate >= dateFrom;
@@ -661,18 +674,53 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
         )
       );
       console.log(`✅ ${updatedCount} orders synced to server: ${bulkStatus}`);
-      for (const orderId of orderIds) {
-        const o = previousOrders.find((x) => x.id === orderId);
-        if (o) {
-          syncAdminInventoryCacheAfterOrderStatusChange(
-            {
-              status: o.status,
-              inventoryDeducted: o.inventoryDeducted,
-              products: o.products,
-            },
-            bulkStatus,
-            { skipDispatch: true }
-          );
+      const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
+      const anyVendorShopOrder = orderIds.some((id) => {
+        const o = previousOrders.find((x) => x.id === id);
+        return o && !isMainMarketplaceVendorName(o.vendor);
+      });
+      if (!peeked || !Array.isArray(peeked) || peeked.length === 0) {
+        try {
+          await getCachedAdminAllProducts(true);
+        } catch (e) {
+          console.warn("[inventory] Bulk status: could not refresh admin products", e);
+        }
+      } else if (anyVendorShopOrder) {
+        try {
+          await getCachedAdminAllProducts(true);
+        } catch (e) {
+          console.warn("[inventory] Bulk status: refetch failed; applying in-memory mirror", e);
+          for (const orderId of orderIds) {
+            const o = previousOrders.find((x) => x.id === orderId);
+            if (o) {
+              syncAdminInventoryCacheAfterOrderStatusChange(
+                {
+                  status: o.status,
+                  inventoryDeducted: o.inventoryDeducted,
+                  vendor: o.vendor,
+                  products: o.products,
+                },
+                bulkStatus,
+                { skipDispatch: true }
+              );
+            }
+          }
+        }
+      } else {
+        for (const orderId of orderIds) {
+          const o = previousOrders.find((x) => x.id === orderId);
+          if (o) {
+            syncAdminInventoryCacheAfterOrderStatusChange(
+              {
+                status: o.status,
+                inventoryDeducted: o.inventoryDeducted,
+                vendor: o.vendor,
+                products: o.products,
+              },
+              bulkStatus,
+              { skipDispatch: true }
+            );
+          }
         }
       }
       dispatchAdminProductsCachePatched();
@@ -720,10 +768,11 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
       };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
       if (orderBeingUpdated) {
-        syncAdminInventoryCacheAfterOrderStatusChange(
+        await refreshAdminInventoryAfterOrderStatusPut(
           {
             status: orderBeingUpdated.status,
             inventoryDeducted: orderBeingUpdated.inventoryDeducted,
+            vendor: orderBeingUpdated.vendor,
             products: orderBeingUpdated.products,
           },
           newStatus
@@ -809,9 +858,11 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
   ];
 
   // Prepare vendor revenue for bar chart
-  const vendorRevenueData = uniqueVendors.map(vendor => ({
+  const vendorRevenueData = uniqueVendors.map((vendor) => ({
     vendor,
-    revenue: orders.filter(o => o.vendor === vendor).reduce((sum, o) => sum + o.total, 0)
+    revenue: orders
+      .filter((o) => (o.vendor || "SECURE Store") === vendor)
+      .reduce((sum, o) => sum + o.total, 0),
   }));
 
   return (
@@ -1147,7 +1198,7 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
                           <p className="text-xs text-slate-500">{order.email}</p>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-sm text-slate-600">{order.vendor}</td>
+                      <td className="py-3 px-4 text-sm text-slate-600">{order.vendor || "SECURE Store"}</td>
                       <td className="py-3 px-4 text-sm font-semibold text-slate-900">{order.total.toLocaleString()} MMK</td>
                       <td className="py-3 px-4">{getStatusBadge(order.status)}</td>
                       <td className="py-3 px-4">{getPaymentBadge(order.paymentStatus)}</td>
@@ -1172,6 +1223,9 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(order.id, "fulfilled")}>
                                 Mark as Fulfilled
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(order.id, "ready-to-ship")}>
+                                Mark as Ready to Ship
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(order.id, "cancelled")}>
                                 Mark as Cancelled

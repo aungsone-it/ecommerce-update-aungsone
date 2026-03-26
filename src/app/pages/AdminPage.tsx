@@ -495,8 +495,9 @@ export function AdminPage() {
 
       {viewingOrder && (
         <OrderDetails
-          order={viewingOrder}
+          order={viewingOrder as any}
           onBack={() => setViewingOrder(null)}
+          onOrderUpdated={handleOrderUpdate}
         />
       )}
 

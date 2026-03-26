@@ -3636,24 +3636,101 @@ function isInventoryCommitStatus(status: string | undefined): boolean {
 }
 
 /**
- * false = new order: inventory not yet reduced (deduct when admin sets ready-to-ship / fulfilled).
- * true / undefined = stock already reflected (admin committed, or legacy order deducted at checkout).
+ * Stock was persisted (deducted) only after admin sets ready-to-ship / fulfilled — see `inventoryDeducted`.
  */
 function physicallyReducedInventory(order: { inventoryDeducted?: boolean }): boolean {
-  return order.inventoryDeducted !== false;
+  return order.inventoryDeducted === true;
+}
+
+async function loadAllProductsForStock(): Promise<any[]> {
+  const all = await withTimeout(kv.getByPrefix("product:"), 10000);
+  return Array.isArray(all) ? all : [];
+}
+
+function findVariantIndexBySku(product: any, sku: string | undefined): number {
+  if (!sku || !Array.isArray(product?.variants)) return -1;
+  const skuNorm = String(sku).trim().toLowerCase();
+  if (!skuNorm || skuNorm === "n/a") return -1;
+  return product.variants.findIndex(
+    (v: any) => String(v.sku || "").trim().toLowerCase() === skuNorm
+  );
+}
+
+/**
+ * Resolve line item to a KV product + optional variant index (matches client `applyLineItemStockDeltaToAdminCache`).
+ */
+function resolveProductForLineItem(
+  item: any,
+  allProducts: any[]
+): { product: any; variantIndex: number } | null {
+  const product = allProducts.find((p: any) => p && p.id === item.productId) || null;
+  if (product) {
+    const vi = findVariantIndexBySku(product, item.sku);
+    return { product, variantIndex: vi };
+  }
+  for (const p of allProducts) {
+    if (!p?.variants?.length) continue;
+    const vi = p.variants.findIndex((v: any) => v.id === item.productId);
+    if (vi >= 0) {
+      return { product: p, variantIndex: vi };
+    }
+  }
+  return null;
+}
+
+/** Parent has variants but line SKU did not match any variant — do not fall back to parent aggregate. */
+function variantSkuUnmatched(product: any, variantIndex: number, item: any): boolean {
+  if (variantIndex >= 0) return false;
+  if (!Array.isArray(product?.variants) || product.variants.length === 0) return false;
+  const s = String(item.sku ?? "").trim();
+  return s.length > 0 && s.toLowerCase() !== "n/a";
+}
+
+function recomputeParentStockFromVariants(product: any): void {
+  if (!Array.isArray(product.variants) || product.variants.length === 0) return;
+  const total = product.variants.reduce(
+    (s: number, v: any) => s + (Number(v.inventory ?? v.stock ?? 0) || 0),
+    0
+  );
+  product.inventory = total;
+  product.stock = total;
 }
 
 async function validateStockForOrderLineItems(
   items: any[]
 ): Promise<{ ok: true } | { ok: false; stockIssues: any[] }> {
   const stockIssues: any[] = [];
+  let allProducts: any[] = [];
+  try {
+    allProducts = await loadAllProductsForStock();
+  } catch {
+    stockIssues.push({
+      productId: "",
+      productName: "Unknown Product",
+      issue: "Error loading products",
+    });
+    return { ok: false, stockIssues };
+  }
   for (const item of items) {
     try {
-      const productKey = `product:${item.productId}`;
-      const product = await withTimeout(kv.get(productKey), 5000);
-      if (!product) continue;
+      const resolved = resolveProductForLineItem(item, allProducts);
+      if (!resolved) continue;
+      const { product, variantIndex } = resolved;
+      if (variantSkuUnmatched(product, variantIndex, item)) {
+        stockIssues.push({
+          productId: item.productId,
+          productName: product.name || item.name,
+          requested: item.quantity || 1,
+          available: 0,
+          issue: "Variant SKU does not match this product",
+        });
+        continue;
+      }
       const requestedQty = item.quantity || 1;
-      const availableStock = product.inventory ?? product.stock ?? 0;
+      const availableStock =
+        variantIndex >= 0
+          ? Number(product.variants[variantIndex].inventory ?? product.variants[variantIndex].stock ?? 0)
+          : Number(product.inventory ?? product.stock ?? 0);
       if (availableStock < requestedQty) {
         stockIssues.push({
           productId: item.productId,
@@ -3676,29 +3753,75 @@ async function validateStockForOrderLineItems(
 }
 
 async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "restore") {
+  let allProducts: any[] = [];
+  try {
+    allProducts = await loadAllProductsForStock();
+  } catch (e) {
+    console.error("❌ Stock delta: failed to load products", e);
+    return;
+  }
+  const touched = new Set<string>();
+
   for (const item of items) {
     try {
-      const productKey = `product:${item.productId}`;
-      const product = await withTimeout(kv.get(productKey), 5000);
-      if (!product) {
+      const resolved = resolveProductForLineItem(item, allProducts);
+      if (!resolved) {
         console.warn(`  ⚠️ Product not found: ${item.productId}`);
         continue;
       }
+      const { product, variantIndex } = resolved;
+      if (variantSkuUnmatched(product, variantIndex, item)) {
+        console.warn(
+          `  ⚠️ Skip stock line: SKU ${item.sku} does not match a variant on product ${product.id}`
+        );
+        continue;
+      }
       const qty = item.quantity || 1;
-      const currentStock = product.inventory ?? product.stock ?? 0;
-      const newStock =
-        direction === "deduct"
-          ? Math.max(0, currentStock - qty)
-          : currentStock + qty;
-      product.inventory = newStock;
-      product.stock = newStock;
+      const sign = direction === "deduct" ? -1 : 1;
+      const delta = sign * qty;
+
+      let oldStock = 0;
+      let newStock = 0;
+
+      if (variantIndex >= 0) {
+        const v = product.variants[variantIndex];
+        oldStock = Number(v.inventory ?? v.stock ?? 0);
+        newStock = Math.max(0, oldStock + delta);
+        product.variants[variantIndex] = {
+          ...v,
+          inventory: newStock,
+          stock: newStock,
+          updatedAt: new Date().toISOString(),
+        };
+        recomputeParentStockFromVariants(product);
+      } else {
+        oldStock = Number(product.inventory ?? product.stock ?? 0);
+        newStock =
+          direction === "deduct"
+            ? Math.max(0, oldStock - qty)
+            : oldStock + qty;
+        product.inventory = newStock;
+        product.stock = newStock;
+      }
+
       product.updatedAt = new Date().toISOString();
-      await withTimeout(kv.set(productKey, product), 5000);
+      touched.add(product.id);
+
+      const idx = allProducts.findIndex((p: any) => p.id === product.id);
+      if (idx >= 0) allProducts[idx] = product;
+
       console.log(
-        `  ✅ ${item.name || "Unknown"}: ${currentStock} → ${newStock} (${direction} ${qty})`
+        `  ✅ ${item.name || "Unknown"}: ${oldStock} → ${newStock} (${direction} ${qty})`
       );
     } catch (stockError) {
       console.error(`  ❌ Stock ${direction} failed for ${item.name || item.productId}:`, stockError);
+    }
+  }
+
+  for (const id of touched) {
+    const product = allProducts.find((p: any) => p.id === id);
+    if (product) {
+      await withTimeout(kv.set(`product:${id}`, product), 5000);
     }
   }
   serverCache.delete("all_products");
@@ -3710,19 +3833,33 @@ app.post("/make-server-16010b6f/orders", async (c) => {
     const body = await c.req.json();
     const id = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
-    // 🚨 STEP 1: VALIDATE STOCK AVAILABILITY BEFORE ORDER CREATION
+    // 🚨 STEP 1: VALIDATE STOCK AVAILABILITY BEFORE ORDER CREATION (variant-aware — same as PUT deduct)
     if (body.items && Array.isArray(body.items)) {
       console.log(`🔍 Validating stock for ${body.items.length} items...`);
       
       const stockIssues = [];
       const missingProducts = []; // Track missing products separately
-      
+      let allProductsForValidation: any[] = [];
+      try {
+        allProductsForValidation = await loadAllProductsForStock();
+      } catch (e) {
+        console.error("❌ Failed to load products for stock validation:", e);
+        return c.json(
+          {
+            success: false,
+            error: "Insufficient stock",
+            stockIssues: [{ productName: "Catalog", issue: "Error loading products for stock check" }],
+            message: "Could not validate stock",
+          },
+          400
+        );
+      }
+
       for (const item of body.items) {
         try {
-          const productKey = `product:${item.productId}`;
-          const product = await withTimeout(kv.get(productKey), 5000);
+          const resolved = resolveProductForLineItem(item, allProductsForValidation);
           
-          if (!product) {
+          if (!resolved) {
             // Product deleted - log warning but don't reject order (historical data)
             missingProducts.push({
               productId: item.productId,
@@ -3732,9 +3869,22 @@ app.post("/make-server-16010b6f/orders", async (c) => {
             continue;
           }
           
+          const { product, variantIndex } = resolved;
+          if (variantSkuUnmatched(product, variantIndex, item)) {
+            stockIssues.push({
+              productId: item.productId,
+              productName: product.name || item.name,
+              requested: item.quantity || 1,
+              available: 0,
+              issue: "Variant SKU does not match this product",
+            });
+            continue;
+          }
           const requestedQty = item.quantity || 1;
-          // 🔥 Use inventory field (primary) or stock field (fallback)
-          const availableStock = product.inventory ?? product.stock ?? 0;
+          const availableStock =
+            variantIndex >= 0
+              ? Number(product.variants[variantIndex].inventory ?? product.variants[variantIndex].stock ?? 0)
+              : Number(product.inventory ?? product.stock ?? 0);
           
           if (availableStock < requestedQty) {
             stockIssues.push({
@@ -3863,12 +4013,12 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
       nextInventoryFlag = false;
     }
 
-    // 3) First move to ready-to-ship or fulfilled → deduct once (orders with inventoryDeducted === false)
+    // 3) First move to ready-to-ship or fulfilled → deduct once (not yet committed in KV)
     if (
       !isNowCancelled &&
       body.status !== undefined &&
       isInventoryCommitStatus(body.status) &&
-      existingOrder.inventoryDeducted === false &&
+      existingOrder.inventoryDeducted !== true &&
       items.length > 0
     ) {
       console.log(`📉 Deducting stock for order ${existingOrder.orderNumber} (status → ${body.status})...`);
