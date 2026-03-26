@@ -51,6 +51,7 @@ import {
 import {
   refreshAdminInventoryAfterOrderStatusPut,
   syncAdminInventoryCacheAfterOrderStatusChange,
+  normalizeOrderLineParentProductId,
   isMainMarketplaceVendorName,
 } from "../../utils/orderInventoryCacheSync";
 
@@ -110,7 +111,7 @@ function mapVendorApiOrdersToItems(apiOrders: any[]): OrderItem[] {
     paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : order.paymentStatus === 'paid' ? 'paid' : 'unpaid',
     shippingStatus: order.status === 'fulfilled' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
     products: (order.items || []).map((item: any) => ({
-      id: item.productId || item.id,
+      id: normalizeOrderLineParentProductId(item.productId ?? item.id),
       name: item.productName || item.name || 'Product',
       quantity: item.quantity || 1,
       price: typeof item.price === 'number' ? item.price : parseFloat(String(item.price || '0').replace('$', '')) || 0,

@@ -17,6 +17,21 @@ export function normalizeOrderStatus(s: string | undefined): string {
   return String(s).trim().toLowerCase().replace(/\s+/g, "-");
 }
 
+/**
+ * Vendor cart line `id` is often `parentProductId:variantSku` and was mistakenly saved as order `productId`.
+ * Inventory sync must use the real parent id (matches KV `product:${uuid}`).
+ */
+export function normalizeOrderLineParentProductId(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  const c = s.indexOf(":");
+  if (c > 0) {
+    const left = s.slice(0, c);
+    const right = s.slice(c + 1).trim();
+    if (left && right) return left;
+  }
+  return s;
+}
+
 function isInventoryCommitStatus(status: string | undefined): boolean {
   const n = normalizeOrderStatus(status);
   return n === "ready-to-ship" || n === "fulfilled";

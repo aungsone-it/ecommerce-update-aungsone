@@ -2086,7 +2086,7 @@ export function VendorStoreView({
         <header className="sticky top-0 bg-white border-b z-40">
           <div className="max-w-7xl mx-auto px-4">
             {/* Top Bar */}
-            <div className="flex items-center justify-between h-16">
+            <div className="flex items-center h-16 gap-2 md:gap-3">
               {/* Logo */}
               <button 
                 onClick={() => {
@@ -2095,7 +2095,7 @@ export function VendorStoreView({
                   setSelectedCategory("all");
                   navigate(storeBase, { replace: false });
                 }}
-                className="flex items-center gap-2 sm:gap-3 group min-w-0 flex-1 mr-2"
+                className="flex items-center gap-2 sm:gap-3 group min-w-0 shrink-0 max-w-[42%] sm:max-w-xs"
               >
                 {storeLogo ? (
                   <CacheFriendlyImg 
@@ -2114,9 +2114,9 @@ export function VendorStoreView({
                 </span>
               </button>
 
-              {/* Search - Desktop */}
-              <div className="hidden md:block flex-1 max-w-lg mx-8">
-                <div className="relative">
+              {/* Search - Desktop (centered in remaining row space) */}
+              <div className="hidden md:flex flex-1 justify-center min-w-0 px-2">
+                <div className="relative w-full max-w-lg">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <Input
                     placeholder="Search products..."
@@ -2128,7 +2128,7 @@ export function VendorStoreView({
               </div>
 
               {/* Actions */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <Button
                   variant="ghost"
                   size="icon"
@@ -2823,7 +2823,7 @@ export function VendorStoreView({
       <header className="sticky top-0 bg-white border-b z-40">
         <div className="max-w-7xl mx-auto px-4">
           {/* Top Bar */}
-          <div className="flex items-center justify-between h-16">
+          <div className="flex items-center h-16 gap-2 md:gap-3">
             {/* Logo */}
             <button 
               onClick={() => {
@@ -2831,7 +2831,7 @@ export function VendorStoreView({
                 setSelectedCategory("all");
                 navigate(storeBase);
               }}
-              className="flex items-center gap-2 sm:gap-3 group min-w-0 flex-1 mr-2"
+              className="flex items-center gap-2 sm:gap-3 group min-w-0 shrink-0 max-w-[42%] sm:max-w-xs"
             >
               {storeLogo ? (
                 <CacheFriendlyImg 
@@ -2850,9 +2850,9 @@ export function VendorStoreView({
               </span>
             </button>
 
-            {/* Search - Desktop */}
-            <div className="hidden md:block flex-1 max-w-lg mx-8">
-              <div className="relative">
+            {/* Search - Desktop (centered in remaining row space) */}
+            <div className="hidden md:flex flex-1 justify-center min-w-0 px-2">
+              <div className="relative w-full max-w-lg">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <Input
                   placeholder="Search products..."

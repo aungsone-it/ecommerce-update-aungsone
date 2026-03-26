@@ -478,7 +478,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
         couponId: appliedCoupon?.campaign?.id || null,
         couponDiscount: discountAmount,
         items: items.map((item) => ({
-          productId: item.id,
+          productId: item.productId || item.id,
           sku: item.sku,
           name: item.name || item.sku,
           quantity: item.quantity,

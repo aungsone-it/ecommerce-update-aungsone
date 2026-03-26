@@ -3657,20 +3657,43 @@ function findVariantIndexBySku(product: any, sku: string | undefined): number {
 }
 
 /**
+ * Vendor cart/checkout sometimes stored cart line `id` (`parentId:variantSku`) as `productId`.
+ * Normalize to real parent product id + SKU so KV `product:${uuid}` resolves.
+ */
+function lineItemWithNormalizedProductRef(item: any): any {
+  const raw = String(item?.productId ?? "").trim();
+  const colon = raw.indexOf(":");
+  if (colon > 0) {
+    const parent = raw.slice(0, colon);
+    const tail = raw.slice(colon + 1).trim();
+    if (parent && tail) {
+      const skuFromField = String(item?.sku ?? "").trim();
+      return {
+        ...item,
+        productId: parent,
+        sku: skuFromField || tail,
+      };
+    }
+  }
+  return item;
+}
+
+/**
  * Resolve line item to a KV product + optional variant index (matches client `applyLineItemStockDeltaToAdminCache`).
  */
 function resolveProductForLineItem(
   item: any,
   allProducts: any[]
 ): { product: any; variantIndex: number } | null {
-  const product = allProducts.find((p: any) => p && p.id === item.productId) || null;
+  const effective = lineItemWithNormalizedProductRef(item);
+  const product = allProducts.find((p: any) => p && p.id === effective.productId) || null;
   if (product) {
-    const vi = findVariantIndexBySku(product, item.sku);
+    const vi = findVariantIndexBySku(product, effective.sku);
     return { product, variantIndex: vi };
   }
   for (const p of allProducts) {
     if (!p?.variants?.length) continue;
-    const vi = p.variants.findIndex((v: any) => v.id === item.productId);
+    const vi = p.variants.findIndex((v: any) => v.id === effective.productId);
     if (vi >= 0) {
       return { product: p, variantIndex: vi };
     }
@@ -3716,7 +3739,8 @@ async function validateStockForOrderLineItems(
       const resolved = resolveProductForLineItem(item, allProducts);
       if (!resolved) continue;
       const { product, variantIndex } = resolved;
-      if (variantSkuUnmatched(product, variantIndex, item)) {
+      const eff = lineItemWithNormalizedProductRef(item);
+      if (variantSkuUnmatched(product, variantIndex, eff)) {
         stockIssues.push({
           productId: item.productId,
           productName: product.name || item.name,
@@ -3770,9 +3794,10 @@ async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "re
         continue;
       }
       const { product, variantIndex } = resolved;
-      if (variantSkuUnmatched(product, variantIndex, item)) {
+      const eff = lineItemWithNormalizedProductRef(item);
+      if (variantSkuUnmatched(product, variantIndex, eff)) {
         console.warn(
-          `  ⚠️ Skip stock line: SKU ${item.sku} does not match a variant on product ${product.id}`
+          `  ⚠️ Skip stock line: SKU ${eff.sku} does not match a variant on product ${product.id}`
         );
         continue;
       }
@@ -3870,7 +3895,8 @@ app.post("/make-server-16010b6f/orders", async (c) => {
           }
           
           const { product, variantIndex } = resolved;
-          if (variantSkuUnmatched(product, variantIndex, item)) {
+          const effPost = lineItemWithNormalizedProductRef(item);
+          if (variantSkuUnmatched(product, variantIndex, effPost)) {
             stockIssues.push({
               productId: item.productId,
               productName: product.name || item.name,

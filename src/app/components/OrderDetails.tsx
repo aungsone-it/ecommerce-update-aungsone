@@ -8,7 +8,10 @@ import { Invoice } from "./Invoice";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { ordersApi } from "../../utils/api";
-import { refreshAdminInventoryAfterOrderStatusPut } from "../utils/orderInventoryCacheSync";
+import {
+  refreshAdminInventoryAfterOrderStatusPut,
+  normalizeOrderLineParentProductId,
+} from "../utils/orderInventoryCacheSync";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -129,7 +132,7 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
       inventoryDeducted: order.inventoryDeducted,
       vendor: typeof order.vendor === "string" ? order.vendor : undefined,
       products: order.products.map((p) => ({
-        id: p.id,
+        id: normalizeOrderLineParentProductId(p.id),
         quantity: p.quantity,
         sku: p.sku,
       })),
