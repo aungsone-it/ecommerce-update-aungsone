@@ -131,6 +131,8 @@ SUPABASE_DB_URL=your_supabase_database_url
 
 📖 See **[VERCEL_DEPLOYMENT_READY_FINAL.md](./VERCEL_DEPLOYMENT_READY_FINAL.md)** for detailed instructions.
 
+For **any host** (Netlify, Cloudflare Pages, VPS, etc.), see **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** and copy **`.env.example`** to `.env` for local development.
+
 ## 📁 Project Structure
 
 ```

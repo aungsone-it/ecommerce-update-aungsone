@@ -6,16 +6,30 @@ interface LazyImageProps {
   alt: string;
   className?: string;
   fallbackSrc?: string;
+  /** Above-the-fold / LCP: load immediately, higher fetch priority */
+  priority?: boolean;
 }
 
-export const LazyImage = React.memo(({ src, alt, className = '', fallbackSrc }: LazyImageProps) => {
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
+export const LazyImage = React.memo(({ src, alt, className = '', fallbackSrc, priority = false }: LazyImageProps) => {
+  const [imageSrc, setImageSrc] = useState<string | null>(priority ? src : null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const imgRef = useRef<HTMLImageElement>(null);
+  const imgRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!imgRef.current) return;
+    if (priority) {
+      setImageSrc(src);
+      setIsLoading(true);
+      setHasError(false);
+      return;
+    }
+
+    setImageSrc(null);
+    setIsLoading(true);
+    setHasError(false);
+
+    const el = imgRef.current;
+    if (!el) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -27,16 +41,16 @@ export const LazyImage = React.memo(({ src, alt, className = '', fallbackSrc }: 
         });
       },
       {
-        rootMargin: '50px', // Start loading 50px before the image is visible
+        rootMargin: '50px',
       }
     );
 
-    observer.observe(imgRef.current);
+    observer.observe(el);
 
     return () => {
       observer.disconnect();
     };
-  }, [src]);
+  }, [src, priority]);
 
   const handleLoad = () => {
     setIsLoading(false);
@@ -50,7 +64,6 @@ export const LazyImage = React.memo(({ src, alt, className = '', fallbackSrc }: 
     }
   };
 
-  // Get cacheable props to prevent re-downloading
   const imageProps = imageSrc ? getCacheableImageProps(imageSrc) : {};
 
   return (
@@ -63,7 +76,8 @@ export const LazyImage = React.memo(({ src, alt, className = '', fallbackSrc }: 
           {...imageProps}
           alt={alt}
           decoding="async"
-          fetchPriority="low"
+          fetchPriority={priority ? 'high' : 'low'}
+          loading={priority ? 'eager' : 'lazy'}
           className={`${className} ${isLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-150`}
           onLoad={handleLoad}
           onError={handleError}

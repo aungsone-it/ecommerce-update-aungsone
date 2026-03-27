@@ -12,6 +12,7 @@
  */
 
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { withNetworkRetry } from './networkRetry';
 
 interface CacheEntry<T> {
   data: T;
@@ -61,8 +62,8 @@ class ModuleCache {
     this.misses++;
     console.log(`${forceRefresh ? '🔄' : '❌'} [MODULE CACHE ${forceRefresh ? 'REFRESH' : 'MISS'}] ${key} - Fetching...`);
 
-    // Create loading promise
-    const loadingPromise = fetcher()
+    // Create loading promise — one retry on transient network failure (e.g. flaky Wi‑Fi)
+    const loadingPromise = withNetworkRetry(() => fetcher(), { retries: 1, delayMs: 500 })
       .then((data) => {
         // Store in cache
         this.cache.set(key, {

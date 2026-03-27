@@ -14,6 +14,15 @@
  */
 import { next } from "@vercel/edge";
 
+/** Same heuristic as `src/app/utils/deriveVendorApex.ts` (edge bundle cannot import app tree). */
+function deriveNaiveVendorApexFromHost(host: string): string | null {
+  const h = host.split(":")[0].toLowerCase();
+  if (h === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
+  const parts = h.split(".").filter(Boolean);
+  if (parts.length < 3) return null;
+  return parts.slice(-2).join(".");
+}
+
 /** Same as src/app/utils/subdomainSlugMap.ts BUILT_IN — edge bundle cannot rely on env alone. */
 const BUILT_IN_SUBDOMAIN_SLUG_MAP: Record<string, string> = {
   gogo: "go-go",
@@ -75,8 +84,9 @@ export default function middleware(request: Request): Response {
   }
 
   let baseDomain = (process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase();
-  if (!baseDomain && host.endsWith(".walwal.online")) {
-    baseDomain = "walwal.online";
+  if (!baseDomain) {
+    const derived = deriveNaiveVendorApexFromHost(host);
+    if (derived) baseDomain = derived;
   }
   if (!baseDomain) {
     return next();
