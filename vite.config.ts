@@ -21,21 +21,9 @@ const figmaAssetPlugin = () => ({
 });
 
 export default defineConfig(() => {
-  const vendorSubdomainBase =
-    process.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN ||
-    process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN ||
-    "";
-
-  const slugMapJson =
-    process.env.VENDOR_SUBDOMAIN_SLUG_MAP ||
-    process.env.VITE_VENDOR_SUBDOMAIN_SLUG_MAP ||
-    "{}";
-
   return {
-  define: {
-    "import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN": JSON.stringify(vendorSubdomainBase),
-    "import.meta.env.VITE_VENDOR_SUBDOMAIN_SLUG_MAP": JSON.stringify(slugMapJson),
-  },
+  // Do not use `define` for import.meta.env.VITE_* — it overrides Vite's env injection
+  // and can embed wrong values on Vercel (breaking vendor subdomains like gogo.walwal.online).
   plugins: [
     // The React and Tailwind plugins are both required for Make, even if
     // Tailwind is not being actively used – do not remove them

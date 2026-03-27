@@ -1,5 +1,5 @@
 import { Outlet, useLocation } from "react-router";
-import { motion, AnimatePresence } from "motion/react";
+import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 
 /**
  * AnimatedOutlet - INSTANT TRANSITIONS (NO BLINKING)
@@ -12,8 +12,10 @@ export function AnimatedOutlet() {
   // Group routes by component to prevent unnecessary re-renders
   // All storefront routes should be treated as one "page" for rendering purposes
   const getRouteGroup = (pathname: string): string => {
-    // Landing page (distinct from storefront)
+    // Vendor subdomain home is / but must not share the "landing" group (avoids remount/state bugs).
     if (pathname === "/") {
+      const subSlug = resolveVendorSubdomainStoreSlug();
+      if (subSlug) return `vendor-subdomain-${subSlug}`;
       return "landing";
     }
 
