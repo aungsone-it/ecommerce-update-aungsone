@@ -41,8 +41,14 @@ import { useLoading } from "../contexts/LoadingContext";
 import { BannerSlider } from "./BannerSlider";
 import { checkServerHealth } from "../../utils/server-health";
 import { ServerStatusBanner } from "./ServerStatusBanner";
-import { ProductCard, mapProductToCardProduct, type ProductCardAddOpts } from "./ProductCard";
-import { getEffectiveVariantOptions } from "./ProductVariantChips";
+import { ProductCard, type ProductCardAddOpts } from "./ProductCard";
+import {
+  ProductVariantChips,
+  initVariantSelections,
+  matchVariantForProduct,
+  productHasVariantPicker,
+  getEffectiveVariantOptions,
+} from "./ProductVariantChips";
 import { BlogPostDetail } from "./BlogPostDetail";
 import { AuthModal } from "./AuthModal";
 import { OrderDetailView } from "./OrderDetailView";
@@ -350,6 +356,177 @@ function CountdownTimer({ endDate }: { endDate: string }) {
         <span className="text-slate-500">s</span>
       </div>
     </div>
+  );
+}
+
+type MarketplaceListLayout = "search" | "catalog";
+
+function MarketplaceListProductRow({
+  product,
+  formatPriceMMK,
+  onProductClick,
+  onAddToCart,
+  onToggleWishlist,
+  isWishlisted,
+  layout,
+}: {
+  product: Product;
+  formatPriceMMK: (price: string) => string;
+  onProductClick: () => void;
+  onAddToCart: (e: React.MouseEvent | null, v?: ProductCardAddOpts) => void;
+  onToggleWishlist: (e: React.MouseEvent) => void;
+  isWishlisted: boolean;
+  layout: MarketplaceListLayout;
+}) {
+  const [variantSelections, setVariantSelections] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setVariantSelections(initVariantSelections(product));
+  }, [product.id, product.variantOptions?.length, product.variants?.length]);
+
+  const resolvedVariant = useMemo(
+    () => matchVariantForProduct(product, variantSelections),
+    [product, variantSelections]
+  );
+  const showVariants = productHasVariantPicker(product);
+  const displayPrice = resolvedVariant?.price ?? product.price;
+  const displayStock =
+    resolvedVariant != null
+      ? resolvedVariant.inventory
+      : product.inventory ?? (product as { stock?: number }).stock ?? 0;
+  const imgSrc = product.images && product.images.length > 0 ? product.images[0] : product.image;
+
+  const isSearch = layout === "search";
+  const rowGap = isSearch ? "gap-3 sm:gap-4 lg:gap-8" : "gap-3 sm:gap-4 md:gap-6";
+  const rowPad = isSearch ? "p-3 sm:p-4 lg:p-8" : "p-3 sm:p-4 md:p-6";
+  const imgWrap = isSearch
+    ? "w-24 h-24 sm:w-32 sm:h-32 lg:w-48 lg:h-48 rounded-lg lg:rounded-2xl"
+    : "w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-lg md:rounded-xl";
+  const titleCls = isSearch
+    ? "font-semibold text-slate-900 line-clamp-2 mb-1 sm:mb-2 lg:mb-3 text-sm"
+    : "font-semibold text-slate-900 line-clamp-2 mb-0.5 text-sm sm:text-base md:text-lg";
+  const priceCls = isSearch
+    ? "text-sm font-bold text-slate-900 mb-1 sm:mb-2 lg:mb-4"
+    : "text-base sm:text-lg md:text-xl font-bold text-slate-900 mb-1 sm:mb-2";
+  const soldLabel = isSearch
+    ? `(${product.salesVolume || 0} sold)`
+    : `(${product.salesVolume} sold)`;
+
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (showVariants && resolvedVariant) {
+      onAddToCart(e, {
+        sku: resolvedVariant.sku,
+        price: resolvedVariant.price,
+        image: imgSrc,
+      });
+    } else {
+      onAddToCart(e);
+    }
+  };
+
+  return (
+    <Card className="group overflow-hidden hover:shadow-lg transition-all cursor-pointer border border-slate-200 animate-slide-up">
+      <div className={`flex ${rowGap} ${rowPad}`} onClick={onProductClick}>
+        <div className={`${imgWrap} overflow-hidden border border-slate-200 flex-shrink-0`}>
+          <LazyImage src={imgSrc} alt={product.name} className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 min-w-0 flex flex-col justify-between">
+          <div>
+            <h4 className={titleCls}>{product.name}</h4>
+            <div
+              className={
+                isSearch
+                  ? "flex items-center gap-1 sm:gap-2 lg:gap-3 mb-2 sm:mb-3 lg:mb-4"
+                  : "flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3"
+              }
+            >
+              <div className="flex items-center gap-0.5 sm:gap-1">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className={
+                      isSearch
+                        ? "w-3 h-3 sm:w-3.5 sm:h-3.5 lg:w-2.5 lg:h-2.5 fill-amber-400 text-amber-400"
+                        : "w-3 h-3 sm:w-3.5 sm:h-3.5 fill-amber-400 text-amber-400"
+                    }
+                  />
+                ))}
+              </div>
+              <span
+                className={
+                  isSearch
+                    ? "text-[10px] text-slate-600 font-medium"
+                    : "text-xs sm:text-sm text-slate-600 font-medium"
+                }
+              >
+                {soldLabel}
+              </span>
+            </div>
+            {showVariants && (
+              <div className="mb-2">
+                <ProductVariantChips
+                  product={product}
+                  selections={variantSelections}
+                  onChange={setVariantSelections}
+                  size="list"
+                />
+              </div>
+            )}
+            <p className={priceCls}>{formatPriceMMK(displayPrice)}</p>
+            <div
+              className={
+                isSearch
+                  ? "hidden sm:flex items-center gap-4 lg:gap-6 mt-2 lg:mt-6 text-xs sm:text-sm lg:text-base text-slate-600"
+                  : "hidden sm:flex items-center gap-4 mt-2 md:mt-4 text-xs sm:text-sm text-slate-600"
+              }
+            >
+              <span className={`flex items-center ${isSearch ? "gap-1 lg:gap-2" : "gap-1"}`}>
+                <Store
+                  className={
+                    isSearch ? "w-3.5 h-3.5 sm:w-4 sm:h-4 lg:w-5 lg:h-5" : "w-3.5 h-3.5 sm:w-4 sm:h-4"
+                  }
+                />
+                <span
+                  className={`truncate ${isSearch ? "max-w-[120px] lg:max-w-[200px]" : "max-w-[120px]"}`}
+                >
+                  {product.vendor || "Store"}
+                </span>
+              </span>
+              <span className="text-emerald-700 font-medium">Stock: {displayStock}</span>
+            </div>
+            <div className="flex sm:hidden items-center gap-1.5 text-xs text-slate-600 mt-1">
+              <Store className="w-3.5 h-3.5" />
+              <span>Stock: {displayStock}</span>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5 flex-shrink-0">
+          <button
+            type="button"
+            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
+            onClick={handleAdd}
+          >
+            <Plus className="w-3.5 h-3.5 sm:w-4.5 sm:h-4.5 text-slate-900 group-hover/btn:text-white transition-colors" />
+          </button>
+          <button
+            type="button"
+            className="w-7 h-7 sm:w-9 sm:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleWishlist(e);
+            }}
+          >
+            <Heart
+              className={`w-3.5 h-3.5 sm:w-4 sm:h-4 transition-colors ${
+                isWishlisted
+                  ? "fill-amber-600 text-amber-600 group-hover/btn:fill-white group-hover/btn:text-white"
+                  : "text-slate-600 group-hover/btn:text-white"
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -6784,7 +6961,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 {relatedProducts.map(product => (
                   <ProductCard
                     key={product.id}
-                    product={mapProductToCardProduct(product)}
+                    product={product}
                     onProductClick={() => {
                       handleProductSelect(product);
                     }}
@@ -7129,7 +7306,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   {catalogFilteredProducts.map((product) => (
                     <ProductCard
                       key={product.id}
-                      product={mapProductToCardProduct(product)}
+                      product={{
+                        ...product,
+                        image: product.images && product.images.length > 0 ? product.images[0] : product.image
+                      }}
                       onProductClick={() => {
                         handleProductSelect(product);
                       }}
@@ -7146,10 +7326,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 ) : (
                 <div className="space-y-3 sm:space-y-4 lg:space-y-6">
                   {catalogFilteredProducts.map((product) => (
-                    <ProductCard
+                    <MarketplaceListProductRow
                       key={product.id}
-                      viewType="list"
-                      product={mapProductToCardProduct(product)}
+                      product={product}
+                      layout="search"
+                      formatPriceMMK={formatPriceMMK}
                       onProductClick={() => handleProductSelect(product)}
                       onAddToCart={(e, v) => handleProductCardAddToCart(product, e, v)}
                       onToggleWishlist={(e) => {
@@ -7157,7 +7338,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         toggleWishlist(product.id);
                       }}
                       isWishlisted={wishlist.includes(product.id)}
-                      formatPriceMMK={formatPriceMMK}
                     />
                   ))}
                 </div>
@@ -7839,7 +8019,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               {products.filter(p => wishlist.includes(p.id)).map(product => (
                 <ProductCard
                   key={product.id}
-                  product={mapProductToCardProduct(product)}
+                  product={product}
                   onProductClick={() => {
                     handleProductSelect(product);
                   }}
@@ -7928,7 +8108,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 {dealProducts.map(product => (
                   <ProductCard
                     key={product.id}
-                    product={mapProductToCardProduct(product)}
+                    product={product}
                     onProductClick={() => {
                       handleProductSelect(product);
                     }}
@@ -7945,10 +8125,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             ) : (
               <div className="space-y-3 md:space-y-4 stagger-children">
                 {dealProducts.map((product) => (
-                  <ProductCard
+                  <MarketplaceListProductRow
                     key={product.id}
-                    viewType="list"
-                    product={mapProductToCardProduct(product)}
+                    product={product}
+                    layout="catalog"
+                    formatPriceMMK={formatPriceMMK}
                     onProductClick={() => handleProductSelect(product)}
                     onAddToCart={(e, v) => handleProductCardAddToCart(product, e, v)}
                     onToggleWishlist={(e) => {
@@ -7956,7 +8137,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       toggleWishlist(product.id);
                     }}
                     isWishlisted={wishlist.includes(product.id)}
-                    formatPriceMMK={formatPriceMMK}
                   />
                 ))}
               </div>
@@ -8134,7 +8314,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     {watchProducts.slice(0, 4).map(product => (
                       <ProductCard
                         key={product.id}
-                        product={mapProductToCardProduct(product)}
+                        product={product}
                         onProductClick={() => {
                           handleProductSelect(product);
                         }}
@@ -8236,7 +8416,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       clothingProducts.slice(0, 4).map(product => (
                         <ProductCard
                           key={product.id}
-                          product={mapProductToCardProduct(product)}
+                          product={product}
                           onProductClick={() => {
                             handleProductSelect(product);
                           }}
@@ -8355,7 +8535,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     {cosmeticProducts.slice(0, 4).map(product => (
                       <ProductCard
                         key={product.id}
-                        product={mapProductToCardProduct(product)}
+                        product={product}
                         onProductClick={() => {
                           handleProductSelect(product);
                         }}
@@ -8451,7 +8631,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     {kitchenProducts.slice(0, 4).map(product => (
                       <ProductCard
                         key={product.id}
-                        product={mapProductToCardProduct(product)}
+                        product={product}
                         onProductClick={() => {
                           handleProductSelect(product);
                         }}
@@ -8608,7 +8788,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   viewType === "grid" ? (
                     <ProductCard
                       key={product.id}
-                      product={mapProductToCardProduct(product)}
+                      product={product}
                       onProductClick={() => {
                         handleProductSelect(product);
                       }}
@@ -8621,10 +8801,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       formatPriceMMK={formatPriceMMK}
                     />
                   ) : (
-                    <ProductCard
+                    <MarketplaceListProductRow
                       key={product.id}
-                      viewType="list"
-                      product={mapProductToCardProduct(product)}
+                      product={product}
+                      layout="catalog"
+                      formatPriceMMK={formatPriceMMK}
                       onProductClick={() => handleProductSelect(product)}
                       onAddToCart={(e, v) => handleProductCardAddToCart(product, e, v)}
                       onToggleWishlist={(e) => {
@@ -8632,7 +8813,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         toggleWishlist(product.id);
                       }}
                       isWishlisted={wishlist.includes(product.id)}
-                      formatPriceMMK={formatPriceMMK}
                     />
                   )
                 ))}

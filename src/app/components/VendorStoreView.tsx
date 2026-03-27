@@ -208,28 +208,20 @@ function findMatchingVariant(
   );
 }
 
-/** Local mapper — vendor catalog shape; kept here so this view does not depend on shared marketplace mappers. */
 function productToCardProduct(product: Product): ProductCardProduct {
-  const vo = product.variantOptions;
   const variantOptions =
-    Array.isArray(vo) && vo.length > 0
-      ? vo
-      : Array.isArray(product.options)
-        ? product.options.map((o) => ({
-            name: o.name,
-            values: Array.isArray(o.values) ? o.values : [],
-          }))
-        : undefined;
-  const imgs = product.images;
+    product.variantOptions?.length > 0
+      ? product.variantOptions
+      : product.options?.map((o) => ({ name: o.name, values: o.values }));
   return {
     id: product.id,
-    image: Array.isArray(imgs) && imgs.length > 0 ? imgs[0] : "",
-    images: Array.isArray(imgs) ? imgs : undefined,
+    image: product.images && product.images.length > 0 ? product.images[0] : "",
+    images: product.images,
     name: product.name,
-    price: product.price != null ? String(product.price) : "",
+    price: product.price.toString(),
     salesVolume: product.reviewCount || 0,
     sku: product.sku,
-    hasVariants: Boolean(product.hasVariants),
+    hasVariants: product.hasVariants,
     variantOptions,
     variants: product.variants,
   };
