@@ -52,6 +52,7 @@ import { ServerStatusBanner } from "./ServerStatusBanner";
 import { ProductGridSkeleton, ProductDetailSkeleton } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
 import { authApi, wishlistApi } from "../../utils/api";
+import { AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS } from "../../constants";
 import { toast } from "sonner";
 import { getEffectiveVariantOptions } from "./ProductVariantChips";
 
@@ -544,6 +545,9 @@ export function VendorStoreView({
     });
   }, [user]);
 
+  const vendorProfileAmbientLastRef = useRef(0);
+  const vendorProfileRefreshInFlightRef = useRef(false);
+
   const refreshVendorProfileFromServer = useCallback(async () => {
     const storedUser = localStorage.getItem("migoo-user");
     if (!storedUser) return;
@@ -555,6 +559,16 @@ export function VendorStoreView({
     }
     const uid = resolveUserIdFromRecord(parsedUser);
     if (!uid) return;
+
+    const now = Date.now();
+    if (now - vendorProfileAmbientLastRef.current < AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS) {
+      return;
+    }
+    if (vendorProfileRefreshInFlightRef.current) {
+      return;
+    }
+    vendorProfileAmbientLastRef.current = now;
+    vendorProfileRefreshInFlightRef.current = true;
     try {
       const response: any = await authApi.getProfile(uid);
       const freshProfile = response?.user || response;
@@ -570,6 +584,8 @@ export function VendorStoreView({
       localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
     } catch {
       /* keep local session if profile refresh fails */
+    } finally {
+      vendorProfileRefreshInFlightRef.current = false;
     }
   }, []);
 
@@ -581,7 +597,7 @@ export function VendorStoreView({
     profileRefreshTimerRef.current = setTimeout(() => {
       profileRefreshTimerRef.current = null;
       void refreshVendorProfileFromServer();
-    }, 200);
+    }, 600);
   }, [refreshVendorProfileFromServer]);
 
   useEffect(() => {
@@ -2027,17 +2043,17 @@ export function VendorStoreView({
   const [wishlist, setWishlist] = useState<string[]>([]);
   /** Sorted JSON snapshot from last GET/PUT — skip redundant PUTs and block PUT before hydration */
   const wishlistServerSnapshotRef = useRef<string | null>(null);
+  const wishlistUserId = resolveUserIdFromRecord(user);
 
   useEffect(() => {
-    const uid = resolveUserIdFromRecord(user);
-    if (!uid) {
+    if (!wishlistUserId) {
       setWishlist([]);
       wishlistServerSnapshotRef.current = null;
       return;
     }
     wishlistServerSnapshotRef.current = null;
     void wishlistApi
-      .get(uid)
+      .get(wishlistUserId)
       .then((res) => {
         const ids = res.productIds || [];
         setWishlist(ids);
@@ -2046,24 +2062,23 @@ export function VendorStoreView({
       .catch(() => {
         wishlistServerSnapshotRef.current = "[]";
       });
-  }, [user]);
+  }, [wishlistUserId]);
 
   useEffect(() => {
-    const uid = resolveUserIdFromRecord(user);
-    if (!uid) return;
+    if (!wishlistUserId) return;
     if (wishlistServerSnapshotRef.current === null) return;
     const next = JSON.stringify([...wishlist].sort());
     if (next === wishlistServerSnapshotRef.current) return;
     const t = setTimeout(() => {
       wishlistApi
-        .update(uid, wishlist)
+        .update(wishlistUserId, wishlist)
         .then(() => {
           wishlistServerSnapshotRef.current = next;
         })
         .catch(() => {});
     }, 500);
     return () => clearTimeout(t);
-  }, [wishlist, user]);
+  }, [wishlist, wishlistUserId]);
   
   const toggleWishlist = (productId: string) => {
     // Require authentication for wishlist

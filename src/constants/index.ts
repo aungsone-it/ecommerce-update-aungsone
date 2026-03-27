@@ -40,6 +40,9 @@ export const POLLING_INTERVALS_MS = {
   MARKETING_CAMPAIGNS: 10 * 60 * 1000,
 } as const;
 
+/** Min gap between ambient GET /auth/profile calls (vendor storefront tab focus, etc.). */
+export const AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS = 10 * 60 * 1000;
+
 // ============================================
 // SERVER CONFIGURATION
 // ============================================

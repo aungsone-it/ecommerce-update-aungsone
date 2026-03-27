@@ -997,6 +997,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     phone: ''
   });
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+
+  /** Stable id for effects — avoids duplicate Edge/DB calls when `user` is replaced after profile merge */
+  const orderApiUserId = resolveOrderApiUserId(user);
   
   const [shippingAddresses, setShippingAddresses] = useState<any[]>([]);
   const [loadingAddresses, setLoadingAddresses] = useState(false);
@@ -1225,12 +1228,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // 🔥 DATABASE-FIRST: Save cart to database for logged-in users, localStorage for guests ONLY
   useEffect(() => {
-    if (user?.id) {
+    if (orderApiUserId) {
       // Logged-in user → Save to DATABASE ONLY (debounced to avoid spam)
       const syncCartToDB = async () => {
         try {
           await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${user.id}/cart`,
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${orderApiUserId}/cart`,
             {
               method: 'POST',
               headers: {
@@ -1240,7 +1243,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               body: JSON.stringify({ cart }),
             }
           );
-          console.log(`🛒 Cart synced to database for user ${user.id}`);
+          console.log(`🛒 Cart synced to database for user ${orderApiUserId}`);
         } catch (error) {
           console.error('Failed to sync cart to database:', error);
         }
@@ -1257,7 +1260,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         console.warn('Failed to save guest cart to localStorage:', error);
       }
     }
-  }, [cart, user]);
+  }, [cart, orderApiUserId]);
 
   useEffect(() => {
     // SIMPLIFIED: Load data once, then skip loading screen on subsequent navigations
@@ -2031,15 +2034,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Fetch user stats for profile page
   useEffect(() => {
     const fetchUserStats = async () => {
-      const uid = resolveOrderApiUserId(user);
-      if (!uid) {
+      if (!orderApiUserId) {
         setLoadingStats(false);
         return;
       }
 
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${uid}/orders`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${orderApiUserId}/orders`,
           {
             headers: {
               'Authorization': `Bearer ${publicAnonKey}`,
@@ -2062,13 +2064,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setLoadingStats(true);
       fetchUserStats();
     }
-  }, [user, viewMode]);
+  }, [orderApiUserId, viewMode]);
 
   // Fetch user orders for order history page
   useEffect(() => {
     const fetchUserOrders = async () => {
-      const uid = resolveOrderApiUserId(user);
-      if (!uid) {
+      if (!orderApiUserId) {
         setOrdersLoading(false);
         return;
       }
@@ -2078,7 +2079,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${uid}/orders`,
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${orderApiUserId}/orders`,
           {
             headers: {
               'Authorization': `Bearer ${publicAnonKey}`,
@@ -2110,7 +2111,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     ) {
       fetchUserOrders();
     }
-  }, [user, viewMode, location.pathname]);
+  }, [orderApiUserId, viewMode, location.pathname]);
 
   // Redirect to auth page if user tries to access protected pages without login
   useEffect(() => {
@@ -2249,22 +2250,20 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // Sync wishlist to database when user is logged in (guests cannot add to wishlist anymore)
   useEffect(() => {
-    if (user) {
-      const syncWishlist = async () => {
-        try {
-          console.log(`💝 [Storefront] Syncing wishlist for user ${user.id}:`, wishlist);
-          await wishlistApi.update(user.id, wishlist);
-          console.log("✅ Wishlist synced to database");
-        } catch (error) {
-          console.error("Failed to sync wishlist to database:", error);
-        }
-      };
-      // Debounce the sync to avoid too many API calls
-      const timeoutId = setTimeout(syncWishlist, 500);
-      return () => clearTimeout(timeoutId);
-    }
-    // Note: Guests can no longer add to wishlist, so no localStorage sync needed
-  }, [wishlist, user]);
+    if (!orderApiUserId) return;
+    const uid = orderApiUserId;
+    const syncWishlist = async () => {
+      try {
+        console.log(`💝 [Storefront] Syncing wishlist for user ${uid}:`, wishlist);
+        await wishlistApi.update(uid, wishlist);
+        console.log("✅ Wishlist synced to database");
+      } catch (error) {
+        console.error("Failed to sync wishlist to database:", error);
+      }
+    };
+    const timeoutId = setTimeout(syncWishlist, 500);
+    return () => clearTimeout(timeoutId);
+  }, [wishlist, orderApiUserId]);
 
   // �� Reset image index when product changes (prevents race condition)
   useEffect(() => {
