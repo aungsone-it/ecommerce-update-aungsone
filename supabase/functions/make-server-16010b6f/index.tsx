@@ -1582,12 +1582,58 @@ app.get("/make-server-16010b6f/auth/profile/:userId", async (c) => {
     }
     
     if (!user) {
+      // Supabase storefront customers + profile PUT often live in auth:user:${userId} or customer:* — not legacy user:${email}
+      const authProfile = await withTimeout(kv.get(`auth:user:${userId}`), 5000);
+      if (authProfile && typeof authProfile === "object") {
+        const { password: __, ...authRest } = authProfile as Record<string, unknown> & {
+          password?: string;
+        };
+        const out = { ...authRest } as Record<string, unknown>;
+        if (typeof out.profileImage === "string" && out.profileImage.trim()) {
+          const signedUrl = await getSignedImageUrl(out.profileImage.trim());
+          if (signedUrl) {
+            out.profileImageUrl = signedUrl;
+            console.log(`📸 GET profile: auth:user — signed profile image URL`);
+          }
+        }
+        console.log(`✅ Profile from auth:user:${userId}`);
+        return c.json({ user: out });
+      }
+
+      const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 5000);
+      const customer = Array.isArray(allCustomers)
+        ? allCustomers.find((c: any) => c != null && c.userId === userId)
+        : null;
+      if (customer && typeof customer === "object") {
+        const { password: ___, ...customerRest } = customer as Record<string, unknown> & {
+          password?: string;
+        };
+        const cust = customer as {
+          id?: string;
+          profileImage?: string;
+          avatar?: string;
+        };
+        const userPayload: Record<string, unknown> = {
+          ...customerRest,
+          id: userId,
+          customerId: cust.id,
+        };
+        if (typeof cust.profileImage === "string" && cust.profileImage.trim()) {
+          const su = await getSignedImageUrl(cust.profileImage.trim());
+          if (su) userPayload.profileImageUrl = su;
+        } else if (typeof cust.avatar === "string" && cust.avatar.trim()) {
+          userPayload.profileImageUrl = cust.avatar.trim();
+        }
+        console.log(`✅ Profile from customer record for userId ${userId}`);
+        return c.json({ user: userPayload });
+      }
+
       console.log(`❌ User not found: ${userId}`);
       return c.json({ error: "User not found" }, 404);
     }
-    
+
     const { password: _, ...userWithoutPassword } = user;
-    
+
     // Generate signed URL for profile image if exists
     if (userWithoutPassword.profileImage) {
       const signedUrl = await getSignedImageUrl(userWithoutPassword.profileImage);
@@ -1596,7 +1642,7 @@ app.get("/make-server-16010b6f/auth/profile/:userId", async (c) => {
         console.log(`📸 Generated signed URL for profile image`);
       }
     }
-    
+
     return c.json({ user: userWithoutPassword });
   } catch (error) {
     console.error("❌ Error fetching profile:", error);

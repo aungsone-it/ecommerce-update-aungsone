@@ -235,6 +235,16 @@ type VendorAddToCartOverrides = {
   buyNow?: boolean;
 };
 
+/** Bust browser cache when storage path or record updates (signed URLs can look identical across uploads). */
+function withVendorProfileImageCacheBust(user: unknown, baseUrl: string): string {
+  if (!baseUrl) return "";
+  const u = user as { updatedAt?: string; profileImage?: string; customerId?: string } | null;
+  const rev = u?.updatedAt || u?.profileImage || u?.customerId;
+  if (rev == null || rev === "") return baseUrl;
+  const token = encodeURIComponent(String(rev).slice(0, 128));
+  return baseUrl.includes("?") ? `${baseUrl}&_pv=${token}` : `${baseUrl}?_pv=${token}`;
+}
+
 function resolveVendorProductFromSlug(products: Product[], decoded: string): Product | undefined {
   const direct =
     products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
@@ -736,7 +746,10 @@ export function VendorStoreView({
     return "";
   };
 
-  const userProfileImageUrl = getUserProfileImageUrl(user);
+  const userProfileImageUrl = useMemo(
+    () => withVendorProfileImageCacheBust(user, getUserProfileImageUrl(user)),
+    [user]
+  );
 
   useEffect(() => {
     setProfileImageLoadFailed(false);
@@ -1006,7 +1019,7 @@ export function VendorStoreView({
               <CardTitle className="text-base sm:text-lg">Edit Profile</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-center gap-6">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6 min-w-0">
                 {profileForm.profileImage ? (
                   <CacheFriendlyImg
                     src={profileForm.profileImage}
@@ -1025,14 +1038,14 @@ export function VendorStoreView({
                     <UserCircle className="w-14 h-14 text-white" />
                   </div>
                 )}
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-900 mb-1">Profile Picture</p>
-                  <p className="text-xs text-slate-500 mb-2">Upload a photo (JPG/PNG/WEBP, auto-compressed)</p>
-                  <div className="flex gap-2">
+                <div className="flex-1 min-w-0 w-full sm:w-auto">
+                  <p className="text-sm font-medium text-slate-900 mb-3">Profile Picture</p>
+                  <div className="flex flex-col gap-2 max-w-full">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
+                      className="w-full sm:w-auto shrink-0 bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
                       onClick={() => {
                         const input = document.createElement("input");
                         input.type = "file";
@@ -1115,7 +1128,6 @@ export function VendorStoreView({
                         };
                         input.click();
                       }}
-                      className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
                     >
                       Upload Photo
                     </Button>
@@ -1124,6 +1136,7 @@ export function VendorStoreView({
                         type="button"
                         variant="outline"
                         size="sm"
+                        className="w-full sm:w-auto shrink-0"
                         onClick={() => setProfileForm((prev) => ({ ...prev, profileImage: null }))}
                       >
                         Remove
@@ -2244,7 +2257,7 @@ export function VendorStoreView({
                           <CacheFriendlyImg
                             src={userProfileImageUrl}
                             alt={user.name}
-                            className="w-8 h-8 rounded-full object-cover"
+                            className="size-[21px] rounded-full object-cover ring-1 ring-slate-200/80"
                             onError={() => setProfileImageLoadFailed(true)}
                           />
                         ) : (
@@ -2978,7 +2991,7 @@ export function VendorStoreView({
                         <CacheFriendlyImg
                           src={userProfileImageUrl}
                           alt={user.name}
-                          className="w-8 h-8 rounded-full object-cover"
+                          className="size-[21px] rounded-full object-cover ring-1 ring-slate-200/80"
                           onError={() => setProfileImageLoadFailed(true)}
                         />
                       ) : (
