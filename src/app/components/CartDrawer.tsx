@@ -19,7 +19,7 @@ function formatMmk(amount: number): string {
   return `${Math.round(amount)} MMK`;
 }
 
-/** Matches main marketplace cart sidebar: navy header, white list, slate footer, amber total */
+/** Matches main marketplace cart sidebar: navy header, white list, slate footer */
 export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal }: CartDrawerProps) {
   const { items, removeFromCart, updateQuantity, totalItems, totalPrice, clearCart } = useCart();
 
@@ -245,7 +245,7 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
                               </Button>
                             </div>
                             {item.quantity >= item.inventory && item.inventory > 0 && (
-                              <p className="mt-1 text-[10px] text-amber-600">Max stock reached</p>
+                              <p className="mt-1 text-[10px] text-slate-500">Max stock reached</p>
                             )}
                           </div>
                         </div>
@@ -336,7 +336,7 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
 
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-900">Total</span>
-                <p className="text-right text-xl font-bold bg-gradient-to-r from-amber-700 to-amber-600 bg-clip-text text-transparent">
+                <p className="text-right text-xl font-bold text-slate-900">
                   {formatMmk(finalPrice)}
                 </p>
               </div>

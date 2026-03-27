@@ -1,6 +1,6 @@
 // Minimalist Vendor Storefront - MVP Design
 import { moduleCache, CACHE_KEYS, fetchVendorProducts, fetchVendorCategories } from "../utils/module-cache";
-import { ProductCard } from "./ProductCard";
+import { ProductCard, mapProductToCardProduct, type ProductLikeForCard } from "./ProductCard";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
@@ -70,6 +70,8 @@ interface Product {
   hasVariants?: boolean;
   variants?: any[];
   variantOptions?: any[];
+  /** Same shape as marketplace `Product.options` — used when `variantOptions` is absent */
+  options?: { name: string; values: string[] }[];
 }
 
 interface VendorStoreViewProps {
@@ -205,6 +207,14 @@ function findMatchingVariant(
     }) ?? null
   );
 }
+
+type VendorAddToCartOverrides = {
+  variantSku?: string;
+  variantPrice?: number;
+  variantImage?: string;
+  quantity?: number;
+  buyNow?: boolean;
+};
 
 function resolveVendorProductFromSlug(products: Product[], decoded: string): Product | undefined {
   const direct =
@@ -1854,16 +1864,38 @@ export function VendorStoreView({
     }
   }, [location.pathname, selectedProduct]);
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (product: Product, overrides?: VendorAddToCartOverrides) => {
     try {
-      const selections = selectedProduct?.id === product.id ? vendorVariantSelections : {};
-      const variant = findMatchingVariant(product, selections);
+      if (overrides?.buyNow) {
+        clearCart();
+      }
       const parseNum = (x: unknown, fallback: number) => {
         if (x == null || x === "") return fallback;
         const n = typeof x === "number" ? x : parseFloat(String(x).replace(/[^0-9.-]/g, ""));
         return Number.isFinite(n) ? n : fallback;
       };
-      const price = variant != null ? parseNum(variant.price, product.price) : product.price;
+
+      let variant: any = null;
+      if (overrides?.variantSku && product.variants?.length) {
+        variant = product.variants.find(
+          (v: any) => String(v?.sku) === String(overrides.variantSku)
+        );
+      }
+      if (!variant) {
+        const selections = selectedProduct?.id === product.id ? vendorVariantSelections : {};
+        variant = findMatchingVariant(product, selections);
+      }
+
+      const qty =
+        overrides?.quantity ??
+        (selectedProduct?.id === product.id ? quantity : 1);
+
+      const price =
+        overrides?.variantPrice != null
+          ? overrides.variantPrice
+          : variant != null
+            ? parseNum(variant.price, product.price)
+            : product.price;
       const sku = (variant?.sku as string | undefined) || product.sku;
       const inventory =
         variant != null
@@ -1872,6 +1904,7 @@ export function VendorStoreView({
             : parseNum(variant.inventory, product.inventory)
           : product.inventory;
       const image =
+        overrides?.variantImage ||
         (variant?.image as string | undefined) ||
         (product.images && product.images.length > 0 ? product.images[0] : "");
       const cartId = variant?.sku ? `${product.id}:${String(variant.sku)}` : product.id;
@@ -1887,11 +1920,13 @@ export function VendorStoreView({
           inventory,
           vendorId: vendorId,
         },
-        quantity
+        qty
       );
       setQuantity(1);
-      // Match main storefront: auto-open cart drawer on desktop (md+)
-      if (typeof window !== "undefined" && window.innerWidth >= 768) {
+      if (overrides?.buyNow) {
+        setCartOpen(false);
+        setShowCheckout(true);
+      } else if (typeof window !== "undefined" && window.innerWidth >= 768) {
         setCartOpen(true);
       }
     } catch (error) {
@@ -2400,7 +2435,7 @@ export function VendorStoreView({
               <Card className="bg-gradient-to-br from-slate-50 to-slate-100 shadow-md border-0">
                 <CardContent className="px-4 py-[17px]">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base sm:text-lg font-bold bg-gradient-to-r from-amber-700 to-amber-600 bg-clip-text text-transparent">
+                    <span className="text-base sm:text-lg font-bold text-slate-900">
                       {formatPriceMMK(displayPriceVal)}
                     </span>
                     {displayCompareAt != null && displayCompareAt > displayPriceVal && (
@@ -3089,22 +3124,28 @@ export function VendorStoreView({
                     {savedHere.map((product) => (
                       <ProductCard
                         key={product.id}
-                        product={{
-                          id: product.id,
-                          image: product.images && product.images.length > 0 ? product.images[0] : "",
-                          name: product.name,
-                          price: product.price.toString(),
-                          salesVolume: product.reviewCount || 0,
-                          sku: product.sku,
-                        }}
+                        product={mapProductToCardProduct(product as ProductLikeForCard)}
                         onProductClick={() => {
                           const segment = buildVendorProductUrlSegment(product);
                           navigate(`${storeBase}/product/${encodeURIComponent(segment)}`);
                         }}
-                        onAddToCart={(e) => {
-                          e.stopPropagation();
-                          handleAddToCart(product);
-                          toast.success(`${product.name} added to cart!`);
+                        onAddToCart={(e, opts) => {
+                          e?.stopPropagation();
+                          handleAddToCart(product, {
+                            variantSku: opts?.sku,
+                            variantPrice:
+                              opts?.price != null
+                                ? typeof opts.price === "number"
+                                  ? opts.price
+                                  : parseFloat(String(opts.price).replace(/[^0-9.-]/g, ""))
+                                : undefined,
+                            variantImage: opts?.image,
+                            quantity: opts?.quantity,
+                            buyNow: opts?.buyNow,
+                          });
+                          toast.success(
+                            opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
+                          );
                         }}
                         onToggleWishlist={(e) => {
                           e.stopPropagation();
@@ -3167,24 +3208,30 @@ export function VendorStoreView({
                 {filteredProducts.map((product) => (
                   <ProductCard
                     key={product.id}
-                    product={{
-                      id: product.id,
-                      image: product.images && product.images.length > 0 ? product.images[0] : '',
-                      name: product.name,
-                      price: product.price.toString(),
-                      salesVolume: product.reviewCount || 0,
-                      sku: product.sku
-                    }}
+                    product={mapProductToCardProduct(product as ProductLikeForCard)}
                     onProductClick={async () => {
                       const segment = buildVendorProductUrlSegment(product);
                       navigate(
                         `${storeBase}/product/${encodeURIComponent(segment)}`
                       );
                     }}
-                    onAddToCart={(e) => {
-                      e.stopPropagation();
-                      handleAddToCart(product);
-                      toast.success(`${product.name} added to cart!`);
+                    onAddToCart={(e, opts) => {
+                      e?.stopPropagation();
+                      handleAddToCart(product, {
+                        variantSku: opts?.sku,
+                        variantPrice:
+                          opts?.price != null
+                            ? typeof opts.price === "number"
+                              ? opts.price
+                              : parseFloat(String(opts.price).replace(/[^0-9.-]/g, ""))
+                            : undefined,
+                        variantImage: opts?.image,
+                        quantity: opts?.quantity,
+                        buyNow: opts?.buyNow,
+                      });
+                      toast.success(
+                        opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
+                      );
                     }}
                     onToggleWishlist={(e) => {
                       e.stopPropagation();
