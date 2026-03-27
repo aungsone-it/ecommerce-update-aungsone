@@ -1,6 +1,6 @@
 // Minimalist Vendor Storefront - MVP Design
 import { moduleCache, CACHE_KEYS, fetchVendorProducts, fetchVendorCategories } from "../utils/module-cache";
-import { ProductCard, mapProductToCardProduct, type ProductLikeForCard } from "./ProductCard";
+import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
@@ -206,6 +206,33 @@ function findMatchingVariant(
       return optionNames.every((name: string, idx: number) => sel[name] === values[idx]);
     }) ?? null
   );
+}
+
+/** Local mapper — vendor catalog shape; kept here so this view does not depend on shared marketplace mappers. */
+function productToCardProduct(product: Product): ProductCardProduct {
+  const vo = product.variantOptions;
+  const variantOptions =
+    Array.isArray(vo) && vo.length > 0
+      ? vo
+      : Array.isArray(product.options)
+        ? product.options.map((o) => ({
+            name: o.name,
+            values: Array.isArray(o.values) ? o.values : [],
+          }))
+        : undefined;
+  const imgs = product.images;
+  return {
+    id: product.id,
+    image: Array.isArray(imgs) && imgs.length > 0 ? imgs[0] : "",
+    images: Array.isArray(imgs) ? imgs : undefined,
+    name: product.name,
+    price: product.price != null ? String(product.price) : "",
+    salesVolume: product.reviewCount || 0,
+    sku: product.sku,
+    hasVariants: Boolean(product.hasVariants),
+    variantOptions,
+    variants: product.variants,
+  };
 }
 
 type VendorAddToCartOverrides = {
@@ -3124,7 +3151,7 @@ export function VendorStoreView({
                     {savedHere.map((product) => (
                       <ProductCard
                         key={product.id}
-                        product={mapProductToCardProduct(product as ProductLikeForCard)}
+                        product={productToCardProduct(product)}
                         onProductClick={() => {
                           const segment = buildVendorProductUrlSegment(product);
                           navigate(`${storeBase}/product/${encodeURIComponent(segment)}`);
@@ -3208,7 +3235,7 @@ export function VendorStoreView({
                 {filteredProducts.map((product) => (
                   <ProductCard
                     key={product.id}
-                    product={mapProductToCardProduct(product as ProductLikeForCard)}
+                    product={productToCardProduct(product)}
                     onProductClick={async () => {
                       const segment = buildVendorProductUrlSegment(product);
                       navigate(

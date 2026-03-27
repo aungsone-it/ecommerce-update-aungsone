@@ -28,19 +28,26 @@ export type ProductLikeForCard = Product & {
 };
 
 export function mapProductToCardProduct(product: ProductLikeForCard): ProductCardProduct {
+  const vo = product.variantOptions;
   const variantOptions =
-    product.variantOptions && product.variantOptions.length > 0
-      ? product.variantOptions
-      : product.options?.map((o) => ({ name: o.name, values: o.values }));
+    Array.isArray(vo) && vo.length > 0
+      ? vo
+      : Array.isArray(product.options)
+        ? product.options.map((o) => ({
+            name: o.name,
+            values: Array.isArray(o.values) ? o.values : [],
+          }))
+        : undefined;
+  const imgs = product.images;
   return {
     id: product.id,
-    image: product.images && product.images.length > 0 ? product.images[0] : product.image ?? "",
-    images: product.images,
+    image: Array.isArray(imgs) && imgs.length > 0 ? imgs[0] : product.image ?? "",
+    images: Array.isArray(imgs) ? imgs : undefined,
     name: product.name,
-    price: String(product.price),
+    price: String(product.price ?? ""),
     salesVolume: product.reviewCount ?? product.salesVolume ?? 0,
     sku: product.sku,
-    hasVariants: product.hasVariants,
+    hasVariants: Boolean(product.hasVariants),
     variantOptions,
     variants: product.variants as ProductCardProduct["variants"],
   };
