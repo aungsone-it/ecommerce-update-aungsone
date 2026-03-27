@@ -553,9 +553,10 @@ export function VendorStoreView({
     } catch {
       return;
     }
-    if (!parsedUser?.id) return;
+    const uid = resolveUserIdFromRecord(parsedUser);
+    if (!uid) return;
     try {
-      const response: any = await authApi.getProfile(parsedUser.id);
+      const response: any = await authApi.getProfile(uid);
       const freshProfile = response?.user || response;
       if (!freshProfile || typeof freshProfile !== "object" || Array.isArray(freshProfile)) {
         return;
@@ -563,7 +564,8 @@ export function VendorStoreView({
       if (!freshProfile.id && !freshProfile.email) {
         return;
       }
-      const updatedUser = applyServerProfileMerge(parsedUser, freshProfile);
+      const localBase = { ...parsedUser, id: uid };
+      const updatedUser = applyServerProfileMerge(localBase, freshProfile);
       setUser(updatedUser);
       localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
     } catch {

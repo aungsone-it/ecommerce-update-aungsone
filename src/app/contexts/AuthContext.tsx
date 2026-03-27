@@ -162,7 +162,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
 
       if (response.ok) {
-        const profile = await response.json();
+        const data = await response.json();
+        const profile =
+          data && typeof data === "object" && data.user != null && typeof data.user === "object"
+            ? data.user
+            : data;
         console.log('✅ Profile loaded successfully');
         setUser(profile);
         

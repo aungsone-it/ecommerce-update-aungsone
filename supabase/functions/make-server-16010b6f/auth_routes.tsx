@@ -249,21 +249,52 @@ authApp.get("/profile/:userId", async (c) => {
 
     const profile = await kv.get(`auth:user:${userId}`);
 
-    if (!profile) {
-      console.log(`❌ API Error (/auth/profile/${userId}): User not found`);
-      return c.json({ error: "User not found" }, 404);
-    }
-
-    // Generate signed URL for profile image if exists
-    if (profile.profileImage) {
-      const signedUrl = await getSignedImageUrl(profile.profileImage);
-      if (signedUrl) {
-        profile.profileImageUrl = signedUrl;
+    if (profile && typeof profile === "object") {
+      const { password: _, ...rest } = profile as Record<string, unknown> & {
+        password?: string;
+        profileImage?: string;
+      };
+      const out = { ...rest } as Record<string, unknown>;
+      if (typeof out.profileImage === "string" && out.profileImage.trim()) {
+        const signedUrl = await getSignedImageUrl(out.profileImage.trim());
+        if (signedUrl) out.profileImageUrl = signedUrl;
       }
+      console.log(`✅ API Success: auth:user profile for ${userId}`);
+      return c.json({ user: out });
     }
 
-    console.log(`✅ API Success: Profile found for ${userId}`);
-    return c.json(profile);
+    // Storefront customers (Supabase) live in customer:* — same as login payload, not auth:user
+    const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
+    const customer = Array.isArray(allCustomers)
+      ? allCustomers.find((x: any) => x != null && x.userId === userId)
+      : null;
+
+    if (customer && typeof customer === "object") {
+      const { password: __, ...customerRest } = customer as Record<string, unknown> & {
+        password?: string;
+      };
+      const cust = customer as {
+        id?: string;
+        profileImage?: string;
+        avatar?: string;
+      };
+      const userPayload: Record<string, unknown> = {
+        ...customerRest,
+        id: userId,
+        customerId: cust.id,
+      };
+      if (typeof cust.profileImage === "string" && cust.profileImage.trim()) {
+        const su = await getSignedImageUrl(cust.profileImage.trim());
+        if (su) userPayload.profileImageUrl = su;
+      } else if (typeof cust.avatar === "string" && cust.avatar.trim()) {
+        userPayload.profileImageUrl = cust.avatar.trim();
+      }
+      console.log(`✅ API Success: customer profile for userId ${userId}`);
+      return c.json({ user: userPayload });
+    }
+
+    console.log(`❌ API Error (/auth/profile/${userId}): User not found`);
+    return c.json({ error: "User not found" }, 404);
   } catch (error: any) {
     console.error(`❌ API Request Failed (/auth/profile/${c.req.param("userId")}):`, error.message);
     return c.json({ error: error.message }, 500);
