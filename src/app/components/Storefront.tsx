@@ -530,10 +530,6 @@ function MarketplaceListProductRow({
   );
 }
 
-/** Full-viewport scroll root so `scrollbar-thin` applies (matches vendor storefront). */
-const STOREFRONT_SCROLL_ROOT =
-  "h-screen min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin flex flex-col";
-
 export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplication }: StorefrontProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -4486,7 +4482,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // View Profile Page
   if (viewMode === "view-profile") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         {renderHeader()}
         {CartSidebar}
         
@@ -4646,7 +4642,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Edit Profile Page
   if (viewMode === "edit-profile") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         {renderHeader()}
         {CartSidebar}
         
@@ -4873,7 +4869,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Order History Page
   if (viewMode === "order-history") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         {renderHeader()}
         {CartSidebar}
         
@@ -5045,7 +5041,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Shipping Addresses Page
   if (viewMode === "shipping-addresses") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         {renderHeader()}
         {CartSidebar}
         
@@ -5412,7 +5408,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Security Settings Page
   if (viewMode === "security-settings") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         {renderHeader()}
         {CartSidebar}
         
@@ -5631,7 +5627,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Order Confirmation View
   if (viewMode === "order-confirmation") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-gradient-to-br from-slate-50 via-white to-slate-50 items-center justify-center`}>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center">
         <div className="max-w-2xl mx-auto px-4 py-8">
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
               {/* Success Icon */}
@@ -5790,7 +5786,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Checkout View
   if (viewMode === "checkout") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         <ServerStatusBanner 
           status={serverStatus}
           storeName={stableStoreName}
@@ -6427,13 +6423,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     const mmkPrice = formatPriceMMK(displayPrice);
     
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-white`}>
+      <div className="min-h-screen bg-white">
         {renderHeader()}
         {CartSidebar}
 
         {/* 🔥 SKELETON LOADING OVERLAY - Covers loading and scroll-to-top */}
         {isLoadingProductDetail && (
-          <div className="fixed top-16 md:top-[8.5rem] left-0 right-0 bottom-0 bg-white z-[60] overflow-y-auto scrollbar-thin">
+          <div className="fixed top-16 md:top-[8.5rem] left-0 right-0 bottom-0 bg-white z-[60] overflow-y-auto">
             <div className="max-w-7xl w-full mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5">
               {/* Breadcrumb skeleton */}
               <div className="flex items-center gap-1.5 mb-3">
@@ -7045,7 +7041,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // All Products View
   if (viewMode === "all-products") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         <ServerStatusBanner 
           status={serverStatus}
           storeName={stableStoreName}
@@ -7366,7 +7362,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     console.log('Blog post prepared for detail:', blogPostForDetail);
 
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         <ServerStatusBanner 
           status={serverStatus}
           storeName={siteSettings.storeName}
@@ -7399,7 +7395,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Blog View
   if (viewMode === "blog") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         <ServerStatusBanner 
           status={serverStatus}
           storeName={stableStoreName}
@@ -7645,7 +7641,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Categories View
   if (viewMode === "categories") {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+      <div className="min-h-screen bg-slate-50">
         <ServerStatusBanner 
           status={serverStatus}
           storeName={stableStoreName}
@@ -7767,7 +7763,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Show full-screen loading during initial data fetch
   if (serverStatus === 'checking' || !isDataReady) {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} items-center justify-center bg-white`}>
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-orange-500 animate-spin mx-auto mb-4" />
           <p className="text-slate-600">Please wait a while</p>
@@ -7779,7 +7775,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // 🔒 Show error screen if connection failed AND no cached data
   if (serverStatus === 'unhealthy' && cachedProducts.length === 0) {
     return (
-      <div className={`${STOREFRONT_SCROLL_ROOT} items-center justify-center bg-white px-4`}>
+      <div className="min-h-screen flex items-center justify-center bg-white px-4">
         <div className="text-center space-y-6 max-w-md">
           <div className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center mx-auto">
             <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
@@ -7818,7 +7814,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // Home View
   return (
-    <div className={`${STOREFRONT_SCROLL_ROOT} bg-slate-50`}>
+    <div className="min-h-screen bg-slate-50">
       <ServerStatusBanner 
         status={serverStatus}
         storeName={stableStoreName}
