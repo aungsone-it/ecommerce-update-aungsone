@@ -2601,14 +2601,9 @@ export function VendorStoreView({
                   }
                   onClick={() => {
                     if (displayInventoryVal === 0) return;
-                    // Clear cart first, then add only this product for direct checkout
-                    clearCart();
-                    handleAddToCart(selectedProduct);
-                    setCartOpen(false);
-                    // Clear selected product and navigate to checkout
-                    setSelectedProduct(null);
-                    navigate(storeBase, { replace: false });
-                    setShowCheckout(true);
+                    // Buy now: open checkout in-place. Do not navigate to store home — sibling
+                    // routes remount VendorStorefrontPage and drop showCheckout + cart state.
+                    handleAddToCart(selectedProduct, { buyNow: true });
                   }}
                 >
                   <span className="block leading-none">
