@@ -245,6 +245,26 @@ function withVendorProfileImageCacheBust(user: unknown, baseUrl: string): string
   return baseUrl.includes("?") ? `${baseUrl}&_pv=${token}` : `${baseUrl}?_pv=${token}`;
 }
 
+/**
+ * Merge server profile into local migoo-user. If the API omits profileImageUrl (common for
+ * customer records that only send `avatar`), drop the old signed URL from localStorage so
+ * getUserProfileImageUrl does not prefer a stale URL over the fresh avatar.
+ */
+function applyServerProfileMerge(localUser: any, serverUser: any): any {
+  const merged: any = {
+    ...localUser,
+    ...serverUser,
+    id: localUser?.id ?? serverUser.id,
+    email: serverUser.email ?? localUser?.email,
+  };
+  const srv = serverUser?.profileImageUrl;
+  const hasServerProfileImageUrl = typeof srv === "string" && srv.trim().length > 0;
+  if (!hasServerProfileImageUrl) {
+    delete merged.profileImageUrl;
+  }
+  return merged;
+}
+
 function resolveVendorProductFromSlug(products: Product[], decoded: string): Product | undefined {
   const direct =
     products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
@@ -524,33 +544,62 @@ export function VendorStoreView({
     });
   }, [user]);
 
-  useEffect(() => {
+  const refreshVendorProfileFromServer = useCallback(async () => {
     const storedUser = localStorage.getItem("migoo-user");
     if (!storedUser) return;
+    let parsedUser: any;
     try {
-      const parsedUser = JSON.parse(storedUser);
-      if (!parsedUser?.id) return;
-      authApi.getProfile(parsedUser.id)
-        .then((response: any) => {
-          const freshProfile = response?.user || response;
-          if (freshProfile && typeof freshProfile === "object" && !Array.isArray(freshProfile)) {
-            const updatedUser = {
-              ...parsedUser,
-              ...freshProfile,
-              id: parsedUser.id ?? freshProfile.id,
-              email: freshProfile.email ?? parsedUser.email,
-            };
-            setUser((prev: any) => ({ ...(prev || parsedUser), ...updatedUser }));
-            localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
-          }
-        })
-        .catch(() => {
-          // Keep existing user state if profile refresh fails
-        });
-    } catch (error) {
-      console.error("Failed to refresh vendor storefront user profile:", error);
+      parsedUser = JSON.parse(storedUser);
+    } catch {
+      return;
+    }
+    if (!parsedUser?.id) return;
+    try {
+      const response: any = await authApi.getProfile(parsedUser.id);
+      const freshProfile = response?.user || response;
+      if (!freshProfile || typeof freshProfile !== "object" || Array.isArray(freshProfile)) {
+        return;
+      }
+      if (!freshProfile.id && !freshProfile.email) {
+        return;
+      }
+      const updatedUser = applyServerProfileMerge(parsedUser, freshProfile);
+      setUser(updatedUser);
+      localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
+    } catch {
+      /* keep local session if profile refresh fails */
     }
   }, []);
+
+  const profileRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleVendorProfileRefresh = useCallback(() => {
+    if (profileRefreshTimerRef.current) {
+      clearTimeout(profileRefreshTimerRef.current);
+    }
+    profileRefreshTimerRef.current = setTimeout(() => {
+      profileRefreshTimerRef.current = null;
+      void refreshVendorProfileFromServer();
+    }, 200);
+  }, [refreshVendorProfileFromServer]);
+
+  useEffect(() => {
+    scheduleVendorProfileRefresh();
+    return () => {
+      if (profileRefreshTimerRef.current) {
+        clearTimeout(profileRefreshTimerRef.current);
+      }
+    };
+  }, [scheduleVendorProfileRefresh]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible") {
+        scheduleVendorProfileRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [scheduleVendorProfileRefresh]);
 
   // Same as Storefront: cache key `migoo-shipping-addresses-${userId}` + GET/POST customers/:id/addresses
   useEffect(() => {
