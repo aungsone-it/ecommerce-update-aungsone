@@ -2181,12 +2181,12 @@ export function VendorStoreView({
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Actions — ml-auto pins the block to the header’s right (mobile has no flex-1 search) */}
+              <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0 min-w-0 ml-auto">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="md:hidden rounded-full"
+                  className="md:hidden rounded-full shrink-0"
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 >
                   {mobileMenuOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
@@ -2195,7 +2195,7 @@ export function VendorStoreView({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="relative hover:bg-slate-100 rounded-full w-10 h-10"
+                  className="relative hover:bg-slate-100 rounded-full w-10 h-10 shrink-0"
                   onClick={goToSavedProducts}
                   title="Saved products"
                 >
@@ -2211,7 +2211,7 @@ export function VendorStoreView({
                   variant="ghost"
                   size="icon"
                   onClick={() => setCartOpen(true)}
-                  className="rounded-full relative"
+                  className="rounded-full relative shrink-0"
                 >
                   <ShoppingCart className="w-5 h-5" />
                   {totalItems > 0 && (
@@ -2221,18 +2221,17 @@ export function VendorStoreView({
                   )}
                 </Button>
 
-                {/* Login / Register — visible on mobile (compact) and desktop */}
+                {/* Login/Register — flush right on small screens (header uses px-4) */}
                 {!user && (
                   <Button
                     variant="ghost"
-                    className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 px-2 sm:px-4 whitespace-nowrap shrink-0 text-xs sm:text-sm"
+                    className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 pl-2 pr-0 sm:px-4 whitespace-nowrap shrink-0 text-[11px] sm:text-sm leading-tight max-[380px]:text-[10px]"
                     onClick={() => {
                       setShowAuthModal(true);
                       setAuthMode('login');
                     }}
                   >
-                    <span className="sm:hidden">Login</span>
-                    <span className="hidden sm:inline">Login / Register</span>
+                    Login/Register
                   </Button>
                 )}
 
@@ -2916,12 +2915,12 @@ export function VendorStoreView({
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* Actions — ml-auto pins the block to the header’s right (mobile has no flex-1 search) */}
+            <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0 min-w-0 ml-auto">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden rounded-full"
+                className="md:hidden rounded-full shrink-0"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
@@ -2930,7 +2929,7 @@ export function VendorStoreView({
               <Button
                 variant="ghost"
                 size="icon"
-                className="relative hover:bg-slate-100 rounded-full w-10 h-10"
+                className="relative hover:bg-slate-100 rounded-full w-10 h-10 shrink-0"
                 onClick={goToSavedProducts}
                 title="Saved products"
               >
@@ -2946,7 +2945,7 @@ export function VendorStoreView({
                 variant="ghost"
                 size="icon"
                 onClick={() => setCartOpen(true)}
-                className="rounded-full relative"
+                className="rounded-full relative shrink-0"
               >
                 <ShoppingCart className="w-5 h-5" />
                 {totalItems > 0 && (
@@ -2956,18 +2955,17 @@ export function VendorStoreView({
                 )}
               </Button>
 
-              {/* Login / Register — visible on mobile (compact) and desktop */}
+              {/* Login/Register — flush right on small screens (header uses px-4) */}
               {!user && (
                 <Button
                   variant="ghost"
-                  className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 px-2 sm:px-4 whitespace-nowrap shrink-0 text-xs sm:text-sm"
+                  className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 pl-2 pr-0 sm:px-4 whitespace-nowrap shrink-0 text-[11px] sm:text-sm leading-tight max-[380px]:text-[10px]"
                   onClick={() => {
                     setShowAuthModal(true);
                     setAuthMode('login');
                   }}
                 >
-                  <span className="sm:hidden">Login</span>
-                  <span className="hidden sm:inline">Login / Register</span>
+                  Login/Register
                 </Button>
               )}
 
