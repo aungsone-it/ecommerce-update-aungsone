@@ -7,6 +7,7 @@ export const ADMIN_PORTAL_SEARCH_MIN_SERVER_CHARS = 3;
 export const ADMIN_PORTAL_SEARCH_DEBOUNCE_MS = 480;
 
 export type AdminSearchableProduct = {
+  id?: string;
   name?: string;
   title?: string;
   sku?: string;
@@ -14,7 +15,7 @@ export type AdminSearchableProduct = {
   variants?: { sku?: string }[];
 };
 
-/** Live filter while typing (no network) — empty needle shows all rows. */
+/** Live filter while typing (no network) — empty needle shows all rows. Same fields as main storefront catalog search. */
 export function productMatchesAdminLiveSearch(
   product: AdminSearchableProduct,
   liveTrimmed: string
@@ -24,8 +25,9 @@ export function productMatchesAdminLiveSearch(
   const q = raw.toLowerCase();
   const name = String(product.name ?? product.title ?? "").toLowerCase();
   const sku = String(product.sku ?? "").toLowerCase();
+  const id = String(product.id ?? "").toLowerCase();
   const cat = String(product.category ?? "").toLowerCase();
-  if (name.includes(q) || sku.includes(q) || cat.includes(q)) return true;
+  if (name.includes(q) || sku.includes(q) || id.includes(q) || cat.includes(q)) return true;
   const vars = product.variants;
   if (Array.isArray(vars)) {
     for (const v of vars) {

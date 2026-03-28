@@ -134,6 +134,7 @@ const translations: Record<Language, Record<string, string>> = {
     
     // Navigation
     'nav.home': 'Home',
+    'nav.search': 'Search',
     'nav.product': 'Product',
     'nav.orders': 'Orders',
     'nav.vendor': 'Vendor',
@@ -336,6 +337,11 @@ const translations: Record<Language, Record<string, string>> = {
     'finances.allStatus': 'All Status',
     'finances.allMethods': 'All Methods',
     'finances.dateRange': 'Date Range',
+    'finances.filterByDate': 'Filter by date',
+    'finances.filterByDateHint': 'Stats, charts, and tables use orders in this range. Leave unset for all time.',
+    'finances.allTime': 'All time',
+    'finances.selectEndDate': 'Select end date',
+    'finances.clearDateFilter': 'Clear dates',
     'finances.clearFilters': 'Clear',
     'finances.export': 'Export',
     'finances.transactionId': 'Transaction ID',
@@ -1013,6 +1019,7 @@ const translations: Record<Language, Record<string, string>> = {
     
     // Navigation
     'nav.home': '首页',
+    'nav.search': '搜索',
     'nav.product': '产品',
     'nav.orders': '订单',
     'nav.vendor': '供应商',
@@ -1215,6 +1222,11 @@ const translations: Record<Language, Record<string, string>> = {
     'finances.allStatus': '所有状态',
     'finances.allMethods': '所有方式',
     'finances.dateRange': '日期范围',
+    'finances.filterByDate': '按日期筛选',
+    'finances.filterByDateHint': '统计、图表和表格仅包含该范围内的订单。不选则为全部时间。',
+    'finances.allTime': '全部时间',
+    'finances.selectEndDate': '请选择结束日期',
+    'finances.clearDateFilter': '清除日期',
     'finances.clearFilters': '清除',
     'finances.export': '导出',
     'finances.transactionId': '交易ID',

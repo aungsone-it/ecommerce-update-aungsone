@@ -4,6 +4,7 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
 import { cacheManager } from "../utils/cacheManager";
 import { moduleCache, CACHE_KEYS, fetchAllVendors } from "../utils/module-cache";
+import { formatNumber } from "../../utils/formatNumber";
 import {
   Search,
   Filter,
@@ -116,20 +117,28 @@ function vendorDisplayName(vendor: Vendor & { id?: string }): string {
   return id ? `Unnamed (${id.length > 20 ? `${id.slice(0, 18)}…` : id})` : "Unnamed vendor";
 }
 
+function formatJoinedLabel(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "—";
+  const d = new Date(t);
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  return t;
+}
+
 function vendorDisplayJoined(vendor: Vendor & { createdAt?: string }): string {
   const j = vendor.joinedDate;
-  if (typeof j === "string" && j.trim()) return j;
+  if (typeof j === "string" && j.trim()) {
+    return formatJoinedLabel(j);
+  }
   const c = vendor.createdAt;
   if (typeof c === "string" && c.trim()) {
-    try {
-      return new Date(c).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    } catch {
-      return "—";
-    }
+    return formatJoinedLabel(c);
   }
   return "—";
 }
@@ -138,11 +147,26 @@ interface VendorProps {
   onPreviewVendorStore?: (vendorId: string, storeSlug: string, vendor: Vendor) => void;
   onLoginAsVendor?: (vendor: Vendor) => void;
   pendingApplicationsCount?: number;
+  /** From global search — applied when token changes */
+  initialListSearchQuery?: string;
+  listSearchApplyToken?: number;
 }
 
-export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicationsCount }: VendorProps = {}) {
+export function Vendor({
+  onPreviewVendorStore,
+  onLoginAsVendor,
+  pendingApplicationsCount,
+  initialListSearchQuery,
+  listSearchApplyToken,
+}: VendorProps = {}) {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (initialListSearchQuery === undefined || !String(initialListSearchQuery).trim()) return;
+    setSearchQuery(String(initialListSearchQuery).trim());
+  }, [initialListSearchQuery, listSearchApplyToken]);
+
   const [statusFilter, setStatusFilter] = useState<VendorStatus | "all" | "incomplete">("all");
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -589,18 +613,17 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
     }
   };
 
-  // Calculate stats
+  // Calculate stats (pending = vendor profiles awaiting activation + open vendor applications)
+  const pendingVendorProfiles = vendors.filter((v) => v.status === "pending").length;
+  const pendingApplications =
+    typeof pendingApplicationsCount === "number" ? pendingApplicationsCount : 0;
+
   const stats = {
     total: vendors.length,
     active: vendors.filter(v => v.status === "active").length,
     inactive: vendors.filter(v => v.status === "inactive").length,
-    pending: vendors.filter(v => v.status === "pending").length,
-    incomplete: vendors.filter((v) => effectiveVendorStatus(v) === "incomplete").length,
+    pending: pendingVendorProfiles + pendingApplications,
     totalRevenue: vendors.reduce((sum, v) => sum + safeNumber(v.totalRevenue), 0),
-    commissionEarned: vendors.reduce(
-      (sum, v) => sum + (safeNumber(v.totalRevenue) * safeNumber(v.commission)) / 100,
-      0
-    ),
   };
 
   // 🔥 If viewing applications, show the applications component
@@ -724,7 +747,7 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
       </Card>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card className="p-4 border border-slate-200">
           <div className="flex items-center justify-between">
             <div>
@@ -776,35 +799,16 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
         <Card className="p-4 border border-slate-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500">Incomplete</p>
-              <p className="text-2xl font-semibold text-slate-600 mt-1">{stats.incomplete}</p>
-            </div>
-            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-slate-500" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4 border border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
               <p className="text-sm text-slate-500">{t('vendor.totalRevenue')}</p>
-              <p className="text-2xl font-semibold text-slate-900 mt-1">${(stats.totalRevenue / 1000).toFixed(0)}k</p>
+              <p className="mt-1 flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
+                <span className="text-2xl font-semibold text-slate-900 tabular-nums">
+                  {formatNumber(Math.round(stats.totalRevenue))}
+                </span>
+                <span className="text-[0.65rem] font-medium text-slate-500 uppercase tracking-wide">MMK</span>
+              </p>
             </div>
             <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
               <DollarSign className="w-5 h-5 text-purple-600" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-4 border border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-500">Commission Earned</p>
-              <p className="text-2xl font-semibold text-slate-900 mt-1">${(stats.commissionEarned / 1000).toFixed(0)}k</p>
-            </div>
-            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-orange-600" />
             </div>
           </div>
         </Card>
@@ -940,8 +944,6 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
                     <th className="text-left p-4 text-sm font-medium text-slate-600">{t('vendor.email')}</th>
                     <th className="text-left p-4 text-sm font-medium text-slate-600">Location</th>
                     <th className="text-left p-4 text-sm font-medium text-slate-600">{t('vendor.products')}</th>
-                    <th className="text-left p-4 text-sm font-medium text-slate-600">{t('vendor.revenue')}</th>
-                    <th className="text-left p-4 text-sm font-medium text-slate-600">{t('vendor.commission')}</th>
                     <th className="text-left p-4 text-sm font-medium text-slate-600">{t('vendor.status')}</th>
                     <th className="text-left p-4 text-sm font-medium text-slate-600">{t('vendor.joined')}</th>
                     <th className="text-left p-4 text-sm font-medium text-slate-600">{t('vendor.actions')}</th>
@@ -1009,12 +1011,6 @@ export function Vendor({ onPreviewVendorStore, onLoginAsVendor, pendingApplicati
                           <Package className="w-4 h-4 text-slate-400" />
                           <span className="text-sm font-medium text-slate-900">{safeNumber(vendor.productsCount)}</span>
                         </div>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-sm font-semibold text-slate-900">{safeNumber(vendor.totalRevenue).toLocaleString()} MMK</span>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-sm text-slate-900">{safeNumber(vendor.commission)}%</span>
                       </td>
                       <td className="p-4">
                         {getStatusBadge(vendor)}

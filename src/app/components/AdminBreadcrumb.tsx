@@ -35,6 +35,7 @@ function navKeyForLabel(label: string): string {
     "Vendor store view": "nav.vendor",
     "Collaborator profile": "nav.collaborator",
     "Collaborator applications": "nav.collaborator",
+    Search: "nav.search",
   };
   return map[label] ?? label;
 }
@@ -44,6 +45,13 @@ function crumbsForPage(currentPage: string): Crumb[] {
 
   if (currentPage === "Home") {
     return [{ labelKey: navKeyForLabel("Home"), fallback: "Home", page: null }];
+  }
+
+  if (currentPage === "Search") {
+    return [
+      { labelKey: navKeyForLabel("Home"), fallback: "Home", page: "Home" },
+      { labelKey: navKeyForLabel("Search"), fallback: "Search", page: null },
+    ];
   }
 
   if (PRODUCT_SUB.has(currentPage)) {
@@ -84,8 +92,8 @@ export function AdminBreadcrumb({ currentPage, onNavigate }: AdminBreadcrumbProp
   const segments = crumbsForPage(currentPage);
 
   return (
-    <Breadcrumb className="text-sm">
-      <BreadcrumbList className="flex-wrap gap-x-1.5 gap-y-1 sm:gap-2.5">
+    <Breadcrumb>
+      <BreadcrumbList className="text-xs flex-wrap gap-x-1 gap-y-0.5 sm:gap-1.5">
         {segments.map((crumb, i) => {
           const label = t(crumb.labelKey) || crumb.fallback;
           const isLast = i === segments.length - 1;
@@ -94,14 +102,14 @@ export function AdminBreadcrumb({ currentPage, onNavigate }: AdminBreadcrumbProp
             <Fragment key={`${crumb.fallback}-${i}`}>
               <BreadcrumbItem className="inline-flex">
                 {isLast ? (
-                  <BreadcrumbPage className="font-medium text-slate-800 dark:text-slate-100">
+                  <BreadcrumbPage className="text-xs font-medium text-slate-800 dark:text-slate-100">
                     {label}
                   </BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink asChild>
                     <button
                       type="button"
-                      className="font-normal text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
+                      className="text-xs font-normal text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100"
                       onClick={() => {
                         if (crumb.page) onNavigate(crumb.page);
                       }}
@@ -112,7 +120,7 @@ export function AdminBreadcrumb({ currentPage, onNavigate }: AdminBreadcrumbProp
                 )}
               </BreadcrumbItem>
               {!isLast && (
-                <BreadcrumbSeparator className="inline-flex [&>svg]:size-3.5 text-slate-400" />
+                <BreadcrumbSeparator className="inline-flex [&>svg]:size-3 text-slate-400" />
               )}
             </Fragment>
           );

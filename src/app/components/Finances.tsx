@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import type { DateRange } from "react-day-picker";
 import { useLanguage } from "../contexts/LanguageContext";
 import { DollarSign, TrendingUp, TrendingDown, CreditCard, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Calendar, Download, Search, User, X, Eye, Clock, Package, Video, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -9,15 +10,30 @@ import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Calendar as CalendarComponent } from "./ui/calendar";
-import { formatNumber, formatMMK } from "../../utils/formatNumber"; // 🔥 Import number formatting
-
-// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
-let cachedFinancialData: any = null;
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
-import { format } from "date-fns";
+import { formatNumber } from "../../utils/formatNumber"; // 🔥 Import number formatting
+import { format, startOfDay, endOfDay } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { toast } from "sonner";
+
+/** Large amount + very small MMK; font scales down inside @container cards for billion-scale values. */
+function FinancesStatMmk({ value }: { value: number }) {
+  const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return (
+    <p className="mt-1 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1 gap-y-0.5">
+      <span className="min-w-0 max-w-full font-bold tabular-nums leading-tight text-slate-900 dark:text-white [font-size:clamp(0.75rem,6.25cqi,1.5rem)] break-words">
+        {formatNumber(n)}
+      </span>
+      <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-none [font-size:clamp(0.5rem,3.25cqi,0.625rem)]">
+        MMK
+      </span>
+    </p>
+  );
+}
+
+// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
+let cachedFinancialData: any = null;
 
 // Use placeholder payment method logos for production deployment
 const kbzPayLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect width='48' height='48' fill='%234f46e5' rx='8'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='sans-serif' font-size='16' font-weight='bold'%3EKBZ%3C/text%3E%3C/svg%3E";
@@ -45,7 +61,9 @@ export function Finances() {
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState("7days");
-  
+  const [overviewDateRange, setOverviewDateRange] = useState<DateRange | undefined>(undefined);
+  const [overviewDatePickerOpen, setOverviewDatePickerOpen] = useState(false);
+
   // 🔥 NEW: State for real data from API
   // 🚀 Initialize from cache if available
   const [loading, setLoading] = useState(!cachedFinancialData);
@@ -120,41 +138,108 @@ export function Finances() {
 
   // Extract data from API response
   const transactions = financialData?.transactions || [];
-  const paymentMethodsData = financialData?.paymentMethods || [];
   const vendorPayouts = financialData?.vendorPayouts || [];
-  const revenueChartData = financialData?.revenueChartData || [];
-  
-  const totalRevenue = financialData?.summary?.totalRevenue || 0;
-  const totalCommission = financialData?.summary?.totalCommission || 0;
-  const totalVendorPayout = financialData?.summary?.totalVendorPayout || 0;
-  const pendingPayouts = financialData?.summary?.pendingPayouts || 0;
 
-  // 🔥 DEDUPLICATE CHART DATA: Ensure unique keys to prevent React warnings
-  // Deduplicate revenueChartData by date and add unique IDs with timestamp
-  const uniqueRevenueChartData = Array.from(
-    new Map(
-      revenueChartData
-        .filter((item: any) => item && item.date) // Filter out null/undefined items
-        .map((item: any, idx: number) => [`${item.date}-${idx}`, item]) // Use combo key to ensure uniqueness
-    ).values()
-  ).map((item: any, index: number) => ({
-    ...item,
-    uniqueKey: `revenue-${item.date}-${index}-${Date.now()}`, // Absolutely unique key
-  }));
+  const overviewFilterActive = Boolean(overviewDateRange?.from && overviewDateRange?.to);
 
-  // Deduplicate paymentMethodsData by method and add unique IDs with timestamp
-  const uniquePaymentMethodsData = Array.from(
-    new Map(
-      paymentMethodsData
-        .filter((item: any) => item && item.method) // Filter out null/undefined items
-        .map((item: any, idx: number) => [`${item.method}-${idx}`, item]) // Use combo key to ensure uniqueness
-    ).values()
-  ).map((item: any, index: number) => ({
-    ...item,
-    uniqueKey: `payment-${item.method}-${index}-${Date.now()}`, // Absolutely unique key
-  }));
+  const scopedTransactions = useMemo(() => {
+    if (!overviewFilterActive || !overviewDateRange?.from || !overviewDateRange?.to) {
+      return transactions;
+    }
+    const from = startOfDay(overviewDateRange.from);
+    const to = endOfDay(overviewDateRange.to);
+    return transactions.filter((t: any) => {
+      const d = new Date(t.date);
+      return !Number.isNaN(d.getTime()) && d >= from && d <= to;
+    });
+  }, [transactions, overviewFilterActive, overviewDateRange?.from, overviewDateRange?.to]);
 
-  const filteredTransactions = transactions.filter((t: any) => {
+  const dashboardSummary = useMemo(() => {
+    let totalRevenue = 0;
+    let totalCommission = 0;
+    let totalVendorPayout = 0;
+    let pendingPayouts = 0;
+    for (const t of scopedTransactions) {
+      totalRevenue += Number(t.amount) || 0;
+      totalCommission += Number(t.commission) || 0;
+      totalVendorPayout += Number(t.vendorPayout) || 0;
+      if (t.status === "completed" || t.status === "delivered") {
+        pendingPayouts += Number(t.vendorPayout) || 0;
+      }
+    }
+    return { totalRevenue, totalCommission, totalVendorPayout, pendingPayouts };
+  }, [scopedTransactions]);
+
+  const { totalRevenue, totalCommission, totalVendorPayout, pendingPayouts } = dashboardSummary;
+
+  const periodDays = chartPeriod === "7days" ? 7 : chartPeriod === "30days" ? 30 : 90;
+
+  const chartDataFromScope = useMemo(() => {
+    const daily = new Map<string, { revenue: number; commission: number }>();
+    for (const t of scopedTransactions) {
+      const d = new Date(t.date);
+      if (Number.isNaN(d.getTime())) continue;
+      const key = format(startOfDay(d), "yyyy-MM-dd");
+      const cur = daily.get(key) || { revenue: 0, commission: 0 };
+      cur.revenue += Number(t.amount) || 0;
+      cur.commission += Number(t.commission) || 0;
+      daily.set(key, cur);
+    }
+    const sorted = Array.from(daily.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+    const sliced = sorted.slice(-periodDays);
+    return sliced.map(([dateStr, data], index) => ({
+      date: new Date(`${dateStr}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      revenue: data.revenue,
+      commission: data.commission,
+      uniqueKey: `revenue-${dateStr}-${index}`,
+    }));
+  }, [scopedTransactions, periodDays]);
+
+  const paymentMethodsFromScope = useMemo(() => {
+    const map = new Map<string, { count: number; amount: number }>();
+    let total = 0;
+    for (const t of scopedTransactions) {
+      const m = String(t.method || "Cash");
+      const cur = map.get(m) || { count: 0, amount: 0 };
+      cur.count += 1;
+      cur.amount += Number(t.amount) || 0;
+      map.set(m, cur);
+      total += Number(t.amount) || 0;
+    }
+    return Array.from(map.entries()).map(([method, data]) => ({
+      method,
+      transactions: data.count,
+      amount: data.amount,
+      percentage: total > 0 ? (data.amount / total) * 100 : 0,
+      uniqueKey: `payment-${method}`,
+    }));
+  }, [scopedTransactions]);
+
+  const vendorPayoutsFromScope = useMemo(() => {
+    const emailById = new Map<string, string>(
+      vendorPayouts.map((p: any) => [String(p.id), String(p.email || "")])
+    );
+    const map = new Map<string, { id: string; vendor: string; email: string; payout: number; orders: number; status: string }>();
+    for (const t of scopedTransactions) {
+      const id = String(t.vendorId || t.vendor || "unknown");
+      const cur =
+        map.get(id) || {
+          id,
+          vendor: String(t.vendor || "Unknown"),
+          email: emailById.get(id) || "",
+          payout: 0,
+          orders: 0,
+          status: "pending",
+        };
+      cur.payout += Number(t.vendorPayout) || 0;
+      cur.orders += 1;
+      if (!cur.email && emailById.has(id)) cur.email = emailById.get(id)!;
+      map.set(id, cur);
+    }
+    return Array.from(map.values());
+  }, [scopedTransactions, vendorPayouts]);
+
+  const filteredTransactions = scopedTransactions.filter((t: any) => {
     const matchesSearch = t.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          t.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          t.vendor.toLowerCase().includes(searchQuery.toLowerCase());
@@ -269,78 +354,124 @@ export function Finances() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{t('finances.title')}</h1>
         <p className="text-slate-600 dark:text-slate-400">{t('finances.subtitle')}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <Popover open={overviewDatePickerOpen} onOpenChange={setOverviewDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="font-normal">
+                <Calendar className="mr-2 h-4 w-4 shrink-0" />
+                <span className="truncate max-w-[min(100%,16rem)] text-left">
+                  {!overviewDateRange?.from
+                    ? t("finances.allTime")
+                    : !overviewDateRange.to
+                      ? t("finances.selectEndDate")
+                      : `${format(overviewDateRange.from, "MMM d, yyyy")} – ${format(overviewDateRange.to, "MMM d, yyyy")}`}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <div className="p-3 border-b border-slate-200 dark:border-slate-700">
+                <p className="text-sm font-medium text-slate-900 dark:text-white">{t("finances.filterByDate")}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{t("finances.filterByDateHint")}</p>
+              </div>
+              <CalendarComponent
+                mode="range"
+                defaultMonth={overviewDateRange?.from}
+                selected={overviewDateRange}
+                onSelect={(range) => {
+                  setOverviewDateRange(range);
+                  if (range?.from && range?.to) setOverviewDatePickerOpen(false);
+                }}
+                numberOfMonths={2}
+              />
+              {overviewDateRange?.from && (
+                <div className="p-2 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setOverviewDateRange(undefined);
+                      setOverviewDatePickerOpen(false);
+                    }}
+                  >
+                    {t("finances.clearDateFilter")}
+                  </Button>
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card>
+        <Card className="@container">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.totalRevenue')}</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatMMK(totalRevenue)}</p>
+                <FinancesStatMmk value={totalRevenue} />
                 <div className="flex items-center gap-1 mt-2">
                   <ArrowUpRight className="w-4 h-4 text-green-600" />
                   <span className="text-sm text-green-600 font-medium">+12.5%</span>
                   <span className="text-sm text-slate-500 dark:text-slate-400">vs last month</span>
                 </div>
               </div>
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 shrink-0 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
                 <TrendingUp className="w-6 h-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="@container">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.platformCommission')}</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatMMK(totalCommission)}</p>
+                <FinancesStatMmk value={totalCommission} />
                 <div className="flex items-center gap-1 mt-2">
                   <ArrowUpRight className="w-4 h-4 text-blue-600" />
                   <span className="text-sm text-blue-600 font-medium">+8.2%</span>
                   <span className="text-sm text-slate-500 dark:text-slate-400">{t('finances.vsLastMonth')}</span>
                 </div>
               </div>
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 shrink-0 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
                 <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="@container">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.vendorPayout')}</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatMMK(totalVendorPayout)}</p>
+                <FinancesStatMmk value={totalVendorPayout} />
                 <div className="flex items-center gap-1 mt-2">
                   <ArrowDownRight className="w-4 h-4 text-orange-600" />
                   <span className="text-sm text-orange-600 font-medium">{t('finances.outgoing')}</span>
                 </div>
               </div>
-              <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 shrink-0 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center">
                 <Package className="w-6 h-6 text-orange-600 dark:text-orange-400" />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="@container">
           <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.pendingPayouts')}</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{formatMMK(pendingPayouts)}</p>
+                <FinancesStatMmk value={pendingPayouts} />
                 <div className="flex items-center gap-1 mt-2">
                   <Calendar className="w-4 h-4 text-purple-600" />
                   <span className="text-sm text-purple-600 font-medium">{t('finances.dueDate')}</span>
                 </div>
               </div>
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
+              <div className="w-12 h-12 shrink-0 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
                 <Wallet className="w-6 h-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
@@ -379,7 +510,7 @@ export function Finances() {
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={uniqueRevenueChartData}>
+                <LineChart data={chartDataFromScope}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="date" stroke="#64748b" />
                   <YAxis stroke="#64748b" />
@@ -453,7 +584,7 @@ export function Finances() {
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={uniquePaymentMethodsData}>
+                  <BarChart data={paymentMethodsFromScope}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis dataKey="method" stroke="#64748b" />
                     <YAxis stroke="#64748b" />
@@ -562,7 +693,7 @@ export function Finances() {
                 <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-slate-600 dark:text-slate-400">
-                      Showing {filteredTransactions.length} of {transactions.length} transactions
+                      Showing {filteredTransactions.length} of {scopedTransactions.length} transactions
                     </span>
                     <div className="flex gap-4">
                       <span className="text-slate-600 dark:text-slate-400">
@@ -671,14 +802,14 @@ export function Finances() {
                     </tr>
                   </thead>
                   <tbody>
-                    {vendorPayouts.length === 0 ? (
+                    {vendorPayoutsFromScope.length === 0 ? (
                       <tr>
                         <td colSpan={5} className="text-center py-12 text-slate-500 dark:text-slate-400">
                           No vendor payouts found
                         </td>
                       </tr>
                     ) : (
-                      vendorPayouts.map((payout: any) => (
+                      vendorPayoutsFromScope.map((payout: any) => (
                         <tr key={payout.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
                           <td className="py-3 px-4 text-sm font-medium text-slate-900 dark:text-white">{payout.vendor}</td>
                           <td className="py-3 px-4 text-sm text-slate-600 dark:text-slate-400">{payout.email}</td>
@@ -715,7 +846,7 @@ export function Finances() {
         {/* Payment Methods Tab */}
         <TabsContent value="payment-methods" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {uniquePaymentMethodsData.map((method: any) => {
+            {paymentMethodsFromScope.map((method: any) => {
               const methodInfo = getPaymentMethodIcon(method.method);
               const MethodIcon = methodInfo.icon;
               

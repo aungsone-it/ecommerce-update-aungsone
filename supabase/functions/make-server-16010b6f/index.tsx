@@ -4963,50 +4963,180 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
   }
 });
 
+/**
+ * Lowercase name keys for matching orders/products to a vendor profile.
+ * Includes storefront `vendor_settings` (storeName) — often where the public label lives.
+ */
+function vendorProfileNameKeys(v: any, settings?: any): string[] {
+  const keys = [
+    v?.name,
+    v?.businessName,
+    v?.business_name,
+    v?.storeName,
+    v?.email,
+    settings?.storeName,
+    settings?.storeSlug,
+  ]
+    .filter(Boolean)
+    .map((x: any) => String(x).trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set(keys)];
+}
+
+function settingsByVendorIdMap(validSettings: any[]): Map<string, any> {
+  const m = new Map<string, any>();
+  for (const s of validSettings) {
+    if (s && s.vendorId != null) m.set(String(s.vendorId), s);
+  }
+  return m;
+}
+
+/** Per-vendor product counts (KV `product:`) and revenue from non-cancelled orders. */
+function aggregateVendorListMetrics(
+  validVendors: any[],
+  validSettings: any[],
+  products: any[] | null | undefined,
+  orders: any[] | null | undefined
+): { productCountByVendorId: Map<string, number>; revenueByVendorId: Map<string, number> } {
+  const vendorIds = new Set(validVendors.map((v: any) => String(v.id)));
+  const settingsMap = settingsByVendorIdMap(Array.isArray(validSettings) ? validSettings : []);
+  const productCountByVendorId = new Map<string, number>();
+  const revenueByVendorId = new Map<string, number>();
+  for (const v of validVendors) {
+    const id = String(v.id);
+    productCountByVendorId.set(id, 0);
+    revenueByVendorId.set(id, 0);
+  }
+
+  const prodArr = Array.isArray(products) ? products.filter((p) => p != null) : [];
+  for (const p of prodArr) {
+    if (!p || typeof p !== "object") continue;
+    const assigned = new Set<string>();
+    const pv = p.vendorId != null ? String(p.vendorId) : "";
+    if (pv && pv !== "migoo" && vendorIds.has(pv)) {
+      assigned.add(pv);
+    }
+    if (Array.isArray(p.selectedVendors)) {
+      for (const x of p.selectedVendors) {
+        const s = String(x);
+        if (vendorIds.has(s)) assigned.add(s);
+      }
+    }
+    const pvendorRaw = p.vendor != null ? String(p.vendor).trim() : "";
+    if (pvendorRaw) {
+      // Many payloads put vendor **id** in `vendor` (see Inventory / migrations), not display name.
+      if (vendorIds.has(pvendorRaw)) {
+        assigned.add(pvendorRaw);
+      } else {
+        const pn = pvendorRaw.toLowerCase();
+        for (const v of validVendors) {
+          const st = settingsMap.get(String(v.id));
+          if (vendorProfileNameKeys(v, st).includes(pn)) {
+            assigned.add(String(v.id));
+            break;
+          }
+        }
+      }
+    }
+    for (const id of assigned) {
+      productCountByVendorId.set(id, (productCountByVendorId.get(id) || 0) + 1);
+    }
+  }
+
+  const orderArr = Array.isArray(orders) ? orders.filter((o) => o != null) : [];
+  for (const order of orderArr) {
+    if (!order || typeof order !== "object") continue;
+    if (order.status === "cancelled") continue;
+    const raw =
+      typeof order.total === "string"
+        ? parseFloat(String(order.total).replace(/[$,]/g, ""))
+        : Number(order.total);
+    const orderTotal = Number.isFinite(raw) ? raw : 0;
+    let matchedId: string | null = null;
+    const oid = order.vendorId != null ? String(order.vendorId) : "";
+    if (oid && revenueByVendorId.has(oid)) {
+      matchedId = oid;
+    } else {
+      const ovRaw = order.vendor != null ? String(order.vendor).trim() : "";
+      if (ovRaw && vendorIds.has(ovRaw) && revenueByVendorId.has(ovRaw)) {
+        matchedId = ovRaw;
+      } else if (ovRaw) {
+        const vendName = ovRaw.toLowerCase();
+        for (const v of validVendors) {
+          const st = settingsMap.get(String(v.id));
+          if (vendorProfileNameKeys(v, st).includes(vendName)) {
+            matchedId = String(v.id);
+            break;
+          }
+        }
+      }
+    }
+    if (matchedId) {
+      const next = (revenueByVendorId.get(matchedId) || 0) + orderTotal;
+      revenueByVendorId.set(matchedId, Math.round(next * 100) / 100);
+    }
+  }
+
+  return { productCountByVendorId, revenueByVendorId };
+}
+
 app.get("/make-server-16010b6f/vendors", async (c) => {
   try {
     console.log("👥 Fetching vendors...");
-    
-    // Check cache first (v2 key: excludes legacy cached responses that included vendor:audience:* rows)
-    const cached = getCached("vendors_list_v2", 60000); // Cache for 60 seconds
+
+    const cached = getCached("vendors_list_v4", 60000); // Cache for 60 seconds
     if (cached) {
       console.log("⚡ Returning cached vendors");
       return c.json(cached);
     }
-    
+
     const validVendors = await kv.getVendorProfiles();
-    
-    // Fetch all vendor settings
+
     const allSettings = await kv.getByPrefix("vendor_settings:");
-    const validSettings = Array.isArray(allSettings) ? allSettings.filter(s => s != null) : [];
-    
-    // Merge vendor data with settings
+    const validSettings = Array.isArray(allSettings) ? allSettings.filter((s) => s != null) : [];
+
+    const [productsRaw, ordersRaw] = await Promise.all([
+      kv.getByPrefix("product:").catch(() => [] as any[]),
+      kv.getByPrefix("order:").catch(() => [] as any[]),
+    ]);
+    const products = Array.isArray(productsRaw) ? productsRaw : [];
+    const orders = Array.isArray(ordersRaw) ? ordersRaw : [];
+
+    const { productCountByVendorId, revenueByVendorId } = aggregateVendorListMetrics(
+      validVendors,
+      validSettings,
+      products,
+      orders
+    );
+
     const vendorsWithSettings = validVendors.map((vendor: any) => {
       const settings = validSettings.find((s: any) => s.vendorId === vendor.id);
+      const id = String(vendor.id);
       return {
         ...vendor,
         ...settings,
+        productsCount: productCountByVendorId.get(id) ?? 0,
+        totalRevenue: revenueByVendorId.get(id) ?? 0,
       };
     });
-    
+
     console.log(`✅ Found ${vendorsWithSettings.length} vendors`);
-    
-    const response = { 
+
+    const response = {
       vendors: vendorsWithSettings,
-      total: vendorsWithSettings.length
+      total: vendorsWithSettings.length,
     };
-    
-    // Cache the result
-    setCache("vendors_list_v2", response);
-    
+
+    setCache("vendors_list_v4", response);
+
     return c.json(response);
   } catch (error) {
     console.error("❌ Error fetching vendors:", error);
-    const errorResponse = { 
+    const errorResponse = {
       vendors: [],
-      total: 0
+      total: 0,
     };
-    setCache("vendors_list_v2", errorResponse); // Cache to prevent repeated failures
+    setCache("vendors_list_v4", errorResponse); // Cache to prevent repeated failures
     return c.json(errorResponse, 200); // Return 200 instead of 500
   }
 });
@@ -5094,6 +5224,8 @@ app.post("/make-server-16010b6f/vendors", async (c) => {
     };
     await withTimeout(kv.set(`vendor_slug_${baseSlug}`, slugMapping), 5000);
     console.log(`✅ Auto-created slug mapping: ${baseSlug} → ${id}`);
+
+    clearCache("vendors_list_v4");
     
     return c.json({ 
       success: true,
@@ -5139,7 +5271,7 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
     
     // Clear vendor cache
     serverCache.delete("vendors");
-    serverCache.delete("vendors_list_v2");
+    serverCache.delete("vendors_list_v4");
     serverCache.delete(`vendor_by_slug:${vendorSettings?.storeSlug}`);
     
     return c.json({ 
@@ -5405,7 +5537,7 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
     // 🔥 Clear vendor list cache to force refresh
     try {
       await withTimeout(kv.del("vendors"), 5000);
-      clearCache("vendors_list_v2");
+      clearCache("vendors_list_v4");
       console.log("🔄 Cleared vendor list cache after vendor update");
     } catch (cacheError) {
       console.warn("⚠️ Failed to clear vendor cache, but vendor update succeeded:", cacheError);
@@ -7248,7 +7380,7 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
       
       // 🔥 INVALIDATE VENDORS CACHE so the updated logo appears immediately
       clearCache("vendors");
-      clearCache("vendors_list_v2");
+      clearCache("vendors_list_v4");
       console.log(`🗑️ Cleared vendors cache after logo sync`);
     }
 

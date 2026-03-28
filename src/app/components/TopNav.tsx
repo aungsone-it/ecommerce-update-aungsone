@@ -169,7 +169,7 @@ export function TopNav({
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
-              placeholder="Search products by name, SKU, category…"
+              placeholder="Search products, orders, vendors…"
               className="pl-10 bg-slate-50 border-slate-200 focus:bg-white w-full"
               value={adminGlobalSearch ?? ""}
               onChange={(e) => onAdminGlobalSearchChange?.(e.target.value)}
@@ -179,7 +179,7 @@ export function TopNav({
                   onAdminGlobalSearchSubmit?.();
                 }
               }}
-              aria-label="Search products"
+              aria-label="Search admin portal"
             />
           </div>
         </div>

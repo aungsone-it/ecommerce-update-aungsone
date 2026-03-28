@@ -511,8 +511,8 @@ export const CACHE_KEYS = {
   STOREFRONT_APPEARANCE: 'storefront-appearance-v1',
   
   // SECURE Admin
-  /** Bump when vendor list semantics change (e.g. API no longer returns audience rows as vendors). */
-  ADMIN_VENDORS: 'admin-vendors-v2',
+  /** Bump when vendor list semantics change (e.g. aggregated productsCount/totalRevenue from KV). */
+  ADMIN_VENDORS: 'admin-vendors-v4',
   ADMIN_PRODUCTS: 'admin-products',
   /** Full `/orders` JSON: `{ orders, warning? }` — bumped key when shape changed */
   ADMIN_ORDERS: 'admin-orders-v2-payload',

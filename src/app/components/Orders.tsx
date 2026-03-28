@@ -434,13 +434,25 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
   }));
 }
 
-export function Orders({ onViewOrder, onOrderUpdate }: { 
+export function Orders({
+  onViewOrder,
+  onOrderUpdate,
+  initialListSearchQuery,
+  listSearchApplyToken,
+}: {
   onViewOrder?: (order: OrderItem) => void;
   onOrderUpdate?: () => void;
+  initialListSearchQuery?: string;
+  listSearchApplyToken?: number;
 }) {
   const { t } = useLanguage();
   const [selectedTab, setSelectedTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (initialListSearchQuery === undefined || !String(initialListSearchQuery).trim()) return;
+    setSearchQuery(String(initialListSearchQuery).trim());
+  }, [initialListSearchQuery, listSearchApplyToken]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [vendorFilter, setVendorFilter] = useState<string>("all");
@@ -564,10 +576,21 @@ export function Orders({ onViewOrder, onOrderUpdate }: {
   ).sort();
 
   const filteredOrders = orders.filter((order) => {
-    const matchesSearch = 
-      order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    const customerHay =
+      typeof order.customer === "string"
+        ? order.customer
+        : JSON.stringify(order.customer ?? "");
+    const matchesSearch =
+      order.orderNumber.toLowerCase().includes(q) ||
+      customerHay.toLowerCase().includes(q) ||
+      order.email.toLowerCase().includes(q) ||
+      String(order.phone ?? "")
+        .toLowerCase()
+        .includes(q) ||
+      String(order.id ?? "")
+        .toLowerCase()
+        .includes(q);
     
     const matchesStatusFilter = statusFilter === "all" || order.status === statusFilter;
     const matchesPaymentFilter = paymentFilter === "all" || order.paymentStatus === paymentFilter;

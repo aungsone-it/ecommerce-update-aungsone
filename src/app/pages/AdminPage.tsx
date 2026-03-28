@@ -25,6 +25,7 @@ import { CollaboratorApplications } from "../components/CollaboratorApplications
 import { Finances } from "../components/Finances";
 import { Logistics } from "../components/Logistics";
 import { Settings } from "../components/Settings";
+import { AdminGlobalSearch } from "../components/AdminGlobalSearch";
 import { SideNav } from "../components/SideNav";
 import { TopNav } from "../components/TopNav";
 import { UserProfile } from "../components/UserProfile";
@@ -55,6 +56,7 @@ const ADMIN_PAGES = {
   FINANCES: 'Finances',
   LOGISTICS: 'Logistics',
   SETTINGS: 'Settings',
+  GLOBAL_SEARCH: 'Search',
 } as const;
 
 type AdminPage = typeof ADMIN_PAGES[keyof typeof ADMIN_PAGES];
@@ -87,6 +89,9 @@ export function AdminPage() {
     name: string;
     avatar?: string;
   } | null>(null);
+  /** Prefill list search when jumping from global search */
+  const [vendorSearchPrefill, setVendorSearchPrefill] = useState<{ q: string; t: number } | null>(null);
+  const [ordersSearchPrefill, setOrdersSearchPrefill] = useState<{ q: string; t: number } | null>(null);
   
   const { badgeCounts, loadBadgeCounts, incrementOrdersBadge } = useBadgeCounts();
 
@@ -130,6 +135,7 @@ export function AdminPage() {
     "finances": ADMIN_PAGES.FINANCES,
     "logistics": ADMIN_PAGES.LOGISTICS,
     "settings": ADMIN_PAGES.SETTINGS,
+    "search": ADMIN_PAGES.GLOBAL_SEARCH,
   };
   
   const pageToSection: Record<AdminPage, string> = {
@@ -154,6 +160,7 @@ export function AdminPage() {
     [ADMIN_PAGES.FINANCES]: "finances",
     [ADMIN_PAGES.LOGISTICS]: "logistics",
     [ADMIN_PAGES.SETTINGS]: "settings",
+    [ADMIN_PAGES.GLOBAL_SEARCH]: "search",
   };
 
   // 🔗 URL → currentPage: Initialize from URL
@@ -166,6 +173,15 @@ export function AdminPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedAdminSection]);
+
+  const qParam = searchParams.get("q") ?? "";
+
+  /** Deep link /admin/search?q=… keeps header input in sync */
+  useEffect(() => {
+    if (resolvedAdminSection !== "search") return;
+    setCurrentPage(ADMIN_PAGES.GLOBAL_SEARCH);
+    setAdminHeaderProductSearch(qParam);
+  }, [resolvedAdminSection, qParam]);
   
   // 🔗 currentPage → URL: Update URL when page changes
   const isInitialMount = useRef(true);
@@ -175,16 +191,25 @@ export function AdminPage() {
       isInitialMount.current = false;
       return;
     }
-    
+
+    if (currentPage === ADMIN_PAGES.GLOBAL_SEARCH) {
+      const q = adminHeaderProductSearch.trim();
+      const target = q ? `/admin/search?q=${encodeURIComponent(q)}` : "/admin/search";
+      const current = `${window.location.pathname}${window.location.search}`;
+      if (current !== target) {
+        navigate(target, { replace: true });
+      }
+      return;
+    }
+
     const section = pageToSection[currentPage];
     const targetPath = section ? `/admin/${section}` : "/admin";
-    
-    // Only navigate if URL doesn't match
+
     if (window.location.pathname !== targetPath) {
       navigate(targetPath, { replace: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage]);
+  }, [currentPage, adminHeaderProductSearch]);
 
   // Initialize user data in backend
   useEffect(() => {
@@ -386,6 +411,32 @@ export function AdminPage() {
     switch (currentPage) {
       case ADMIN_PAGES.HOME:
         return <Dashboard />;
+      case ADMIN_PAGES.GLOBAL_SEARCH:
+        return (
+          <AdminGlobalSearch
+            query={adminHeaderProductSearch}
+            onNarrowProductSearch={(narrow) => {
+              setAdminHeaderProductSearch(narrow);
+              setCurrentPage(ADMIN_PAGES.PRODUCT);
+              navigate("/admin/products", { replace: false });
+            }}
+            onGoToProducts={() => {
+              setCurrentPage(ADMIN_PAGES.PRODUCT);
+              navigate("/admin/products", { replace: false });
+            }}
+            onViewOrder={(o) => setViewingOrder(o)}
+            onGoToOrdersWithPrefill={(prefill) => {
+              setOrdersSearchPrefill({ q: prefill, t: Date.now() });
+              setCurrentPage(ADMIN_PAGES.ORDERS);
+              navigate("/admin/orders", { replace: false });
+            }}
+            onGoToVendorsWithPrefill={(prefill) => {
+              setVendorSearchPrefill({ q: prefill, t: Date.now() });
+              setCurrentPage(ADMIN_PAGES.VENDOR);
+              navigate("/admin/vendors", { replace: false });
+            }}
+          />
+        );
       case ADMIN_PAGES.PRODUCT:
         return (
           <ProductList
@@ -399,7 +450,14 @@ export function AdminPage() {
       case ADMIN_PAGES.INVENTORY:
         return <Inventory />;
       case ADMIN_PAGES.ORDERS:
-        return <Orders onViewOrder={setViewingOrder} onOrderUpdate={handleOrderUpdate} />;
+        return (
+          <Orders
+            onViewOrder={setViewingOrder}
+            onOrderUpdate={handleOrderUpdate}
+            initialListSearchQuery={ordersSearchPrefill?.q}
+            listSearchApplyToken={ordersSearchPrefill?.t}
+          />
+        );
       case ADMIN_PAGES.CUSTOMERS:
         return (
           <CustomersEnhanced
@@ -425,6 +483,8 @@ export function AdminPage() {
       case ADMIN_PAGES.VENDOR:
         return <Vendor 
           pendingApplicationsCount={badgeCounts.vendor}
+          initialListSearchQuery={vendorSearchPrefill?.q}
+          listSearchApplyToken={vendorSearchPrefill?.t}
           onPreviewVendorStore={(vendorId, storeSlug) => {
             // Always use vendor ID for navigation
             navigate(`/vendor/${vendorId}`);
@@ -529,6 +589,8 @@ export function AdminPage() {
           <SideNav 
             currentPage={currentPage} 
             onNavigate={(page) => {
+              setVendorSearchPrefill(null);
+              setOrdersSearchPrefill(null);
               setCurrentPage(page);
               setSidebarOpen(false);
             }}
@@ -554,13 +616,16 @@ export function AdminPage() {
               adminGlobalSearch={adminHeaderProductSearch}
               onAdminGlobalSearchChange={setAdminHeaderProductSearch}
               onAdminGlobalSearchSubmit={() => {
-                setCurrentPage(ADMIN_PAGES.PRODUCT);
-                navigate("/admin/products");
+                const q = adminHeaderProductSearch.trim();
+                setCurrentPage(ADMIN_PAGES.GLOBAL_SEARCH);
+                navigate(q ? `/admin/search?q=${encodeURIComponent(q)}` : "/admin/search", {
+                  replace: false,
+                });
               }}
             />
             
             <main className="flex-1 overflow-auto pt-16 scrollbar-custom">
-              <div className="sticky top-0 z-10 border-b border-slate-200 dark:border-slate-700 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm px-4 sm:px-8 py-3">
+              <div className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm px-4 sm:px-8 py-2">
                 <AdminBreadcrumb
                   currentPage={currentPage}
                   onNavigate={(page) => {
