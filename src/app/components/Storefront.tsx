@@ -94,6 +94,10 @@ function markCatalogBackgroundRefreshed() {
 
 /** Default page size for storefront catalog API (matches bootstrap). */
 const CATALOG_PAGE_SIZE = 24;
+/** Live typing uses client filter only until this many chars; then debounced server `q` (fewer edge/DB hits). */
+const STORE_SEARCH_MIN_SERVER_CHARS = 2;
+/** Wait after last keystroke before calling catalog API with `q` (tune 250–500ms for balance). */
+const STORE_SEARCH_DEBOUNCE_MS = 320;
 
 function productFromBySkuApi(raw: any): Product {
   const img =
@@ -700,7 +704,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const [homeNewArrivals, setHomeNewArrivals] = useState<Product[]>([]);
   const lastCatalogKeyRef = useRef("");
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedStoreSearch(storeSearchQuery), 160);
+    const t = setTimeout(() => {
+      const raw = storeSearchQuery.trim();
+      setDebouncedStoreSearch(
+        raw.length >= STORE_SEARCH_MIN_SERVER_CHARS ? raw : ""
+      );
+    }, STORE_SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [storeSearchQuery]);
   const [showCart, setShowCart] = useState(false);

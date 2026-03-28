@@ -289,7 +289,10 @@ function resolveVendorProductFromSlug(products: Product[], decoded: string): Pro
 /** Browse mode: small pages + load more. Search mode: max edge page size so live filter + server q cover the catalog. */
 const VENDOR_BROWSE_PAGE_SIZE = 24;
 const VENDOR_SEARCH_PAGE_SIZE = 100;
-const VENDOR_SEARCH_DEBOUNCE_MS = 120;
+/** Keystrokes only update client filter until this many chars, then debounced server `q`. */
+const VENDOR_SEARCH_MIN_SERVER_CHARS = 2;
+/** Ms after last keystroke before server catalog fetch (with `q`); category changes refetch immediately. */
+const VENDOR_SEARCH_DEBOUNCE_MS = 300;
 
 export function VendorStoreView({
   vendorId,
@@ -347,6 +350,8 @@ export function VendorStoreView({
   const [products, setProducts] = useState<Product[]>([]);
   const [vendorCategories, setVendorCategories] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  /** Passed to API as `q` only after debounce + min length; `searchQuery` still drives instant client filter. */
+  const [debouncedVendorServerQ, setDebouncedVendorServerQ] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [vendorCatalogTotal, setVendorCatalogTotal] = useState(0);
@@ -1901,7 +1906,7 @@ export function VendorStoreView({
   const refetchVendorCatalogPage1 = useCallback(
     async (forceRefresh: boolean) => {
       if (savedPage) return;
-      const qRaw = searchQuery.trim();
+      const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
       const cat = selectedCategory;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
@@ -1923,7 +1928,7 @@ export function VendorStoreView({
       setStoreName(productsData.storeName || "Vendor Store");
       setStoreLogo(productsData.logo || "");
     },
-    [vendorId, searchQuery, selectedCategory, savedPage]
+    [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
   );
 
   const loadMoreVendorCatalog = useCallback(async () => {
@@ -1931,7 +1936,7 @@ export function VendorStoreView({
     setVendorCatalogLoadingMore(true);
     try {
       const nextPage = vendorCatalogPage + 1;
-      const qRaw = searchQuery.trim();
+      const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
       const cat = selectedCategory;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
@@ -1964,7 +1969,7 @@ export function VendorStoreView({
     vendorCatalogLoadingMore,
     vendorCatalogPage,
     vendorId,
-    searchQuery,
+    debouncedVendorServerQ,
     selectedCategory,
   ]);
 
@@ -2003,6 +2008,11 @@ export function VendorStoreView({
 
   useEffect(() => {
     isFirstSearchCategoryEffect.current = true;
+    const raw = searchQuery.trim();
+    setDebouncedVendorServerQ(
+      raw.length >= VENDOR_SEARCH_MIN_SERVER_CHARS ? raw : ""
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when vendor changes; avoid resetting on every keystroke
   }, [vendorId]);
 
   useEffect(() => {
@@ -2011,24 +2021,31 @@ export function VendorStoreView({
   }, [vendorId]);
 
   useEffect(() => {
+    const t = setTimeout(() => {
+      const raw = searchQuery.trim();
+      setDebouncedVendorServerQ(
+        raw.length >= VENDOR_SEARCH_MIN_SERVER_CHARS ? raw : ""
+      );
+    }, VENDOR_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  useEffect(() => {
     if (savedPage) return;
     if (isFirstSearchCategoryEffect.current) {
       isFirstSearchCategoryEffect.current = false;
       return;
     }
-    const t = setTimeout(() => {
-      void (async () => {
-        try {
-          setServerStatus("checking");
-          await refetchVendorCatalogPage1(false);
-          setServerStatus("healthy");
-        } catch {
-          setServerStatus("unhealthy");
-        }
-      })();
-    }, VENDOR_SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(t);
-  }, [searchQuery, selectedCategory, savedPage, refetchVendorCatalogPage1]);
+    void (async () => {
+      try {
+        setServerStatus("checking");
+        await refetchVendorCatalogPage1(false);
+        setServerStatus("healthy");
+      } catch {
+        setServerStatus("unhealthy");
+      }
+    })();
+  }, [debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
 
   // Sync product detail from URL + catalog (pathname is source of truth — avoids races with slow loads)
   useEffect(() => {
