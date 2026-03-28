@@ -55,6 +55,7 @@ import {
   normalizeOrderLineParentProductId,
   isMainMarketplaceVendorName,
 } from "../../utils/orderInventoryCacheSync";
+import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -108,7 +109,17 @@ function mapVendorMgmtApiOrders(apiOrders: any[]): OrderItem[] {
     customer: order.customerName || (typeof order.customer === 'string' ? order.customer : (order.customer?.fullName || order.customer?.name)) || 'Guest Customer',
     email: order.customerEmail || order.email || order.customer?.email || '',
     phone: order.customerPhone || order.phone || order.customer?.phone || '',
-    total: parseFloat(order.total) || 0,
+    total: vendorOrderGrandTotalDisplay({
+      total: parseFloat(order.total) || 0,
+      subtotal:
+        order.subtotal != null && order.subtotal !== ""
+          ? parseFloat(String(order.subtotal))
+          : undefined,
+      discount:
+        order.discount != null && order.discount !== ""
+          ? parseFloat(String(order.discount))
+          : undefined,
+    }),
     subtotal:
       order.subtotal != null && order.subtotal !== ""
         ? parseFloat(String(order.subtotal))
@@ -768,7 +779,9 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
               <Separator />
               <div className="flex justify-between">
                 <span className="font-semibold">Total</span>
-                <span className="font-bold text-lg">${selectedOrder.total.toFixed(2)}</span>
+                <span className="font-bold text-lg">
+                  ${vendorOrderGrandTotalDisplay(selectedOrder).toFixed(2)}
+                </span>
               </div>
               {selectedOrder.paymentMethod && (
                 <div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { 
   Plus, 
   Search, 
@@ -56,12 +56,20 @@ import {
   moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
+import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
 
 interface ProductListProps {
   onProductsChanged?: () => void; // 🔥 NEW: Callback when products change
+  /** Synced with super-admin TopNav search */
+  headerSearchQuery?: string;
+  onHeaderSearchQueryChange?: (q: string) => void;
 }
 
-export function ProductList({ onProductsChanged }: ProductListProps) {
+export function ProductList({
+  onProductsChanged,
+  headerSearchQuery,
+  onHeaderSearchQueryChange,
+}: ProductListProps) {
   const { t } = useLanguage();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(() => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_PRODUCTS));
@@ -114,6 +122,19 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
       window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
     };
   }, []);
+
+  useEffect(() => {
+    if (headerSearchQuery === undefined) return;
+    setSearchQuery(headerSearchQuery);
+  }, [headerSearchQuery]);
+
+  const handleSearchInputChange = useCallback(
+    (value: string) => {
+      setSearchQuery(value);
+      onHeaderSearchQueryChange?.(value);
+    },
+    [onHeaderSearchQueryChange]
+  );
 
   /** Session cache: no network when revisiting Products tab unless forceRefresh or Refresh button */
   const loadProducts = async (forceRefresh = false) => {
@@ -466,21 +487,28 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
   const vendors = Array.from(new Set(products.map(p => p.vendor).filter(Boolean)));
   const collaborators = Array.from(new Set(products.map(p => p.collaborator).filter(Boolean)));
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = (product.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-                         (product.sku?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === "all" || product.status === statusFilter;
-    
-    // Tab-specific filtering
-    let matchesTab = true;
-    if (activeTab === "vendor") {
-      matchesTab = vendorFilter === "all" || product.vendor === vendorFilter;
-    } else if (activeTab === "collaborator") {
-      matchesTab = collaboratorFilter === "all" || product.collaborator === collaboratorFilter;
-    }
-    
-    return matchesSearch && matchesStatus && matchesTab;
-  });
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch = productMatchesAdminLiveSearch(product, searchQuery);
+      const matchesStatus = statusFilter === "all" || product.status === statusFilter;
+
+      let matchesTab = true;
+      if (activeTab === "vendor") {
+        matchesTab = vendorFilter === "all" || product.vendor === vendorFilter;
+      } else if (activeTab === "collaborator") {
+        matchesTab = collaboratorFilter === "all" || product.collaborator === collaboratorFilter;
+      }
+
+      return matchesSearch && matchesStatus && matchesTab;
+    });
+  }, [
+    products,
+    searchQuery,
+    statusFilter,
+    activeTab,
+    vendorFilter,
+    collaboratorFilter,
+  ]);
 
   // Sort products
   const getSortedProducts = (productList: Product[]) => {
@@ -689,7 +717,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
                           placeholder="Search products by name or SKU..."
                           className="pl-10"
                           value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onChange={(e) => handleSearchInputChange(e.target.value)}
                         />
                       </div>
                       
@@ -744,7 +772,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
                           placeholder="Search products by name or SKU..."
                           className="pl-10"
                           value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onChange={(e) => handleSearchInputChange(e.target.value)}
                         />
                       </div>
                       
@@ -812,7 +840,7 @@ export function ProductList({ onProductsChanged }: ProductListProps) {
                           placeholder="Search products by name or SKU..."
                           className="pl-10"
                           value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
+                          onChange={(e) => handleSearchInputChange(e.target.value)}
                         />
                       </div>
                       

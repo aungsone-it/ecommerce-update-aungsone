@@ -54,6 +54,7 @@ import {
   normalizeOrderLineParentProductId,
   isMainMarketplaceVendorName,
 } from "../../utils/orderInventoryCacheSync";
+import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -77,6 +78,8 @@ interface OrderItem {
   email: string;
   phone: string;
   total: number;
+  subtotal?: number;
+  discount?: number;
   items: number;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
@@ -105,7 +108,25 @@ function mapVendorApiOrdersToItems(apiOrders: any[]): OrderItem[] {
     customer: order.customerName || (typeof order.customer === 'string' ? order.customer : (order.customer?.fullName || order.customer?.name)) || 'Guest Customer',
     email: order.customerEmail || order.email || order.customer?.email || '',
     phone: order.customerPhone || order.phone || order.customer?.phone || '',
-    total: parseFloat(order.total) || 0,
+    total: vendorOrderGrandTotalDisplay({
+      total: parseFloat(order.total) || 0,
+      subtotal:
+        order.subtotal != null && order.subtotal !== ""
+          ? parseFloat(String(order.subtotal))
+          : undefined,
+      discount:
+        order.discount != null && order.discount !== ""
+          ? parseFloat(String(order.discount))
+          : undefined,
+    }),
+    subtotal:
+      order.subtotal != null && order.subtotal !== ""
+        ? parseFloat(String(order.subtotal))
+        : undefined,
+    discount:
+      order.discount != null && order.discount !== ""
+        ? parseFloat(String(order.discount))
+        : undefined,
     items: order.items?.length || 0,
     status: order.status || 'pending',
     paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : order.paymentStatus === 'paid' ? 'paid' : 'unpaid',
@@ -709,8 +730,18 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
             <CardContent className="space-y-3">
               <div className="flex justify-between">
                 <span className="text-slate-600">Subtotal</span>
-                <span className="font-medium">${selectedOrder.total.toFixed(2)}</span>
+                <span className="font-medium">
+                  ${(selectedOrder.subtotal ?? selectedOrder.total).toFixed(2)}
+                </span>
               </div>
+              {(selectedOrder.discount ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Discount</span>
+                  <span className="font-medium text-emerald-700">
+                    -${(selectedOrder.discount ?? 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-600">Shipping</span>
                 <span className="font-medium">$0.00</span>
@@ -718,7 +749,9 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
               <Separator />
               <div className="flex justify-between">
                 <span className="font-semibold">Total</span>
-                <span className="font-bold text-lg">${selectedOrder.total.toFixed(2)}</span>
+                <span className="font-bold text-lg">
+                  ${vendorOrderGrandTotalDisplay(selectedOrder).toFixed(2)}
+                </span>
               </div>
               {selectedOrder.paymentMethod && (
                 <div>

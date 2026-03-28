@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Search, Package, Loader2, RefreshCw, Plus, Minus, Check, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -162,12 +162,15 @@ export function Inventory() {
     }
   };
 
-  const filteredItems = inventoryItems.filter((item) => {
-    const matchesSearch =
-      item.product.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+  const filteredItems = useMemo(() => {
+    const needle = searchQuery.trim().toLowerCase();
+    return inventoryItems.filter((item) => {
+      if (!needle) return true;
+      const p = String(item.product ?? "").toLowerCase();
+      const s = String(item.sku ?? "").toLowerCase();
+      return p.includes(needle) || s.includes(needle);
+    });
+  }, [inventoryItems, searchQuery]);
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);

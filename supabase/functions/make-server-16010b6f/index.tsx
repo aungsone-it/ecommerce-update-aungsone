@@ -7995,19 +7995,19 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
       const parsedOrderTotal =
         typeof order.total === "string" ? parseFloat(order.total) : Number(order.total ?? 0);
 
-      let vendorTotal = vendorItems.reduce((sum: number, item: any) => {
+      let vendorLinesSubtotal = vendorItems.reduce((sum: number, item: any) => {
         const itemPrice = typeof item.price === "number" ? item.price : parseFloat(String(item.price || "0").replace("$", "")) || 0;
         const itemQuantity = item.quantity || 1;
         return sum + itemPrice * itemQuantity;
       }, 0);
 
       if (
-        vendorTotal === 0 &&
+        vendorLinesSubtotal === 0 &&
         vendorItems.length > 0 &&
         Number.isFinite(parsedOrderTotal) &&
         parsedOrderTotal > 0
       ) {
-        vendorTotal = parsedOrderTotal;
+        vendorLinesSubtotal = parsedOrderTotal;
       }
 
       const parsedSubtotal =
@@ -8015,13 +8015,37 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
           ? typeof order.subtotal === "string"
             ? parseFloat(order.subtotal)
             : Number(order.subtotal)
-          : vendorTotal;
+          : vendorLinesSubtotal;
       const parsedDiscount =
         order.discount != null
           ? typeof order.discount === "string"
             ? parseFloat(order.discount)
             : Number(order.discount)
           : 0;
+
+      const orderSubtotalNum = Number.isFinite(parsedSubtotal) ? parsedSubtotal : vendorLinesSubtotal;
+      const orderDiscountNum = Number.isFinite(parsedDiscount) ? parsedDiscount : 0;
+
+      /** This vendor's lines are the entire order — use stored grand total (includes discount + shipping). */
+      const vendorCoversWholeOrder =
+        normalizedItems.length > 0 && vendorItems.length === normalizedItems.length;
+
+      let vendorDisplayTotal: number;
+      if (
+        vendorCoversWholeOrder &&
+        Number.isFinite(parsedOrderTotal) &&
+        parsedOrderTotal >= 0
+      ) {
+        vendorDisplayTotal = parsedOrderTotal;
+      } else if (orderSubtotalNum > 0 && orderDiscountNum > 0 && vendorLinesSubtotal > 0) {
+        const discountShare = (orderDiscountNum * vendorLinesSubtotal) / orderSubtotalNum;
+        vendorDisplayTotal = Math.max(
+          0,
+          Math.round((vendorLinesSubtotal - discountShare) * 100) / 100
+        );
+      } else {
+        vendorDisplayTotal = vendorLinesSubtotal;
+      }
 
       vendorOrders.push({
         id: order.id,
@@ -8033,8 +8057,8 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
         status: order.status || "pending",
         paymentStatus: order.paymentStatus || "pending",
         paymentMethod: order.paymentMethod || "",
-        total: vendorTotal,
-        subtotal: Number.isFinite(parsedSubtotal) ? parsedSubtotal : vendorTotal,
+        total: vendorDisplayTotal,
+        subtotal: Number.isFinite(parsedSubtotal) ? parsedSubtotal : vendorLinesSubtotal,
         discount: Number.isFinite(parsedDiscount) ? parsedDiscount : 0,
         date: order.date || order.createdAt,
         createdAt: order.createdAt,

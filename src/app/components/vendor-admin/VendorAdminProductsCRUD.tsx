@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useParams, useLocation } from "react-router";
 import { 
   Plus, 
@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
+import { productMatchesAdminLiveSearch } from "../../utils/adminProductSearch";
 
 interface Product {
   id: string;
@@ -61,9 +62,16 @@ interface Product {
 interface VendorAdminProductsCRUDProps {
   vendorId: string;
   vendorName: string;
+  headerSearchQuery?: string;
+  onHeaderSearchQueryChange?: (q: string) => void;
 }
 
-export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminProductsCRUDProps) {
+export function VendorAdminProductsCRUD({
+  vendorId,
+  vendorName,
+  headerSearchQuery,
+  onHeaderSearchQueryChange,
+}: VendorAdminProductsCRUDProps) {
   const navigate = useNavigate();
   const params = useParams();
   const location = useLocation();
@@ -88,6 +96,19 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
       loadProducts(false);
     }
   }, [vendorId, currentView]);
+
+  useEffect(() => {
+    if (headerSearchQuery === undefined) return;
+    setSearchQuery(headerSearchQuery);
+  }, [headerSearchQuery]);
+
+  const handleSearchInputChange = useCallback(
+    (value: string) => {
+      setSearchQuery(value);
+      onHeaderSearchQueryChange?.(value);
+    },
+    [onHeaderSearchQueryChange]
+  );
 
   const loadProducts = async (forceRefresh = false) => {
     if (!forceRefresh && currentView === "list") {
@@ -153,16 +174,17 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
     setCurrentView("list");
   };
 
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || 
-      (statusFilter === "active" && (product.status === "active" || product.status === "Active")) ||
-      (statusFilter === "off-shelf" && product.status === "off-shelf");
-    
-    return matchesSearch && matchesStatus;
-  });
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch = productMatchesAdminLiveSearch(product, searchQuery);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" &&
+          (product.status === "active" || product.status === "Active")) ||
+        (statusFilter === "off-shelf" && product.status === "off-shelf");
+      return matchesSearch && matchesStatus;
+    });
+  }, [products, searchQuery, statusFilter]);
 
   // Sort products
   const sortedProducts = [...filteredProducts].sort((a, b) => {
@@ -307,7 +329,7 @@ export function VendorAdminProductsCRUD({ vendorId, vendorName }: VendorAdminPro
             placeholder="Search products by name or SKU..."
             className="pl-10"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchInputChange(e.target.value)}
           />
         </div>
         

@@ -82,6 +82,8 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [vendorLogo, setVendorLogo] = useState<string>("");
+  /** Header search — synced with Products screen (client filter; no API per keystroke). */
+  const [vendorHeaderProductSearch, setVendorHeaderProductSearch] = useState("");
 
   // Load vendor logo from storefront settings
   useEffect(() => {
@@ -277,9 +279,11 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         );
       case "products":
         return (
-          <VendorAdminProductsCRUD 
-            vendorId={vendor.id} 
+          <VendorAdminProductsCRUD
+            vendorId={vendor.id}
             vendorName={vendor.name}
+            headerSearchQuery={vendorHeaderProductSearch}
+            onHeaderSearchQueryChange={setVendorHeaderProductSearch}
           />
         );
       case "categories":
@@ -441,8 +445,17 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search products, orders, customers..."
+                  placeholder="Search products by name, SKU, category…"
                   className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-transparent focus:bg-white transition-colors"
+                  value={vendorHeaderProductSearch}
+                  onChange={(e) => setVendorHeaderProductSearch(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      setCurrentPage("products");
+                    }
+                  }}
+                  aria-label="Search products"
                 />
               </div>
             </div>

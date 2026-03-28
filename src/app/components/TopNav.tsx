@@ -28,6 +28,11 @@ interface TopNavProps {
   chatUnreadCount?: number;
   onViewProfile?: () => void; // 🔥 NEW: View current user profile
   onEditProfile?: () => void; // 🔥 NEW: Edit current user profile
+  /** Super-admin header search (synced with Products list; client-side filter). */
+  adminGlobalSearch?: string;
+  onAdminGlobalSearchChange?: (value: string) => void;
+  /** Enter in search — e.g. jump to Products. */
+  onAdminGlobalSearchSubmit?: () => void;
 }
 
 interface Notification {
@@ -54,7 +59,19 @@ const iconColorMap = {
   system: "bg-red-500",
 };
 
-export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, vendorApplicationsCount, pendingOrdersCount, chatUnreadCount = 0, onViewProfile, onEditProfile }: TopNavProps) {
+export function TopNav({
+  currentUser,
+  onToggleSidebar,
+  onOpenVendorApplication,
+  vendorApplicationsCount,
+  pendingOrdersCount,
+  chatUnreadCount = 0,
+  onViewProfile,
+  onEditProfile,
+  adminGlobalSearch,
+  onAdminGlobalSearchChange,
+  onAdminGlobalSearchSubmit,
+}: TopNavProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -151,9 +168,18 @@ export function TopNav({ currentUser, onToggleSidebar, onOpenVendorApplication, 
         <div className="flex-1 flex justify-center max-w-2xl mx-auto">
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input 
-              placeholder="Search products, orders, customers..." 
+            <Input
+              placeholder="Search products by name, SKU, category…"
               className="pl-10 bg-slate-50 border-slate-200 focus:bg-white w-full"
+              value={adminGlobalSearch ?? ""}
+              onChange={(e) => onAdminGlobalSearchChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onAdminGlobalSearchSubmit?.();
+                }
+              }}
+              aria-label="Search products"
             />
           </div>
         </div>

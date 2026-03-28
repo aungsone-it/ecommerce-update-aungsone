@@ -72,6 +72,8 @@ export function AdminPage() {
   const [serverChecked, setServerChecked] = useState(false);
   const [appKey] = useState(() => Date.now());
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  /** TopNav product search — synced with ProductList (client filter only; no per-keystroke API). */
+  const [adminHeaderProductSearch, setAdminHeaderProductSearch] = useState("");
   /** When set, Chat opens this customer's thread (from Customers → Message). */
   const [chatHandoff, setChatHandoff] = useState<{
     email: string;
@@ -378,7 +380,13 @@ export function AdminPage() {
       case ADMIN_PAGES.HOME:
         return <Dashboard />;
       case ADMIN_PAGES.PRODUCT:
-        return <ProductList onProductsChanged={handleProductsChanged} />;
+        return (
+          <ProductList
+            onProductsChanged={handleProductsChanged}
+            headerSearchQuery={adminHeaderProductSearch}
+            onHeaderSearchQueryChange={setAdminHeaderProductSearch}
+          />
+        );
       case ADMIN_PAGES.CATEGORIES:
         return <Categories />;
       case ADMIN_PAGES.INVENTORY:
@@ -536,6 +544,12 @@ export function AdminPage() {
               }}
               onViewProfile={() => setViewingUserProfile(currentUser)}
               onEditProfile={() => setViewingUserProfile(currentUser)}
+              adminGlobalSearch={adminHeaderProductSearch}
+              onAdminGlobalSearchChange={setAdminHeaderProductSearch}
+              onAdminGlobalSearchSubmit={() => {
+                setCurrentPage(ADMIN_PAGES.PRODUCT);
+                navigate("/admin/products");
+              }}
             />
             
             <main className="flex-1 overflow-auto pt-16 scrollbar-custom">

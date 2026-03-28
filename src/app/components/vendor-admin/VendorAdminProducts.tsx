@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Plus, 
   Search, 
@@ -22,6 +22,7 @@ import {
   moduleCache,
   CACHE_KEYS,
 } from "../../utils/module-cache";
+import { productMatchesAdminLiveSearch } from "../../utils/adminProductSearch";
 
 interface Product {
   id: string;
@@ -134,9 +135,9 @@ export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdi
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    product.sku.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredProducts = useMemo(
+    () => products.filter((p) => productMatchesAdminLiveSearch(p, searchQuery)),
+    [products, searchQuery]
   );
 
   // Strip HTML tags from description
