@@ -44,6 +44,7 @@ import {
   subscribeAdminInbox,
   subscribeConversationBroadcast,
 } from "../utils/chatRealtime";
+import { useDocumentVisible } from "../hooks/useDocumentVisible";
 
 const CHAT_MESSAGES_REVEALED_KEY = "admin-chat-messages-revealed-ids";
 
@@ -121,6 +122,7 @@ export function Chat({
   const loadConversationsRef = useRef<() => Promise<void>>(async () => {});
   const inboxDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const docVisible = useDocumentVisible();
 
   const loadConversations = async () => {
     try {
@@ -190,16 +192,17 @@ export function Chat({
 
   // Supabase Realtime Broadcast: inbox list + thread messages (reduces HTTP polling)
   useEffect(() => {
+    if (!docVisible) return;
     return subscribeAdminInbox(() => {
       if (inboxDebounceRef.current) clearTimeout(inboxDebounceRef.current);
       inboxDebounceRef.current = setTimeout(() => {
         void loadConversationsRef.current();
       }, 400);
     });
-  }, []);
+  }, [docVisible]);
 
   useEffect(() => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || !docVisible) return;
     return subscribeConversationBroadcast(selectedConversation, (msg) => {
       setMessages((prev) => {
         const id = String(msg.id ?? "");
@@ -211,7 +214,7 @@ export function Chat({
         );
       });
     });
-  }, [selectedConversation]);
+  }, [selectedConversation, docVisible]);
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -310,9 +313,13 @@ export function Chat({
 
   // Fallback HTTP poll (Realtime Broadcast handles most updates)
   useEffect(() => {
+    if (!docVisible) {
+      stopPolling();
+      return;
+    }
     startPolling();
     return () => stopPolling();
-  }, [selectedConversation]);
+  }, [selectedConversation, docVisible]);
 
   const startPolling = () => {
     stopPolling(); // Clear any existing interval

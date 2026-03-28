@@ -290,9 +290,9 @@ function resolveVendorProductFromSlug(products: Product[], decoded: string): Pro
 const VENDOR_BROWSE_PAGE_SIZE = 24;
 const VENDOR_SEARCH_PAGE_SIZE = 100;
 /** Keystrokes only update client filter until this many chars, then debounced server `q`. */
-const VENDOR_SEARCH_MIN_SERVER_CHARS = 2;
+const VENDOR_SEARCH_MIN_SERVER_CHARS = 3;
 /** Ms after last keystroke before server catalog fetch (with `q`); category changes refetch immediately. */
-const VENDOR_SEARCH_DEBOUNCE_MS = 300;
+const VENDOR_SEARCH_DEBOUNCE_MS = 450;
 
 export function VendorStoreView({
   vendorId,
@@ -2012,7 +2012,7 @@ export function VendorStoreView({
     setDebouncedVendorServerQ(
       raw.length >= VENDOR_SEARCH_MIN_SERVER_CHARS ? raw : ""
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when vendor changes; avoid resetting on every keystroke
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync when vendor changes only
   }, [vendorId]);
 
   useEffect(() => {

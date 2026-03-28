@@ -10,6 +10,7 @@ import {
   type VariantProduct,
 } from "./ProductVariantChips";
 import { ProductVariantQuickAddModal } from "./ProductVariantQuickAddModal";
+import { gridDisplayImageUrl } from "../utils/module-cache";
 
 export type ProductCardProduct = VariantProduct & {
   image: string;
@@ -63,6 +64,7 @@ export const ProductCard = ({
   const displayPrice = resolvedVariant?.price ?? product.price;
   const heroImage =
     product.images && product.images.length > 0 ? product.images[0] : product.image;
+  const heroImageForGrid = gridDisplayImageUrl(heroImage);
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -114,7 +116,7 @@ export const ProductCard = ({
               {/* Product Image */}
               <div className="w-24 h-24 md:w-32 md:h-32 flex-shrink-0 overflow-hidden bg-white relative rounded">
                 <LazyImage
-                  src={heroImage}
+                  src={heroImageForGrid}
                   alt={product.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
@@ -201,7 +203,7 @@ export const ProductCard = ({
           {/* Product Image */}
           <div className="aspect-square overflow-hidden bg-white relative">
             <LazyImage
-              src={heroImage}
+              src={heroImageForGrid}
               alt={product.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />

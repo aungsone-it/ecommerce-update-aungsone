@@ -822,3 +822,25 @@ export function getCacheableImageProps(src: string) {
     loading: 'lazy' as const,
   };
 }
+
+const SUPABASE_STORAGE_OBJECT_PUBLIC = "/storage/v1/object/public/";
+
+/**
+ * List/grid only: rewrite Supabase Storage *public* object URLs to the image render endpoint
+ * so clients download a resized image (lower egress). No-op unless `VITE_SUPABASE_THUMB_MAX` is set
+ * (try 400–600). Requires a Supabase plan with Storage image transformations.
+ */
+export function gridDisplayImageUrl(src: string): string {
+  if (!src) return src;
+  const raw = import.meta.env.VITE_SUPABASE_THUMB_MAX;
+  const max =
+    raw != null && String(raw).trim() !== "" ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(max) || max < 64 || max > 4096) return src;
+  if (!src.includes(SUPABASE_STORAGE_OBJECT_PUBLIC)) return src;
+  const base = src.replace(
+    SUPABASE_STORAGE_OBJECT_PUBLIC,
+    "/storage/v1/render/image/public/"
+  );
+  const joiner = base.includes("?") ? "&" : "?";
+  return `${base}${joiner}width=${Math.round(max)}&height=${Math.round(max)}&resize=cover&quality=80`;
+}

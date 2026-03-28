@@ -62,6 +62,7 @@ import {
   fetchFeaturedCampaignsApi,
   fetchAppearanceSettingsApi,
   getCachedProductById,
+  gridDisplayImageUrl,
 } from "../utils/module-cache";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 
@@ -95,9 +96,9 @@ function markCatalogBackgroundRefreshed() {
 /** Default page size for storefront catalog API (matches bootstrap). */
 const CATALOG_PAGE_SIZE = 24;
 /** Live typing uses client filter only until this many chars; then debounced server `q` (fewer edge/DB hits). */
-const STORE_SEARCH_MIN_SERVER_CHARS = 2;
-/** Wait after last keystroke before calling catalog API with `q` (tune 250–500ms for balance). */
-const STORE_SEARCH_DEBOUNCE_MS = 320;
+const STORE_SEARCH_MIN_SERVER_CHARS = 3;
+/** Wait after last keystroke before calling catalog API with `q` (tune 250–600ms for balance). */
+const STORE_SEARCH_DEBOUNCE_MS = 480;
 
 function productFromBySkuApi(raw: any): Product {
   const img =
@@ -397,7 +398,8 @@ function MarketplaceListProductRow({
     resolvedVariant != null
       ? resolvedVariant.inventory
       : product.inventory ?? (product as { stock?: number }).stock ?? 0;
-  const imgSrc = product.images && product.images.length > 0 ? product.images[0] : product.image;
+  const imgSrcRaw = product.images && product.images.length > 0 ? product.images[0] : product.image;
+  const imgSrc = imgSrcRaw ? gridDisplayImageUrl(imgSrcRaw) : imgSrcRaw;
 
   const isSearch = layout === "search";
   const rowGap = isSearch ? "gap-3 sm:gap-4 lg:gap-8" : "gap-3 sm:gap-4 md:gap-6";
@@ -7744,7 +7746,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     <div className="relative h-48 overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50">
                       {category.coverPhoto || category.image ? (
                         <LazyImage
-                          src={category.coverPhoto || category.image}
+                          src={gridDisplayImageUrl(
+                            category.coverPhoto || category.image || ""
+                          )}
                           alt={category.name}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                         />

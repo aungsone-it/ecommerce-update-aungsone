@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
 import { useNavigate } from "react-router";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
+import { useDocumentVisible } from "../hooks/useDocumentVisible";
 
 interface Message {
   id: string;
@@ -39,6 +40,7 @@ interface FloatingChatProps {
 
 export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false }: FloatingChatProps) {
   const navigate = useNavigate();
+  const docVisible = useDocumentVisible();
   
   // 🔒 Check if customer is logged in by checking localStorage directly
   const [isCustomerAuthenticated, setIsCustomerAuthenticated] = useState(() => {
@@ -214,7 +216,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
 
   // Poll for new admin messages when chat is open (~30s, tab visible only — avoids interval reset on every message)
   useEffect(() => {
-    if (!isOpen || isMinimized) {
+    if (!isOpen || isMinimized || !docVisible) {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -232,11 +234,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         pollingIntervalRef.current = null;
       }
     };
-  }, [isOpen, isMinimized, conversationId]);
+  }, [isOpen, isMinimized, conversationId, docVisible]);
 
   // Realtime: admin replies without tight polling
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || !docVisible) return;
     return subscribeConversationBroadcast(conversationId, (msg) => {
       if (String(msg.sender) !== "admin") return;
       setMessages((prev) => {
@@ -252,7 +254,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         setUnreadCount((c) => c + 1);
       }
     });
-  }, [conversationId, isOpen, isMinimized]);
+  }, [conversationId, isOpen, isMinimized, docVisible]);
 
   // Reset unread count when chat is opened
   useEffect(() => {

@@ -7,7 +7,10 @@
     "build": "vite build",
     "dev": "vite",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "deploy:edge": "npx supabase functions deploy make-server-16010b6f",
+    "db:push": "npx supabase db push --linked",
+    "deploy:supabase": "npx supabase db push --linked && npx supabase functions deploy make-server-16010b6f"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
