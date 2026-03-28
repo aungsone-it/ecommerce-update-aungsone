@@ -2163,6 +2163,17 @@ export function VendorStoreView({
         (product.images && product.images.length > 0 ? product.images[0] : "");
       const cartId = variant?.sku ? `${product.id}:${String(variant.sku)}` : product.id;
 
+      const cr = (product as { commissionRate?: unknown }).commissionRate;
+      const snapRate =
+        typeof cr === "number" && Number.isFinite(cr)
+          ? cr
+          : typeof cr === "string" && cr.trim() !== ""
+            ? parseFloat(cr.replace(/[^0-9.-]/g, ""))
+            : NaN;
+      const commissionPatch = Number.isFinite(snapRate)
+        ? { commissionRate: snapRate }
+        : {};
+
       addToCart(
         {
           id: cartId,
@@ -2173,6 +2184,7 @@ export function VendorStoreView({
           productId: product.id,
           inventory,
           vendorId: vendorId,
+          ...commissionPatch,
         },
         qty
       );

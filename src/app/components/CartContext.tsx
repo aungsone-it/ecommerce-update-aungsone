@@ -13,6 +13,8 @@ export interface CartItem {
   quantity: number;
   inventory: number;
   vendorId: string;
+  /** Snapshot at add-to-cart — used for vendor commission after order is fulfilled (super admin). */
+  commissionRate?: number;
 }
 
 interface CartContextType {
@@ -207,9 +209,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems(prevItems => {
       const existingItem = prevItems.find(i => i.id === item.id);
       if (existingItem) {
-        return prevItems.map(i =>
+        return prevItems.map((i) =>
           i.id === item.id
-            ? { ...i, quantity: i.quantity + quantity }
+            ? {
+                ...i,
+                quantity: i.quantity + quantity,
+                commissionRate:
+                  i.commissionRate ?? item.commissionRate,
+              }
             : i
         );
       }

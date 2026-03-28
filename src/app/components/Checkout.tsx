@@ -486,6 +486,10 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
           image: item.image,
           vendorId: vendorId || item.vendor || item.vendorId, // 🔥 Include vendor ID from props or item
           vendor: vendorId || item.vendor || item.vendorId,
+          commissionRate:
+            typeof item.commissionRate === "number" && Number.isFinite(item.commissionRate)
+              ? item.commissionRate
+              : undefined,
         })),
         shippingAddress: [
           shippingInfo.address,

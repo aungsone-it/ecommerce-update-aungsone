@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams, useParams, useNavigate } from "react-router";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
@@ -62,6 +62,13 @@ type AdminPage = typeof ADMIN_PAGES[keyof typeof ADMIN_PAGES];
 export function AdminPage() {
   const [searchParams] = useSearchParams();
   const params = useParams();
+  /** `admin/*` — section is in splat `*`, not `params.section`. */
+  const resolvedAdminSection = useMemo(() => {
+    if (params.section) return params.section;
+    const splat = params["*"];
+    if (typeof splat !== "string" || !splat.trim()) return undefined;
+    return splat.split("/").filter(Boolean)[0];
+  }, [params.section, params["*"]]);
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
   const [currentPage, setCurrentPage] = useState<AdminPage>(ADMIN_PAGES.HOME);
@@ -151,14 +158,14 @@ export function AdminPage() {
 
   // 🔗 URL → currentPage: Initialize from URL
   useEffect(() => {
-    const section = params.section;
+    const section = resolvedAdminSection;
     if (section && sectionToPage[section]) {
       setCurrentPage(sectionToPage[section]);
     } else if (!section) {
       setCurrentPage(ADMIN_PAGES.HOME);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.section]);
+  }, [resolvedAdminSection]);
   
   // 🔗 currentPage → URL: Update URL when page changes
   const isInitialMount = useRef(true);

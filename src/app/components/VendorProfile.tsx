@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, Component, type ReactNode } from "react";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { 
   ArrowLeft, 
@@ -101,6 +101,202 @@ interface VendorProfileProps {
   onLoginAsVendor?: (vendor: Vendor) => void;
 }
 
+function parseOrderMoney(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = typeof v === "number" ? v : parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** React throws if a plain object is rendered as a child; coerce order fields safely. */
+function textForTableCell(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+    return String(v);
+  }
+  if (v instanceof Date && !Number.isNaN(v.getTime())) {
+    return v.toISOString().slice(0, 10);
+  }
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if (typeof o.toDate === "function") {
+      try {
+        const d = (o.toDate as () => Date)();
+        if (d instanceof Date && !Number.isNaN(d.getTime())) {
+          return d.toISOString().slice(0, 10);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "";
+  }
+}
+
+/** Shipping / checkout sometimes stores customer as JSON string or object — show account-style name only. */
+function parseCustomerDisplayName(raw: unknown): string {
+  if (raw == null || raw === "") return "";
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (s.startsWith("{") && s.endsWith("}")) {
+      try {
+        const o = JSON.parse(s) as Record<string, unknown>;
+        for (const key of ["fullName", "name", "customerName", "displayName"] as const) {
+          const v = o[key];
+          if (typeof v === "string" && v.trim() !== "") return v.trim();
+        }
+      } catch {
+        return s;
+      }
+    }
+    return s;
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    for (const key of ["fullName", "name", "customerName", "displayName"] as const) {
+      const v = o[key];
+      if (typeof v === "string" && v.trim() !== "") return v.trim();
+    }
+  }
+  return "";
+}
+
+function orderDisplayCustomerName(order: any): string {
+  const a = parseCustomerDisplayName(order?.customer);
+  if (a) return a;
+  const b = parseCustomerDisplayName(order?.customerName);
+  if (b) return b;
+  const ship = order?.shippingAddress ?? order?.shipping;
+  const c = parseCustomerDisplayName(ship);
+  if (c) return c;
+  const user = order?.user;
+  if (user && typeof user === "object" && !Array.isArray(user)) {
+    const u = user as Record<string, unknown>;
+    for (const key of ["fullName", "name", "displayName", "email"] as const) {
+      const v = u[key];
+      if (typeof v === "string" && v.trim() !== "") return v.trim();
+    }
+  }
+  return "Guest";
+}
+
+function normalizeOrderStatusKey(status: string | undefined): string {
+  return String(status || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+type VendorCatalogKeys = { ids: Set<string>; skus: Set<string> };
+
+function buildVendorCatalogKeys(products: Product[]): VendorCatalogKeys {
+  const ids = new Set<string>();
+  const skus = new Set<string>();
+  for (const p of products) {
+    if (p.id != null && String(p.id).trim() !== "") ids.add(String(p.id).trim());
+    if (p.sku != null && String(p.sku).trim() !== "") skus.add(String(p.sku).trim());
+  }
+  return { ids, skus };
+}
+
+/** True when this line is sold by the vendor (checkout uses flat vendorId / vendor on items). */
+function lineItemBelongsToVendor(
+  item: any,
+  v: Vendor,
+  catalog?: VendorCatalogKeys
+): boolean {
+  if (item == null || typeof item !== "object") return false;
+  const vid = String(v.id ?? "").trim();
+  if (!vid) return false;
+  const idCandidates = [item.vendorId, item.vendor, item.product?.vendorId].filter(
+    (x) => x != null && String(x).trim() !== ""
+  );
+  if (idCandidates.some((x) => String(x).trim() === vid)) return true;
+  const sel = item.product?.selectedVendors ?? item.selectedVendors;
+  if (Array.isArray(sel) && sel.some((x: unknown) => String(x).trim() === vid)) return true;
+  if (catalog && (catalog.ids.size > 0 || catalog.skus.size > 0)) {
+    const pid = item.productId != null ? String(item.productId).trim() : "";
+    const sku = item.sku != null ? String(item.sku).trim() : "";
+    const cartId = item.id != null ? String(item.id).trim() : "";
+    const idFromCart = cartId.includes(":") ? cartId.split(":")[0]!.trim() : "";
+    if (pid && catalog.ids.has(pid)) return true;
+    if (idFromCart && catalog.ids.has(idFromCart)) return true;
+    if (sku && catalog.skus.has(sku)) return true;
+  }
+  return false;
+}
+
+function orderTouchesVendor(order: any, v: Vendor, catalog?: VendorCatalogKeys): boolean {
+  if (order == null || typeof order !== "object" || Array.isArray(order)) return false;
+  if (!Array.isArray(order.items) || order.items.length === 0) return false;
+  if (order.items.some((it: any) => lineItemBelongsToVendor(it, v, catalog))) return true;
+  const vLabel = String(v.businessName || v.name || "")
+    .trim()
+    .toLowerCase();
+  const orderLabel = String(order.vendorName || order.vendor || "")
+    .trim()
+    .toLowerCase();
+  return Boolean(vLabel && orderLabel && orderLabel === vLabel);
+}
+
+/** Gross line total before order-level discount (unit price × qty unless subtotal/total set). */
+function orderLineGross(item: any): number {
+  if (item.subtotal != null && item.subtotal !== "") return parseOrderMoney(item.subtotal);
+  if (item.total != null && item.total !== "") return parseOrderMoney(item.total);
+  const qty = Math.max(1, parseOrderMoney(item.quantity) || 1);
+  const unit = parseOrderMoney(item.price ?? item.product?.price);
+  return unit * qty;
+}
+
+/** Allocate this line's share of order-level coupon discount (matches storefront totals). */
+function orderLineNetAfterDiscount(lineGross: number, order: any): number {
+  const orderSub = parseOrderMoney(order.subtotal);
+  const orderDisc = parseOrderMoney(order.discount);
+  if (orderSub > 0 && orderDisc > 0) {
+    const net = lineGross - (orderDisc * lineGross) / orderSub;
+    return Math.max(0, Math.round(net * 100) / 100);
+  }
+  return lineGross;
+}
+
+/** Commission & vendor revenue accrue only after fulfillment pipeline (super admin ready-to-ship / fulfilled). */
+const VENDOR_COMMISSION_STATUSES = new Set([
+  "ready-to-ship",
+  "fulfilled",
+  "shipped",
+  "delivered",
+]);
+
+class VendorProfileOrdersErrorBoundary extends Component<
+  { children: ReactNode },
+  { err: Error | null }
+> {
+  state: { err: Error | null } = { err: null };
+
+  static getDerivedStateFromError(err: Error) {
+    return { err };
+  }
+
+  render() {
+    if (this.state.err) {
+      return (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <p className="font-medium">Could not display vendor orders</p>
+          <p className="mt-1 break-words text-red-700">{this.state.err.message}</p>
+          <p className="mt-2 text-xs text-red-600">
+            Try Refresh Data or reload the page. If this persists, one order row may have unexpected data
+            shape.
+          </p>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, onLoginAsVendor }: VendorProfileProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "contract" | "storefront">("overview");
   const [products, setProducts] = useState<Product[]>([]);
@@ -127,10 +323,46 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     loadProducts();
   }, [vendor.id]);
 
+  const vendorRef = useRef(vendor);
+  vendorRef.current = vendor;
+  const productsRef = useRef<Product[]>([]);
+  productsRef.current = products;
+
   // Fetch vendor's orders (load immediately for stats)
   useEffect(() => {
     loadOrders();
   }, [vendor.id]);
+
+  // Re-filter once catalog is loaded so line items match by productId/sku (vendor id on lines may differ from admin record)
+  useEffect(() => {
+    if (products.length === 0) return;
+    loadOrders();
+  }, [products]);
+
+  useEffect(() => {
+    const onAdminOrdersUpdated = () => {
+      void (async () => {
+        const v = vendorRef.current;
+        const catalog = buildVendorCatalogKeys(productsRef.current);
+        try {
+          const payload = await getCachedAdminOrdersPayload(true);
+          const rawList = Array.isArray(payload.orders) ? payload.orders : [];
+          const vendorOrders = rawList.filter((order: any) => {
+            try {
+              return orderTouchesVendor(order, v, catalog);
+            } catch {
+              return false;
+            }
+          });
+          setOrders(vendorOrders);
+        } catch (e) {
+          console.error("[VENDOR PROFILE] adminOrdersUpdated refresh failed:", e);
+        }
+      })();
+    };
+    window.addEventListener("adminOrdersUpdated", onAdminOrdersUpdated);
+    return () => window.removeEventListener("adminOrdersUpdated", onAdminOrdersUpdated);
+  }, []);
   
   // 🔥 Fetch vendor storefront settings for phone number and other details
   useEffect(() => {
@@ -232,17 +464,18 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   const loadOrders = async () => {
     setIsLoadingOrders(true);
     try {
-      const payload = await getCachedAdminOrdersPayload(false);
+      const payload = await getCachedAdminOrdersPayload(true);
+      const catalog = buildVendorCatalogKeys(productsRef.current);
 
-      // Filter orders that contain products from this vendor
-      const vendorOrders = (payload.orders || []).filter((order: any) => {
-        return order.items?.some((item: any) => {
-          const itemVendors = item.product?.selectedVendors || item.selectedVendors || [];
-          const itemVendorId = item.product?.vendorId || item.vendorId;
-          return itemVendors.includes(vendor.id) || itemVendorId === vendor.id;
-        });
+      const rawList = Array.isArray(payload.orders) ? payload.orders : [];
+      const vendorOrders = rawList.filter((order: any) => {
+        try {
+          return orderTouchesVendor(order, vendor, catalog);
+        } catch {
+          return false;
+        }
       });
-      
+
       setOrders(vendorOrders);
       console.log(`[VENDOR PROFILE] Loaded ${vendorOrders.length} orders for vendor ${vendor.name}`);
     } catch (error) {
@@ -292,75 +525,92 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   // Calculate stats from real data
   const totalProducts = products.length;
   const activeProducts = products.filter(p => p.status === "active").length;
-  const totalOrders = orders.length;
-  
-  // Calculate total revenue and commission from actual orders - ONLY when products and orders are loaded
+
+  const safeOrders = useMemo(() => {
+    return (orders as unknown[]).filter(
+      (o): o is Record<string, unknown> =>
+        o != null && typeof o === "object" && !Array.isArray(o)
+    ) as any[];
+  }, [orders]);
+
+  const totalOrders = safeOrders.length;
+
+  const vendorCatalogKeys = useMemo(
+    () => buildVendorCatalogKeys(products),
+    [products]
+  );
+
+  /** Prefer product-level rates for the headline card (matches "From product settings"). */
+  const displayCommissionRate = useMemo(() => {
+    const rates = products
+      .map((p) => p.commissionRate)
+      .filter((r): r is number => typeof r === "number" && !Number.isNaN(r) && r > 0);
+    if (rates.length > 0) return Math.round(Math.max(...rates) * 100) / 100;
+    const v = parseOrderMoney(vendor.commission);
+    if (v > 0) return Math.round(v * 100) / 100;
+    return 0;
+  }, [vendor.commission, products]);
+
+  // Revenue & commission: vendor lines only, net of order-level discount; accrue when status is ready-to-ship / fulfilled / shipped / delivered
   const { totalRevenue, commissionEarned } = useMemo(() => {
     let revenue = 0;
     let commission = 0;
-    
-    orders.forEach((order: any) => {
-      // Only calculate commission for orders that are processing, ready-to-ship, fulfilled, shipped, or delivered
-      const earnCommissionStatuses = ['processing', 'ready-to-ship', 'fulfilled', 'shipped', 'delivered'];
-      const shouldEarnCommission = earnCommissionStatuses.includes(order.status?.toLowerCase());
-      
-      order.items?.forEach((item: any) => {
-        const itemVendors = item.product?.selectedVendors || item.selectedVendors || [];
-        const itemVendorId = item.product?.vendorId || item.vendorId;
-        
-        // Only count items from this vendor
-        if (itemVendors.includes(vendor.id) || itemVendorId === vendor.id) {
-          const itemTotal = parseFloat(
-            item.subtotal || 
-            item.total || 
-            item.price || 
-            (item.product?.price && item.quantity ? parseFloat(item.product.price) * item.quantity : 0) ||
-            0
-          );
-          
-          // Only add to revenue AND commission if order status qualifies
-          if (shouldEarnCommission) {
-            revenue += itemTotal;
-            
-            // Try to find commission rate from multiple sources
-            let productCommission = 0;
-            
-            // First, try to get from item
-            if (item.product?.commission) {
-              productCommission = parseFloat(item.product.commission);
-            } else if (item.commission) {
-              productCommission = parseFloat(item.commission);
+
+    safeOrders.forEach((order: any) => {
+      if (order == null || typeof order !== "object") return;
+      const st = normalizeOrderStatusKey(String(order.status ?? ""));
+      const shouldAccrue = VENDOR_COMMISSION_STATUSES.has(st);
+      const lineItems = Array.isArray(order.items) ? order.items : [];
+
+      lineItems.forEach((item: any) => {
+        if (!lineItemBelongsToVendor(item, vendor, vendorCatalogKeys)) return;
+
+        const gross = orderLineGross(item);
+        const net = orderLineNetAfterDiscount(gross, order);
+
+        if (shouldAccrue) {
+          revenue += net;
+
+          let productCommission = 0;
+          if (
+            item.commissionRate != null &&
+            item.commissionRate !== "" &&
+            (typeof item.commissionRate !== "number" ||
+              Number.isFinite(item.commissionRate))
+          ) {
+            productCommission = parseOrderMoney(item.commissionRate);
+          } else if (item.product?.commission != null) {
+            productCommission = parseOrderMoney(item.product.commission);
+          } else if (item.commission != null) {
+            productCommission = parseOrderMoney(item.commission);
+          } else {
+            const matchedProduct = products.find(
+              (p: Product) =>
+                (item.sku && p.sku === item.sku) ||
+                (item.name && p.name === item.name) ||
+                (item.productId != null &&
+                  p.id != null &&
+                  String(p.id) === String(item.productId))
+            );
+            if (matchedProduct?.commissionRate != null) {
+              productCommission = parseOrderMoney(matchedProduct.commissionRate);
+            } else if (matchedProduct && (matchedProduct as any).commission != null) {
+              productCommission = parseOrderMoney((matchedProduct as any).commission);
             } else {
-              // Look up the product in the products array by SKU or name
-              const matchedProduct = products.find((p: any) => {
-                return p.sku === item.sku || p.name === item.name || p.id === item.productId;
-              });
-              
-              if (matchedProduct) {
-                // The field is called commissionRate, not commission!
-                if (matchedProduct.commissionRate) {
-                  productCommission = parseFloat(matchedProduct.commissionRate);
-                } else if (matchedProduct.commission) {
-                  productCommission = parseFloat(matchedProduct.commission);
-                } else {
-                  // Fallback to vendor's global rate
-                  productCommission = parseFloat(vendor.commission || 0);
-                }
-              } else {
-                // Fallback to vendor's global rate
-                productCommission = parseFloat(vendor.commission || 0);
-              }
+              productCommission = parseOrderMoney(vendor.commission);
             }
-            
-            const itemCommission = (itemTotal * productCommission) / 100;
-            commission += itemCommission;
           }
+
+          commission += (net * productCommission) / 100;
         }
       });
     });
-    
-    return { totalRevenue: revenue, commissionEarned: commission };
-  }, [products, orders, vendor.id, vendor.name, vendor.commission]); // Recalculate when products or orders change
+
+    return {
+      totalRevenue: Math.round(revenue * 100) / 100,
+      commissionEarned: Math.round(commission * 100) / 100,
+    };
+  }, [products, safeOrders, vendor.id, vendor.commission, vendorCatalogKeys]);
   
   const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
 
@@ -394,8 +644,9 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     );
   };
 
-  const getOrderStatusBadge = (status: string) => {
-    const normalizedStatus = status?.toLowerCase() || 'pending';
+  const getOrderStatusBadge = (status: unknown) => {
+    const normalizedStatus =
+      normalizeOrderStatusKey(String(status ?? "")) || "pending";
     const variants: Record<string, { color: string; label: string }> = {
       pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Pending" },
       processing: { color: "bg-blue-100 text-blue-700 border-blue-200", label: "Processing" },
@@ -513,11 +764,10 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   // Filter products by search query
   const filteredPlatformProducts = allPlatformProducts.filter((product) => {
     const query = searchProductQuery.toLowerCase();
-    return (
-      product.name?.toLowerCase().includes(query) ||
-      product.sku?.toLowerCase().includes(query) ||
-      product.category?.toLowerCase().includes(query)
-    );
+    const name = String(product?.name ?? "").toLowerCase();
+    const sku = String(product?.sku ?? "").toLowerCase();
+    const category = String(product?.category ?? "").toLowerCase();
+    return name.includes(query) || sku.includes(query) || category.includes(query);
   });
 
   return (
@@ -525,7 +775,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
+          <Button type="button" variant="ghost" size="icon" onClick={onBack}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
@@ -536,6 +786,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
         <div className="flex gap-2">
           {onLoginAsVendor && (
             <Button 
+              type="button"
               variant="default"
               onClick={() => onLoginAsVendor(vendor)}
               className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
@@ -545,6 +796,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
             </Button>
           )}
           <Button 
+            type="button"
             variant="outline" 
             onClick={() => setActiveTab("storefront")}
             className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
@@ -552,13 +804,13 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
             <Store className="w-4 h-4 mr-2" />
             Manage Storefront
           </Button>
-          <Button variant="outline" onClick={() => onEdit(vendor)}>
+          <Button type="button" variant="outline" onClick={() => onEdit(vendor)}>
             <Edit className="w-4 h-4 mr-2" />
             Edit Profile
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon">
+              <Button type="button" variant="outline" size="icon">
                 <MoreVertical className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -679,7 +931,12 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs text-slate-500">Commission Rate</p>
-              <p className="text-xl font-semibold text-slate-900 mt-1">{vendor.commission || 0}%</p>
+              <p className="text-xl font-semibold text-slate-900 mt-1">{displayCommissionRate}%</p>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {parseOrderMoney(vendor.commission) <= 0 && displayCommissionRate > 0
+                  ? "From product settings"
+                  : "Contract rate"}
+              </p>
               <p className="text-xs text-green-600 mt-0.5">{formatMMK(commissionEarned)} to pay</p>
             </div>
             <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
@@ -694,6 +951,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
         <div className="border-b border-slate-200">
           <div className="flex gap-6 px-6">
             <button
+              type="button"
               onClick={() => setActiveTab("overview")}
               className={`py-4 px-2 border-b-2 transition-colors ${
                 activeTab === "overview"
@@ -704,6 +962,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               Overview
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("products")}
               className={`py-4 px-2 border-b-2 transition-colors ${
                 activeTab === "products"
@@ -714,6 +973,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               Products ({totalProducts})
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("orders")}
               className={`py-4 px-2 border-b-2 transition-colors ${
                 activeTab === "orders"
@@ -724,6 +984,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               Orders ({totalOrders})
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("contract")}
               className={`py-4 px-2 border-b-2 transition-colors ${
                 activeTab === "contract"
@@ -734,6 +995,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               Contract
             </button>
             <button
+              type="button"
               onClick={() => setActiveTab("storefront")}
               className={`py-4 px-2 border-b-2 transition-colors ${
                 activeTab === "storefront"
@@ -950,11 +1212,13 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
 
           {/* Orders Tab */}
           {activeTab === "orders" && (
+            <VendorProfileOrdersErrorBoundary>
             <div>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-900">Vendor Orders</h3>
                 <div className="flex items-center gap-2">
                   <Button 
+                    type="button"
                     variant="outline" 
                     size="sm"
                     onClick={() => { loadOrders(); loadProducts(); }}
@@ -1010,7 +1274,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                     </tbody>
                   </table>
                 </div>
-              ) : orders.length === 0 ? (
+              ) : safeOrders.length === 0 ? (
                 <div className="text-center py-12">
                   <ShoppingCart className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-slate-900 mb-1">No Orders Yet</h3>
@@ -1030,37 +1294,32 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                       </tr>
                     </thead>
                     <tbody>
-                      {orders.map((order: any) => {
-                        // Count only items from this vendor
-                        const vendorItemsCount = order.items?.filter((item: any) => {
-                          const itemVendors = item.product?.selectedVendors || item.selectedVendors || [];
-                          const itemVendorId = item.product?.vendorId || item.vendorId;
-                          return itemVendors.includes(vendor.id) || itemVendorId === vendor.id;
-                        }).length || 0;
+                      {safeOrders.map((order: any, rowIdx: number) => {
+                        const lineItems = Array.isArray(order.items) ? order.items : [];
+                        const vendorItemsCount =
+                          lineItems.filter((item: any) =>
+                            lineItemBelongsToVendor(item, vendor, vendorCatalogKeys)
+                          ).length || 0;
 
-                        // Calculate total for vendor items only
                         let vendorTotal = 0;
-                        order.items?.forEach((item: any) => {
-                          const itemVendors = item.product?.selectedVendors || item.selectedVendors || [];
-                          const itemVendorId = item.product?.vendorId || item.vendorId;
-                          if (itemVendors.includes(vendor.id) || itemVendorId === vendor.id) {
-                            // Use the same price logic as commission calculation
-                            const itemTotal = parseFloat(
-                              item.subtotal || 
-                              item.total || 
-                              item.price || 
-                              (item.product?.price && item.quantity ? parseFloat(item.product.price) * item.quantity : 0) ||
-                              0
-                            );
-                            vendorTotal += itemTotal;
-                          }
+                        lineItems.forEach((item: any) => {
+                          if (!lineItemBelongsToVendor(item, vendor, vendorCatalogKeys)) return;
+                          const gross = orderLineGross(item);
+                          vendorTotal += orderLineNetAfterDiscount(gross, order);
                         });
+                        vendorTotal = Math.round(vendorTotal * 100) / 100;
+
+                        const rowKey = `${textForTableCell(order.id) || textForTableCell(order.orderNumber) || "order"}-${rowIdx}`;
 
                         return (
-                          <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50">
-                            <td className="p-3 text-sm font-medium text-slate-900">{order.orderNumber}</td>
-                            <td className="p-3 text-sm text-slate-600">{order.date}</td>
-                            <td className="p-3 text-sm text-slate-600">{order.customer || order.customerName || "Guest"}</td>
+                          <tr key={rowKey} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="p-3 text-sm font-medium text-slate-900">
+                              {textForTableCell(order.orderNumber) || "—"}
+                            </td>
+                            <td className="p-3 text-sm text-slate-600">{textForTableCell(order.date) || "—"}</td>
+                            <td className="p-3 text-sm text-slate-600">
+                              {orderDisplayCustomerName(order)}
+                            </td>
                             <td className="p-3 text-sm text-slate-600">{vendorItemsCount}</td>
                             <td className="p-3 text-sm font-medium text-slate-900">{formatMMK(vendorTotal)}</td>
                             <td className="p-3">{getOrderStatusBadge(order.status)}</td>
@@ -1072,6 +1331,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                 </div>
               )}
             </div>
+            </VendorProfileOrdersErrorBoundary>
           )}
 
           {/* Contract Tab */}
@@ -1083,7 +1343,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-slate-600">Commission Rate</span>
-                      <span className="font-semibold text-slate-900">{vendor.commission}%</span>
+                      <span className="font-semibold text-slate-900">{displayCommissionRate}%</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-slate-600">Contract Start Date</span>
@@ -1106,7 +1366,10 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                 <Card className="p-6 border border-slate-200">
                   <div className="space-y-3 text-sm text-slate-600">
                     <p>• Vendor agrees to maintain product quality standards</p>
-                    <p>• Commission rate of {vendor.commission}% applies to all sales</p>
+                    <p>
+                      • Commission rate of {displayCommissionRate}% applies to sales (product-level rates
+                      when set)
+                    </p>
                     <p>• Vendor is responsible for product inventory and fulfillment</p>
                     <p>• Platform provides marketing and sales infrastructure</p>
                     <p>• Monthly settlement of commissions on the 1st of each month</p>

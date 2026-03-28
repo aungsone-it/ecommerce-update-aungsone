@@ -747,6 +747,9 @@ export async function getCachedAdminOrdersPayload(forceRefresh = false) {
 
 export function invalidateAdminOrdersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_ORDERS);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("adminOrdersUpdated"));
+  }
 }
 
 export async function getCachedAdminAllCategories(forceRefresh = false) {
