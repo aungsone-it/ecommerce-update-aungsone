@@ -1,5 +1,11 @@
 // Minimalist Vendor Storefront - MVP Design
-import { moduleCache, CACHE_KEYS, fetchVendorProducts, fetchVendorCategories } from "../utils/module-cache";
+import {
+  moduleCache,
+  CACHE_KEYS,
+  fetchVendorProducts,
+  fetchVendorCategories,
+  fetchProductsByIds,
+} from "../utils/module-cache";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -280,6 +286,11 @@ function resolveVendorProductFromSlug(products: Product[], decoded: string): Pro
   );
 }
 
+/** Browse mode: small pages + load more. Search mode: max edge page size so live filter + server q cover the catalog. */
+const VENDOR_BROWSE_PAGE_SIZE = 24;
+const VENDOR_SEARCH_PAGE_SIZE = 100;
+const VENDOR_SEARCH_DEBOUNCE_MS = 120;
+
 export function VendorStoreView({
   vendorId,
   storeSlug,
@@ -338,6 +349,12 @@ export function VendorStoreView({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [vendorCatalogTotal, setVendorCatalogTotal] = useState(0);
+  const [vendorCatalogPage, setVendorCatalogPage] = useState(1);
+  const [vendorCatalogHasMore, setVendorCatalogHasMore] = useState(false);
+  const [vendorCatalogLoadingMore, setVendorCatalogLoadingMore] = useState(false);
+  const [savedDisplayProducts, setSavedDisplayProducts] = useState<Product[]>([]);
+  const isFirstSearchCategoryEffect = useRef(true);
 
   const vendorEffectiveVariantOptions = useMemo(
     () => (selectedProduct ? getEffectiveVariantOptions(selectedProduct as any) : []),
@@ -1881,21 +1898,85 @@ export function VendorStoreView({
     );
   };
 
-  // 🚀 LOAD DATA WITH MODULE-LEVEL CACHING — products are required; categories are best-effort (avoid blank storefront if categories fail).
+  const refetchVendorCatalogPage1 = useCallback(
+    async (forceRefresh: boolean) => {
+      if (savedPage) return;
+      const qRaw = searchQuery.trim();
+      const qk = qRaw.toLowerCase();
+      const cat = selectedCategory;
+      const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+      const productsData = await moduleCache.get(
+        CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize),
+        () =>
+          fetchVendorProducts(vendorId, {
+            page: 1,
+            pageSize,
+            q: qRaw || undefined,
+            category: cat === "all" ? undefined : cat,
+          }),
+        forceRefresh
+      );
+      setProducts(productsData.products || []);
+      setVendorCatalogTotal(productsData.total);
+      setVendorCatalogPage(productsData.page);
+      setVendorCatalogHasMore(productsData.hasMore);
+      setStoreName(productsData.storeName || "Vendor Store");
+      setStoreLogo(productsData.logo || "");
+    },
+    [vendorId, searchQuery, selectedCategory, savedPage]
+  );
+
+  const loadMoreVendorCatalog = useCallback(async () => {
+    if (savedPage || !vendorCatalogHasMore || vendorCatalogLoadingMore) return;
+    setVendorCatalogLoadingMore(true);
+    try {
+      const nextPage = vendorCatalogPage + 1;
+      const qRaw = searchQuery.trim();
+      const qk = qRaw.toLowerCase();
+      const cat = selectedCategory;
+      const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+      const data = await moduleCache.get(
+        CACHE_KEYS.vendorProductsPage(vendorId, nextPage, qk, cat, pageSize),
+        () =>
+          fetchVendorProducts(vendorId, {
+            page: nextPage,
+            pageSize,
+            q: qRaw || undefined,
+            category: cat === "all" ? undefined : cat,
+          }),
+        false
+      );
+      setProducts((prev) => {
+        const seen = new Set(prev.map((p) => p.id));
+        const add = (data.products || []).filter((p: Product) => !seen.has(p.id));
+        return [...prev, ...add];
+      });
+      setVendorCatalogPage(data.page);
+      setVendorCatalogHasMore(data.hasMore);
+    } catch (e) {
+      console.error("Load more vendor products failed:", e);
+    } finally {
+      setVendorCatalogLoadingMore(false);
+    }
+  }, [
+    savedPage,
+    vendorCatalogHasMore,
+    vendorCatalogLoadingMore,
+    vendorCatalogPage,
+    vendorId,
+    searchQuery,
+    selectedCategory,
+  ]);
+
+  // 🚀 Categories + server-paginated product grid (module cache per page / filters).
   const loadVendorData = async (forceRefresh: boolean = false) => {
     console.log(`🚀 [VENDOR STORE] Loading data for vendorId: ${vendorId}`);
-    
-    if (!forceRefresh && products.length === 0 && !initialProductSlug) {
-      setServerStatus('checking');
+
+    if (!forceRefresh && products.length === 0 && !initialProductSlug && !savedPage) {
+      setServerStatus("checking");
     }
 
     try {
-      const productsData = await moduleCache.get(
-        CACHE_KEYS.vendorProducts(vendorId),
-        () => fetchVendorProducts(vendorId),
-        forceRefresh
-      );
-
       let categoriesData: any[] = [];
       try {
         categoriesData = await moduleCache.get(
@@ -1907,26 +1988,47 @@ export function VendorStoreView({
         console.warn("⚠️ [VENDOR STORE] Categories fetch failed (non-fatal):", catErr);
         categoriesData = [];
       }
-
-      setProducts(productsData.products || []);
       setVendorCategories(categoriesData || []);
-      setStoreName(productsData.storeName || "Vendor Store");
-      setStoreLogo(productsData.logo || "");
-      setServerStatus('healthy');
 
-      console.log(`✅ [VENDOR STORE] Loaded ${productsData.products?.length || 0} products`);
+      if (!savedPage) {
+        await refetchVendorCatalogPage1(forceRefresh);
+      }
+      setServerStatus("healthy");
       console.log(`✅ [VENDOR STORE] Loaded ${categoriesData?.length || 0} categories`);
     } catch (error) {
       console.error("❌ [VENDOR STORE] Error loading vendor data:", error);
-      setServerStatus('unhealthy');
+      setServerStatus("unhealthy");
     }
   };
 
-  // Load data on mount - uses cache if available
+  useEffect(() => {
+    isFirstSearchCategoryEffect.current = true;
+  }, [vendorId]);
+
   useEffect(() => {
     loadVendorData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
+
+  useEffect(() => {
+    if (savedPage) return;
+    if (isFirstSearchCategoryEffect.current) {
+      isFirstSearchCategoryEffect.current = false;
+      return;
+    }
+    const t = setTimeout(() => {
+      void (async () => {
+        try {
+          setServerStatus("checking");
+          await refetchVendorCatalogPage1(false);
+          setServerStatus("healthy");
+        } catch {
+          setServerStatus("unhealthy");
+        }
+      })();
+    }, VENDOR_SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [searchQuery, selectedCategory, savedPage, refetchVendorCatalogPage1]);
 
   // Sync product detail from URL + catalog (pathname is source of truth — avoids races with slow loads)
   useEffect(() => {
@@ -1935,12 +2037,8 @@ export function VendorStoreView({
       setSelectedProduct(null);
       return;
     }
-    if (products.length === 0) return;
-
     const decoded = safeDecodePathSegment(slug);
-
     const product = resolveVendorProductFromSlug(products, decoded);
-
     const stillOnProduct =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
@@ -1948,6 +2046,46 @@ export function VendorStoreView({
       setSelectedProduct(product);
     }
   }, [productSlugFromPath, initialProductSlug, products, location.pathname]);
+
+  useEffect(() => {
+    if (savedPage || serverStatus !== "healthy") return;
+    const slug = productSlugFromPath ?? initialProductSlug;
+    if (!slug) return;
+    const decoded = safeDecodePathSegment(slug);
+    if (!decoded) return;
+    const stillOnProduct =
+      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
+    if (!stillOnProduct) return;
+    if (resolveVendorProductFromSlug(products, decoded)) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await fetchVendorProducts(vendorId, {
+          resolveSlug: decoded,
+          pageSize: 1,
+        });
+        const p = data.products?.[0] as Product | undefined;
+        if (cancelled || !p) return;
+        setSelectedProduct(p);
+        setProducts((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]));
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    savedPage,
+    serverStatus,
+    productSlugFromPath,
+    initialProductSlug,
+    products,
+    vendorId,
+    location.pathname,
+  ]);
 
   // Handle browser back button - detect when URL changes back to storefront home
   useEffect(() => {
@@ -2079,7 +2217,48 @@ export function VendorStoreView({
     }, 500);
     return () => clearTimeout(t);
   }, [wishlist, wishlistUserId]);
-  
+
+  useEffect(() => {
+    if (!savedPage || wishlist.length === 0) {
+      setSavedDisplayProducts([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await fetchProductsByIds(wishlist);
+        if (cancelled) return;
+        const here = rows.filter((p: any) => {
+          if (p.vendorId === vendorId) return true;
+          if (Array.isArray(p.selectedVendors)) {
+            return p.selectedVendors.some((x: string) => x === vendorId);
+          }
+          return false;
+        }) as Product[];
+        setSavedDisplayProducts(here);
+      } catch {
+        if (!cancelled) setSavedDisplayProducts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [savedPage, wishlist, vendorId]);
+
+  /** Instant client filter on loaded rows (name/SKU) — pairs with debounced server fetch for q. */
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch =
+        !searchQuery.trim() ||
+        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(product.sku || "")
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, selectedCategory]);
+
   const toggleWishlist = (productId: string) => {
     // Require authentication for wishlist
     if (!user) {
@@ -2097,13 +2276,6 @@ export function VendorStoreView({
       }
     });
   };
-
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
 
   const vendorDetailDisplay = useMemo(() => {
     if (!selectedProduct) return null;
@@ -3183,7 +3355,7 @@ export function VendorStoreView({
                   </div>
                   <p className="mt-2 text-sm sm:text-[15px] text-white/95 font-sans font-normal">
                     {(() => {
-                      const n = products.filter((p) => wishlist.includes(p.id)).length;
+                      const n = savedDisplayProducts.length;
                       return `${n} ${n === 1 ? "item" : "items"} saved for later`;
                     })()}
                   </p>
@@ -3193,7 +3365,7 @@ export function VendorStoreView({
 
             <div className="max-w-7xl mx-auto w-full pt-6 md:pt-12">
               {(() => {
-                const savedHere = products.filter((p) => wishlist.includes(p.id));
+                const savedHere = savedDisplayProducts;
                 if (savedHere.length === 0) {
                   return (
                     <Card className="text-center py-16 sm:py-20 border-0 shadow-md">
@@ -3284,7 +3456,7 @@ export function VendorStoreView({
               </div>
             )}
 
-            {serverStatus === 'healthy' && filteredProducts.length === 0 && (
+            {serverStatus === 'healthy' && products.length === 0 && (
               <div className="text-center py-20">
                 <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">No Products Found</h3>
@@ -3294,47 +3466,75 @@ export function VendorStoreView({
               </div>
             )}
 
-            {serverStatus === 'healthy' && filteredProducts.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children">
-                {filteredProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={productToCardProduct(product)}
-                    onProductClick={async () => {
-                      const segment = buildVendorProductUrlSegment(product);
-                      navigate(
-                        `${storeBase}/product/${encodeURIComponent(segment)}`
-                      );
-                    }}
-                    onAddToCart={(e, opts) => {
-                      e?.stopPropagation();
-                      handleAddToCart(product, {
-                        variantSku: opts?.sku,
-                        variantPrice:
-                          opts?.price != null
-                            ? typeof opts.price === "number"
-                              ? opts.price
-                              : parseFloat(String(opts.price).replace(/[^0-9.-]/g, ""))
-                            : undefined,
-                        variantImage: opts?.image,
-                        quantity: opts?.quantity,
-                        buyNow: opts?.buyNow,
-                      });
-                      toast.success(
-                        opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
-                      );
-                    }}
-                    onToggleWishlist={(e) => {
-                      e.stopPropagation();
-                      toggleWishlist(product.id);
-                      const isNowWishlisted = !wishlist.includes(product.id);
-                      toast.success(isNowWishlisted ? `${product.name} added to wishlist!` : `${product.name} removed from wishlist`);
-                    }}
-                    isWishlisted={wishlist.includes(product.id)}
-                    formatPriceMMK={formatPriceMMK}
-                  />
-                ))}
+            {serverStatus === 'healthy' && products.length > 0 && filteredProducts.length === 0 && (
+              <div className="text-center py-20">
+                <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">No matching products</h3>
+                <p className="text-slate-600">Try adjusting your search or category</p>
               </div>
+            )}
+
+            {serverStatus === 'healthy' && filteredProducts.length > 0 && (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children">
+                  {filteredProducts.map((product) => (
+                    <ProductCard
+                      key={product.id}
+                      product={productToCardProduct(product)}
+                      onProductClick={async () => {
+                        const segment = buildVendorProductUrlSegment(product);
+                        navigate(
+                          `${storeBase}/product/${encodeURIComponent(segment)}`
+                        );
+                      }}
+                      onAddToCart={(e, opts) => {
+                        e?.stopPropagation();
+                        handleAddToCart(product, {
+                          variantSku: opts?.sku,
+                          variantPrice:
+                            opts?.price != null
+                              ? typeof opts.price === "number"
+                                ? opts.price
+                                : parseFloat(String(opts.price).replace(/[^0-9.-]/g, ""))
+                              : undefined,
+                          variantImage: opts?.image,
+                          quantity: opts?.quantity,
+                          buyNow: opts?.buyNow,
+                        });
+                        toast.success(
+                          opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
+                        );
+                      }}
+                      onToggleWishlist={(e) => {
+                        e.stopPropagation();
+                        toggleWishlist(product.id);
+                        const isNowWishlisted = !wishlist.includes(product.id);
+                        toast.success(isNowWishlisted ? `${product.name} added to wishlist!` : `${product.name} removed from wishlist`);
+                      }}
+                      isWishlisted={wishlist.includes(product.id)}
+                      formatPriceMMK={formatPriceMMK}
+                    />
+                  ))}
+                </div>
+                {vendorCatalogTotal > 0 && (
+                  <p className="text-center text-sm text-slate-500 mt-6">
+                    Showing {filteredProducts.length} of {vendorCatalogTotal} products
+                  </p>
+                )}
+                {vendorCatalogHasMore && (
+                  <div className="flex justify-center mt-6">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-w-[160px]"
+                      disabled={vendorCatalogLoadingMore}
+                      onClick={() => void loadMoreVendorCatalog()}
+                    >
+                      {vendorCatalogLoadingMore ? "Loading…" : "Load more"}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

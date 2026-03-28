@@ -2562,6 +2562,26 @@ function sortStorefrontProductRows(rows: any[], sort: string): any[] {
  * variantOptions + variants so product detail can render selectors without waiting on GET /products/:id.
  * (Stripping them caused hasVariants === true with no chips on PDP.)
  */
+function mapVendorStorefrontProductRow(p: any) {
+  return {
+    id: p.id,
+    name: p.name || p.title,
+    sku: p.sku,
+    price: parseFloat(String(p.price).replace(/[$,]/g, "")),
+    compareAtPrice: p.compareAtPrice ? parseFloat(String(p.compareAtPrice).replace(/[$,]/g, "")) : undefined,
+    description: p.description || "",
+    images: p.images || [],
+    category: p.category || "Uncategorized",
+    inventory: p.inventory || 0,
+    rating: 4.5,
+    reviewCount: Math.floor(Math.random() * 100),
+    hasVariants: p.hasVariants || false,
+    variants: p.variants || [],
+    variantOptions: p.variantOptions || [],
+    commissionRate: p.commissionRate || 0,
+  };
+}
+
 function toSlimListRow(p: any) {
   return {
     id: p.id,
@@ -2645,19 +2665,66 @@ app.get("/make-server-16010b6f/products", async (c) => {
     const catalog = c.req.query("catalog") === "1";
 
     if (bootstrap || catalog) {
-      const data = await ensureProductsListResponse();
-      const rows = data.products.filter((p) => {
-        const s = String(p.status || "").toLowerCase();
-        return !s || s === "active";
-      });
-
-      const q = (c.req.query("q") || "").trim().toLowerCase();
+      const qRaw = (c.req.query("q") || "").trim();
       const category = (c.req.query("category") || "").trim();
       const sort = (c.req.query("sort") || "featured").toLowerCase();
       const minPrice = parseFloat(c.req.query("minPrice") || "");
       const maxPrice = parseFloat(c.req.query("maxPrice") || "");
       const page = Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1);
       const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "24", 10) || 24));
+
+      const rpcData = await kv.rpcStorefrontCatalog({
+        kind: bootstrap ? "bootstrap" : "catalog",
+        page,
+        pageSize,
+        category: category || null,
+        q: qRaw || null,
+        sort,
+        minPrice: Number.isNaN(minPrice) ? null : minPrice,
+        maxPrice: Number.isNaN(maxPrice) ? null : maxPrice,
+      });
+
+      const mapRpcArrToSlim = (arr: unknown) =>
+        (Array.isArray(arr) ? arr : []).map((raw: any) =>
+          toSlimListRow(mapPlatformProductToListRow(raw))
+        );
+
+      if (rpcData && Array.isArray(rpcData.products)) {
+        const sortOut =
+          typeof rpcData.sort === "string"
+            ? rpcData.sort
+            : sort;
+        if (bootstrap) {
+          return c.json({
+            bootstrap: true,
+            products: mapRpcArrToSlim(rpcData.products),
+            total: Number(rpcData.total ?? 0),
+            page: Number(rpcData.page ?? 1),
+            pageSize: Number(rpcData.pageSize ?? pageSize),
+            hasMore: !!rpcData.hasMore,
+            dealProducts: mapRpcArrToSlim(rpcData.dealProducts),
+            newArrivals: mapRpcArrToSlim(rpcData.newArrivals),
+            sort: sortOut,
+          });
+        }
+        return c.json({
+          catalog: true,
+          products: mapRpcArrToSlim(rpcData.products),
+          total: Number(rpcData.total ?? 0),
+          page: Number(rpcData.page ?? page),
+          pageSize: Number(rpcData.pageSize ?? pageSize),
+          hasMore: !!rpcData.hasMore,
+          sort: sortOut,
+        });
+      }
+
+      const data = await ensureProductsListResponse();
+      const rows = data.products.filter((p) => {
+        const s = String(p.status || "").toLowerCase();
+        return !s || s === "active";
+      });
+
+      const q = qRaw.toLowerCase();
 
       const filtered = rows.filter((p) => {
         if (category && category.toLowerCase() !== "all") {
@@ -7509,71 +7576,127 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
     
     console.log(`🏪 Vendor info - ID: ${actualVendorId}, Name: ${vendorBusinessName}, Store: ${storeName}`);
-    
-    // OPTIMIZATION: Get products with timeout and retry logic to prevent database timeouts
-    console.log(`📦 Fetching products with timeout protection...`);
+
+    const page = Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "24", 10) || 24));
+    const categoryQ = (c.req.query("category") || "").trim();
+    const searchQ = (c.req.query("q") || "").trim();
+    const resolveSlugRaw = (c.req.query("resolveSlug") || "").trim();
+    const resolveSlug = resolveSlugRaw ? decodeURIComponent(resolveSlugRaw) : null;
+
+    const rpcData = await kv.rpcVendorStorefrontProductsPage({
+      vendorId: actualVendorId,
+      vendorBusinessName: vendorBusinessName ?? null,
+      page,
+      pageSize,
+      category: categoryQ && categoryQ.toLowerCase() !== "all" ? categoryQ : null,
+      q: searchQ || null,
+      resolveSlug,
+    });
+
+    const storefrontSettings = await kv.get(`vendor_storefront_${actualVendorId}`);
+    const logo = storefrontSettings?.logo || vendorData?.avatar || "";
+
+    if (rpcData && Array.isArray(rpcData.products)) {
+      const vendorProducts = (rpcData.products as any[]).map(mapVendorStorefrontProductRow);
+      return c.json({
+        products: vendorProducts,
+        storeName,
+        logo,
+        total: Number(rpcData.total ?? vendorProducts.length),
+        page: Number(rpcData.page ?? page),
+        pageSize: Number(rpcData.pageSize ?? pageSize),
+        hasMore: !!rpcData.hasMore,
+      });
+    }
+
     const allProducts = await withRetry(
       () => withTimeout(kv.getByPrefix("product:"), 25000),
       3,
       1000
     );
-    
-    console.log(`📦 Total products in database: ${allProducts.length}`);
-    
-    // Filter products by vendor (support both ID and name) and only show active products (case-insensitive)
-    const vendorProducts = allProducts
-      .filter((p: any) => {
-        if (!p) return false;
-        
-        // 🔥 NEW: Support multi-vendor products with selectedVendors array
-        let vendorMatch = false;
-        
-        if (Array.isArray(p.selectedVendors)) {
-          // Check if vendor is in selectedVendors array (by ID or name)
-          vendorMatch = p.selectedVendors.some((v: string) => 
-            v === actualVendorId || 
-            (vendorBusinessName && v === vendorBusinessName)
-          );
-        } else {
-          // Legacy: Support old single vendor field format
-          vendorMatch = 
-            p.vendorId === actualVendorId || 
-            p.vendor === actualVendorId ||
-            (vendorBusinessName && p.vendor === vendorBusinessName);
-        }
-        
-        // Check status (case-insensitive: "active", "Active", "ACTIVE" all match)
-        const statusMatch = p.status && p.status.toLowerCase() === "active";
-        
-        console.log('📦 Product:', p.sku, 'vendor:', p.vendor, 'vendorId:', p.vendorId, 'selectedVendors:', p.selectedVendors, 'status:', p.status, 'Looking for ID:', actualVendorId, 'Looking for Name:', vendorBusinessName, 'Matches:', vendorMatch && statusMatch);
-        
-        return vendorMatch && statusMatch;
-      })
-      .map((p: any) => ({
-        id: p.id,
-        name: p.name || p.title,
-        sku: p.sku,
-        price: parseFloat(String(p.price).replace(/[$,]/g, '')),
-        compareAtPrice: p.compareAtPrice ? parseFloat(String(p.compareAtPrice).replace(/[$,]/g, '')) : undefined,
-        description: p.description || "",
-        images: p.images || [],
-        category: p.category || "Uncategorized",
-        inventory: p.inventory || 0,
-        rating: 4.5, // Mock rating for now
-        reviewCount: Math.floor(Math.random() * 100), // Mock reviews
-        hasVariants: p.hasVariants || false,
-        variants: p.variants || [],
-        variantOptions: p.variantOptions || [],
-        commissionRate: p.commissionRate || 0, // 🔥 Include commission rate
-      }));
 
-    console.log(`✅ Found ${vendorProducts.length} products for vendor ${actualVendorId}, storeName: ${storeName}`);
-    
-    // Get vendor storefront settings for logo
-    const storefrontSettings = await kv.get(`vendor_storefront_${actualVendorId}`);
-    const logo = storefrontSettings?.logo || vendorData?.avatar || '';
-    
-    return c.json({ products: vendorProducts, storeName, logo });
+    const vendorMatches = (p: any) => {
+      if (!p) return false;
+      let vendorMatch = false;
+      if (Array.isArray(p.selectedVendors)) {
+        vendorMatch = p.selectedVendors.some(
+          (v: string) => v === actualVendorId || (vendorBusinessName && v === vendorBusinessName)
+        );
+      } else {
+        vendorMatch =
+          p.vendorId === actualVendorId ||
+          p.vendor === actualVendorId ||
+          (vendorBusinessName && p.vendor === vendorBusinessName);
+      }
+      const statusMatch = p.status && String(p.status).toLowerCase() === "active";
+      return vendorMatch && statusMatch;
+    };
+
+    const slugMatchesProduct = (p: any, slug: string) => {
+      const s = slug.toLowerCase();
+      const nameSeg = String(p.name || p.title || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .trim();
+      if (String(p.sku || "").toLowerCase() === s || String(p.id || "").toLowerCase() === s) return true;
+      if (nameSeg === s) return true;
+      if (Array.isArray(p.variants)) {
+        return p.variants.some((v: any) => String(v?.sku || "").toLowerCase() === s);
+      }
+      return false;
+    };
+
+    let vendorList = allProducts.filter(vendorMatches);
+
+    if (resolveSlug) {
+      vendorList = vendorList.filter((p: any) => slugMatchesProduct(p, resolveSlug)).slice(0, 1);
+      const vendorProducts = vendorList.map(mapVendorStorefrontProductRow);
+      return c.json({
+        products: vendorProducts,
+        storeName,
+        logo,
+        total: vendorProducts.length,
+        page: 1,
+        pageSize: 1,
+        hasMore: false,
+      });
+    }
+
+    if (categoryQ && categoryQ.toLowerCase() !== "all") {
+      const cl = categoryQ.toLowerCase();
+      vendorList = vendorList.filter((p: any) => String(p.category || "").toLowerCase() === cl);
+    }
+    if (searchQ) {
+      const sq = searchQ.toLowerCase();
+      vendorList = vendorList.filter(
+        (p: any) =>
+          String(p.name || p.title || "").toLowerCase().includes(sq) ||
+          String(p.sku || "").toLowerCase().includes(sq)
+      );
+    }
+    vendorList.sort((a: any, b: any) => {
+      const da = String(a.createDate || a.createdAt || "");
+      const db = String(b.createDate || b.createdAt || "");
+      if (da !== db) return db.localeCompare(da);
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    const totalLegacy = vendorList.length;
+    const slice = vendorList.slice((page - 1) * pageSize, page * pageSize);
+    const vendorProducts = slice.map(mapVendorStorefrontProductRow);
+
+    return c.json({
+      products: vendorProducts,
+      storeName,
+      logo,
+      total: totalLegacy,
+      page,
+      pageSize,
+      hasMore: page * pageSize < totalLegacy,
+    });
 
   } catch (error: any) {
     console.error("❌ Failed to load vendor products:", error);

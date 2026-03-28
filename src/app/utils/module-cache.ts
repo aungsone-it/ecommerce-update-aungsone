@@ -336,10 +336,35 @@ export async function fetchAdminDashboardStatsRaw(filters: AdminDashboardFilters
   return response.json();
 }
 
-// Fetch vendor products (vendor admin/storefront)
-export async function fetchVendorProducts(vendorId: string) {
+export type VendorStorefrontProductsResult = {
+  products: any[];
+  storeName: string;
+  logo: string;
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+};
+
+/** Public vendor storefront catalog — server-paginated (page / pageSize / q / category / resolveSlug). */
+export async function fetchVendorProducts(
+  vendorId: string,
+  opts?: {
+    page?: number;
+    pageSize?: number;
+    q?: string;
+    category?: string;
+    resolveSlug?: string;
+  }
+): Promise<VendorStorefrontProductsResult> {
+  const sp = new URLSearchParams();
+  sp.set("page", String(opts?.page ?? 1));
+  sp.set("pageSize", String(Math.min(100, Math.max(1, opts?.pageSize ?? 24))));
+  if (opts?.q && opts.q.trim()) sp.set("q", opts.q.trim());
+  if (opts?.category && opts.category.toLowerCase() !== "all") sp.set("category", opts.category);
+  if (opts?.resolveSlug) sp.set("resolveSlug", encodeURIComponent(opts.resolveSlug));
   const response = await fetch(
-    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products/${vendorId}`,
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products/${encodeURIComponent(vendorId)}?${sp.toString()}`,
     {
       headers: { Authorization: `Bearer ${publicAnonKey}` },
     }
@@ -350,10 +375,18 @@ export async function fetchVendorProducts(vendorId: string) {
   }
 
   const data = await response.json();
+  const list = data.products || [];
+  const page = Number(data.page ?? opts?.page ?? 1);
+  const pageSize = Number(data.pageSize ?? opts?.pageSize ?? 24);
+  const total = Number(data.total ?? list.length);
   return {
-    products: data.products || [],
-    storeName: data.storeName || 'Vendor Store',
-    logo: data.logo || '',
+    products: list,
+    storeName: data.storeName || "Vendor Store",
+    logo: data.logo || "",
+    total,
+    page,
+    pageSize,
+    hasMore: !!data.hasMore,
   };
 }
 
@@ -490,6 +523,9 @@ export const CACHE_KEYS = {
   
   // Vendor specific (append vendorId)
   vendorProducts: (vendorId: string) => `vendor-products-${vendorId}`,
+  /** Paginated vendor storefront list — pageSize in key so browse (24) vs search (100) never collide */
+  vendorProductsPage: (vendorId: string, page: number, qNorm: string, category: string, pageSize: number) =>
+    `vendor-products-${vendorId}-p${page}-ps${pageSize}-q${qNorm}-c${category}`,
   /** Vendor admin list (all statuses) — separate from public storefront vendor catalog */
   vendorProductsAdmin: (vendorId: string) => `vendor-products-admin-${vendorId}`,
   vendorCategories: (vendorId: string) => `vendor-categories-${vendorId}`,

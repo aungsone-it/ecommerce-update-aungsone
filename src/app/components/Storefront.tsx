@@ -686,6 +686,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   
   /** Live search text — same pattern as vendor storefront: instant client filter on name, SKU, id, category, variant SKUs. */
   const [storeSearchQuery, setStoreSearchQuery] = useState("");
+  /** Debounced query for server catalog (avoids spamming edge; client filter stays instant on loaded rows). */
+  const [debouncedStoreSearch, setDebouncedStoreSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
@@ -697,6 +699,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const [homeDealProducts, setHomeDealProducts] = useState<Product[]>([]);
   const [homeNewArrivals, setHomeNewArrivals] = useState<Product[]>([]);
   const lastCatalogKeyRef = useRef("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedStoreSearch(storeSearchQuery), 160);
+    return () => clearTimeout(t);
+  }, [storeSearchQuery]);
   const [showCart, setShowCart] = useState(false);
   const [scrolled, setScrolled] = useState(false); // Track scroll position for animated sticky nav
   
@@ -1485,8 +1491,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   }, []);
 
   const catalogSortKey = useCallback(() => {
-    return `${selectedCategory}|${sortBy}|${userAppliedFilters}|${priceRange[0]}-${priceRange[1]}`;
-  }, [selectedCategory, sortBy, userAppliedFilters, priceRange]);
+    return `${selectedCategory}|${sortBy}|${userAppliedFilters}|${priceRange[0]}-${priceRange[1]}|${debouncedStoreSearch.trim()}`;
+  }, [selectedCategory, sortBy, userAppliedFilters, priceRange, debouncedStoreSearch]);
 
   const loadProducts = useCallback(async (isBackgroundRefresh = false) => {
     try {
@@ -1519,7 +1525,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const data = await fetchCatalogPage({
         page: 1,
         pageSize: CATALOG_PAGE_SIZE,
-        q: "",
+        q: debouncedStoreSearch.trim() || undefined,
         category: selectedCategory,
         sort: sortBy,
         minPrice: userAppliedFilters ? priceRange[0] : undefined,
@@ -1538,7 +1544,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     } catch (e) {
       console.error("Catalog refetch failed:", e);
     }
-  }, [selectedCategory, sortBy, userAppliedFilters, priceRange, catalogSortKey]);
+  }, [selectedCategory, sortBy, userAppliedFilters, priceRange, catalogSortKey, debouncedStoreSearch]);
 
   const loadMoreCatalog = useCallback(async () => {
     if (!catalogHasMore || catalogLoadingMore) return;
@@ -1548,7 +1554,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const data = await fetchCatalogPage({
         page: nextPage,
         pageSize: CATALOG_PAGE_SIZE,
-        q: "",
+        q: debouncedStoreSearch.trim() || undefined,
         category: selectedCategory,
         sort: sortBy,
         minPrice: userAppliedFilters ? priceRange[0] : undefined,
@@ -1578,6 +1584,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     sortBy,
     userAppliedFilters,
     priceRange,
+    debouncedStoreSearch,
   ]);
 
   const catalogFilterMountedRef = useRef(false);

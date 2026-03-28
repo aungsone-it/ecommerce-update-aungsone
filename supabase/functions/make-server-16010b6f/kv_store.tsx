@@ -203,3 +203,67 @@ export const getVendorProfiles = async (): Promise<any[]> => {
       return { ...(value as any), id };
     });
 };
+
+/** Postgres RPC: paginated platform catalog (avoids loading all product:* rows into the edge). */
+export async function rpcStorefrontCatalog(opts: {
+  kind: "bootstrap" | "catalog";
+  page: number;
+  pageSize: number;
+  category?: string | null;
+  q?: string | null;
+  sort?: string | null;
+  minPrice?: number | null;
+  maxPrice?: number | null;
+}): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabaseClient.rpc("rpc_storefront_catalog", {
+      p_kind: opts.kind,
+      p_page: opts.page,
+      p_page_size: opts.pageSize,
+      p_category: opts.category ?? null,
+      p_q: opts.q ?? null,
+      p_sort: opts.sort ?? "featured",
+      p_min_price: opts.minPrice ?? null,
+      p_max_price: opts.maxPrice ?? null,
+    });
+    if (error) {
+      console.warn("rpc_storefront_catalog:", error.message);
+      return null;
+    }
+    return data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  } catch (e) {
+    console.warn("rpc_storefront_catalog:", e);
+    return null;
+  }
+}
+
+/** Postgres RPC: paginated vendor storefront products (+ optional single-product slug resolve). */
+export async function rpcVendorStorefrontProductsPage(opts: {
+  vendorId: string;
+  vendorBusinessName?: string | null;
+  page: number;
+  pageSize: number;
+  category?: string | null;
+  q?: string | null;
+  resolveSlug?: string | null;
+}): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabaseClient.rpc("rpc_vendor_storefront_products_page", {
+      p_vendor_id: opts.vendorId,
+      p_vendor_business_name: opts.vendorBusinessName ?? null,
+      p_page: opts.page,
+      p_page_size: opts.pageSize,
+      p_category: opts.category ?? null,
+      p_q: opts.q ?? null,
+      p_resolve_slug: opts.resolveSlug ?? null,
+    });
+    if (error) {
+      console.warn("rpc_vendor_storefront_products_page:", error.message);
+      return null;
+    }
+    return data && typeof data === "object" ? (data as Record<string, unknown>) : null;
+  } catch (e) {
+    console.warn("rpc_vendor_storefront_products_page:", e);
+    return null;
+  }
+}
