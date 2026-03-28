@@ -540,16 +540,38 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     [products]
   );
 
-  /** Prefer product-level rates for the headline card (matches "From product settings"). */
-  const displayCommissionRate = useMemo(() => {
+  /**
+   * Headline % on profile cards: vendor contract wins when set (including 0%).
+   * Only if contract is absent do we show max product rate (per-line commission math unchanged).
+   */
+  const commissionRateDisplay = useMemo(() => {
+    const raw = vendor.commission;
+    const contractUnset =
+      raw === undefined ||
+      raw === null ||
+      (typeof raw === "string" && raw.trim() === "");
+    if (!contractUnset) {
+      const v = parseOrderMoney(raw);
+      if (Number.isFinite(v)) {
+        return {
+          value: Math.round(v * 100) / 100,
+          subtitle: "Contract rate" as const,
+        };
+      }
+    }
     const rates = products
       .map((p) => p.commissionRate)
       .filter((r): r is number => typeof r === "number" && !Number.isNaN(r) && r > 0);
-    if (rates.length > 0) return Math.round(Math.max(...rates) * 100) / 100;
-    const v = parseOrderMoney(vendor.commission);
-    if (v > 0) return Math.round(v * 100) / 100;
-    return 0;
+    if (rates.length > 0) {
+      return {
+        value: Math.round(Math.max(...rates) * 100) / 100,
+        subtitle: "From product settings" as const,
+      };
+    }
+    return { value: 0, subtitle: "Contract rate" as const };
   }, [vendor.commission, products]);
+
+  const displayCommissionRate = commissionRateDisplay.value;
 
   // Revenue & commission: vendor lines only, net of order-level discount; accrue when status is ready-to-ship / fulfilled / shipped / delivered
   const { totalRevenue, commissionEarned } = useMemo(() => {
@@ -932,11 +954,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
             <div>
               <p className="text-xs text-slate-500">Commission Rate</p>
               <p className="text-xl font-semibold text-slate-900 mt-1">{displayCommissionRate}%</p>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {parseOrderMoney(vendor.commission) <= 0 && displayCommissionRate > 0
-                  ? "From product settings"
-                  : "Contract rate"}
-              </p>
+              <p className="text-xs text-slate-400 mt-0.5">{commissionRateDisplay.subtitle}</p>
               <p className="text-xs text-green-600 mt-0.5">{formatMMK(commissionEarned)} to pay</p>
             </div>
             <div className="w-10 h-10 bg-pink-100 rounded-lg flex items-center justify-center">
