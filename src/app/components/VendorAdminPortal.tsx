@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router";
 import { 
   LayoutDashboard, 
@@ -46,6 +46,8 @@ interface Vendor {
   location: string;
   avatar?: string;
   storeSlug: string;
+  /** Public display name from storefront settings (may differ from account `name`). */
+  storeName?: string;
   businessType?: string;
 }
 
@@ -82,35 +84,57 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [vendorLogo, setVendorLogo] = useState<string>("");
+  /** Canonical storefront label + slug from KV (drives sidebar + URLs after rename). */
+  const [storefrontSnapshot, setStorefrontSnapshot] = useState<{
+    storeName: string;
+    storeSlug: string;
+  } | null>(null);
   /** Header search — synced with Products screen (client filter; no API per keystroke). */
   const [vendorHeaderProductSearch, setVendorHeaderProductSearch] = useState("");
 
-  // Load vendor logo from storefront settings
-  useEffect(() => {
-    const loadVendorLogo = async () => {
-      try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendor.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.settings?.logo) {
-            setVendorLogo(data.settings.logo);
-          }
+  const loadStorefrontSnapshot = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendor.id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
         }
-      } catch (error) {
-        console.error("Failed to load vendor logo:", error);
+      );
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      const s = data.settings;
+      if (!s) return;
+
+      setStorefrontSnapshot({
+        storeName: String(s.storeName || vendor.storeName || vendor.name || "Vendor Store"),
+        storeSlug: String(s.storeSlug || vendor.storeSlug || ""),
+      });
+      if (s.logo) {
+        setVendorLogo(s.logo);
+      }
+    } catch (error) {
+      console.error("Failed to load vendor storefront snapshot:", error);
+    }
+  }, [vendor.id, vendor.name, vendor.storeName, vendor.storeSlug]);
+
+  useEffect(() => {
+    void loadStorefrontSnapshot();
+  }, [loadStorefrontSnapshot]);
+
+  useEffect(() => {
+    const onSettingsUpdated = (e: Event) => {
+      const d = (e as CustomEvent<{ vendorId?: string }>).detail;
+      if (d?.vendorId === vendor.id) {
+        void loadStorefrontSnapshot();
       }
     };
-
-    loadVendorLogo();
-  }, [vendor.id]);
+    window.addEventListener("vendorSettingsUpdated", onSettingsUpdated as EventListener);
+    return () => window.removeEventListener("vendorSettingsUpdated", onSettingsUpdated as EventListener);
+  }, [vendor.id, loadStorefrontSnapshot]);
 
   // 🔗 URL SYNCHRONIZATION: Initialize from URL
   useEffect(() => {
@@ -122,7 +146,24 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.section]);
-  
+
+  const routeStoreSlug =
+    storefrontSnapshot?.storeSlug || params.storeName || vendor.storeSlug;
+
+  // If the URL still uses an old slug after a rename, normalize to the canonical slug from storefront settings
+  useEffect(() => {
+    const snap = storefrontSnapshot?.storeSlug;
+    const urlSlug = params.storeName;
+    if (!snap || !urlSlug || snap === urlSlug) return;
+    if (!location.pathname.includes("/admin")) return;
+    const next = location.pathname
+      .replace(/^\/store\/[^/]+/, `/store/${snap}`)
+      .replace(/^\/vendor\/[^/]+/, `/vendor/${snap}`);
+    if (next !== location.pathname) {
+      navigate(next, { replace: true });
+    }
+  }, [storefrontSnapshot?.storeSlug, params.storeName, location.pathname, navigate]);
+
   // 🔗 currentPage → URL: Update URL when page changes
   const isInitialMount = useRef(true);
   useEffect(() => {
@@ -131,23 +172,23 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       isInitialMount.current = false;
       return;
     }
-    
-    const storeName = params.storeName || vendor.storeSlug;
+
+    const storeName = routeStoreSlug;
     if (!storeName) {
-      console.error('No store name available for navigation');
+      console.error("No store name available for navigation");
       return;
     }
-    
-    const targetPath = currentPage === "dashboard" 
-      ? `/${adminPathPrefix}/${storeName}/admin`
-      : `/${adminPathPrefix}/${storeName}/admin/${currentPage}`;
-    
-    // Only navigate if URL doesn't match
+
+    const targetPath =
+      currentPage === "dashboard"
+        ? `/${adminPathPrefix}/${storeName}/admin`
+        : `/${adminPathPrefix}/${storeName}/admin/${currentPage}`;
+
     if (window.location.pathname !== targetPath) {
       navigate(targetPath, { replace: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, adminPathPrefix]);
+  }, [currentPage, adminPathPrefix, routeStoreSlug]);
 
   // Poll for notifications on a long interval (see POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS)
   useEffect(() => {
@@ -170,25 +211,22 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
 
   // Update document title based on current page
   useEffect(() => {
-    if (!vendor.storeSlug) {
-      console.warn('Vendor storeSlug is undefined, skipping document title update');
-      return;
-    }
-    
-    const storeName = vendor.storeSlug
-      .split("-")
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ")
-      .replace(/\bsecure\b/gi, 'SECURE');
-    
+    const titleBase =
+      storefrontSnapshot?.storeName ||
+      vendor.storeName ||
+      vendor.name ||
+      (vendor.storeSlug
+        ? vendor.storeSlug
+            .split("-")
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+            .join(" ")
+        : "Vendor");
     const pageName = currentPage.charAt(0).toUpperCase() + currentPage.slice(1);
-    document.title = `${pageName} - ${storeName}`;
-
-    // Cleanup on unmount
+    document.title = `${pageName} - ${titleBase}`;
     return () => {
-      document.title = storeName;
+      document.title = titleBase;
     };
-  }, [currentPage, vendor.storeSlug]);
+  }, [currentPage, vendor.storeSlug, vendor.storeName, vendor.name, storefrontSnapshot?.storeName]);
 
   const navigation: NavItem[] = [
     {
@@ -336,7 +374,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
             {vendorLogo ? (
               <img 
                 src={vendorLogo} 
-                alt={vendor.name}
+                alt={storefrontSnapshot?.storeName || vendor.name}
                 className="w-10 h-10 rounded-md object-cover"
               />
             ) : (
@@ -344,9 +382,9 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                 <Package className="w-6 h-6" />
               </div>
             )}
-            <div className="flex flex-col">
-              <span className="text-lg leading-tight text-slate-900 font-bold whitespace-nowrap uppercase">
-                {vendor.name || 'Vendor Store'}
+            <div className="flex flex-col min-w-0">
+              <span className="text-lg leading-tight text-slate-900 font-bold whitespace-nowrap truncate">
+                {storefrontSnapshot?.storeName || vendor.storeName || vendor.name || "Vendor Store"}
               </span>
               <span className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">{vendor.businessType || 'E-COMMERCE'}</span>
             </div>
@@ -504,7 +542,13 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                     <Settings className="w-4 h-4 mr-2" />
                     Store Settings
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onPreviewStore && vendor.storeSlug && onPreviewStore(vendor.id, vendor.storeSlug)}>
+                  <DropdownMenuItem
+                    onClick={() =>
+                      onPreviewStore &&
+                      routeStoreSlug &&
+                      onPreviewStore(vendor.id, routeStoreSlug)
+                    }
+                  >
                     <Eye className="w-4 h-4 mr-2" />
                     View Storefront
                   </DropdownMenuItem>

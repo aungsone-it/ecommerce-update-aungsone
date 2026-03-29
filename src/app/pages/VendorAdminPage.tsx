@@ -27,12 +27,12 @@ export function VendorAdminPage() {
     name: vendor.name,
     businessName: vendor.businessName,
     email: vendor.email,
-    phone: vendor.phone || '',
-    status: 'active',
-    location: '',
-    avatar: undefined,
+    phone: vendor.phone || "",
+    status: "active" as const,
+    location: "",
+    avatar: undefined as string | undefined,
     storeSlug: vendor.storeSlug,
-    storeName: vendor.storeName,
+    storeName: vendor.storeName ?? vendor.name,
   };
 
   return (
@@ -40,11 +40,9 @@ export function VendorAdminPage() {
       vendor={vendorData}
       onLogout={() => {
         logout();
-        // No navigation needed - VendorAuthGate will automatically show login page
       }}
-      onPreviewStore={(vendorId, storeSlug) => {
-        // Use new clean /store/ URL structure instead of ugly /vendor/ URLs
-        navigate(`/store/${vendor.vendorId}`);
+      onPreviewStore={(_vendorId, storeSlug) => {
+        navigate(`/store/${storeSlug}`);
       }}
     />
   );

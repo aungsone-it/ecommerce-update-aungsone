@@ -7580,7 +7580,11 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     // Store settings in KV store with vendor ID as key
     const key = `vendor_storefront_${settings.vendorId}`;
     const prevStorefront = await kv.get(key);
-    await kv.set(key, settings);
+    const nameForSlug = String(settings.storeName || "").trim() || "Vendor Store";
+    // Slug always derived from current store name (a-z0-9 only) — same vendor reuses their slug if still "free"
+    const finalSlug = await allocateUniqueVendorSlugFromName(nameForSlug, settings.vendorId);
+    const mergedSettings = { ...settings, storeSlug: finalSlug };
+    await kv.set(key, mergedSettings);
 
     // Keep `vendor_settings:*` in sync — public catalog and auth still read storeName from there first in some paths
     const vsKey = `vendor_settings:${settings.vendorId}`;
@@ -7588,22 +7592,22 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     if (existingVs && typeof existingVs === "object") {
       await kv.set(vsKey, {
         ...existingVs,
-        storeName: settings.storeName ?? existingVs.storeName,
-        storeSlug: settings.storeSlug ?? existingVs.storeSlug,
+        storeName: mergedSettings.storeName ?? existingVs.storeName,
+        storeSlug: mergedSettings.storeSlug ?? existingVs.storeSlug,
         logo: settings.logo ?? existingVs.logo,
         banner: settings.banner ?? existingVs.banner,
         updatedAt: new Date().toISOString(),
       });
-    } else if (settings.storeName || settings.storeSlug) {
+    } else if (mergedSettings.storeName || mergedSettings.storeSlug) {
       await kv.set(vsKey, {
         vendorId: settings.vendorId,
-        storeName: settings.storeName || "Vendor Store",
-        storeSlug: settings.storeSlug || "",
-        storeDescription: settings.storeDescription || "",
-        storeTagline: settings.storeTagline || "",
-        logo: settings.logo || "",
-        banner: settings.banner || "",
-        isActive: settings.isActive !== false,
+        storeName: mergedSettings.storeName || "Vendor Store",
+        storeSlug: mergedSettings.storeSlug || "",
+        storeDescription: mergedSettings.storeDescription || "",
+        storeTagline: mergedSettings.storeTagline || "",
+        logo: mergedSettings.logo || "",
+        banner: mergedSettings.banner || "",
+        isActive: mergedSettings.isActive !== false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
@@ -7614,10 +7618,10 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
 
     // 🔥 SYNC LOGO TO VENDOR AVATAR: Update vendor record with new logo
-    if (settings.logo && vendorData) {
+    if (mergedSettings.logo && vendorData) {
       const updatedVendor = {
         ...vendorData,
-        avatar: settings.logo,
+        avatar: mergedSettings.logo,
         updatedAt: new Date().toISOString()
       };
       await kv.set(`vendor:${settings.vendorId}`, updatedVendor);
@@ -7629,12 +7633,12 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
       console.log(`🗑️ Cleared vendors cache after logo sync`);
     }
 
-    // 🔥 AUTO-CREATE SLUG MAPPING with storefront's storeSlug
-    const slugKey = `vendor_slug_${settings.storeSlug}`;
+    // 🔥 AUTO-CREATE SLUG MAPPING with storefront's storeSlug (old slug keys kept so bookmarks keep working)
+    const slugKey = `vendor_slug_${mergedSettings.storeSlug}`;
     const slugMapping = {
-      slug: settings.storeSlug,
+      slug: mergedSettings.storeSlug,
       vendorId: settings.vendorId,
-      businessName: settings.storeName || "Vendor Store",
+      businessName: mergedSettings.storeName || "Vendor Store",
       createdAt: new Date().toISOString()
     };
     await kv.set(slugKey, slugMapping);
@@ -7648,7 +7652,7 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
         .replace(/-+/g, '-')
         .trim();
       
-      if (businessNameSlug !== settings.storeSlug) {
+      if (businessNameSlug !== mergedSettings.storeSlug) {
         const businessSlugKey = `vendor_slug_${businessNameSlug}`;
         const businessSlugMapping = {
           slug: businessNameSlug,
@@ -7661,13 +7665,13 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
       }
     }
 
-    serverCache.delete(`vendor_by_slug:${settings.storeSlug}`);
-    if (prevStorefront?.storeSlug && prevStorefront.storeSlug !== settings.storeSlug) {
+    serverCache.delete(`vendor_by_slug:${mergedSettings.storeSlug}`);
+    if (prevStorefront?.storeSlug && prevStorefront.storeSlug !== mergedSettings.storeSlug) {
       serverCache.delete(`vendor_by_slug:${prevStorefront.storeSlug}`);
     }
 
-    console.log(`✅ Vendor storefront settings saved for vendor ${settings.vendorId} with slug: ${settings.storeSlug}`);
-    return c.json({ success: true, settings });
+    console.log(`✅ Vendor storefront settings saved for vendor ${settings.vendorId} with slug: ${mergedSettings.storeSlug}`);
+    return c.json({ success: true, settings: mergedSettings });
 
   } catch (error: any) {
     console.error("❌ Failed to save vendor storefront settings:", error);

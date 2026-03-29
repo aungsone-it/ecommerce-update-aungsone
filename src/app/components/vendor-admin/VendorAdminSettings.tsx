@@ -110,7 +110,15 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
       );
 
       if (response.ok) {
-        // Also update vendor record with new store name AND logo
+        const body = (await response.json()) as { settings?: StoreSettings };
+        const saved = body.settings;
+        if (!saved?.storeSlug) {
+          toast.error("Invalid response from server");
+          return;
+        }
+        setSettings(saved);
+
+        // Also update vendor record with new store name, slug, and logo
         const vendorUpdateResponse = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${vendorId}`,
           {
@@ -119,51 +127,56 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
               "Content-Type": "application/json",
               Authorization: `Bearer ${publicAnonKey}`,
             },
-            body: JSON.stringify({ 
-              name: settings.storeName,
-              email: settings.contactEmail,
-              phone: settings.contactPhone,
-              location: settings.address,
-              avatar: settings.logo, // 🔥 Update vendor avatar with new logo
+            body: JSON.stringify({
+              name: saved.storeName,
+              email: saved.contactEmail,
+              phone: saved.contactPhone,
+              location: saved.address,
+              avatar: saved.logo,
+              storeSlug: saved.storeSlug,
             }),
           }
         );
 
         if (vendorUpdateResponse.ok) {
-          // Update localStorage to reflect new store name in header
-          const storedVendor = localStorage.getItem('vendorAuth');
+          const storedVendor = localStorage.getItem("vendorAuth");
           if (storedVendor) {
             const vendorData = JSON.parse(storedVendor);
-            vendorData.name = settings.storeName;
-            vendorData.storeName = settings.storeName;
-            localStorage.setItem('vendorAuth', JSON.stringify(vendorData));
+            vendorData.name = saved.storeName;
+            vendorData.storeName = saved.storeName;
+            vendorData.storeSlug = saved.storeSlug;
+            localStorage.setItem("vendorAuth", JSON.stringify(vendorData));
           }
-          
-          // Invalidate all caches for this vendor to ensure fresh data everywhere
+
           console.log("🔄 Invalidating caches after settings update");
           cacheManager.reloadVendorData(vendorId);
           invalidateVendorStorefrontCatalogCache(vendorId);
-          
-          // 🔥 Dispatch event to notify Super Admin's Vendor component to refresh
-          window.dispatchEvent(new CustomEvent('vendorLogoUpdated', { 
-            detail: { 
-              vendorId,
-              logo: settings.logo
-            } 
-          }));
-          
-          window.dispatchEvent(new CustomEvent('vendorSettingsUpdated', { 
-            detail: { 
-              vendorId
-            } 
-          }));
-          
+
+          window.dispatchEvent(
+            new CustomEvent("vendorLogoUpdated", {
+              detail: { vendorId, logo: saved.logo },
+            })
+          );
+
+          window.dispatchEvent(
+            new CustomEvent("vendorSettingsUpdated", {
+              detail: {
+                vendorId,
+                storeSlug: saved.storeSlug,
+                storeName: saved.storeName,
+              },
+            })
+          );
+
           toast.success("Settings saved successfully!");
-          
-          // Reload page to update header with new store name
-          setTimeout(() => {
-            window.location.reload();
-          }, 500);
+
+          const pathMatch = window.location.pathname.match(/^\/(store|vendor)\/([^/]+)(\/.*)?$/);
+          if (pathMatch && pathMatch[2] !== saved.storeSlug) {
+            const suffix = pathMatch[3] || "/admin";
+            window.location.replace(`/${pathMatch[1]}/${saved.storeSlug}${suffix}`);
+          } else {
+            setTimeout(() => window.location.reload(), 400);
+          }
         } else {
           toast.error("Failed to update vendor information");
         }
@@ -275,10 +288,22 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
             <Label className="text-sm font-normal text-slate-900 mb-2 block">Store name</Label>
             <Input
               value={settings.storeName}
-              onChange={(e) => setSettings({ ...settings, storeName: e.target.value })}
+              onChange={(e) => {
+                const storeName = e.target.value;
+                setSettings({
+                  ...settings,
+                  storeName,
+                  storeSlug: storeSlugFromBusinessName(storeName),
+                });
+              }}
               placeholder="My Store"
               className="bg-white border-slate-200"
             />
+            <p className="text-xs text-slate-500 mt-1.5">
+              Public path: <span className="font-mono">/store/{settings.storeSlug || "…"}</span>. On save, the slug is
+              finalized from this name (letters and digits only). With a wildcard DNS record, your host can use{" "}
+              <span className="font-mono">{settings.storeSlug || "yourstore"}.yourdomain.com</span>.
+            </p>
           </div>
 
           {/* Contact Email */}
