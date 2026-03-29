@@ -1104,6 +1104,15 @@ export function invalidateVendorProductsAdminCache(vendorId: string): void {
   moduleCache.invalidate(CACHE_KEYS.vendorProductsAdmin(vendorId));
 }
 
+/** Public vendor storefront catalog (paginated + localStorage page-1) — call after Store Settings name/logo changes */
+export function invalidateVendorStorefrontCatalogCache(vendorId: string): void {
+  const id = String(vendorId);
+  moduleCache.invalidatePrefix(`vendor-products-${id}-`);
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix(`migoo-ls-vendor-p1-${encodeURIComponent(id)}`);
+  }
+}
+
 /** Super Admin `/products` grid — one fetch per session until Refresh or invalidation */
 export async function getCachedAdminAllProducts(forceRefresh = false) {
   return moduleCache.get(CACHE_KEYS.ADMIN_PRODUCTS, () => fetchAllProducts(), forceRefresh);

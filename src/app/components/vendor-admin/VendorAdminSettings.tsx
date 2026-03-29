@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { compressImage } from "../../../utils/imageCompression";
 import { cacheManager } from "../../utils/cacheManager";
+import { invalidateVendorStorefrontCatalogCache } from "../../utils/module-cache";
 import { storeSlugFromBusinessName } from "../../../utils/storeSlug";
 
 interface StoreSettings {
@@ -141,6 +142,7 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
           // Invalidate all caches for this vendor to ensure fresh data everywhere
           console.log("🔄 Invalidating caches after settings update");
           cacheManager.reloadVendorData(vendorId);
+          invalidateVendorStorefrontCatalogCache(vendorId);
           
           // 🔥 Dispatch event to notify Super Admin's Vendor component to refresh
           window.dispatchEvent(new CustomEvent('vendorLogoUpdated', { 

@@ -1,31 +1,46 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowUp } from 'lucide-react';
-import { Button } from './ui/button';
+import { useState, useEffect, useLayoutEffect, type RefObject } from "react";
+import { ArrowUp } from "lucide-react";
+import { Button } from "./ui/button";
 
-export const BackToTop = () => {
+export type BackToTopProps = {
+  /** When set, visibility and scroll target this element (e.g. vendor storefront `overflow-y-auto` root). */
+  scrollContainerRef?: RefObject<HTMLElement | null>;
+  /** When the scroll root DOM node is replaced, bump this so listeners re-attach (stable ref object). */
+  scrollContainerKey?: string | number;
+};
+
+export function BackToTop({ scrollContainerRef, scrollContainerKey }: BackToTopProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const useContainer = scrollContainerRef != null;
 
   useEffect(() => {
+    if (useContainer) return;
     const toggleVisibility = () => {
-      if (window.pageYOffset > 300) {
-        setIsVisible(true);
-      } else {
-        setIsVisible(false);
-      }
+      setIsVisible(window.pageYOffset > 300);
     };
+    toggleVisibility();
+    window.addEventListener("scroll", toggleVisibility);
+    return () => window.removeEventListener("scroll", toggleVisibility);
+  }, [useContainer]);
 
-    window.addEventListener('scroll', toggleVisibility);
-
-    return () => {
-      window.removeEventListener('scroll', toggleVisibility);
+  useLayoutEffect(() => {
+    if (!useContainer || !scrollContainerRef) return;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const toggleVisibility = () => {
+      setIsVisible(el.scrollTop > 300);
     };
-  }, []);
+    toggleVisibility();
+    el.addEventListener("scroll", toggleVisibility, { passive: true });
+    return () => el.removeEventListener("scroll", toggleVisibility);
+  }, [useContainer, scrollContainerRef, scrollContainerKey]);
 
   const scrollToTop = () => {
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-    });
+    if (scrollContainerRef?.current) {
+      scrollContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   return (
@@ -41,4 +56,4 @@ export const BackToTop = () => {
       )}
     </>
   );
-};
+}

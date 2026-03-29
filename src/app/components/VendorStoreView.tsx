@@ -14,6 +14,7 @@ import {
   lsVendorCategoriesKey,
 } from "../utils/persistedLocalCache";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
+import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
@@ -64,6 +65,7 @@ import { Checkout } from "./Checkout";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import { ProductGridSkeleton, ProductDetailSkeleton } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
+import { NotificationCenter } from "./NotificationCenter";
 import { authApi, wishlistApi } from "../../utils/api";
 import { AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS } from "../../constants";
 import { toast } from "sonner";
@@ -383,7 +385,14 @@ export function VendorStoreView({
   const [showCheckout, setShowCheckout] = useState(false);
   const [storeName, setStoreName] = useState("Vendor Store");
   const [storeLogo, setStoreLogo] = useState<string>("");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  /** Slide-out nav on small screens (account, browse, wishlist — hamburger on the right like /store). */
+  const [vendorMobileNavOpen, setVendorMobileNavOpen] = useState(false);
+  /** Full-screen search on mobile — matches main marketplace header search icon. */
+  const [vendorMobileSearchOpen, setVendorMobileSearchOpen] = useState(false);
+  /** Match /store: in-flow while scrolling down (nav scrolls away); sticky when scrolling up (even 1px). */
+  const [vendorNavbarSticky, setVendorNavbarSticky] = useState(false);
+  const vendorScrollRootRef = useRef<HTMLDivElement>(null);
+  const lastVendorScrollTopRef = useRef(0);
   const [quantity, setQuantity] = useState(1);
   /** Option name → value; mirrors main marketplace variant picker */
   const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
@@ -440,6 +449,32 @@ export function VendorStoreView({
       setVendorViewMode(mode);
     }
   }, [profileSegment]);
+
+  useEffect(() => {
+    const el = vendorScrollRootRef.current;
+    if (!el) return;
+    lastVendorScrollTopRef.current = el.scrollTop;
+    setVendorNavbarSticky(false);
+
+    const onScroll = () => {
+      const st = el.scrollTop;
+      if (st < lastVendorScrollTopRef.current) {
+        setVendorNavbarSticky(true);
+      } else if (st > lastVendorScrollTopRef.current) {
+        setVendorNavbarSticky(false);
+      }
+      lastVendorScrollTopRef.current = st;
+    };
+
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [selectedProduct?.id, vendorViewMode, savedPage]);
+
+  const vendorScrollRebindKey = useMemo(
+    () => `${selectedProduct?.id ?? "home"}-${savedPage}-${vendorViewMode}`,
+    [selectedProduct?.id, savedPage, vendorViewMode]
+  );
+
   const [authForm, setAuthForm] = useState({
     email: '',
     password: '',
@@ -947,8 +982,288 @@ export function VendorStoreView({
 
   const handleProfileAction = (mode: VendorAccountViewMode) => {
     setSelectedProduct(null);
-    setMobileMenuOpen(false);
+    setVendorMobileNavOpen(false);
     goToProfileMode(mode);
+  };
+
+  const closeVendorMobileNav = useCallback(() => setVendorMobileNavOpen(false), []);
+
+  const selectAllProductsNav = useCallback(() => {
+    setSearchQuery("");
+    setSelectedCategory("all");
+    setSelectedProduct(null);
+    navigate(storeBase);
+    closeVendorMobileNav();
+  }, [navigate, storeBase, closeVendorMobileNav]);
+
+  const selectVendorCategoryNav = useCallback(
+    (categoryName: string) => {
+      setSelectedProduct(null);
+      setSelectedCategory(categoryName);
+      navigate(storeBase);
+      closeVendorMobileNav();
+    },
+    [navigate, storeBase, closeVendorMobileNav]
+  );
+
+  const renderVendorMobileNavDrawer = () => {
+    if (!vendorMobileNavOpen) return null;
+    const showCategoryNav =
+      vendorViewMode === "storefront" && !savedPage && vendorCategories.length > 0;
+    return (
+      <>
+        <div
+          className="fixed inset-0 bg-black/50 md:hidden"
+          style={{ zIndex: 55 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            closeVendorMobileNav();
+          }}
+          aria-hidden
+        />
+        <div
+          className="fixed left-0 top-0 h-full w-80 max-w-[min(20rem,100vw)] bg-white shadow-2xl md:hidden overflow-y-auto"
+          style={{ zIndex: 60 }}
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Store menu"
+        >
+          <div className="flex items-start justify-between gap-3 p-4 border-b border-slate-200">
+            <div className="min-w-0 flex-1 flex items-start gap-3">
+              {storeLogo ? (
+                <CacheFriendlyImg
+                  src={storeLogo}
+                  alt=""
+                  className="w-11 h-11 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
+                />
+              ) : (
+                <div className="w-11 h-11 bg-slate-900 rounded-xl flex items-center justify-center shrink-0">
+                  <Store className="w-5 h-5 text-white" />
+                </div>
+              )}
+              <p className="text-base font-bold text-slate-900 break-words leading-snug pt-0.5">
+                {storeName}
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={closeVendorMobileNav}
+              className="hover:bg-slate-100 rounded-full shrink-0"
+              aria-label="Close menu"
+            >
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+              <Input
+                placeholder="Search products..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-10 rounded-lg bg-slate-50 border-slate-200"
+              />
+            </div>
+
+            <Separator />
+
+            <Button
+              variant="outline"
+              className="w-full justify-start hover:bg-slate-50"
+              onClick={() => {
+                closeVendorMobileNav();
+                goToSavedProducts();
+              }}
+            >
+              <Heart className="w-4 h-4 mr-2 shrink-0" />
+              Saved products
+              {wishlist.length > 0 ? (
+                <Badge className="ml-2 bg-amber-600">{wishlist.length}</Badge>
+              ) : null}
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full justify-start hover:bg-slate-50"
+              onClick={() => {
+                closeVendorMobileNav();
+                setCartOpen(true);
+              }}
+            >
+              <ShoppingCart className="w-4 h-4 mr-2 shrink-0" />
+              Shopping cart
+              {totalItems > 0 ? (
+                <Badge className="ml-2 bg-slate-900">{totalItems}</Badge>
+              ) : null}
+            </Button>
+
+            {!user ? (
+              <Button
+                variant="outline"
+                className="w-full justify-start hover:bg-slate-50"
+                onClick={() => {
+                  closeVendorMobileNav();
+                  setShowAuthModal(true);
+                  setAuthMode("login");
+                }}
+              >
+                <User className="w-4 h-4 mr-2 shrink-0" />
+                Login / Register
+              </Button>
+            ) : (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center gap-3 p-3 border border-slate-200 rounded-lg">
+                  {userProfileImageUrl && !profileImageLoadFailed ? (
+                    <CacheFriendlyImg
+                      src={userProfileImageUrl}
+                      alt={user.name}
+                      className="w-10 h-10 rounded-full object-cover shrink-0"
+                      onError={() => setProfileImageLoadFailed(true)}
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shrink-0">
+                      <User className="w-5 h-5 text-white" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{user.name}</p>
+                    <p className="text-xs text-slate-600 truncate">{user.email}</p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start hover:bg-slate-50"
+                  onClick={() => handleProfileAction("view-profile")}
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  View Profile
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start hover:bg-slate-50"
+                  onClick={() => handleProfileAction("edit-profile")}
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Edit Profile
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start hover:bg-slate-50"
+                  onClick={() => handleProfileAction("order-history")}
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  Order History
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start hover:bg-slate-50"
+                  onClick={() => handleProfileAction("shipping-addresses")}
+                >
+                  <MapPin className="w-4 h-4 mr-2" />
+                  Shipping Addresses
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start hover:bg-slate-50"
+                  onClick={() => handleProfileAction("security-settings")}
+                >
+                  <Shield className="w-4 h-4 mr-2" />
+                  Security Settings
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50"
+                  onClick={() => {
+                    closeVendorMobileNav();
+                    handleLogout();
+                  }}
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
+            )}
+
+            {showCategoryNav ? (
+              <>
+                <Separator />
+                <p className="text-sm font-semibold text-slate-600">Browse</p>
+                <Button
+                  variant="ghost"
+                  className={`w-full justify-start hover:bg-slate-50 ${
+                    selectedCategory === "all" ? "bg-slate-100 font-semibold text-slate-900" : ""
+                  }`}
+                  onClick={selectAllProductsNav}
+                >
+                  All products
+                </Button>
+                {vendorCategories.map((category) => (
+                  <Button
+                    key={category.id}
+                    variant="ghost"
+                    className={`w-full justify-start hover:bg-slate-50 ${
+                      selectedCategory === category.name
+                        ? "bg-slate-100 font-semibold text-slate-900"
+                        : ""
+                    }`}
+                    onClick={() => selectVendorCategoryNav(category.name)}
+                  >
+                    {category.name}
+                  </Button>
+                ))}
+              </>
+            ) : vendorViewMode === "storefront" ? (
+              <>
+                <Separator />
+                <Button variant="ghost" className="w-full justify-start" onClick={selectAllProductsNav}>
+                  Back to shop
+                </Button>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  const renderVendorMobileSearchOverlay = () => {
+    if (!vendorMobileSearchOpen) return null;
+    return (
+      <div
+        className="fixed inset-0 bg-white z-[70] md:hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search products"
+      >
+        <div className="flex items-center gap-2 p-4 border-b border-slate-200 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setVendorMobileSearchOpen(false)}
+            className="hover:bg-slate-100 rounded-full shrink-0"
+            aria-label="Close search"
+          >
+            <X className="w-5 h-5" />
+          </Button>
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+            <Input
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 h-11 rounded-lg border-slate-300 w-full"
+              autoFocus
+            />
+          </div>
+        </div>
+        <p className="p-4 text-sm text-slate-500">
+          Results filter as you type. Close to return to the store.
+        </p>
+      </div>
+    );
   };
 
   const renderVendorAccountPage = () => {
@@ -2440,7 +2755,11 @@ export function VendorStoreView({
     const displayInventoryVal = dd?.inventory ?? selectedProduct.inventory;
 
     return (
-      <div className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-white scrollbar-thin flex flex-col">
+      <>
+        <div
+          ref={vendorScrollRootRef}
+          className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-white scrollbar-thin flex flex-col"
+        >
         <ServerStatusBanner 
           status={serverStatus} 
           onRetry={() => loadVendorData(true)}
@@ -2461,39 +2780,44 @@ export function VendorStoreView({
         />
 
         {/* Header - Same as main storefront */}
-        <header className="sticky top-0 z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)]">
-          <div className="max-w-7xl mx-auto px-4">
-            {/* Top Bar */}
-            <div className="flex items-center h-16 gap-2 md:gap-3">
-              {/* Logo */}
-              <button 
+        <header
+          className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
+        >
+          <div className="max-w-7xl mx-auto w-full px-4">
+            {/* Top Bar — mobile: icons absolutely at content right edge (aligns with product grid); md+: flex row */}
+            <div className="relative flex h-16 items-center md:justify-between md:gap-3">
+              <button
+                type="button"
                 onClick={() => {
                   setSelectedProduct(null);
                   setSearchQuery("");
                   setSelectedCategory("all");
                   navigate(storeBase, { replace: false });
                 }}
-                className="flex items-center gap-2 sm:gap-3 group min-w-0 shrink-0 max-w-[42%] sm:max-w-xs"
+                className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden pr-[9.25rem] text-left group md:max-w-xs md:flex-initial md:pr-0"
+                aria-label={`${storeName} — home`}
               >
                 {storeLogo ? (
-                  <CacheFriendlyImg 
-                    src={storeLogo} 
-                    alt={storeName}
+                  <CacheFriendlyImg
+                    src={storeLogo}
+                    alt=""
                     priority
-                    className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
+                    className="w-9 h-9 md:w-10 md:h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                   />
                 ) : (
-                  <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center shrink-0">
+                  <div className="w-9 h-9 md:w-10 md:h-10 bg-slate-900 rounded-xl flex items-center justify-center shrink-0">
                     <Store className="w-5 h-5 text-white" />
                   </div>
                 )}
-                <span className="text-sm sm:text-xl font-bold text-slate-900 truncate text-left min-w-0">
+                <span
+                  className="text-slate-700 text-base md:text-lg lg:text-xl uppercase font-bold truncate min-w-0"
+                  style={{ fontFamily: "Rubik, sans-serif", letterSpacing: "0.05em" }}
+                >
                   {storeName}
                 </span>
               </button>
 
-              {/* Search - Desktop (centered in remaining row space) */}
-              <div className="hidden md:flex flex-1 justify-center min-w-0 px-2">
+              <div className="hidden min-w-0 flex-1 justify-center px-2 md:flex">
                 <div className="relative w-full max-w-lg">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <Input
@@ -2505,21 +2829,11 @@ export function VendorStoreView({
                 </div>
               </div>
 
-              {/* Actions — ml-auto pins the block to the header’s right (mobile has no flex-1 search) */}
-              <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0 min-w-0 ml-auto">
+              <div className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0 md:static md:z-auto md:translate-y-0 md:gap-1">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="md:hidden rounded-full shrink-0"
-                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                >
-                  {mobileMenuOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
-                </Button>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative hover:bg-slate-100 rounded-full w-10 h-10 shrink-0"
+                  className="relative hidden md:flex hover:bg-slate-100 rounded-full h-10 w-10 shrink-0"
                   onClick={goToSavedProducts}
                   title="Saved products"
                 >
@@ -2534,36 +2848,52 @@ export function VendorStoreView({
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setCartOpen(true)}
-                  className="rounded-full relative shrink-0"
+                  className="relative hover:bg-slate-100 md:hidden h-9 w-9 shrink-0 p-0"
+                  onClick={() => {
+                    setVendorMobileNavOpen(false);
+                    setVendorMobileSearchOpen(true);
+                  }}
+                  aria-label="Search"
                 >
-                  <ShoppingCart className="w-5 h-5" />
+                  <Search className="w-[1.15rem] h-[1.15rem] text-slate-700" />
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setCartOpen(true)}
+                  className="relative hover:bg-slate-100 rounded-full h-9 w-9 shrink-0 p-0 md:h-10 md:w-10"
+                  aria-label="Cart"
+                >
+                  <ShoppingCart className="w-[1.15rem] h-[1.15rem] md:w-5 md:h-5 text-slate-700" />
                   {totalItems > 0 && (
-                    <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-slate-900">
+                    <Badge className="absolute -top-0.5 -right-0.5 min-h-[1.125rem] min-w-[1.125rem] flex items-center justify-center p-0 text-[10px] bg-amber-600 text-white border border-white md:-top-1 md:-right-1 md:h-5 md:w-5 md:text-xs md:border-2">
                       {totalItems}
                     </Badge>
                   )}
                 </Button>
 
-                {/* Login/Register — flush right on small screens (header uses px-4) */}
+                <div className="shrink-0 flex [&_button]:h-9 [&_button]:w-9 [&_button]:p-0 md:[&_button]:h-10 md:[&_button]:w-10 [&_svg]:size-[1.15rem] md:[&_svg]:size-5">
+                  <NotificationCenter chatUnreadCount={0} onChatClick={() => {}} />
+                </div>
+
                 {!user && (
                   <Button
                     variant="ghost"
-                    className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 pl-2 pr-0 sm:px-4 whitespace-nowrap shrink-0 text-[11px] sm:text-sm leading-tight max-[380px]:text-[10px]"
+                    className="hidden md:flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 px-4 whitespace-nowrap shrink-0"
                     onClick={() => {
                       setShowAuthModal(true);
-                      setAuthMode('login');
+                      setAuthMode("login");
                     }}
                   >
                     Login/Register
                   </Button>
                 )}
 
-                {/* User Profile Menu */}
                 {user && (
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="ghost" size="icon" className="flex hover:bg-slate-100 rounded-full w-10 h-10 p-0 shrink-0">
+                      <Button variant="ghost" size="icon" className="hidden md:flex hover:bg-slate-100 rounded-full w-10 h-10 p-0 shrink-0">
                         {userProfileImageUrl && !profileImageLoadFailed ? (
                           <CacheFriendlyImg
                             src={userProfileImageUrl}
@@ -2625,23 +2955,21 @@ export function VendorStoreView({
                     </PopoverContent>
                   </Popover>
                 )}
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden hover:bg-slate-100 rounded-full h-9 w-9 shrink-0 p-0"
+                  onClick={() => {
+                    setVendorMobileSearchOpen(false);
+                    setVendorMobileNavOpen(true);
+                  }}
+                  aria-label="Open menu"
+                >
+                  <Menu className="w-[1.15rem] h-[1.15rem] text-slate-700" />
+                </Button>
               </div>
             </div>
-
-            {/* Mobile Search */}
-            {mobileMenuOpen && (
-              <div className="md:hidden pb-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                  <Input
-                    placeholder="Search products..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 h-10 rounded-lg bg-slate-50 border-slate-200"
-                  />
-                </div>
-              </div>
-            )}
 
             {/* Categories */}
             {vendorCategories.length > 0 && (
@@ -2682,8 +3010,11 @@ export function VendorStoreView({
           </div>
         </header>
 
+        {renderVendorMobileNavDrawer()}
+        {renderVendorMobileSearchOverlay()}
+
         {/* Product Details Content */}
-        <main className="flex-1 max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 py-3 sm:py-4 md:py-5 w-full">
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-3 sm:py-4 md:px-6 md:py-5 lg:px-8">
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
             <button onClick={() => {
@@ -3141,13 +3472,19 @@ export function VendorStoreView({
           onRegister={handleRegister}
           isLoading={isAuthLoading}
         />
-      </div>
+        </div>
+        {!cartOpen && (
+          <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
+        )}
+      </>
     );
   }
 
   // Main Storefront — h-screen + overflow-y-auto so scrollbar-thin applies (not the default body bar)
   return (
+    <>
     <div
+      ref={vendorScrollRootRef}
       className={`h-screen min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin flex flex-col ${
         vendorViewMode !== "storefront" ? "bg-slate-50" : "bg-white"
       }`}
@@ -3196,38 +3533,43 @@ export function VendorStoreView({
       />
 
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)]">
-        <div className="max-w-7xl mx-auto px-4">
-          {/* Top Bar */}
-          <div className="flex items-center h-16 gap-2 md:gap-3">
-            {/* Logo */}
-            <button 
+      <header
+        className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
+      >
+        <div className="max-w-7xl mx-auto w-full px-4">
+          {/* Top Bar — mobile: icons flush to content right (matches product grid); md+: flex */}
+          <div className="relative flex h-16 items-center md:justify-between md:gap-3">
+            <button
+              type="button"
               onClick={() => {
                 setSearchQuery("");
                 setSelectedCategory("all");
                 navigate(storeBase);
               }}
-              className="flex items-center gap-2 sm:gap-3 group min-w-0 shrink-0 max-w-[42%] sm:max-w-xs"
+              className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden pr-[9.25rem] text-left group md:max-w-xs md:flex-initial md:pr-0"
+              aria-label={`${storeName} — home`}
             >
               {storeLogo ? (
-                <CacheFriendlyImg 
-                  src={storeLogo} 
-                  alt={storeName}
+                <CacheFriendlyImg
+                  src={storeLogo}
+                  alt=""
                   priority
-                  className="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
+                  className="w-9 h-9 md:w-10 md:h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                 />
               ) : (
-                <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center shrink-0">
+                <div className="w-9 h-9 md:w-10 md:h-10 bg-slate-900 rounded-xl flex items-center justify-center shrink-0">
                   <Store className="w-5 h-5 text-white" />
                 </div>
               )}
-              <span className="text-sm sm:text-xl font-bold text-slate-900 truncate text-left min-w-0">
+              <span
+                className="text-slate-700 text-base md:text-lg lg:text-xl uppercase font-bold truncate min-w-0"
+                style={{ fontFamily: "Rubik, sans-serif", letterSpacing: "0.05em" }}
+              >
                 {storeName}
               </span>
             </button>
 
-            {/* Search - Desktop (centered in remaining row space) */}
-            <div className="hidden md:flex flex-1 justify-center min-w-0 px-2">
+            <div className="hidden min-w-0 flex-1 justify-center px-2 md:flex">
               <div className="relative w-full max-w-lg">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <Input
@@ -3239,21 +3581,11 @@ export function VendorStoreView({
               </div>
             </div>
 
-            {/* Actions — ml-auto pins the block to the header’s right (mobile has no flex-1 search) */}
-            <div className="flex items-center justify-end gap-1 sm:gap-2 shrink-0 min-w-0 ml-auto">
+            <div className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0 md:static md:z-auto md:translate-y-0 md:gap-1">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden rounded-full shrink-0"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative hover:bg-slate-100 rounded-full w-10 h-10 shrink-0"
+                className="relative hidden md:flex hover:bg-slate-100 rounded-full h-10 w-10 shrink-0"
                 onClick={goToSavedProducts}
                 title="Saved products"
               >
@@ -3268,36 +3600,52 @@ export function VendorStoreView({
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setCartOpen(true)}
-                className="rounded-full relative shrink-0"
+                className="relative hover:bg-slate-100 md:hidden h-9 w-9 shrink-0 p-0"
+                onClick={() => {
+                  setVendorMobileNavOpen(false);
+                  setVendorMobileSearchOpen(true);
+                }}
+                aria-label="Search"
               >
-                <ShoppingCart className="w-5 h-5" />
+                <Search className="w-[1.15rem] h-[1.15rem] text-slate-700" />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setCartOpen(true)}
+                className="relative hover:bg-slate-100 h-9 w-9 shrink-0 p-0 md:h-10 md:w-10"
+                aria-label="Cart"
+              >
+                <ShoppingCart className="w-[1.15rem] h-[1.15rem] md:h-5 md:w-5 text-slate-700" />
                 {totalItems > 0 && (
-                  <Badge className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs bg-slate-900">
+                  <Badge className="absolute -top-0.5 -right-0.5 min-h-[1.125rem] min-w-[1.125rem] flex items-center justify-center p-0 text-[10px] bg-amber-600 text-white border border-white md:-top-1 md:-right-1 md:h-5 md:w-5 md:text-xs md:border-2">
                     {totalItems}
                   </Badge>
                 )}
               </Button>
 
-              {/* Login/Register — flush right on small screens (header uses px-4) */}
+              <div className="flex shrink-0 [&_button]:h-9 [&_button]:w-9 [&_button]:p-0 md:[&_button]:h-10 md:[&_button]:w-10 [&_svg]:size-[1.15rem] md:[&_svg]:size-5">
+                <NotificationCenter chatUnreadCount={0} onChatClick={() => {}} />
+              </div>
+
               {!user && (
                 <Button
                   variant="ghost"
-                  className="flex items-center text-slate-700 hover:bg-slate-100 font-medium h-10 pl-2 pr-0 sm:px-4 whitespace-nowrap shrink-0 text-[11px] sm:text-sm leading-tight max-[380px]:text-[10px]"
+                  className="hidden h-10 shrink-0 items-center px-4 font-medium whitespace-nowrap text-slate-700 hover:bg-slate-100 md:flex"
                   onClick={() => {
                     setShowAuthModal(true);
-                    setAuthMode('login');
+                    setAuthMode("login");
                   }}
                 >
                   Login/Register
                 </Button>
               )}
 
-              {/* User Profile Menu */}
               {user && (
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="flex hover:bg-slate-100 rounded-full w-10 h-10 p-0 shrink-0">
+                    <Button variant="ghost" size="icon" className="hidden h-10 w-10 shrink-0 hover:bg-slate-100 md:flex p-0">
                       {userProfileImageUrl && !profileImageLoadFailed ? (
                         <CacheFriendlyImg
                           src={userProfileImageUrl}
@@ -3359,23 +3707,21 @@ export function VendorStoreView({
                   </PopoverContent>
                 </Popover>
               )}
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden hover:bg-slate-100 rounded-full h-9 w-9 shrink-0 p-0"
+                onClick={() => {
+                  setVendorMobileSearchOpen(false);
+                  setVendorMobileNavOpen(true);
+                }}
+                aria-label="Open menu"
+              >
+                <Menu className="w-[1.15rem] h-[1.15rem] text-slate-700" />
+              </Button>
             </div>
           </div>
-
-          {/* Mobile Search */}
-          {mobileMenuOpen && (
-            <div className="md:hidden pb-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                <Input
-                  placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-10 rounded-lg bg-slate-50 border-slate-200"
-                />
-              </div>
-            </div>
-          )}
 
           {/* Categories — hide on account + saved pages */}
           {vendorViewMode === "storefront" && !savedPage && vendorCategories.length > 0 && (
@@ -3407,6 +3753,9 @@ export function VendorStoreView({
           )}
         </div>
       </header>
+
+      {renderVendorMobileNavDrawer()}
+      {renderVendorMobileSearchOverlay()}
 
       {/* Content */}
       <main className="max-w-7xl mx-auto px-4 py-8 w-full">
@@ -3640,5 +3989,9 @@ export function VendorStoreView({
         isLoading={isAuthLoading}
       />
     </div>
+    {!cartOpen && (
+      <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
+    )}
+    </>
   );
 }

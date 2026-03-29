@@ -64,7 +64,13 @@ function RootLayoutContent() {
         />
       )}
       {/* Global Back to Top - Hidden when cart is open OR when app is loading OR on vendor application page OR on landing page */}
-      {!isCartOpen && !isLoading && !isVendorApplicationPage && !isLandingPage && !isResetPasswordPage && <BackToTop />}
+      {/* Vendor storefront scrolls an inner div — BackToTop is rendered inside VendorStoreView */}
+      {!isCartOpen &&
+        !isLoading &&
+        !isVendorApplicationPage &&
+        !isLandingPage &&
+        !isResetPasswordPage &&
+        !isVendorStorefront && <BackToTop />}
     </>
   );
 }

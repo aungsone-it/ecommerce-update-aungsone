@@ -2191,8 +2191,11 @@ app.post("/make-server-16010b6f/vendor-auth/login", async (c) => {
     
     console.log(`✅ [VendorAuth] Login successful for: ${email}`);
     
-    // Get vendor settings for store info
-    const vendorSettings = await withTimeout(kv.get(`vendor_settings:${vendor.id}`), 5000);
+    // Store label + slug: prefer storefront settings (Store Settings UI), then legacy vendor_settings
+    const [vendorSettings, storefrontSettings] = await Promise.all([
+      withTimeout(kv.get(`vendor_settings:${vendor.id}`), 5000),
+      withTimeout(kv.get(`vendor_storefront_${vendor.id}`), 5000),
+    ]);
     
     // Return vendor data without password
     const { password: _, ...vendorWithoutPassword } = vendor;
@@ -2201,8 +2204,8 @@ app.post("/make-server-16010b6f/vendor-auth/login", async (c) => {
       success: true,
       vendor: {
         ...vendorWithoutPassword,
-        storeName: vendorSettings?.storeName || vendor.name,
-        storeSlug: vendorSettings?.storeSlug || vendor.storeSlug,
+        storeName: storefrontSettings?.storeName || vendorSettings?.storeName || vendor.name,
+        storeSlug: storefrontSettings?.storeSlug || vendorSettings?.storeSlug || vendor.storeSlug,
       },
       message: "Login successful"
     });
@@ -5154,15 +5157,17 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
       return c.json({ error: "Vendor not found" }, 404);
     }
     
-    // Fetch vendor settings
-    const settings = await withTimeout(kv.get(`vendor_settings:${vendor.id}`), 5000);
-    
-    const response = { 
-      vendor: {
-        ...vendor,
-        ...settings,
-      }
-    };
+    const [settings, storefront] = await Promise.all([
+      withTimeout(kv.get(`vendor_settings:${vendor.id}`), 5000),
+      withTimeout(kv.get(`vendor_storefront_${vendor.id}`), 5000),
+    ]);
+    const merged: Record<string, unknown> = { ...vendor, ...settings };
+    if (storefront && typeof storefront === "object") {
+      if (storefront.storeName) merged.storeName = storefront.storeName;
+      if (storefront.storeSlug) merged.storeSlug = storefront.storeSlug;
+      if (storefront.logo) merged.logo = storefront.logo;
+    }
+    const response = { vendor: merged };
     
     // Cache the result
     setCache(cacheKey, response);
@@ -7574,7 +7579,35 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
 
     // Store settings in KV store with vendor ID as key
     const key = `vendor_storefront_${settings.vendorId}`;
+    const prevStorefront = await kv.get(key);
     await kv.set(key, settings);
+
+    // Keep `vendor_settings:*` in sync — public catalog and auth still read storeName from there first in some paths
+    const vsKey = `vendor_settings:${settings.vendorId}`;
+    const existingVs = await kv.get(vsKey);
+    if (existingVs && typeof existingVs === "object") {
+      await kv.set(vsKey, {
+        ...existingVs,
+        storeName: settings.storeName ?? existingVs.storeName,
+        storeSlug: settings.storeSlug ?? existingVs.storeSlug,
+        logo: settings.logo ?? existingVs.logo,
+        banner: settings.banner ?? existingVs.banner,
+        updatedAt: new Date().toISOString(),
+      });
+    } else if (settings.storeName || settings.storeSlug) {
+      await kv.set(vsKey, {
+        vendorId: settings.vendorId,
+        storeName: settings.storeName || "Vendor Store",
+        storeSlug: settings.storeSlug || "",
+        storeDescription: settings.storeDescription || "",
+        storeTagline: settings.storeTagline || "",
+        logo: settings.logo || "",
+        banner: settings.banner || "",
+        isActive: settings.isActive !== false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
     // 🔥 Get vendor's actual businessName for slug mapping
     const vendorData = await kv.get(`vendor:${settings.vendorId}`);
@@ -7626,6 +7659,11 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
         await kv.set(businessSlugKey, businessSlugMapping);
         console.log(`✅ Created additional slug mapping: ${businessNameSlug} → ${settings.vendorId}`);
       }
+    }
+
+    serverCache.delete(`vendor_by_slug:${settings.storeSlug}`);
+    if (prevStorefront?.storeSlug && prevStorefront.storeSlug !== settings.storeSlug) {
+      serverCache.delete(`vendor_by_slug:${prevStorefront.storeSlug}`);
     }
 
     console.log(`✅ Vendor storefront settings saved for vendor ${settings.vendorId} with slug: ${settings.storeSlug}`);
@@ -7911,12 +7949,18 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
     
     console.log(`🔍 Resolved vendor ID: ${actualVendorId} (from identifier: ${vendorIdOrSlug})`);
     
-    // Get vendor settings to include store name
-    const vendorSettings = await kv.get(`vendor_settings:${actualVendorId}`);
-    
-    // Fallback to vendor's business name if settings don't exist
-    const vendorData = await kv.get(`vendor:${actualVendorId}`);
-    let storeName = vendorSettings?.storeName || vendorData?.businessName || vendorData?.name || "Vendor Store";
+    // Display name: Store Settings UI writes `vendor_storefront_*`; legacy `vendor_settings_*` may be stale
+    const [vendorSettings, vendorData, storefrontSettings] = await Promise.all([
+      kv.get(`vendor_settings:${actualVendorId}`),
+      kv.get(`vendor:${actualVendorId}`),
+      kv.get(`vendor_storefront_${actualVendorId}`),
+    ]);
+    let storeName =
+      storefrontSettings?.storeName ||
+      vendorSettings?.storeName ||
+      vendorData?.businessName ||
+      vendorData?.name ||
+      "Vendor Store";
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
     
     console.log(`🏪 Vendor info - ID: ${actualVendorId}, Name: ${vendorBusinessName}, Store: ${storeName}`);
@@ -7938,7 +7982,6 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
       resolveSlug,
     });
 
-    const storefrontSettings = await kv.get(`vendor_storefront_${actualVendorId}`);
     const logo = storefrontSettings?.logo || vendorData?.avatar || "";
 
     if (rpcData && Array.isArray(rpcData.products)) {
