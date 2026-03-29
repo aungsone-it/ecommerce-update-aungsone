@@ -81,8 +81,10 @@ export function AdminPage() {
   const [serverChecked, setServerChecked] = useState(false);
   const [appKey] = useState(() => Date.now());
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  /** TopNav product search — synced with ProductList (client filter only; no per-keystroke API). */
+  /** TopNav product search draft — synced with ProductList input; server `q` commits on Enter only. */
   const [adminHeaderProductSearch, setAdminHeaderProductSearch] = useState("");
+  /** Bumped when user presses Enter in TopNav on Products — ProductList applies `q` then. */
+  const [headerProductSearchCommitTick, setHeaderProductSearchCommitTick] = useState(0);
   /** When set, Chat opens this customer's thread (from Customers → Message). */
   const [chatHandoff, setChatHandoff] = useState<{
     email: string;
@@ -443,6 +445,7 @@ export function AdminPage() {
             onProductsChanged={handleProductsChanged}
             headerSearchQuery={adminHeaderProductSearch}
             onHeaderSearchQueryChange={setAdminHeaderProductSearch}
+            headerSearchCommitTick={headerProductSearchCommitTick}
           />
         );
       case ADMIN_PAGES.CATEGORIES:
@@ -616,6 +619,10 @@ export function AdminPage() {
               adminGlobalSearch={adminHeaderProductSearch}
               onAdminGlobalSearchChange={setAdminHeaderProductSearch}
               onAdminGlobalSearchSubmit={() => {
+                if (currentPage === ADMIN_PAGES.PRODUCT) {
+                  setHeaderProductSearchCommitTick((n) => n + 1);
+                  return;
+                }
                 const q = adminHeaderProductSearch.trim();
                 setCurrentPage(ADMIN_PAGES.GLOBAL_SEARCH);
                 navigate(q ? `/admin/search?q=${encodeURIComponent(q)}` : "/admin/search", {

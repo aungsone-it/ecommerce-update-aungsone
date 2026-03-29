@@ -1,24 +1,22 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { 
-  Plus, 
-  Search, 
-  ChevronDown, 
-  Edit, 
-  Trash2, 
-  FileText, 
-  Filter, 
-  Users, 
-  Handshake, 
-  TrendingUp, 
-  CalendarDays, 
-  MoreVertical, 
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Filter,
+  Users,
+  TrendingUp,
+  CalendarDays,
+  MoreVertical,
   Eye,
   RefreshCw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { productsApi } from "../../utils/api";
 import { Product } from "../../types";
-import { PRODUCT_STATUSES } from "../../constants";
-import { SmartCache, CACHE_KEYS, CACHE_TTL } from "../../utils/cache";
+import { SmartCache, CACHE_KEYS } from "../../utils/cache";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -50,9 +48,10 @@ import { formatNumber, formatMMK } from "../../utils/formatNumber"; // 🔥 Impo
 import {
   getCachedProductById,
   invalidateProductByIdCache,
-  getCachedAdminAllProducts,
+  getCachedAdminProductsPage,
+  invalidateAdminAllProductsCache,
   getCachedAdminVendorsForProductList,
-  primeAdminAllProductsCache,
+  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
@@ -63,18 +62,30 @@ interface ProductListProps {
   /** Synced with super-admin TopNav search */
   headerSearchQuery?: string;
   onHeaderSearchQueryChange?: (q: string) => void;
+  /** Parent increments when user presses Enter in TopNav on Products — applies server `q`. */
+  headerSearchCommitTick?: number;
 }
 
 export function ProductList({
   onProductsChanged,
   headerSearchQuery,
   onHeaderSearchQueryChange,
+  headerSearchCommitTick,
 }: ProductListProps) {
   const { t } = useLanguage();
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(() => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_PRODUCTS));
+  const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  /** Sent to `getCachedAdminProductsPage` as `q` — only updated on Enter (inline or TopNav). */
+  const [committedSearchQuery, setCommittedSearchQuery] = useState("");
+  const lastHeaderCommitTick = useRef(0);
+  const [adminPage, setAdminPage] = useState(1);
+  const [adminPageSize, setAdminPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const [adminTotal, setAdminTotal] = useState(0);
+  const [adminHasMore, setAdminHasMore] = useState(false);
+  const [statusCounts, setStatusCounts] = useState({ all: 0, active: 0, offShelf: 0 });
+  const [vendorFilterOptions, setVendorFilterOptions] = useState<string[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<string>("all");
@@ -105,28 +116,106 @@ export function ProductList({
     image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop"
   });
 
-  // Fetch products from API
-  useEffect(() => {
-    loadProducts();
-    loadVendors(); // 🔥 Load vendors to map IDs to names
-    
-    // 🔥 Listen for vendor updates to refresh vendor names
-    const handleVendorUpdate = () => {
-      console.log("📣 Vendor updated, reloading vendor names in product list...");
-      loadVendors(true);
-    };
-    
-    window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
-    
-    return () => {
-      window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
-    };
-  }, []);
-
   useEffect(() => {
     if (headerSearchQuery === undefined) return;
     setSearchQuery(headerSearchQuery);
   }, [headerSearchQuery]);
+
+  useEffect(() => {
+    if (headerSearchCommitTick === undefined) return;
+    if (headerSearchCommitTick <= lastHeaderCommitTick.current) return;
+    lastHeaderCommitTick.current = headerSearchCommitTick;
+    const q =
+      headerSearchQuery !== undefined
+        ? String(headerSearchQuery).trim()
+        : searchQuery.trim();
+    setCommittedSearchQuery(q);
+  }, [headerSearchCommitTick, headerSearchQuery, searchQuery]);
+
+  useEffect(() => {
+    setAdminPage(1);
+  }, [
+    committedSearchQuery,
+    statusFilter,
+    activeTab,
+    vendorFilter,
+    collaboratorFilter,
+    sortBy,
+    adminPageSize,
+  ]);
+
+  const loadProductPage = useCallback(
+    async (forceRefresh: boolean) => {
+      setLoading(true);
+      setListRefreshing(forceRefresh);
+      try {
+        const payload = await getCachedAdminProductsPage(
+          {
+            page: adminPage,
+            pageSize: adminPageSize,
+            q: committedSearchQuery,
+            status: statusFilter,
+            tab: activeTab,
+            vendor: vendorFilter,
+            collaborator: collaboratorFilter,
+            sort: sortBy,
+          },
+          forceRefresh
+        );
+        setProducts((payload.products || []) as Product[]);
+        setAdminTotal(payload.total);
+        setAdminHasMore(!!payload.hasMore);
+        if (payload.counts) {
+          setStatusCounts({
+            all: payload.counts.all,
+            active: payload.counts.active,
+            offShelf: payload.counts.offShelf,
+          });
+        }
+        SmartCache.set(CACHE_KEYS.PRODUCTS, (payload.products || []) as Product[]);
+      } catch (error: any) {
+        console.error("❌ Failed to load products:", error);
+        setProducts([]);
+        toast.info("No products yet. Go to Dashboard to create sample products!", {
+          duration: 5000,
+        });
+      } finally {
+        setLoading(false);
+        setListRefreshing(false);
+      }
+    },
+    [
+      adminPage,
+      adminPageSize,
+      committedSearchQuery,
+      statusFilter,
+      activeTab,
+      vendorFilter,
+      collaboratorFilter,
+      sortBy,
+    ]
+  );
+
+  useEffect(() => {
+    void loadProductPage(false);
+  }, [loadProductPage]);
+
+  useEffect(() => {
+    loadVendors();
+    const handleVendorUpdate = () => {
+      void loadVendors(true);
+    };
+    window.addEventListener("vendorDataUpdated", handleVendorUpdate as EventListener);
+    return () => {
+      window.removeEventListener("vendorDataUpdated", handleVendorUpdate as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    const h = () => void loadProductPage(true);
+    window.addEventListener("migoo-admin-products-cache-patched", h);
+    return () => window.removeEventListener("migoo-admin-products-cache-patched", h);
+  }, [loadProductPage]);
 
   const handleSearchInputChange = useCallback(
     (value: string) => {
@@ -136,36 +225,19 @@ export function ProductList({
     [onHeaderSearchQueryChange]
   );
 
-  /** Session cache: no network when revisiting Products tab unless forceRefresh or Refresh button */
-  const loadProducts = async (forceRefresh = false) => {
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<Product[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
-      if (peeked != null && Array.isArray(peeked)) {
-        setProducts(peeked);
-        SmartCache.set(CACHE_KEYS.PRODUCTS, peeked);
-        setLoading(false);
-        return;
-      }
-    }
+  const commitSearchFromInput = useCallback(() => {
+    setCommittedSearchQuery(searchQuery.trim());
+  }, [searchQuery]);
 
-    setLoading(true);
-    setListRefreshing(forceRefresh);
-    try {
-      const productsData = await getCachedAdminAllProducts(forceRefresh);
-      setProducts(productsData || []);
-      SmartCache.set(CACHE_KEYS.PRODUCTS, productsData || []);
-      console.log(`✅ Products list (${forceRefresh ? "refreshed" : "loaded"}): ${(productsData || []).length} items`);
-    } catch (error: any) {
-      console.error("❌ Failed to load products:", error);
-      setProducts([]);
-      toast.info("No products yet. Go to Dashboard to create sample products!", {
-        duration: 5000,
-      });
-    } finally {
-      setLoading(false);
-      setListRefreshing(false);
-    }
-  };
+  const onSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitSearchFromInput();
+      }
+    },
+    [commitSearchFromInput]
+  );
 
   const loadVendors = async (forceRefresh = false) => {
     if (!forceRefresh) {
@@ -187,6 +259,14 @@ export function ProductList({
           if (vendor.id && vendor.name) map[vendor.id] = vendor.name;
         });
         setVendorsMap(map);
+        const names = [
+          ...new Set(
+            vendorsList
+              .map((vendor: any) => String(vendor.name || vendor.id || "").trim())
+              .filter(Boolean)
+          ),
+        ].sort();
+        setVendorFilterOptions(names);
         console.log(`✅ Loaded ${vendorsList.length} vendors for name mapping`);
       }
     } catch (error) {
@@ -195,104 +275,53 @@ export function ProductList({
   };
 
   const handleSaveProduct = async (data: any) => {
-    // OPTIMISTIC UPDATE - Navigate back AND add product to list INSTANTLY!
-    const optimisticProduct: Product = {
-      id: `temp-${Date.now()}`, // Temporary ID
-      name: data.title || data.name || "New Product",
-      description: data.description || "",
-      price: typeof data.price === 'number' ? `$${data.price.toFixed(2)}` : String(data.price || "0"), // Convert number to string
-      sku: data.sku || `SKU-${Date.now()}`,
-      inventory: data.inventory || 0,
-      category: data.category || "Uncategorized",
-      status: data.status || "active",
-      vendor: data.vendor || "",
-      collaborator: data.collaborator || "",
-      salesVolume: 0,
-      createDate: new Date().toISOString(),
-      images: data.images || [],
-      image: data.images?.[0] || data.image || "",
-      // 🎨 VARIANT DATA - Critical for Shopify-style variant system
-      hasVariants: data.hasVariants || false,
-      variantOptions: data.variantOptions || [],
-      variants: data.variants || []
-    };
-    
-    // Add to UI immediately
-    const updatedProducts = [optimisticProduct, ...products];
-    setProducts(updatedProducts);
-    
-    // Cache immediately for instant reload
-    SmartCache.set(CACHE_KEYS.PRODUCTS, updatedProducts);
-    
     setCurrentView("list");
-    
-    // Show instant success feedback
-    toast.success("✅ Product added!", { duration: 2000 });
-    
-    // Sync with server in background
+    setLoading(true);
     try {
-      console.log("📤 Sending product to server:", {
-        title: data.title,
-        price: data.price,
-        category: data.category,
-        vendor: data.vendor,
-        collaborator: data.collaborator,
-        hasVariants: data.hasVariants,
-        variantCount: data.variants?.length || 0
-      });
-      
       const response = await productsApi.create(data);
-      console.log("✅ Server response:", response);
-      
-      // Check if creation was successful
       if (!response.success && !response.product) {
         throw new Error(response.error || "Failed to create product - no product returned");
       }
-      
-      // Replace optimistic product with real one from server
-      if (response.product) {
-        console.log("🔄 Replacing optimistic product with server product:", {
-          optimisticId: optimisticProduct.id,
-          realId: response.product.id,
-          realProduct: response.product
-        });
-        
-        const finalProducts = updatedProducts.map(p => 
-          p.id === optimisticProduct.id ? response.product : p
-        );
-        setProducts(finalProducts);
-        
-        console.log("✅ Final products list:", finalProducts.map(p => ({ id: p.id, name: p.name })));
-        
-        // Update cache with real data
-        SmartCache.set(CACHE_KEYS.PRODUCTS, finalProducts);
-        primeAdminAllProductsCache(finalProducts);
-      }
-      
-      // Clear storefront cache so new products appear immediately
+      invalidateAdminAllProductsCache();
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-      console.log("🗑️ Cleared storefront cache");
-      
-      if (onProductsChanged) onProductsChanged();
+      setAdminPage(1);
+      const payload = await getCachedAdminProductsPage(
+        {
+          page: 1,
+          pageSize: adminPageSize,
+          q: committedSearchQuery,
+          status: statusFilter,
+          tab: activeTab,
+          vendor: vendorFilter,
+          collaborator: collaboratorFilter,
+          sort: sortBy,
+        },
+        true
+      );
+      setProducts((payload.products || []) as Product[]);
+      setAdminTotal(payload.total);
+      setAdminHasMore(!!payload.hasMore);
+      if (payload.counts) {
+        setStatusCounts({
+          all: payload.counts.all,
+          active: payload.counts.active,
+          offShelf: payload.counts.offShelf,
+        });
+      }
+      SmartCache.set(CACHE_KEYS.PRODUCTS, (payload.products || []) as Product[]);
+      toast.success("✅ Product added!", { duration: 2000 });
+      onProductsChanged?.();
     } catch (error) {
-      console.error("❌ Failed to create product - Full error:", error);
-      console.error("❌ Error message:", error instanceof Error ? error.message : String(error));
-      console.error("❌ Error stack:", error instanceof Error ? error.stack : "No stack");
-      
-      // Remove optimistic product on error
-      const revertedProducts = products.filter(p => p.id !== optimisticProduct.id);
-      setProducts(revertedProducts);
-      
-      // Revert cache
-      SmartCache.set(CACHE_KEYS.PRODUCTS, revertedProducts);
-      
-      // Check if it's a SKU validation error
+      console.error("❌ Failed to create product:", error);
+      await loadProductPage(true);
       if (error instanceof Error && error.message.includes("SKU already exists")) {
         toast.error(`❌ SKU Validation Error: ${error.message}`, { duration: 5000 });
       } else {
         const errorMsg = error instanceof Error ? error.message : "Failed to save product to server";
         toast.error(`❌ Error: ${errorMsg}. Check console for details.`, { duration: 5000 });
       }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -301,13 +330,10 @@ export function ProductList({
       await productsApi.update(id, data);
       invalidateProductByIdCache(id);
       toast.success("Product updated successfully!");
-      
-      // Clear storefront cache so updated products appear immediately
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-      console.log("🗑️ Cleared storefront cache");
-      
-      await loadProducts(true);
-      if (onProductsChanged) onProductsChanged(); // 🔥 NEW: Notify parent component
+      invalidateAdminAllProductsCache();
+      await loadProductPage(true);
+      onProductsChanged?.();
       setCurrentView("list");
     } catch (error) {
       console.error("Failed to update product:", error);
@@ -322,40 +348,29 @@ export function ProductList({
   };
 
   const handleDeleteProduct = async (id: string) => {
-    // 🚀 OPTIMISTIC DELETE - Remove from UI INSTANTLY!
-    const updatedProducts = products.filter(p => p.id !== id);
+    const previous = products;
+    const updatedProducts = products.filter((p) => p.id !== id);
     setProducts(updatedProducts);
-    
-    // Update cache immediately for instant reload
     SmartCache.set(CACHE_KEYS.PRODUCTS, updatedProducts);
-    
-    // Clear storefront cache too
     SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-    
-    // Show instant success feedback
     toast.success("Product deleted!", { duration: 2000 });
-    
-    // Sync with server in background
     try {
       await productsApi.delete(id);
       invalidateProductByIdCache(id);
-      primeAdminAllProductsCache(updatedProducts);
-      console.log(`✅ Product ${id} deleted from server`);
-      
-      if (onProductsChanged) onProductsChanged();
+      invalidateAdminAllProductsCache();
+      await loadProductPage(true);
+      onProductsChanged?.();
     } catch (error) {
       console.error("Failed to delete product:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to delete product";
-      
-      // If product not found on server, that's fine (it's already gone)
       if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
-        console.log("Product already deleted from server");
-        primeAdminAllProductsCache(updatedProducts);
+        invalidateAdminAllProductsCache();
+        await loadProductPage(true);
+        onProductsChanged?.();
       } else {
-        // Real error - revert the optimistic delete
         toast.error(`Failed to delete: ${errorMessage}`);
-        setProducts(products); // Restore original list
-        SmartCache.set(CACHE_KEYS.PRODUCTS, products);
+        setProducts(previous);
+        SmartCache.set(CACHE_KEYS.PRODUCTS, previous);
       }
     }
   };
@@ -395,11 +410,9 @@ export function ProductList({
         }
 
         if (removedIds.size > 0) {
-          const next = products.filter((p) => !removedIds.has(p.id));
-          setProducts(next);
-          SmartCache.set(CACHE_KEYS.PRODUCTS, next);
-          primeAdminAllProductsCache(next);
           SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+          invalidateAdminAllProductsCache();
+          await loadProductPage(true);
         }
 
         if (successCount > 0) {
@@ -410,7 +423,7 @@ export function ProductList({
         }
         if (errorCount > 0) {
           toast.error(`${errorCount} product(s) could not be deleted`);
-          await loadProducts(true);
+          await loadProductPage(true);
         }
         setSelectedProducts([]);
       } else if (productToDelete) {
@@ -430,11 +443,9 @@ export function ProductList({
           }
         }
         if (removedOk) {
-          const next = products.filter((p) => p.id !== productToDelete);
-          setProducts(next);
-          SmartCache.set(CACHE_KEYS.PRODUCTS, next);
-          primeAdminAllProductsCache(next);
           SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+          invalidateAdminAllProductsCache();
+          await loadProductPage(true);
         }
       }
       if (onProductsChanged) onProductsChanged();
@@ -445,7 +456,7 @@ export function ProductList({
 
       if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
         toast.info("Product already deleted");
-        await loadProducts(true);
+        await loadProductPage(true);
       } else {
         console.error("Failed to delete product(s):", error);
         toast.error(errorMessage);
@@ -483,52 +494,12 @@ export function ProductList({
     }
   };
 
-  // Get unique vendors and collaborators
-  const vendors = Array.from(new Set(products.map(p => p.vendor).filter(Boolean)));
-  const collaborators = Array.from(new Set(products.map(p => p.collaborator).filter(Boolean)));
-
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const matchesSearch = productMatchesAdminLiveSearch(product, searchQuery);
-      const matchesStatus = statusFilter === "all" || product.status === statusFilter;
-
-      let matchesTab = true;
-      if (activeTab === "vendor") {
-        matchesTab = vendorFilter === "all" || product.vendor === vendorFilter;
-      } else if (activeTab === "collaborator") {
-        matchesTab = collaboratorFilter === "all" || product.collaborator === collaboratorFilter;
-      }
-
-      return matchesSearch && matchesStatus && matchesTab;
-    });
-  }, [
-    products,
-    searchQuery,
-    statusFilter,
-    activeTab,
-    vendorFilter,
-    collaboratorFilter,
-  ]);
-
-  // Sort products
-  const getSortedProducts = (productList: Product[]) => {
-    const sorted = [...productList];
-    
-    if (activeTab === "sales") {
-      return sorted.sort((a, b) => b.salesVolume - a.salesVolume);
-    }
-    
-    // Sort by create date
-    if (sortBy === "newest") {
-      return sorted.sort((a, b) => new Date(b.createDate).getTime() - new Date(a.createDate).getTime());
-    } else if (sortBy === "oldest") {
-      return sorted.sort((a, b) => new Date(a.createDate).getTime() - new Date(b.createDate).getTime());
-    }
-    
-    return sorted;
-  };
-
-  const displayProducts = getSortedProducts(filteredProducts);
+  /** Instant filter on the current server page + narrowing while debounced `q` is in flight. */
+  const displayProducts = useMemo(
+    () =>
+      products.filter((product) => productMatchesAdminLiveSearch(product, searchQuery)),
+    [products, searchQuery]
+  );
 
   const toggleSelectAll = () => {
     if (selectedProducts.length === displayProducts.length) {
@@ -550,9 +521,13 @@ export function ProductList({
   };
 
   const getStatusCount = (status: string) => {
-    if (status === "all") return products.length;
-    return products.filter(p => p.status === status).length;
+    if (status === "all") return statusCounts.all;
+    if (status === "active") return statusCounts.active;
+    if (status === "off-shelf") return statusCounts.offShelf;
+    return 0;
   };
+
+  const adminTotalPages = Math.max(1, Math.ceil(adminTotal / adminPageSize) || 1);
 
   return (
     <>
@@ -606,7 +581,7 @@ export function ProductList({
                 type="button"
                 variant="outline"
                 disabled={listRefreshing || loading}
-                onClick={() => loadProducts(true)}
+                onClick={() => void loadProductPage(true)}
                 className="border-slate-300"
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
@@ -714,10 +689,11 @@ export function ProductList({
                       <div className="flex-1 relative min-w-[280px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <Input
-                          placeholder="Search products by name or SKU..."
+                          placeholder="Search by name or SKU — press Enter to search"
                           className="pl-10"
                           value={searchQuery}
                           onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onKeyDown={onSearchKeyDown}
                         />
                       </div>
                       
@@ -769,10 +745,11 @@ export function ProductList({
                       <div className="flex-1 relative min-w-[280px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <Input
-                          placeholder="Search products by name or SKU..."
+                          placeholder="Search by name or SKU — press Enter to search"
                           className="pl-10"
                           value={searchQuery}
                           onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onKeyDown={onSearchKeyDown}
                         />
                       </div>
                       
@@ -807,8 +784,10 @@ export function ProductList({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">{t('vendors.allVendors')}</SelectItem>
-                          {vendors.map(vendor => (
-                            <SelectItem key={vendor} value={vendor}>{vendor}</SelectItem>
+                          {vendorFilterOptions.map((vendor) => (
+                            <SelectItem key={vendor} value={vendor}>
+                              {vendor}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -837,10 +816,11 @@ export function ProductList({
                       <div className="flex-1 relative min-w-[280px]">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <Input
-                          placeholder="Search products by name or SKU..."
+                          placeholder="Search by name or SKU — press Enter to search"
                           className="pl-10"
                           value={searchQuery}
                           onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onKeyDown={onSearchKeyDown}
                         />
                       </div>
                       
@@ -1003,7 +983,9 @@ export function ProductList({
                             )}
                           </td>
                           <td className="py-3 px-4 text-sm font-semibold text-slate-900">
-                            {formatMMK(product.price.replace('$', '').replace(/,/g, ''))}
+                            {formatMMK(
+                              String(product.price ?? "0").replace("$", "").replace(/,/g, "")
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <span className="text-sm font-semibold text-purple-600">
@@ -1042,6 +1024,50 @@ export function ProductList({
                       ))}
                     </tbody>
                   </table>
+                </div>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/80">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <span>Rows per page</span>
+                    <Select
+                      value={String(adminPageSize)}
+                      onValueChange={(v) => setAdminPageSize(Number(v))}
+                    >
+                      <SelectTrigger className="w-[88px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
+                        <SelectItem value="15">15</SelectItem>
+                        <SelectItem value="20">20</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span className="text-slate-500">
+                      Page {adminPage} of {adminTotalPages} · {adminTotal} products
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      disabled={adminPage <= 1 || loading}
+                      onClick={() => setAdminPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8"
+                      disabled={!adminHasMore || loading}
+                      onClick={() => setAdminPage((p) => p + 1)}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </Card>
             </>

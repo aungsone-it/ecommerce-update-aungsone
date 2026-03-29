@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -43,13 +43,16 @@ import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
 import {
-  getCachedAdminOrdersPayload,
+  getCachedAdminOrdersPage,
   invalidateAdminOrdersCache,
-  moduleCache,
   dispatchAdminProductsCachePatched,
   getCachedAdminAllProducts,
+  ADMIN_ORDERS_PAGE_DEFAULT,
+  moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
+  type AdminOrdersPagePayload,
 } from "../utils/module-cache";
+import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
   syncAdminInventoryCacheAfterOrderStatusChange,
@@ -410,7 +413,9 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
     couponCode: order.couponCode,
     items: order.items?.length || 0,
     status: order.status || 'pending',
-    paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : 'paid',
+    paymentStatus:
+      (order.paymentStatus as PaymentStatus) ||
+      (order.paymentMethod === "Cash on Delivery" ? "unpaid" : "paid"),
     shippingStatus: order.status === 'delivered' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
     products: (order.items || []).map((item: any) => ({
       id: normalizeOrderLineParentProductId(item.productId ?? item.id),
@@ -465,168 +470,157 @@ export function Orders({
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   
   const [orders, setOrders] = useState<OrderItem[]>([]);
-  const [isLoading, setIsLoading] = useState(() => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_ORDERS));
+  const debouncedSearch = useAdminPortalDebouncedSearch(searchQuery);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersPageSize, setOrdersPageSize] = useState(ADMIN_ORDERS_PAGE_DEFAULT);
+  const [ordersTotal, setOrdersTotal] = useState(0);
+  const [ordersHasMore, setOrdersHasMore] = useState(false);
+  const [ordersAggregates, setOrdersAggregates] = useState<AdminOrdersPagePayload["aggregates"]>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false); // For printing multiple invoices
 
-  // Load orders from database
   useEffect(() => {
-    loadOrders();
-    
-    // 🔨 Trigger cache rebuild in background if needed
+    setOrdersPage(1);
+  }, [debouncedSearch, statusFilter, paymentFilter, vendorFilter, dateFrom, dateTo, sortOrder, ordersPageSize]);
+
+  useEffect(() => {
     const triggerCacheRebuild = async () => {
       try {
-        await fetch(`${projectId.includes('localhost') ? 'http://localhost:54321' : `https://${projectId}.supabase.co`}/functions/v1/make-server-16010b6f/rebuild-cache`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-        });
-        console.log('🔨 Cache rebuild triggered');
+        await fetch(
+          `${projectId.includes("localhost") ? "http://localhost:54321" : `https://${projectId}.supabase.co`}/functions/v1/make-server-16010b6f/rebuild-cache`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${publicAnonKey}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        console.log("🔨 Cache rebuild triggered");
       } catch (error) {
-        console.log('ℹ️ Could not trigger cache rebuild:', error);
+        console.log("ℹ️ Could not trigger cache rebuild:", error);
       }
     };
     triggerCacheRebuild();
   }, []);
 
-  const loadOrders = async (forceRefresh = false) => {
-    let showLoadingTimer: NodeJS.Timeout | null = null;
-    showLoadingTimer = setTimeout(() => {
-      setIsLoading(true);
-    }, 300);
+  const loadOrders = useCallback(
+    async (forceRefresh = false) => {
+      let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
+      showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
+      setListRefreshing(forceRefresh);
+      try {
+        const payload = await getCachedAdminOrdersPage(
+          {
+            page: ordersPage,
+            pageSize: ordersPageSize,
+            q: debouncedSearch,
+            status: statusFilter,
+            payment: paymentFilter,
+            vendor: vendorFilter,
+            dateFrom: dateFrom ? format(dateFrom, "yyyy-MM-dd") : "",
+            dateTo: dateTo ? format(dateTo, "yyyy-MM-dd") : "",
+            sort: sortOrder,
+          },
+          forceRefresh
+        );
 
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<{ orders: any[]; warning?: string }>(MODULE_CACHE_KEYS.ADMIN_ORDERS);
-      if (peeked != null && Array.isArray(peeked.orders)) {
-        const transformedOrders = mapApiOrdersToOrderItems(peeked.orders);
-        setOrders(transformedOrders);
-        if (peeked.warning) {
-          toast.warning(peeked.warning, { duration: 4000 });
+        if (payload.warning) {
+          toast.warning(payload.warning, { duration: 4000 });
         }
+
+        setOrders(mapApiOrdersToOrderItems(payload.orders || []));
+        setOrdersTotal(payload.total);
+        setOrdersHasMore(!!payload.hasMore);
+        setOrdersAggregates(payload.aggregates);
+      } catch (error: any) {
+        console.error("Failed to load orders:", error);
+        if (error.message?.includes("Failed to fetch")) {
+          toast.error(
+            "Cannot connect to server. The Edge Function may still be deploying. Please wait 30 seconds and refresh the page.",
+            { duration: 8000 }
+          );
+        } else if (error.message?.includes("timeout") || error.message?.includes("connection")) {
+          toast.error("Database connection timeout. Please refresh the page.", { duration: 5000 });
+        } else {
+          toast.error(`Failed to load orders: ${error.message || "Unknown error"}`, { duration: 5000 });
+        }
+        setOrders([]);
+        setOrdersTotal(0);
+        setOrdersHasMore(false);
+        setOrdersAggregates(undefined);
+      } finally {
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
         setIsLoading(false);
         setListRefreshing(false);
-        return;
       }
-    }
+    },
+    [
+      ordersPage,
+      ordersPageSize,
+      debouncedSearch,
+      statusFilter,
+      paymentFilter,
+      vendorFilter,
+      dateFrom,
+      dateTo,
+      sortOrder,
+    ]
+  );
 
-    setListRefreshing(forceRefresh);
-    try {
-      try {
-        const healthCheck = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/health`,
-          {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-        if (!healthCheck.ok) {
-          console.warn("⚠️ Server health check failed, but continuing anyway...");
-        } else {
-          console.log("✅ Server is healthy");
-        }
-      } catch (healthError) {
-        console.warn("⚠️ Server health check failed:", healthError);
-        toast.warning("Server is starting up, this may take a moment...", { duration: 3000 });
-      }
+  useEffect(() => {
+    void loadOrders(false);
+  }, [loadOrders]);
 
-      const payload = await getCachedAdminOrdersPayload(forceRefresh);
-      console.log("Orders loaded:", payload);
+  const uniqueVendors =
+    ordersAggregates?.uniqueVendors?.length ?
+      ordersAggregates.uniqueVendors
+    : Array.from(new Set(orders.map((order) => order.vendor || "SECURE Store"))).sort();
 
-      if (payload.warning) {
-        console.warn("⚠️ Server warning:", payload.warning);
-        toast.warning(payload.warning, { duration: 4000 });
-      }
+  /** Live text filter on the current page while server `q` debounces — same fields as edge filter. */
+  const displayOrders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return orders;
+    return orders.filter((order) => {
+      const customerHay =
+        typeof order.customer === "string"
+          ? order.customer
+          : JSON.stringify(order.customer ?? "");
+      return (
+        order.orderNumber.toLowerCase().includes(q) ||
+        customerHay.toLowerCase().includes(q) ||
+        order.email.toLowerCase().includes(q) ||
+        String(order.phone ?? "")
+          .toLowerCase()
+          .includes(q) ||
+        String(order.id ?? "")
+          .toLowerCase()
+          .includes(q)
+      );
+    });
+  }, [orders, searchQuery]);
 
-      const transformedOrders = mapApiOrdersToOrderItems(payload.orders || []);
-      setOrders(transformedOrders);
-      if (transformedOrders.length > 0) {
-        toast.success(`Loaded ${transformedOrders.length} orders`);
-      }
-    } catch (error: any) {
-      console.error("Failed to load orders:", error);
-      if (error.message?.includes("Failed to fetch")) {
-        toast.error(
-          "Cannot connect to server. The Edge Function may still be deploying. Please wait 30 seconds and refresh the page.",
-          { duration: 8000 }
-        );
-      } else if (error.message?.includes("timeout") || error.message?.includes("connection")) {
-        toast.error("Database connection timeout. Please refresh the page.", { duration: 5000 });
-      } else {
-        toast.error(`Failed to load orders: ${error.message || 'Unknown error'}`, { duration: 5000 });
-      }
-      setOrders([]);
-    } finally {
-      if (showLoadingTimer) {
-        clearTimeout(showLoadingTimer);
-      }
-      setIsLoading(false);
-      setListRefreshing(false);
-    }
-  };
-
-  // Get unique vendors for the filter dropdown (empty vendor = main storefront for display)
-  const uniqueVendors = Array.from(
-    new Set(orders.map((order) => order.vendor || "SECURE Store"))
-  ).sort();
-
-  const filteredOrders = orders.filter((order) => {
-    const q = searchQuery.toLowerCase();
-    const customerHay =
-      typeof order.customer === "string"
-        ? order.customer
-        : JSON.stringify(order.customer ?? "");
-    const matchesSearch =
-      order.orderNumber.toLowerCase().includes(q) ||
-      customerHay.toLowerCase().includes(q) ||
-      order.email.toLowerCase().includes(q) ||
-      String(order.phone ?? "")
-        .toLowerCase()
-        .includes(q) ||
-      String(order.id ?? "")
-        .toLowerCase()
-        .includes(q);
-    
-    const matchesStatusFilter = statusFilter === "all" || order.status === statusFilter;
-    const matchesPaymentFilter = paymentFilter === "all" || order.paymentStatus === paymentFilter;
-    const vendorLabel = order.vendor || "SECURE Store";
-    const matchesVendorFilter = vendorFilter === "all" || vendorLabel === vendorFilter;
-    
-    const orderDate = new Date(order.date);
-    const matchesDateFrom = !dateFrom || orderDate >= dateFrom;
-    const matchesDateTo = !dateTo || orderDate <= dateTo;
-    
-    return matchesSearch && matchesStatusFilter && matchesPaymentFilter && matchesVendorFilter && matchesDateFrom && matchesDateTo;
-  }).sort((a, b) => {
-    // Use createdAt timestamp for accurate sorting, fallback to date string
-    const dateA = new Date(a.createdAt || a.date);
-    const dateB = new Date(b.createdAt || b.date);
-    return sortOrder === "newest" ? dateB.getTime() - dateA.getTime() : dateA.getTime() - dateB.getTime();
-  });
-
-  // Calculate filtered totals - 🔥 Exclude cancelled orders from revenue
-  const filteredTotalRevenue = filteredOrders
-    .filter(order => order.status !== "cancelled")
-    .reduce((sum, order) => sum + order.total, 0);
-  const filteredTotalOrders = filteredOrders.length;
-  const filteredAvgOrderValue = filteredTotalOrders > 0 ? filteredTotalRevenue / filteredTotalOrders : 0;
-  const filteredStatusBreakdown = {
-    pending: filteredOrders.filter(o => o.status === "pending").length,
-    processing: filteredOrders.filter(o => o.status === "processing").length,
-    fulfilled: filteredOrders.filter(o => o.status === "fulfilled").length,
-    cancelled: filteredOrders.filter(o => o.status === "cancelled").length,
+  const filteredTotalRevenue =
+    ordersAggregates?.filteredTotalRevenue ??
+    displayOrders.filter((order) => order.status !== "cancelled").reduce((sum, order) => sum + order.total, 0);
+  const filteredTotalOrders = ordersAggregates?.filteredCount ?? displayOrders.length;
+  const filteredAvgOrderValue =
+    ordersAggregates?.filteredAvgOrderValue ??
+    (filteredTotalOrders > 0 ? filteredTotalRevenue / filteredTotalOrders : 0);
+  const filteredStatusBreakdown = ordersAggregates?.statusBreakdown ?? {
+    pending: displayOrders.filter((o) => o.status === "pending").length,
+    processing: displayOrders.filter((o) => o.status === "processing").length,
+    fulfilled: displayOrders.filter((o) => o.status === "fulfilled").length,
+    cancelled: displayOrders.filter((o) => o.status === "cancelled").length,
   };
 
   const toggleSelectAll = () => {
-    if (selectedOrders.length === filteredOrders.length) {
+    if (selectedOrders.length === displayOrders.length) {
       setSelectedOrders([]);
     } else {
-      setSelectedOrders(filteredOrders.map(order => order.id));
+      setSelectedOrders(displayOrders.map((order) => order.id));
     }
   };
 
@@ -852,7 +846,7 @@ export function Orders({
     const headers = ["Order Number", "Date", "Customer", "Email", "Vendor", "Total", "Items", "Status", "Payment", "Shipping"];
     const csvContent = [
       headers.join(","),
-      ...filteredOrders.map(o => 
+      ...displayOrders.map((o) => 
         [o.orderNumber, o.date, o.customer, o.email, o.vendor, o.total, o.items, o.status, o.paymentStatus, o.shippingStatus].join(",")
       )
     ].join("\n");
@@ -865,29 +859,43 @@ export function Orders({
     a.click();
   };
 
-  // 🔥 Exclude cancelled orders from total revenue calculation
-  const totalRevenue = orders
-    .filter(order => order.status !== "cancelled")
-    .reduce((sum, order) => sum + order.total, 0);
-  const pendingOrders = orders.filter(order => order.status === "pending").length;
-  const processingOrders = orders.filter(order => order.status === "processing").length;
-  const fulfilledOrders = orders.filter(order => order.status === "fulfilled").length;
+  const totalRevenue =
+    ordersAggregates?.filteredTotalRevenue ??
+    orders.filter((order) => order.status !== "cancelled").reduce((sum, order) => sum + order.total, 0);
+  const pendingOrders =
+    ordersAggregates?.statusBreakdown ?
+      ordersAggregates.statusBreakdown.pending
+    : orders.filter((order) => order.status === "pending").length;
+  const processingOrders =
+    ordersAggregates?.statusBreakdown ?
+      ordersAggregates.statusBreakdown.processing
+    : orders.filter((order) => order.status === "processing").length;
+  const fulfilledOrders =
+    ordersAggregates?.statusBreakdown ?
+      ordersAggregates.statusBreakdown.fulfilled
+    : orders.filter((order) => order.status === "fulfilled").length;
 
-  // Prepare status distribution for pie chart
   const statusDistributionData = [
     { name: "Pending", value: pendingOrders },
     { name: "Processing", value: processingOrders },
     { name: "Fulfilled", value: fulfilledOrders },
-    { name: "Cancelled", value: orders.filter(o => o.status === "cancelled").length },
+    {
+      name: "Cancelled",
+      value:
+        ordersAggregates?.statusBreakdown.cancelled ??
+        orders.filter((o) => o.status === "cancelled").length,
+    },
   ];
 
-  // Prepare vendor revenue for bar chart
-  const vendorRevenueData = uniqueVendors.map((vendor) => ({
-    vendor,
-    revenue: orders
-      .filter((o) => (o.vendor || "SECURE Store") === vendor)
-      .reduce((sum, o) => sum + o.total, 0),
-  }));
+  const vendorRevenueData =
+    ordersAggregates?.vendorRevenue && ordersAggregates.vendorRevenue.length > 0 ?
+      ordersAggregates.vendorRevenue
+    : uniqueVendors.map((vendor) => ({
+        vendor,
+        revenue: orders
+          .filter((o) => (o.vendor || "SECURE Store") === vendor)
+          .reduce((sum, o) => sum + o.total, 0),
+      }));
 
   return (
     <div className="p-8">
@@ -977,7 +985,7 @@ export function Orders({
           <Card className="mb-4">
             <div className="p-4">
               <div className="flex items-center justify-between gap-4 mb-4">
-                <h3 className="font-semibold text-slate-900">All Orders ({filteredOrders.length})</h3>
+                <h3 className="font-semibold text-slate-900">All Orders ({ordersTotal})</h3>
                 <div className="flex items-center gap-2">
                   {selectedOrders.length > 0 && (
                     <>
@@ -991,7 +999,7 @@ export function Orders({
                       </Button>
                     </>
                   )}
-                  {orders.length > 0 && (
+                  {ordersTotal > 0 && (
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -999,7 +1007,7 @@ export function Orders({
                       className="border-red-300 text-red-600 hover:bg-red-50"
                     >
                       <X className="w-4 h-4 mr-2" />
-                      Clear All ({orders.length})
+                      Clear All ({ordersTotal})
                     </Button>
                   )}
                   {hasActiveFilters && (
@@ -1123,7 +1131,7 @@ export function Orders({
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="text-left py-3 px-4">
                       <Checkbox
-                        checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
+                        checked={selectedOrders.length === displayOrders.length && displayOrders.length > 0}
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
@@ -1184,7 +1192,7 @@ export function Orders({
                         </td>
                       </tr>
                     ))
-                  ) : filteredOrders.length === 0 ? (
+                  ) : displayOrders.length === 0 ? (
                     // Empty state
                     <tr>
                       <td colSpan={10} className="py-12 text-center">
@@ -1196,7 +1204,7 @@ export function Orders({
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order) => (
+                    displayOrders.map((order) => (
                     <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50">
                       <td className="py-3 px-4">
                         <Checkbox
@@ -1262,6 +1270,50 @@ export function Orders({
                   )))}
                 </tbody>
               </table>
+            </div>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/80">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <span>Per page</span>
+                <Select
+                  value={String(ordersPageSize)}
+                  onValueChange={(v) => setOrdersPageSize(Number(v))}
+                >
+                  <SelectTrigger className="w-[80px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="15">15</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-slate-500">
+                  Page {ordersPage} of {Math.max(1, Math.ceil(ordersTotal / ordersPageSize) || 1)}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={ordersPage <= 1 || isLoading}
+                  onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={!ordersHasMore || isLoading}
+                  onClick={() => setOrdersPage((p) => p + 1)}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </Card>
         </TabsContent>

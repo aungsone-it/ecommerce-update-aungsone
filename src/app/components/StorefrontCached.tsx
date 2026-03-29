@@ -10,6 +10,14 @@ import {
   fetchAllCategories,
   fetchSiteSettings,
 } from "../utils/module-cache";
+import {
+  readPersistedJson,
+  writePersistedJson,
+  PERSISTED_CATALOG_TTL_MS,
+  LS_STOREFRONT_CATALOG_BOOTSTRAP,
+  LS_STOREFRONT_CATEGORIES,
+  LS_STOREFRONT_SETTINGS,
+} from "../utils/persistedLocalCache";
 
 function filterActiveProducts(list: any[]) {
   return (list || []).filter((p: any) => {
@@ -24,11 +32,33 @@ function filterActiveProducts(list: any[]) {
 
 /** Home + first catalog page (slim rows); reduces egress vs. loading entire catalog. */
 export async function loadCatalogBootstrapCached(isBackgroundRefresh = false) {
+  if (!isBackgroundRefresh) {
+    const fromLs = readPersistedJson<any>(LS_STOREFRONT_CATALOG_BOOTSTRAP, PERSISTED_CATALOG_TTL_MS);
+    if (fromLs && typeof fromLs === "object") {
+      moduleCache.prime(CACHE_KEYS.STOREFRONT_CATALOG_BOOTSTRAP, fromLs);
+      return {
+        products: filterActiveProducts(fromLs.products),
+        total: fromLs.total ?? 0,
+        page: fromLs.page ?? 1,
+        pageSize: fromLs.pageSize ?? 24,
+        hasMore: !!fromLs.hasMore,
+        dealProducts: filterActiveProducts(fromLs.dealProducts),
+        newArrivals: filterActiveProducts(fromLs.newArrivals),
+        sort: fromLs.sort,
+      };
+    }
+  }
+
   const data = await moduleCache.get(
     CACHE_KEYS.STOREFRONT_CATALOG_BOOTSTRAP,
     () => fetchCatalogBootstrap(24),
     isBackgroundRefresh
   );
+
+  if (data && typeof data === "object") {
+    writePersistedJson(LS_STOREFRONT_CATALOG_BOOTSTRAP, data);
+  }
+
   return {
     products: filterActiveProducts(data.products),
     total: data.total ?? 0,
@@ -50,13 +80,18 @@ export async function loadProductsCached(isBackgroundRefresh = false) {
 export async function loadCategoriesCached() {
   try {
     console.log("Loading categories...");
-    const allCategories = await moduleCache.get(
-      CACHE_KEYS.STOREFRONT_CATEGORIES,
-      fetchAllCategories,
-      false
-    );
+    const fromLs = readPersistedJson<any[]>(LS_STOREFRONT_CATEGORIES, PERSISTED_CATALOG_TTL_MS);
+    let allCategories: any[];
+    if (fromLs && Array.isArray(fromLs)) {
+      moduleCache.prime(CACHE_KEYS.STOREFRONT_CATEGORIES, fromLs);
+      allCategories = fromLs;
+    } else {
+      allCategories = await moduleCache.get(CACHE_KEYS.STOREFRONT_CATEGORIES, fetchAllCategories, false);
+      if (Array.isArray(allCategories)) {
+        writePersistedJson(LS_STOREFRONT_CATEGORIES, allCategories);
+      }
+    }
 
-    // Only show active categories on storefront
     const activeCategories = (allCategories || []).filter((c: any) => c.status === "active");
     console.log(`[STOREFRONT CACHED] Loaded ${activeCategories.length} active categories`);
     return activeCategories;
@@ -69,11 +104,17 @@ export async function loadCategoriesCached() {
 export async function loadSiteSettingsCached() {
   try {
     console.log("Loading site settings...");
-    const settings = await moduleCache.get(
-      CACHE_KEYS.STOREFRONT_SETTINGS,
-      fetchSiteSettings,
-      false
-    );
+    const fromLs = readPersistedJson<any>(LS_STOREFRONT_SETTINGS, PERSISTED_CATALOG_TTL_MS);
+    let settings: any;
+    if (fromLs != null && typeof fromLs === "object") {
+      moduleCache.prime(CACHE_KEYS.STOREFRONT_SETTINGS, fromLs);
+      settings = fromLs;
+    } else {
+      settings = await moduleCache.get(CACHE_KEYS.STOREFRONT_SETTINGS, fetchSiteSettings, false);
+      if (settings != null && typeof settings === "object") {
+        writePersistedJson(LS_STOREFRONT_SETTINGS, settings);
+      }
+    }
     console.log("[STOREFRONT CACHED] Loaded site settings");
     return settings;
   } catch (error) {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Search,
   Filter,
@@ -38,6 +38,8 @@ import {
   X,
   XCircle,
   AlertCircle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -81,11 +83,12 @@ import { useNavigate } from "react-router";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
-  getCachedAdminCustomersPayload,
+  getCachedAdminCustomersPage,
   invalidateAdminCustomersCache,
-  moduleCache,
-  CACHE_KEYS as MODULE_CACHE_KEYS,
+  ADMIN_CUSTOMERS_PAGE_DEFAULT,
+  type AdminCustomersPagePayload,
 } from "../utils/module-cache";
+import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 
 interface Customer {
   id: string;
@@ -131,9 +134,13 @@ export function CustomersEnhanced({
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
   const [customersList, setCustomersList] = useState<Customer[]>([]);
-  const [isLoading, setIsLoading] = useState(
-    () => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_CUSTOMERS)
-  );
+  const searchDebounced = useAdminPortalDebouncedSearch(searchQuery);
+  const [customersPage, setCustomersPage] = useState(1);
+  const [customersPageSize, setCustomersPageSize] = useState(ADMIN_CUSTOMERS_PAGE_DEFAULT);
+  const [customersTotal, setCustomersTotal] = useState(0);
+  const [customersHasMore, setCustomersHasMore] = useState(false);
+  const [serverListStats, setServerListStats] = useState<AdminCustomersPagePayload["stats"]>(undefined);
+  const [isLoading, setIsLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
 
   // 🎯 Alert Modal State
@@ -159,10 +166,9 @@ export function CustomersEnhanced({
     type: "delete",
   });
 
-  // 🔥 FETCH CUSTOMERS FROM BACKEND
   useEffect(() => {
-    fetchCustomers();
-  }, []);
+    setCustomersPage(1);
+  }, [searchDebounced, filterStatus, filterTier, filterSegment, customersPageSize]);
 
   const normalizeCustomers = (raw: any[]): Customer[] => {
     return (raw || []).filter((c: any) => {
@@ -172,51 +178,60 @@ export function CustomersEnhanced({
     });
   };
 
-  const fetchCustomers = async (forceRefresh = false) => {
-    let showLoadingTimer: NodeJS.Timeout | null = null;
-    showLoadingTimer = setTimeout(() => {
-      setIsLoading(true);
-    }, 300);
-
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<{ customers: any[] }>(MODULE_CACHE_KEYS.ADMIN_CUSTOMERS);
-      if (peeked != null && Array.isArray(peeked.customers)) {
-        const validCustomers = normalizeCustomers(peeked.customers) as Customer[];
+  const fetchCustomers = useCallback(
+    async (forceRefresh = false) => {
+      let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
+      showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
+      setListRefreshing(forceRefresh);
+      try {
+        const data = await getCachedAdminCustomersPage(
+          {
+            page: customersPage,
+            pageSize: customersPageSize,
+            q: searchDebounced,
+            status: filterStatus,
+            tier: filterTier,
+            segment: filterSegment,
+          },
+          forceRefresh
+        );
+        const validCustomers = normalizeCustomers(data.customers || []) as Customer[];
         setCustomersList(validCustomers);
+        setCustomersTotal(data.total);
+        setCustomersHasMore(!!data.hasMore);
+        setServerListStats(data.stats);
+        const ghostCustomers = validCustomers.filter((c: any) => !c.name || !c.email);
+        if (ghostCustomers.length > 0) {
+          console.warn(`👻 Found ${ghostCustomers.length} ghost customers with missing data`);
+        }
+      } catch (error: any) {
+        const isWarmupError = error instanceof TypeError && error.message === "Failed to fetch";
+        if (!isWarmupError) {
+          console.error("❌ Error fetching customers:", error);
+        }
+        setCustomersList([]);
+        setCustomersTotal(0);
+        setCustomersHasMore(false);
+        setServerListStats(undefined);
+      } finally {
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
         setIsLoading(false);
         setListRefreshing(false);
-        return;
       }
-    }
+    },
+    [
+      customersPage,
+      customersPageSize,
+      searchDebounced,
+      filterStatus,
+      filterTier,
+      filterSegment,
+    ]
+  );
 
-    setListRefreshing(forceRefresh);
-    try {
-      console.log("📥 Fetching customers from backend...");
-      const data = await getCachedAdminCustomersPayload(forceRefresh);
-      const validCustomers = normalizeCustomers(data.customers || []) as Customer[];
-
-      console.log(`✅ ${validCustomers.length} valid customers after filtering`);
-      const ghostCustomers = validCustomers.filter((c: any) => !c.name || !c.email);
-      if (ghostCustomers.length > 0) {
-        console.warn(`👻 Found ${ghostCustomers.length} ghost customers with missing data:`, ghostCustomers);
-      }
-
-      setCustomersList(validCustomers);
-    } catch (error: any) {
-      const isWarmupError = error instanceof TypeError && error.message === "Failed to fetch";
-      if (!isWarmupError) {
-        console.error("❌ Error fetching customers:", error);
-      }
-      setCustomersList([]);
-    } finally {
-      if (showLoadingTimer) {
-        clearTimeout(showLoadingTimer);
-      }
-      setIsLoading(false);
-      setListRefreshing(false);
-    }
-  };
+  useEffect(() => {
+    void fetchCustomers(false);
+  }, [fetchCustomers]);
 
   // Customer Segmentation based on RFM
   const getCustomerSegment = (customer: Customer) => {
@@ -233,32 +248,68 @@ export function CustomersEnhanced({
     return "need-attention";
   };
 
-  const stats = {
-    total: customersList.length,
-    active: customersList.filter((c) => c.status === "active").length,
-    vip: customersList.filter((c) => c.tier === "vip").length,
-    newThisMonth: customersList.filter(
-      (c) =>
-        new Date(c.joinDate).getMonth() === new Date().getMonth() &&
-        new Date(c.joinDate).getFullYear() === new Date().getFullYear()
-    ).length,
-    totalRevenue: customersList.reduce((sum, c) => sum + (c.totalSpent || 0), 0),
-    avgLTV: customersList.length > 0 ? customersList.reduce((sum, c) => sum + (c.lifetimeValue || 0), 0) / customersList.length : 0,
-    champions: customersList.filter((c) => getCustomerSegment(c) === "champions").length,
-    atRisk: customersList.filter((c) => getCustomerSegment(c) === "at-risk" || getCustomerSegment(c) === "cant-lose").length,
-  };
+  const stats = useMemo(() => {
+    if (serverListStats) {
+      return {
+        total: serverListStats.total,
+        active: serverListStats.active,
+        vip: serverListStats.vip,
+        newThisMonth: serverListStats.newThisMonth,
+        totalRevenue: serverListStats.totalRevenue,
+        avgLTV: serverListStats.avgLTV,
+        champions: serverListStats.champions,
+        atRisk: serverListStats.atRisk,
+      };
+    }
+    return {
+      total: customersList.length,
+      active: customersList.filter((c) => c.status === "active").length,
+      vip: customersList.filter((c) => c.tier === "vip").length,
+      newThisMonth: customersList.filter(
+        (c) =>
+          new Date(c.joinDate).getMonth() === new Date().getMonth() &&
+          new Date(c.joinDate).getFullYear() === new Date().getFullYear()
+      ).length,
+      totalRevenue: customersList.reduce((sum, c) => sum + (c.totalSpent || 0), 0),
+      avgLTV:
+        customersList.length > 0 ?
+          customersList.reduce((sum, c) => sum + (c.lifetimeValue || 0), 0) / customersList.length
+        : 0,
+      champions: customersList.filter((c) => getCustomerSegment(c) === "champions").length,
+      atRisk: customersList.filter(
+        (c) => getCustomerSegment(c) === "at-risk" || getCustomerSegment(c) === "cant-lose"
+      ).length,
+    };
+  }, [serverListStats, customersList]);
 
-  const filteredCustomers = customersList.filter((customer) => {
-    const matchesSearch =
-      (customer.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-      (customer.email?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-    const matchesStatus =
-      filterStatus === "all" || customer.status === filterStatus;
-    const matchesTier = filterTier === "all" || customer.tier === filterTier;
-    const matchesSegment =
-      filterSegment === "all" || getCustomerSegment(customer) === filterSegment;
-    return matchesSearch && matchesStatus && matchesTier && matchesSegment;
-  });
+  /** Rows visible in the table: instant name/email match on the current server page. */
+  const visibleCustomers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return customersList;
+    return customersList.filter(
+      (c) =>
+        (c.name?.toLowerCase() || "").includes(q) ||
+        (c.email?.toLowerCase() || "").includes(q)
+    );
+  }, [customersList, searchQuery]);
+
+  const segmentDisplayCount = (tag: string): number => {
+    const seg = serverListStats?.segments;
+    if (seg) {
+      const map: Record<string, number> = {
+        champions: seg.champions,
+        loyal: seg.loyal,
+        "potential-loyalist": seg.potentialLoyalist,
+        "at-risk": seg.atRisk,
+        "cant-lose": seg.cantLose,
+        hibernating: seg.hibernating,
+        "need-attention": seg.needAttention,
+        unknown: seg.unknown,
+      };
+      if (map[tag] !== undefined) return map[tag];
+    }
+    return customersList.filter((c) => getCustomerSegment(c) === tag).length;
+  };
 
   const toggleSelectCustomer = (customerId: string) => {
     setSelectedCustomers((prev) =>
@@ -269,10 +320,10 @@ export function CustomersEnhanced({
   };
 
   const toggleSelectAll = () => {
-    if (selectedCustomers.length === filteredCustomers.length) {
+    if (selectedCustomers.length === visibleCustomers.length) {
       setSelectedCustomers([]);
     } else {
-      setSelectedCustomers(filteredCustomers.map((c) => c.id));
+      setSelectedCustomers(visibleCustomers.map((c) => c.id));
     }
   };
 
@@ -1024,8 +1075,8 @@ export function CustomersEnhanced({
                     <TableHead className="w-12">
                       <Checkbox
                         checked={
-                          selectedCustomers.length === filteredCustomers.length &&
-                          filteredCustomers.length > 0
+                          selectedCustomers.length === visibleCustomers.length &&
+                          visibleCustomers.length > 0
                         }
                         onCheckedChange={toggleSelectAll}
                       />
@@ -1076,7 +1127,7 @@ export function CustomersEnhanced({
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : filteredCustomers.length === 0 ? (
+                  ) : visibleCustomers.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={8} className="text-center py-12">
                         <div className="flex flex-col items-center gap-3">
@@ -1093,7 +1144,7 @@ export function CustomersEnhanced({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    filteredCustomers.map((customer) => (
+                    visibleCustomers.map((customer) => (
                     <TableRow key={customer.id}>
                       <TableCell>
                         <Checkbox
@@ -1245,6 +1296,52 @@ export function CustomersEnhanced({
                 </TableBody>
               </Table>
             </div>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/80">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <span>Per page</span>
+                <Select
+                  value={String(customersPageSize)}
+                  onValueChange={(v) => setCustomersPageSize(Number(v))}
+                >
+                  <SelectTrigger className="w-[80px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="15">15</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-slate-500">
+                  Page {customersPage} of{" "}
+                  {Math.max(1, Math.ceil(customersTotal / customersPageSize) || 1)} · {customersTotal}{" "}
+                  customers
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={customersPage <= 1 || isLoading}
+                  onClick={() => setCustomersPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={!customersHasMore || isLoading}
+                  onClick={() => setCustomersPage((p) => p + 1)}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
           </div>
         </TabsContent>
 
@@ -1269,7 +1366,7 @@ export function CustomersEnhanced({
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">Count</span>
                     <span className="font-semibold text-slate-900">
-                      {customersList.filter((c) => getCustomerSegment(c) === "champions").length}
+                      {segmentDisplayCount("champions")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1303,7 +1400,7 @@ export function CustomersEnhanced({
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">Count</span>
                     <span className="font-semibold text-slate-900">
-                      {customersList.filter((c) => getCustomerSegment(c) === "loyal").length}
+                      {segmentDisplayCount("loyal")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1337,7 +1434,7 @@ export function CustomersEnhanced({
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">Count</span>
                     <span className="font-semibold text-slate-900">
-                      {customersList.filter((c) => getCustomerSegment(c) === "at-risk").length}
+                      {segmentDisplayCount("at-risk")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1371,7 +1468,7 @@ export function CustomersEnhanced({
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">Count</span>
                     <span className="font-semibold text-slate-900">
-                      {customersList.filter((c) => getCustomerSegment(c) === "potential-loyalist").length}
+                      {segmentDisplayCount("potential-loyalist")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1399,7 +1496,7 @@ export function CustomersEnhanced({
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">Count</span>
                     <span className="font-semibold text-slate-900">
-                      {customersList.filter((c) => getCustomerSegment(c) === "cant-lose").length}
+                      {segmentDisplayCount("cant-lose")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -1427,7 +1524,7 @@ export function CustomersEnhanced({
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-slate-600">Count</span>
                     <span className="font-semibold text-slate-900">
-                      {customersList.filter((c) => getCustomerSegment(c) === "hibernating").length}
+                      {segmentDisplayCount("hibernating")}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">

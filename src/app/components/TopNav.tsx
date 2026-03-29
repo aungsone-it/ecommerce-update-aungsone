@@ -169,7 +169,7 @@ export function TopNav({
           <div className="relative w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
-              placeholder="Search products, orders, vendors…"
+              placeholder="Search… (on Products, press Enter to load matches)"
               className="pl-10 bg-slate-50 border-slate-200 focus:bg-white w-full"
               value={adminGlobalSearch ?? ""}
               onChange={(e) => onAdminGlobalSearchChange?.(e.target.value)}

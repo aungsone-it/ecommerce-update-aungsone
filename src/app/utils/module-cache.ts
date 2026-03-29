@@ -13,6 +13,15 @@
 
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { withNetworkRetry } from './networkRetry';
+import {
+  readPersistedJson,
+  writePersistedJson,
+  PERSISTED_CATALOG_TTL_MS,
+  lsAdminProductsPage1Key,
+  lsAdminOrdersPage1Key,
+  lsAdminCustomersPage1Key,
+  removePersistedKeysPrefix,
+} from './persistedLocalCache';
 
 interface CacheEntry<T> {
   data: T;
@@ -181,6 +190,164 @@ export async function fetchAllProducts() {
   return data.products || [];
 }
 
+/** Super Admin lists (products, inventory): ~15–20 rows per request. */
+export const ADMIN_PRODUCTS_INITIAL_PAGE_SIZE = 20;
+export const ADMIN_ORDERS_PAGE_DEFAULT = 20;
+export const ADMIN_CUSTOMERS_PAGE_DEFAULT = 20;
+
+export const ADMIN_PRODUCTS_PAGE_CACHE_PREFIX = "admin-products-page-";
+
+export type AdminProductsPageParams = {
+  page: number;
+  pageSize?: number;
+  q?: string;
+  status?: string;
+  tab?: string;
+  vendor?: string;
+  collaborator?: string;
+  sort?: string;
+};
+
+export type AdminProductsPagePayload = {
+  adminList?: boolean;
+  products: unknown[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  counts?: { all: number; active: number; offShelf: number };
+};
+
+function normAdminQ(q: string): string {
+  return String(q || "").trim().slice(0, 200);
+}
+
+export function adminProductsPageCacheKey(p: AdminProductsPageParams): string {
+  const pageSize = Math.min(100, Math.max(1, p.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
+  const qn = normAdminQ(p.q || "");
+  return `${ADMIN_PRODUCTS_PAGE_CACHE_PREFIX}p${p.page}-ps${pageSize}-t-${p.tab || "all"}-st-${p.status || "all"}-s-${p.sort || "newest"}-v-${encodeURIComponent(p.vendor || "all")}-c-${encodeURIComponent(p.collaborator || "all")}-q-${encodeURIComponent(qn)}`;
+}
+
+export async function fetchAdminProductsPage(params: AdminProductsPageParams): Promise<AdminProductsPagePayload> {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
+  const sp = new URLSearchParams();
+  sp.set("adminList", "1");
+  sp.set("page", String(Math.max(1, params.page)));
+  sp.set("pageSize", String(pageSize));
+  const q = normAdminQ(params.q || "");
+  if (q) sp.set("q", q);
+  if (params.status && params.status !== "all") sp.set("status", params.status);
+  if (params.tab && params.tab !== "all") sp.set("tab", params.tab);
+  if (params.vendor && params.vendor !== "all") sp.set("vendor", params.vendor);
+  if (params.collaborator && params.collaborator !== "all") sp.set("collaborator", params.collaborator);
+  if (params.sort) sp.set("sort", params.sort);
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products?${sp.toString()}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch admin products page: ${response.status}`);
+  }
+  const data = await response.json();
+  return {
+    adminList: !!data.adminList,
+    products: Array.isArray(data.products) ? data.products : [],
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? params.page),
+    pageSize: Number(data.pageSize ?? pageSize),
+    hasMore: !!data.hasMore,
+    counts:
+      data.counts && typeof data.counts === "object"
+        ? {
+            all: Number(data.counts.all ?? 0),
+            active: Number(data.counts.active ?? 0),
+            offShelf: Number(data.counts.offShelf ?? 0),
+          }
+        : undefined,
+  };
+}
+
+/**
+ * Cached admin product page + localStorage for page 1 (per filter key).
+ */
+export async function getCachedAdminProductsPage(
+  params: AdminProductsPageParams,
+  forceRefresh = false
+): Promise<AdminProductsPagePayload> {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
+  const page = Math.max(1, params.page);
+  const qNorm = normAdminQ(params.q || "");
+  const tab = params.tab || "all";
+  const status = params.status || "all";
+  const sort =
+    tab === "sales" ? "popular" : params.sort && params.sort !== "" ? params.sort : "newest";
+  const vendor = params.vendor || "all";
+  const collaborator = params.collaborator || "all";
+
+  const key = adminProductsPageCacheKey({
+    ...params,
+    page,
+    pageSize,
+    q: qNorm,
+    tab,
+    status,
+    sort,
+    vendor,
+    collaborator,
+  });
+
+  if (!forceRefresh && page === 1) {
+    const fromLs = readPersistedJson<AdminProductsPagePayload>(
+      lsAdminProductsPage1Key({
+        pageSize,
+        tab,
+        status,
+        sort,
+        vendor,
+        collaborator,
+        qNorm,
+      }),
+      PERSISTED_CATALOG_TTL_MS
+    );
+    if (fromLs && Array.isArray(fromLs.products)) {
+      moduleCache.prime(key, fromLs);
+      return fromLs;
+    }
+  }
+
+  const data = await moduleCache.get(key, () =>
+    fetchAdminProductsPage({
+      ...params,
+      page,
+      pageSize,
+      q: qNorm,
+      tab,
+      status,
+      sort,
+      vendor,
+      collaborator,
+    }),
+    forceRefresh
+  );
+
+  if (page === 1 && data && Array.isArray(data.products)) {
+    writePersistedJson(
+      lsAdminProductsPage1Key({
+        pageSize,
+        tab,
+        status,
+        sort,
+        vendor,
+        collaborator,
+        qNorm,
+      }),
+      data
+    );
+  }
+
+  return data;
+}
+
 /** Paginated storefront catalog (slim rows) — standard ecommerce pattern. */
 export async function fetchCatalogBootstrap(pageSize = 24) {
   const response = await fetch(
@@ -269,6 +436,187 @@ export async function fetchAdminOrdersPayload(): Promise<{ orders: any[]; warnin
   return { orders: data.orders || [], warning: data.warning };
 }
 
+export const ADMIN_ORDERS_PAGE_CACHE_PREFIX = "admin-orders-page-";
+
+export type AdminOrdersPageParams = {
+  page: number;
+  pageSize?: number;
+  q?: string;
+  status?: string;
+  payment?: string;
+  vendor?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  sort?: "newest" | "oldest";
+};
+
+export type AdminOrdersPagePayload = {
+  orders: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  aggregates?: {
+    filteredCount: number;
+    filteredTotalRevenue: number;
+    filteredAvgOrderValue: number;
+    statusBreakdown: {
+      pending: number;
+      processing: number;
+      fulfilled: number;
+      cancelled: number;
+    };
+    uniqueVendors: string[];
+    vendorRevenue?: { vendor: string; revenue: number }[];
+  };
+  warning?: string;
+  cached?: boolean;
+};
+
+function normOrdersQ(q: string): string {
+  return String(q || "").trim().slice(0, 200);
+}
+
+export function adminOrdersPageCacheKey(p: AdminOrdersPageParams): string {
+  const pageSize = Math.min(100, Math.max(1, p.pageSize ?? ADMIN_ORDERS_PAGE_DEFAULT));
+  const qn = normOrdersQ(p.q || "");
+  return `${ADMIN_ORDERS_PAGE_CACHE_PREFIX}p${p.page}-ps${pageSize}-st-${p.status || "all"}-pay-${p.payment || "all"}-v-${encodeURIComponent(p.vendor || "all")}-df-${encodeURIComponent(p.dateFrom || "")}-dt-${encodeURIComponent(p.dateTo || "")}-s-${p.sort || "newest"}-q-${encodeURIComponent(qn)}`;
+}
+
+export async function fetchAdminOrdersPage(params: AdminOrdersPageParams): Promise<AdminOrdersPagePayload> {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_ORDERS_PAGE_DEFAULT));
+  const sp = new URLSearchParams();
+  sp.set("page", String(Math.max(1, params.page)));
+  sp.set("pageSize", String(pageSize));
+  const q = normOrdersQ(params.q || "");
+  if (q) sp.set("q", q);
+  if (params.status && params.status !== "all") sp.set("status", params.status);
+  if (params.payment && params.payment !== "all") sp.set("payment", params.payment);
+  if (params.vendor && params.vendor !== "all") sp.set("vendor", params.vendor);
+  if (params.dateFrom) sp.set("dateFrom", params.dateFrom);
+  if (params.dateTo) sp.set("dateTo", params.dateTo);
+  if (params.sort) sp.set("sort", params.sort);
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders?${sp.toString()}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch orders page: ${response.status}`);
+  }
+  const data = await response.json();
+  const agg = data.aggregates && typeof data.aggregates === "object" ? data.aggregates : undefined;
+  return {
+    orders: Array.isArray(data.orders) ? data.orders : [],
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? params.page),
+    pageSize: Number(data.pageSize ?? pageSize),
+    hasMore: !!data.hasMore,
+    aggregates: agg
+      ? {
+          filteredCount: Number(agg.filteredCount ?? 0),
+          filteredTotalRevenue: Number(agg.filteredTotalRevenue ?? 0),
+          filteredAvgOrderValue: Number(agg.filteredAvgOrderValue ?? 0),
+          statusBreakdown: {
+            pending: Number(agg.statusBreakdown?.pending ?? 0),
+            processing: Number(agg.statusBreakdown?.processing ?? 0),
+            fulfilled: Number(agg.statusBreakdown?.fulfilled ?? 0),
+            cancelled: Number(agg.statusBreakdown?.cancelled ?? 0),
+          },
+          uniqueVendors: Array.isArray(agg.uniqueVendors) ? agg.uniqueVendors : [],
+          vendorRevenue: Array.isArray(agg.vendorRevenue)
+            ? agg.vendorRevenue.map((x: any) => ({
+                vendor: String(x.vendor ?? ""),
+                revenue: Number(x.revenue ?? 0),
+              }))
+            : undefined,
+        }
+      : undefined,
+    warning: data.warning,
+    cached: data.cached,
+  };
+}
+
+export async function getCachedAdminOrdersPage(
+  params: AdminOrdersPageParams,
+  forceRefresh = false
+): Promise<AdminOrdersPagePayload> {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_ORDERS_PAGE_DEFAULT));
+  const page = Math.max(1, params.page);
+  const qNorm = normOrdersQ(params.q || "");
+  const status = params.status || "all";
+  const payment = params.payment || "all";
+  const vendor = params.vendor || "all";
+  const dateFrom = params.dateFrom || "";
+  const dateTo = params.dateTo || "";
+  const sort = params.sort || "newest";
+  const key = adminOrdersPageCacheKey({
+    ...params,
+    page,
+    pageSize,
+    q: qNorm,
+    status,
+    payment,
+    vendor,
+    dateFrom,
+    dateTo,
+    sort,
+  });
+
+  if (!forceRefresh && page === 1) {
+    const fromLs = readPersistedJson<AdminOrdersPagePayload>(
+      lsAdminOrdersPage1Key({
+        pageSize,
+        qNorm,
+        status,
+        payment,
+        vendor,
+        dateFrom,
+        dateTo,
+        sort,
+      }),
+      PERSISTED_CATALOG_TTL_MS
+    );
+    if (fromLs && Array.isArray(fromLs.orders)) {
+      moduleCache.prime(key, fromLs);
+      return fromLs;
+    }
+  }
+
+  const data = await moduleCache.get(key, () =>
+    fetchAdminOrdersPage({
+      ...params,
+      page,
+      pageSize,
+      q: qNorm,
+      status,
+      payment,
+      vendor,
+      dateFrom,
+      dateTo,
+      sort,
+    }),
+    forceRefresh
+  );
+
+  if (page === 1 && data && Array.isArray(data.orders)) {
+    writePersistedJson(
+      lsAdminOrdersPage1Key({
+        pageSize,
+        qNorm,
+        status,
+        payment,
+        vendor,
+        dateFrom,
+        dateTo,
+        sort,
+      }),
+      data
+    );
+  }
+
+  return data;
+}
+
 /** @deprecated Prefer fetchAdminOrdersPayload + cache; returns orders array only */
 export async function fetchAllOrders() {
   const p = await fetchAdminOrdersPayload();
@@ -302,6 +650,170 @@ export async function fetchAdminCustomersPayload(): Promise<{ customers: any[] }
     throw new Error(data.error || 'Failed to fetch customers');
   }
   return { customers: data.customers || [] };
+}
+
+export const ADMIN_CUSTOMERS_PAGE_CACHE_PREFIX = "admin-customers-page-";
+
+export type AdminCustomersPageParams = {
+  page: number;
+  pageSize?: number;
+  q?: string;
+  status?: string;
+  tier?: string;
+  segment?: string;
+};
+
+export type AdminCustomersPagePayload = {
+  customers: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  stats?: {
+    total: number;
+    active: number;
+    vip: number;
+    newThisMonth: number;
+    totalRevenue: number;
+    avgLTV: number;
+    champions: number;
+    atRisk: number;
+    segments?: {
+      champions: number;
+      loyal: number;
+      potentialLoyalist: number;
+      atRisk: number;
+      cantLose: number;
+      hibernating: number;
+      needAttention: number;
+      unknown: number;
+    };
+  };
+};
+
+function normCustQ(q: string): string {
+  return String(q || "").trim().slice(0, 200);
+}
+
+export function adminCustomersPageCacheKey(p: AdminCustomersPageParams): string {
+  const pageSize = Math.min(100, Math.max(1, p.pageSize ?? ADMIN_CUSTOMERS_PAGE_DEFAULT));
+  const qn = normCustQ(p.q || "");
+  return `${ADMIN_CUSTOMERS_PAGE_CACHE_PREFIX}p${p.page}-ps${pageSize}-st-${p.status || "all"}-t-${p.tier || "all"}-seg-${p.segment || "all"}-q-${encodeURIComponent(qn)}`;
+}
+
+export async function fetchAdminCustomersPage(params: AdminCustomersPageParams): Promise<AdminCustomersPagePayload> {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_CUSTOMERS_PAGE_DEFAULT));
+  const sp = new URLSearchParams();
+  sp.set("page", String(Math.max(1, params.page)));
+  sp.set("pageSize", String(pageSize));
+  const q = normCustQ(params.q || "");
+  if (q) sp.set("q", q);
+  if (params.status && params.status !== "all") sp.set("status", params.status);
+  if (params.tier && params.tier !== "all") sp.set("tier", params.tier);
+  if (params.segment && params.segment !== "all") sp.set("segment", params.segment);
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers?${sp.toString()}`,
+    {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${publicAnonKey}`,
+      },
+    }
+  );
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to fetch customers");
+  }
+  const st = data.stats && typeof data.stats === "object" ? data.stats : undefined;
+  return {
+    customers: Array.isArray(data.customers) ? data.customers : [],
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? params.page),
+    pageSize: Number(data.pageSize ?? pageSize),
+    hasMore: !!data.hasMore,
+    stats: st
+      ? {
+          total: Number(st.total ?? 0),
+          active: Number(st.active ?? 0),
+          vip: Number(st.vip ?? 0),
+          newThisMonth: Number(st.newThisMonth ?? 0),
+          totalRevenue: Number(st.totalRevenue ?? 0),
+          avgLTV: Number(st.avgLTV ?? 0),
+          champions: Number(st.champions ?? 0),
+          atRisk: Number(st.atRisk ?? 0),
+          segments:
+            st.segments && typeof st.segments === "object"
+              ? {
+                  champions: Number(st.segments.champions ?? 0),
+                  loyal: Number(st.segments.loyal ?? 0),
+                  potentialLoyalist: Number(st.segments.potentialLoyalist ?? 0),
+                  atRisk: Number(st.segments.atRisk ?? 0),
+                  cantLose: Number(st.segments.cantLose ?? 0),
+                  hibernating: Number(st.segments.hibernating ?? 0),
+                  needAttention: Number(st.segments.needAttention ?? 0),
+                  unknown: Number(st.segments.unknown ?? 0),
+                }
+              : undefined,
+        }
+      : undefined,
+  };
+}
+
+export async function getCachedAdminCustomersPage(
+  params: AdminCustomersPageParams,
+  forceRefresh = false
+): Promise<AdminCustomersPagePayload> {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_CUSTOMERS_PAGE_DEFAULT));
+  const page = Math.max(1, params.page);
+  const qNorm = normCustQ(params.q || "");
+  const status = params.status || "all";
+  const tier = params.tier || "all";
+  const segment = params.segment || "all";
+  const key = adminCustomersPageCacheKey({
+    ...params,
+    page,
+    pageSize,
+    q: qNorm,
+    status,
+    tier,
+    segment,
+  });
+
+  if (!forceRefresh && page === 1) {
+    const fromLs = readPersistedJson<AdminCustomersPagePayload>(
+      lsAdminCustomersPage1Key({ pageSize, qNorm, status, tier, segment }),
+      PERSISTED_CATALOG_TTL_MS
+    );
+    if (fromLs && Array.isArray(fromLs.customers)) {
+      moduleCache.prime(key, fromLs);
+      return fromLs;
+    }
+  }
+
+  const data = await moduleCache.get(
+    key,
+    () =>
+      fetchAdminCustomersPage({
+        ...params,
+        page,
+        pageSize,
+        q: qNorm,
+        status,
+        tier,
+        segment,
+      }),
+    forceRefresh
+  );
+
+  if (page === 1 && data && Array.isArray(data.customers)) {
+    writePersistedJson(
+      lsAdminCustomersPage1Key({ pageSize, qNorm, status, tier, segment }),
+      data
+    );
+  }
+
+  return data;
 }
 
 export type AdminDashboardFilters = {
@@ -599,6 +1111,10 @@ export async function getCachedAdminAllProducts(forceRefresh = false) {
 
 export function invalidateAdminAllProductsCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_PRODUCTS);
+  moduleCache.invalidatePrefix(ADMIN_PRODUCTS_PAGE_CACHE_PREFIX);
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix("migoo-ls-admin-p1-");
+  }
 }
 
 /** Super Admin products grid — after create/delete without refetch */
@@ -747,7 +1263,9 @@ export async function getCachedAdminOrdersPayload(forceRefresh = false) {
 
 export function invalidateAdminOrdersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_ORDERS);
+  moduleCache.invalidatePrefix(ADMIN_ORDERS_PAGE_CACHE_PREFIX);
   if (typeof window !== "undefined") {
+    removePersistedKeysPrefix("migoo-ls-admin-orders-p1-");
     window.dispatchEvent(new CustomEvent("adminOrdersUpdated"));
   }
 }
@@ -770,6 +1288,10 @@ export async function getCachedAdminCustomersPayload(forceRefresh = false) {
 
 export function invalidateAdminCustomersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_CUSTOMERS);
+  moduleCache.invalidatePrefix(ADMIN_CUSTOMERS_PAGE_CACHE_PREFIX);
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix("migoo-ls-admin-customers-p1-");
+  }
 }
 
 export async function getCachedAdminDashboardStats(filters: AdminDashboardFilters, forceRefresh = false) {

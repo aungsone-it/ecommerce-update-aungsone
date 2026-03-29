@@ -6,6 +6,13 @@ import {
   fetchVendorCategories,
   fetchProductsByIds,
 } from "../utils/module-cache";
+import {
+  readPersistedJson,
+  writePersistedJson,
+  PERSISTED_CATALOG_TTL_MS,
+  lsVendorCatalogPage1Key,
+  lsVendorCategoriesKey,
+} from "../utils/persistedLocalCache";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -1910,8 +1917,26 @@ export function VendorStoreView({
       const qk = qRaw.toLowerCase();
       const cat = selectedCategory;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+      const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
+      const persistEligible = !qRaw && cat === "all";
+      const lsKey = lsVendorCatalogPage1Key(vendorId, qk, cat, pageSize);
+
+      if (!forceRefresh && persistEligible) {
+        const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
+        if (fromLs && typeof fromLs === "object") {
+          moduleCache.prime(cacheKey, fromLs);
+          setProducts(fromLs.products || []);
+          setVendorCatalogTotal(fromLs.total);
+          setVendorCatalogPage(fromLs.page);
+          setVendorCatalogHasMore(fromLs.hasMore);
+          setStoreName(fromLs.storeName || "Vendor Store");
+          setStoreLogo(fromLs.logo || "");
+          return;
+        }
+      }
+
       const productsData = await moduleCache.get(
-        CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize),
+        cacheKey,
         () =>
           fetchVendorProducts(vendorId, {
             page: 1,
@@ -1927,6 +1952,10 @@ export function VendorStoreView({
       setVendorCatalogHasMore(productsData.hasMore);
       setStoreName(productsData.storeName || "Vendor Store");
       setStoreLogo(productsData.logo || "");
+
+      if (persistEligible && productsData && typeof productsData === "object") {
+        writePersistedJson(lsKey, productsData);
+      }
     },
     [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
   );
@@ -1984,11 +2013,26 @@ export function VendorStoreView({
     try {
       let categoriesData: any[] = [];
       try {
-        categoriesData = await moduleCache.get(
-          CACHE_KEYS.vendorCategories(vendorId),
-          () => fetchVendorCategories(vendorId),
-          forceRefresh
-        );
+        const catLsKey = lsVendorCategoriesKey(vendorId);
+        let categoriesFromLs = false;
+        if (!forceRefresh) {
+          const fromLs = readPersistedJson<any[]>(catLsKey, PERSISTED_CATALOG_TTL_MS);
+          if (fromLs !== null && Array.isArray(fromLs)) {
+            moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), fromLs);
+            categoriesData = fromLs;
+            categoriesFromLs = true;
+          }
+        }
+        if (forceRefresh || !categoriesFromLs) {
+          categoriesData = await moduleCache.get(
+            CACHE_KEYS.vendorCategories(vendorId),
+            () => fetchVendorCategories(vendorId),
+            forceRefresh
+          );
+          if (!forceRefresh && Array.isArray(categoriesData)) {
+            writePersistedJson(catLsKey, categoriesData);
+          }
+        }
       } catch (catErr) {
         console.warn("⚠️ [VENDOR STORE] Categories fetch failed (non-fatal):", catErr);
         categoriesData = [];

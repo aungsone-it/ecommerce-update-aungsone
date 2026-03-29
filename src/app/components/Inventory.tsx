@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, Package, Loader2, RefreshCw, Plus, Minus, Check, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -8,12 +8,13 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { toast } from "sonner";
 import {
-  getCachedAdminAllProducts,
-  moduleCache,
-  patchAdminProductInventoryInCache,
-  CACHE_KEYS as MODULE_CACHE_KEYS,
+  getCachedAdminProductsPage,
+  invalidateAdminAllProductsCache,
+  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+  dispatchAdminProductsCachePatched,
   ADMIN_PRODUCTS_BROADCAST_CHANNEL,
 } from "../utils/module-cache";
+import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 
 interface InventoryItem {
   id: string;
@@ -93,138 +94,111 @@ function productsToInventoryItems(products: any[]): InventoryItem[] {
 export function Inventory() {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useAdminPortalDebouncedSearch(searchQuery);
 
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(
-    () => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_PRODUCTS)
-  );
+  const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-  
-  // Pagination state
+
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const [productTotal, setProductTotal] = useState(0);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
 
   useEffect(() => {
-    loadInventory();
-  }, []);
+    setCurrentPage(1);
+  }, [debouncedSearch, itemsPerPage]);
 
-  const loadInventory = async (forceRefresh = false, retryCount = 0) => {
-    let showLoadingTimer: NodeJS.Timeout | null = null;
-    showLoadingTimer = setTimeout(() => {
-      setLoading(true);
-    }, 300);
-
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<any[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
-      if (peeked != null && Array.isArray(peeked)) {
-        const rows = productsToInventoryItems(peeked);
-        setInventoryItems(rows);
+  const loadInventory = useCallback(
+    async (forceRefresh = false, retryCount = 0) => {
+      let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
+      showLoadingTimer = setTimeout(() => setLoading(true), 300);
+      setListRefreshing(forceRefresh);
+      try {
+        const payload = await getCachedAdminProductsPage(
+          {
+            page: currentPage,
+            pageSize: itemsPerPage,
+            q: debouncedSearch,
+            status: "all",
+            tab: "all",
+            vendor: "all",
+            collaborator: "all",
+            sort: "newest",
+          },
+          forceRefresh
+        );
+        const products = (payload.products || []) as any[];
+        const inventoryData = productsToInventoryItems(products);
+        setInventoryItems(inventoryData);
+        setProductTotal(payload.total);
+        setHasMoreProducts(!!payload.hasMore);
+        if (inventoryData.length === 0 && payload.total === 0) {
+          toast.error("No products found! Please create products first in the Products section.");
+        } else if (forceRefresh && retryCount === 0) {
+          toast.success(
+            `Showing ${inventoryData.length} stock row(s) from ${products.length} product(s) on this page`
+          );
+        }
+      } catch (error: any) {
+        console.error("❌ Error loading inventory:", error);
+        if (retryCount < 2) {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (showLoadingTimer) clearTimeout(showLoadingTimer);
+          setLoading(false);
+          return loadInventory(forceRefresh, retryCount + 1);
+        }
+        toast.error("Failed to load inventory. Check console for details.");
+        setInventoryItems([]);
+      } finally {
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
         setLoading(false);
         setListRefreshing(false);
-        if (rows.length === 0) {
-          toast.error("No products found! Please create products first in the Products section.");
-        }
-        return;
       }
-    }
+    },
+    [currentPage, itemsPerPage, debouncedSearch]
+  );
 
-    setListRefreshing(forceRefresh);
-    try {
-      console.log(`🔄 Loading inventory (attempt ${retryCount + 1})...`);
-      const products = await getCachedAdminAllProducts(forceRefresh);
-      const inventoryData = productsToInventoryItems(products);
-      console.log(`📦 Loaded ${products.length} products → ${inventoryData.length} inventory items`);
-      setInventoryItems(inventoryData);
-      if (inventoryData.length === 0) {
-        toast.error("No products found! Please create products first in the Products section.");
-      } else if (forceRefresh || retryCount === 0) {
-        toast.success(`✅ Loaded ${inventoryData.length} items (${products.length} products)`);
-      }
-    } catch (error: any) {
-      console.error("❌ Error loading inventory:", error);
-      if (retryCount < 2) {
-        await new Promise((r) => setTimeout(r, 1500));
-        if (showLoadingTimer) clearTimeout(showLoadingTimer);
-        setLoading(false);
-        return loadInventory(forceRefresh, retryCount + 1);
-      }
-      toast.error("Failed to load inventory. Check console for details.");
-      setInventoryItems([]);
-    } finally {
-      if (showLoadingTimer) {
-        clearTimeout(showLoadingTimer);
-      }
-      setLoading(false);
-      setListRefreshing(false);
-    }
-  };
+  useEffect(() => {
+    void loadInventory(false);
+  }, [loadInventory]);
 
-  const filteredItems = useMemo(() => {
-    const needle = searchQuery.trim().toLowerCase();
-    return inventoryItems.filter((item) => {
-      if (!needle) return true;
-      const p = String(item.product ?? "").toLowerCase();
-      const s = String(item.sku ?? "").toLowerCase();
-      return p.includes(needle) || s.includes(needle);
-    });
+  const visibleInventoryItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return inventoryItems;
+    return inventoryItems.filter(
+      (item) =>
+        item.product.toLowerCase().includes(q) ||
+        String(item.sku || "").toLowerCase().includes(q)
+    );
   }, [inventoryItems, searchQuery]);
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const paginatedItems = filteredItems.slice(startIndex, endIndex);
-  
-  // Pagination functions
+  const totalPages = Math.max(1, Math.ceil(productTotal / itemsPerPage) || 1);
+  const startIndex = productTotal === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+  const endIndex = productTotal === 0 ? 0 : Math.min(currentPage * itemsPerPage, productTotal);
+
   const goToFirstPage = () => setCurrentPage(1);
   const goToLastPage = () => setCurrentPage(totalPages);
-  const goToPrevPage = () => setCurrentPage(prev => Math.max(1, prev - 1));
-  const goToNextPage = () => setCurrentPage(prev => Math.min(totalPages, prev + 1));
+  const goToPrevPage = () => setCurrentPage((prev) => Math.max(1, prev - 1));
+  const goToNextPage = () => setCurrentPage((prev) => Math.min(totalPages, prev + 1));
 
-  // Reset to page 1 when search changes
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
-
-  /** Same tab: rebuild from session cache. Other tabs: refetch (cache is not shared). */
-  useEffect(() => {
-    const rebuildFromCache = () => {
-      const peeked = moduleCache.peek<any[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
-      if (peeked && Array.isArray(peeked)) {
-        setInventoryItems(productsToInventoryItems(peeked));
-      }
-    };
-
-    const onWindowPatched = () => rebuildFromCache();
-
-    const refetchFromServer = () => {
-      void (async () => {
-        try {
-          const products = await getCachedAdminAllProducts(true);
-          setInventoryItems(productsToInventoryItems(products));
-        } catch {
-          rebuildFromCache();
-        }
-      })();
-    };
-
-    window.addEventListener("migoo-admin-products-cache-patched", onWindowPatched);
+    const refetch = () => void loadInventory(true);
+    window.addEventListener("migoo-admin-products-cache-patched", refetch);
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
-      bc.onmessage = () => refetchFromServer();
+      bc.onmessage = () => refetch();
     } catch {
-      /* BroadcastChannel unsupported */
+      /* ignore */
     }
-
     return () => {
-      window.removeEventListener("migoo-admin-products-cache-patched", onWindowPatched);
+      window.removeEventListener("migoo-admin-products-cache-patched", refetch);
       bc?.close();
     };
-  }, []);
+  }, [loadInventory]);
 
   // Inline editing - click number to edit
   const startEditing = (item: InventoryItem) => {
@@ -252,11 +226,6 @@ export function Inventory() {
         : i
     ));
 
-    patchAdminProductInventoryInCache(item.id, newQuantity, {
-      isVariant: item.isVariant,
-      parentId: item.parentId,
-    });
-
     setEditingId(null);
     setEditValue("");
     toast.success(`✅ Updated ${item.product} to ${newQuantity} units`);
@@ -283,6 +252,8 @@ export function Inventory() {
       if (!response.ok) {
         console.warn("Backend sync failed, but UI is updated");
       } else {
+        invalidateAdminAllProductsCache();
+        dispatchAdminProductsCachePatched();
         console.log("✅ Backend synced successfully");
       }
     } catch (error) {
@@ -307,11 +278,6 @@ export function Inventory() {
         : i
     ));
 
-    patchAdminProductInventoryInCache(item.id, newQuantity, {
-      isVariant: item.isVariant,
-      parentId: item.parentId,
-    });
-
     /** Input shows `editValue` while editing — clear so it reflects new `onHand` */
     if (editingId === item.id) {
       setEditingId(null);
@@ -320,9 +286,8 @@ export function Inventory() {
 
     toast.success(`${amount > 0 ? '+' : ''}${amount} → ${item.product}`);
 
-    // Sync backend
     try {
-      await fetch(
+      const res = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/inventory/adjust`,
         {
           method: "POST",
@@ -338,6 +303,10 @@ export function Inventory() {
           }),
         }
       );
+      if (res.ok) {
+        invalidateAdminAllProductsCache();
+        dispatchAdminProductsCachePatched();
+      }
     } catch (error) {
       console.warn("Backend sync error:", error);
     }
@@ -410,7 +379,7 @@ export function Inventory() {
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">{t('inventory.title')}</h1>
             <p className="text-sm text-slate-600 mt-1">
-              {inventoryItems.length} products loaded from database
+              {productTotal} product{productTotal !== 1 ? "s" : ""} total · server-paginated ({itemsPerPage} per page)
             </p>
           </div>
           <Button
@@ -440,9 +409,7 @@ export function Inventory() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-600 mb-1">Total Products</p>
-              <p className="text-2xl font-semibold text-slate-900">
-                {inventoryItems.length}
-              </p>
+              <p className="text-2xl font-semibold text-slate-900">{productTotal}</p>
             </div>
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
               <Package className="w-5 h-5 text-blue-600" />
@@ -455,7 +422,7 @@ export function Inventory() {
             <div>
               <p className="text-sm text-slate-600 mb-1">Total Stock</p>
               <p className="text-2xl font-semibold text-slate-900">
-                {inventoryItems.reduce((sum, item) => sum + item.onHand, 0)}
+                {visibleInventoryItems.reduce((sum, item) => sum + item.onHand, 0)}
               </p>
             </div>
             <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
@@ -469,7 +436,7 @@ export function Inventory() {
             <div>
               <p className="text-sm text-slate-600 mb-1">Available</p>
               <p className="text-2xl font-semibold text-slate-900">
-                {inventoryItems.reduce((sum, item) => sum + item.available, 0)}
+                {visibleInventoryItems.reduce((sum, item) => sum + item.available, 0)}
               </p>
             </div>
             <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
@@ -512,7 +479,20 @@ export function Inventory() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {paginatedItems.map((item) => {
+              {inventoryItems.length > 0 &&
+              visibleInventoryItems.length === 0 &&
+              !loading ? (
+                <tr>
+                  <td
+                    colSpan={3}
+                    className="py-10 px-4 text-center text-sm text-slate-500"
+                  >
+                    No stock rows match your search on this page. Try clearing the
+                    box or wait for the full list to load.
+                  </td>
+                </tr>
+              ) : (
+                visibleInventoryItems.map((item) => {
                 const isLowStock = item.available < 50;
                 const isOutOfStock = item.available === 0;
                 const isEditing = editingId === item.id;
@@ -600,13 +580,14 @@ export function Inventory() {
                     </td>
                   </tr>
                 );
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
 
         {/* Pagination Controls */}
-        {filteredItems.length > 0 && (
+        {(productTotal > 0 || inventoryItems.length > 0) && (
           <div className="p-4 border-t border-slate-200 flex items-center justify-between">
             {/* Left: Items per page */}
             <div className="flex items-center gap-2">
@@ -615,21 +596,21 @@ export function Inventory() {
                 value={itemsPerPage}
                 onChange={(e) => {
                   setItemsPerPage(Number(e.target.value));
-                  setCurrentPage(1); // Reset to first page
+                  setCurrentPage(1);
                 }}
                 className="px-3 py-1 border border-slate-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               >
-                <option value={25}>25</option>
+                <option value={10}>10</option>
+                <option value={15}>15</option>
+                <option value={20}>20</option>
                 <option value={50}>50</option>
-                <option value={100}>100</option>
-                <option value={200}>200</option>
               </select>
               <span className="text-sm text-slate-600">items per page</span>
             </div>
 
             {/* Center: Page info */}
             <div className="text-sm text-slate-600">
-              Showing {startIndex + 1}-{Math.min(endIndex, filteredItems.length)} of {filteredItems.length} items
+              Products {startIndex}–{endIndex} of {productTotal} · {visibleInventoryItems.length} stock row(s) shown
             </div>
 
             {/* Right: Navigation buttons */}
@@ -685,7 +666,7 @@ export function Inventory() {
         )}
 
         {/* Empty State */}
-        {filteredItems.length === 0 && (
+        {productTotal === 0 && inventoryItems.length === 0 && !loading && (
           <div className="p-12 text-center">
             <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-slate-900 mb-2">

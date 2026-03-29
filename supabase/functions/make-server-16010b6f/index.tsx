@@ -2661,6 +2661,85 @@ app.get("/make-server-16010b6f/products", async (c) => {
       return c.json({ products: out, total: out.length });
     }
 
+    /** Super Admin product grid: server-side filter/sort/pagination (same platform scope as legacy list). */
+    const adminList = c.req.query("adminList") === "1";
+    if (adminList) {
+      const page = Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1);
+      const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "24", 10) || 24));
+      const qRaw = (c.req.query("q") || "").trim();
+      const status = (c.req.query("status") || "all").toLowerCase();
+      const tab = (c.req.query("tab") || "all").toLowerCase();
+      const vendor = (c.req.query("vendor") || "all").trim();
+      const collaborator = (c.req.query("collaborator") || "all").trim();
+      let sort = (c.req.query("sort") || "newest").toLowerCase();
+      if (tab === "sales") sort = "popular";
+
+      const { products: allList } = await ensureProductsListResponse();
+
+      let tabRows = allList as any[];
+      if (tab === "vendor" && vendor && vendor.toLowerCase() !== "all") {
+        tabRows = tabRows.filter((p: any) => String(p.vendor || "") === vendor);
+      } else if (tab === "collaborator" && collaborator && collaborator.toLowerCase() !== "all") {
+        tabRows = tabRows.filter((p: any) => String(p.collaborator || "") === collaborator);
+      }
+
+      const counts = {
+        all: tabRows.length,
+        active: tabRows.filter(
+          (p: any) => String(p.status || "active").toLowerCase() === "active"
+        ).length,
+        offShelf: tabRows.filter((p: any) => String(p.status || "").toLowerCase() === "off-shelf")
+          .length,
+      };
+
+      const adminMatchesSearch = (p: any, qq: string) => {
+        if (!qq) return true;
+        const q = qq.toLowerCase();
+        const name = String(p.name ?? "").toLowerCase();
+        const sku = String(p.sku ?? "").toLowerCase();
+        const id = String(p.id ?? "").toLowerCase();
+        const cat = String(p.category ?? "").toLowerCase();
+        if (name.includes(q) || sku.includes(q) || id.includes(q) || cat.includes(q)) return true;
+        const vars = p.variants;
+        if (Array.isArray(vars)) {
+          for (const v of vars) {
+            if (String(v?.sku ?? "").toLowerCase().includes(q)) return true;
+          }
+        }
+        return false;
+      };
+
+      let filtered = tabRows.filter((p: any) => adminMatchesSearch(p, qRaw));
+      if (status !== "all") {
+        filtered = filtered.filter(
+          (p: any) => String(p.status || "active").toLowerCase() === status
+        );
+      }
+
+      let sorted: any[];
+      if (sort === "oldest") {
+        sorted = [...filtered].sort(
+          (a, b) =>
+            new Date(a.createDate || 0).getTime() - new Date(b.createDate || 0).getTime()
+        );
+      } else {
+        sorted = sortStorefrontProductRows(filtered, sort);
+      }
+
+      const total = sorted.length;
+      const slice = sorted.slice((page - 1) * pageSize, page * pageSize);
+
+      return c.json({
+        adminList: true,
+        products: slice,
+        total,
+        page,
+        pageSize,
+        hasMore: page * pageSize < total,
+        counts,
+      });
+    }
+
     const bootstrap = c.req.query("bootstrap") === "1";
     const catalog = c.req.query("catalog") === "1";
 
@@ -3536,6 +3615,121 @@ app.post("/make-server-16010b6f/upload-description-image", async (c) => {
 // ORDERS ENDPOINTS
 // ============================================
 
+/** When `page` query is set, return a slice + aggregates; legacy clients omit `page` and get the full list. */
+function parseAdminOrdersPageQuery(c: any) {
+  const pageQ = c.req.query("page");
+  if (pageQ === undefined || pageQ === "") return null;
+  const page = Math.max(1, parseInt(String(pageQ), 10) || 1);
+  const pageSize = Math.min(
+    100,
+    Math.max(1, parseInt(String(c.req.query("pageSize") || "20"), 10) || 20)
+  );
+  return {
+    page,
+    pageSize,
+    q: String(c.req.query("q") || "")
+      .trim()
+      .toLowerCase(),
+    status: String(c.req.query("status") || "all").toLowerCase(),
+    payment: String(c.req.query("payment") || "all").toLowerCase(),
+    vendor: String(c.req.query("vendor") || "all").trim(),
+    dateFrom: String(c.req.query("dateFrom") || ""),
+    dateTo: String(c.req.query("dateTo") || ""),
+    sort: String(c.req.query("sort") || "newest").toLowerCase(),
+  };
+}
+
+function filterSortOrdersAdmin(minimalOrders: any[], opts: NonNullable<ReturnType<typeof parseAdminOrdersPageQuery>>) {
+  let rows = minimalOrders.filter((order: any) => {
+    if (opts.status !== "all" && String(order.status || "") !== opts.status) return false;
+    if (opts.payment !== "all" && String(order.paymentStatus || "") !== opts.payment) return false;
+    const vendorLabel = order.vendor || "SECURE Store";
+    if (opts.vendor !== "all" && vendorLabel !== opts.vendor) return false;
+    const orderDate = new Date(order.date || order.createdAt || 0);
+    if (opts.dateFrom) {
+      const from = new Date(opts.dateFrom);
+      if (!Number.isNaN(from.getTime()) && orderDate < from) return false;
+    }
+    if (opts.dateTo) {
+      const to = new Date(opts.dateTo + "T23:59:59.999Z");
+      if (!Number.isNaN(to.getTime()) && orderDate > to) return false;
+    }
+    if (opts.q) {
+      const customerHay =
+        typeof order.customer === "string"
+          ? order.customer
+          : JSON.stringify(order.customer ?? "");
+      const hay = [
+        String(order.orderNumber || "").toLowerCase(),
+        String(customerHay || "").toLowerCase(),
+        String(order.email || "").toLowerCase(),
+        String(order.phone || "").toLowerCase(),
+        String(order.id || "").toLowerCase(),
+      ];
+      if (!hay.some((h) => h.includes(opts.q))) return false;
+    }
+    return true;
+  });
+  rows.sort((a: any, b: any) => {
+    const dateA = new Date(a.createdAt || a.date || 0).getTime();
+    const dateB = new Date(b.createdAt || b.date || 0).getTime();
+    return opts.sort === "oldest" ? dateA - dateB : dateB - dateA;
+  });
+  return rows;
+}
+
+function buildAdminOrdersAggregates(filtered: any[]) {
+  const filteredTotalRevenue = filtered
+    .filter((o: any) => o.status !== "cancelled")
+    .reduce((s: number, o: any) => s + (Number(o.total) || 0), 0);
+  const uniqueVendors = [...new Set(filtered.map((o: any) => o.vendor || "SECURE Store"))].sort();
+  const vendorRev = new Map<string, number>();
+  for (const o of filtered) {
+    if (o.status === "cancelled") continue;
+    const v = o.vendor || "SECURE Store";
+    vendorRev.set(v, (vendorRev.get(v) || 0) + (Number(o.total) || 0));
+  }
+  const vendorRevenue = [...vendorRev.entries()]
+    .map(([vendor, revenue]) => ({ vendor, revenue }))
+    .sort((a, b) => b.revenue - a.revenue);
+  return {
+    filteredCount: filtered.length,
+    filteredTotalRevenue,
+    filteredAvgOrderValue:
+      filtered.length > 0 ? filteredTotalRevenue / filtered.length : 0,
+    statusBreakdown: {
+      pending: filtered.filter((o: any) => o.status === "pending").length,
+      processing: filtered.filter((o: any) => o.status === "processing").length,
+      fulfilled: filtered.filter((o: any) => o.status === "fulfilled").length,
+      cancelled: filtered.filter((o: any) => o.status === "cancelled").length,
+    },
+    uniqueVendors,
+    vendorRevenue,
+  };
+}
+
+function jsonAdminOrdersPage(
+  minimalOrders: any[],
+  c: any,
+  extra?: { warning?: string; cached?: boolean }
+) {
+  const opts = parseAdminOrdersPageQuery(c);
+  if (!opts) return null;
+  const filtered = filterSortOrdersAdmin(minimalOrders, opts);
+  const aggregates = buildAdminOrdersAggregates(filtered);
+  const slice = filtered.slice((opts.page - 1) * opts.pageSize, opts.page * opts.pageSize);
+  return {
+    orders: slice,
+    total: filtered.length,
+    page: opts.page,
+    pageSize: opts.pageSize,
+    hasMore: opts.page * opts.pageSize < filtered.length,
+    aggregates,
+    ...(extra?.warning ? { warning: extra.warning } : {}),
+    ...(extra?.cached ? { cached: true } : {}),
+  };
+}
+
 app.get("/make-server-16010b6f/orders", async (c) => {
   try {
     // Check if client is still connected
@@ -3546,17 +3740,30 @@ app.get("/make-server-16010b6f/orders", async (c) => {
     
     console.log("📋 Fetching orders...");
     
+    const pageOpts = parseAdminOrdersPageQuery(c);
+
     // Check server-side cache first (30 second TTL)
     const cached = getCached('orders_minimal', 30000);
-    if (cached) {
+    if (cached && Array.isArray(cached.orders)) {
       console.log("⚡ Returning cached orders");
+      if (pageOpts) {
+        const body = jsonAdminOrdersPage(cached.orders, c, { cached: false, warning: cached.warning });
+        if (body) return c.json(body);
+      }
       return c.json(cached);
     }
     
     // Check for stale cache (up to 10min old)
     const staleCache = getCached('orders_minimal', 600000);
-    if (staleCache) {
+    if (staleCache && Array.isArray(staleCache.orders)) {
       console.log("⚡ Returning stale cache");
+      if (pageOpts) {
+        const body = jsonAdminOrdersPage(staleCache.orders, c, {
+          cached: true,
+          warning: staleCache.warning,
+        });
+        if (body) return c.json(body);
+      }
       return c.json({ 
         ...staleCache, 
         cached: true 
@@ -3610,6 +3817,11 @@ app.get("/make-server-16010b6f/orders", async (c) => {
       
       // Cache the result
       setCache('orders_minimal', response);
+
+      if (pageOpts) {
+        const body = jsonAdminOrdersPage(minimalOrders, c);
+        if (body) return c.json(body);
+      }
       
       return c.json(response);
     } catch (dbError) {

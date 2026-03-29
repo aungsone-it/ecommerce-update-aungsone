@@ -72,6 +72,9 @@ let cachedProducts: Product[] = [];
 let cachedCategories: any[] = [];
 let cachedSiteSettings: any = null;
 
+/** One in-flight GET cart per user (avoids duplicate edge calls from Strict Mode / double effects). */
+const userCartFetchPromises = new Map<string, Promise<void>>();
+
 /** Throttle catalog background refresh to limit edge/DB traffic (hobby / low-volume projects). */
 const CATALOG_BG_REFRESH_MIN_MS = 45 * 60 * 1000;
 const CATALOG_BG_KEY = 'migoo-catalog-bg-refresh-at';
@@ -1947,46 +1950,56 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // 🔥 DATABASE-FIRST: Load cart from database when user logs in or page loads
   const loadUserCart = async (userId: string) => {
-    try {
-      console.log(`🛒 Loading cart from database for user: ${userId}`);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${userId}/cart`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        const dbCart = data.cart || [];
-        
-        // Get guest cart from localStorage (if any)
-        const guestCartStr = localStorage.getItem('migoo-guest-cart');
-        const guestCart = guestCartStr ? JSON.parse(guestCartStr) : [];
-        
-        // Merge: Prefer DB cart, but add any new items from guest cart
-        const mergedCart = [...dbCart];
-        guestCart.forEach((guestItem: any) => {
-          const existsInDB = dbCart.some((dbItem: any) => 
-            dbItem.id === guestItem.id
-          );
-          if (!existsInDB) {
-            mergedCart.push(guestItem);
+    const existing = userCartFetchPromises.get(userId);
+    if (existing) {
+      await existing;
+      return;
+    }
+    const run = (async () => {
+      try {
+        console.log(`🛒 Loading cart from database for user: ${userId}`);
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${userId}/cart`,
+          {
+            headers: {
+              Authorization: `Bearer ${publicAnonKey}`,
+            },
           }
-        });
-        
-        console.log(`✅ Cart loaded: ${dbCart.length} items from DB, ${guestCart.length} guest items, ${mergedCart.length} total`);
-        setCart(mergedCart);
-        
-        // Clear guest cart after merging
-        if (guestCart.length > 0) {
-          localStorage.removeItem('migoo-guest-cart');
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const dbCart = data.cart || [];
+
+          const guestCartStr = localStorage.getItem("migoo-guest-cart");
+          const guestCart = guestCartStr ? JSON.parse(guestCartStr) : [];
+
+          const mergedCart = [...dbCart];
+          guestCart.forEach((guestItem: any) => {
+            const existsInDB = dbCart.some((dbItem: any) => dbItem.id === guestItem.id);
+            if (!existsInDB) {
+              mergedCart.push(guestItem);
+            }
+          });
+
+          console.log(
+            `✅ Cart loaded: ${dbCart.length} items from DB, ${guestCart.length} guest items, ${mergedCart.length} total`
+          );
+          setCart(mergedCart);
+
+          if (guestCart.length > 0) {
+            localStorage.removeItem("migoo-guest-cart");
+          }
         }
+      } catch (error) {
+        console.error("Failed to load user cart:", error);
       }
-    } catch (error) {
-      console.error("Failed to load user cart:", error);
+    })();
+    userCartFetchPromises.set(userId, run);
+    try {
+      await run;
+    } finally {
+      userCartFetchPromises.delete(userId);
     }
   };
 

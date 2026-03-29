@@ -5,7 +5,12 @@ import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import { useEffect, useState } from "react";
-import { projectId, publicAnonKey } from "/utils/supabase/info";
+import {
+  fetchLandingPlatformSettingsCached,
+  fetchLandingVendorsCached,
+  fetchLandingStatsCached,
+  fetchLandingCategoriesCached,
+} from "../utils/landingPageCached";
 
 // Dynamic site name - can be pulled from settings
 const SITE_NAME = "SECURE";
@@ -56,129 +61,72 @@ export function LandingPage() {
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
 
   useEffect(() => {
-    fetchVendors();
-    fetchPlatformSettings();
-    fetchLandingStats();
-    fetchCategories();
-  }, []);
+    let cancelled = false;
 
-  const fetchPlatformSettings = async () => {
-    try {
-      console.log("🔍 Fetching platform settings...");
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/platform-settings`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
+    const load = async () => {
+      setIsLoadingVendors(true);
+      setIsLoadingStats(true);
+      setIsLoadingCategories(true);
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✅ Platform settings fetched:", data);
-        if (data.settings) {
+      try {
+        const data = await fetchLandingPlatformSettingsCached();
+        if (cancelled) return;
+        if (data?.settings) {
           setPlatformSettings({
             supportPhone: data.settings.supportPhone || "+95 9 XXX XXX XXX",
-            supportEmail: data.settings.supportEmail || "support@migoo.com"
+            supportEmail: data.settings.supportEmail || "support@migoo.com",
           });
         }
-      } else {
-        console.error("❌ Failed to fetch platform settings:", response.status);
+      } catch (error) {
+        console.error("❌ Error fetching platform settings:", error);
       }
-    } catch (error) {
-      console.error("❌ Error fetching platform settings:", error);
-      // Keep default values on error
-    }
-  };
 
-  const fetchVendors = async () => {
-    try {
-      setIsLoadingVendors(true);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
+      try {
+        const data = await fetchLandingVendorsCached();
+        if (cancelled) return;
+        const activeVendors = data.vendors?.filter((v: Vendor) => v.status === "active") || [];
+        setVendors(activeVendors);
+      } catch (error) {
+        console.error("Error fetching vendors:", error);
+        if (!cancelled) setVendors([]);
+      } finally {
+        if (!cancelled) setIsLoadingVendors(false);
+      }
+
+      try {
+        const data = await fetchLandingStatsCached();
+        if (cancelled) return;
+        setStats({
+          activeVendors: data.activeVendors || 0,
+          totalProducts: data.totalProducts || 0,
+          totalCustomers: data.totalCustomers || 0,
+        });
+      } catch (error) {
+        console.error("Error fetching landing stats:", error);
+        if (!cancelled) {
+          setStats({ activeVendors: 0, totalProducts: 0, totalCustomers: 0 });
         }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch vendors");
+      } finally {
+        if (!cancelled) setIsLoadingStats(false);
       }
 
-      const data = await response.json();
-      // Only show active vendors
-      const activeVendors = data.vendors?.filter((v: Vendor) => v.status === 'active') || [];
-      setVendors(activeVendors);
-    } catch (error) {
-      console.error("Error fetching vendors:", error);
-      setVendors([]);
-    } finally {
-      setIsLoadingVendors(false);
-    }
-  };
-
-  const fetchLandingStats = async () => {
-    try {
-      setIsLoadingStats(true);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/landing-stats`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch landing stats");
+      try {
+        const data = await fetchLandingCategoriesCached();
+        if (cancelled) return;
+        setCategories(data.categories || []);
+      } catch (error) {
+        console.error("Error fetching categories:", error);
+        if (!cancelled) setCategories([]);
+      } finally {
+        if (!cancelled) setIsLoadingCategories(false);
       }
+    };
 
-      const data = await response.json();
-      setStats({
-        activeVendors: data.activeVendors || 0,
-        totalProducts: data.totalProducts || 0,
-        totalCustomers: data.totalCustomers || 0,
-      });
-    } catch (error) {
-      console.error("Error fetching landing stats:", error);
-      setStats({
-        activeVendors: 0,
-        totalProducts: 0,
-        totalCustomers: 0,
-      });
-    } finally {
-      setIsLoadingStats(false);
-    }
-  };
-
-  const fetchCategories = async () => {
-    try {
-      setIsLoadingCategories(true);
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/categories`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch categories");
-      }
-
-      const data = await response.json();
-      setCategories(data.categories || []);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-      setCategories([]);
-    } finally {
-      setIsLoadingCategories(false);
-    }
-  };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const nextSlide = () => {
     if (currentSlide < vendors.length - 2) {

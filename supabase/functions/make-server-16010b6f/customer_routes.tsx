@@ -94,6 +94,22 @@ initializeStorageBucket();
 // CUSTOMER MANAGEMENT ENDPOINTS
 // ============================================
 
+function customerSegmentFromRfm(cust: any): string {
+  const rfm = cust?.rfmScore;
+  if (!rfm || typeof rfm !== "object") return "unknown";
+  const recency = Number(rfm.recency) || 0;
+  const frequency = Number(rfm.frequency) || 0;
+  const monetary = Number(rfm.monetary) || 0;
+  const score = recency + frequency + monetary;
+  if (score >= 13) return "champions";
+  if (score >= 10 && recency >= 4) return "loyal";
+  if (score >= 8 && recency >= 3) return "potential-loyalist";
+  if (score >= 6 && recency <= 2) return "at-risk";
+  if (frequency >= 4 && recency <= 2) return "cant-lose";
+  if (score <= 6) return "hibernating";
+  return "need-attention";
+}
+
 // Get all customers
 customerApp.get("/customers", async (c) => {
   try {
@@ -122,6 +138,81 @@ customerApp.get("/customers", async (c) => {
       : [];
     
     console.log(`✅ Found ${validCustomers.length} valid customers (filtered from ${customers?.length || 0} total)`);
+
+    const pageQ = c.req.query("page");
+    if (pageQ !== undefined && pageQ !== "") {
+      const page = Math.max(1, parseInt(String(pageQ), 10) || 1);
+      const pageSize = Math.min(
+        100,
+        Math.max(1, parseInt(String(c.req.query("pageSize") || "20"), 10) || 20)
+      );
+      const qRaw = String(c.req.query("q") || "")
+        .trim()
+        .toLowerCase();
+      const statusF = String(c.req.query("status") || "all").toLowerCase();
+      const tierF = String(c.req.query("tier") || "all").toLowerCase();
+      const segmentF = String(c.req.query("segment") || "all").toLowerCase();
+
+      let rows = validCustomers.filter((cust: any) => {
+        if (statusF !== "all" && String(cust.status || "").toLowerCase() !== statusF) return false;
+        if (tierF !== "all" && String(cust.tier || "").toLowerCase() !== tierF) return false;
+        if (segmentF !== "all" && customerSegmentFromRfm(cust) !== segmentF) return false;
+        if (qRaw) {
+          const name = String(cust.name || "").toLowerCase();
+          const email = String(cust.email || "").toLowerCase();
+          if (!name.includes(qRaw) && !email.includes(qRaw)) return false;
+        }
+        return true;
+      });
+
+      rows.sort((a: any, b: any) =>
+        String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""))
+      );
+
+      const now = new Date();
+      const segCount = (tag: string) =>
+        rows.filter((cust: any) => customerSegmentFromRfm(cust) === tag).length;
+      const stats = {
+        total: rows.length,
+        active: rows.filter((cust: any) => cust.status === "active").length,
+        vip: rows.filter((cust: any) => cust.tier === "vip").length,
+        newThisMonth: rows.filter((cust: any) => {
+          const d = new Date(cust.joinDate || 0);
+          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }).length,
+        totalRevenue: rows.reduce((s: number, cust: any) => s + (Number(cust.totalSpent) || 0), 0),
+        avgLTV:
+          rows.length > 0 ?
+            rows.reduce((s: number, cust: any) => s + (Number(cust.lifetimeValue) || 0), 0) / rows.length
+          : 0,
+        champions: segCount("champions"),
+        atRisk: rows.filter((cust: any) => {
+          const seg = customerSegmentFromRfm(cust);
+          return seg === "at-risk" || seg === "cant-lose";
+        }).length,
+        segments: {
+          champions: segCount("champions"),
+          loyal: segCount("loyal"),
+          potentialLoyalist: segCount("potential-loyalist"),
+          atRisk: segCount("at-risk"),
+          cantLose: segCount("cant-lose"),
+          hibernating: segCount("hibernating"),
+          needAttention: segCount("need-attention"),
+          unknown: segCount("unknown"),
+        },
+      };
+
+      const slice = rows.slice((page - 1) * pageSize, page * pageSize);
+      return c.json({
+        success: true,
+        customers: slice,
+        total: rows.length,
+        page,
+        pageSize,
+        hasMore: page * pageSize < rows.length,
+        stats,
+      });
+    }
     
     return c.json({
       success: true,

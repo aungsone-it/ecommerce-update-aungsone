@@ -1,10 +1,40 @@
+import { useEffect, useState } from "react";
+
 /**
- * Aligns with storefront search throttling: min length + debounce apply when triggering
- * server `q` (catalog). Admin product grids use a single cached list + instant client filter
- * so typing never hits Supabase; these constants document parity and future server search.
+ * Same thresholds as vendor storefront (`VendorStoreView`): no server `q` until the box has enough
+ * characters, then one debounced request after typing pauses. Clearing the box flushes `q` immediately.
  */
 export const ADMIN_PORTAL_SEARCH_MIN_SERVER_CHARS = 3;
-export const ADMIN_PORTAL_SEARCH_DEBOUNCE_MS = 480;
+/** Aligned with `VENDOR_SEARCH_DEBOUNCE_MS` in VendorStoreView.tsx */
+export const ADMIN_PORTAL_SEARCH_DEBOUNCE_MS = 450;
+
+/**
+ * Super-admin list search: mirrors vendor catalog search — `""` until trim length ≥ min chars, then
+ * debounced server `q`. Sub-minimum input keeps server `q` empty (live client filter only on the page).
+ */
+export function useAdminPortalDebouncedSearch(live: string): string {
+  const [debounced, setDebounced] = useState(() => {
+    const t = live.trim();
+    return t.length >= ADMIN_PORTAL_SEARCH_MIN_SERVER_CHARS ? t : "";
+  });
+  useEffect(() => {
+    const raw = live.trim();
+    if (raw === "") {
+      setDebounced("");
+      return;
+    }
+    if (raw.length < ADMIN_PORTAL_SEARCH_MIN_SERVER_CHARS) {
+      setDebounced("");
+      return;
+    }
+    const id = window.setTimeout(
+      () => setDebounced(raw),
+      ADMIN_PORTAL_SEARCH_DEBOUNCE_MS
+    );
+    return () => window.clearTimeout(id);
+  }, [live]);
+  return debounced;
+}
 
 export type AdminSearchableProduct = {
   id?: string;
