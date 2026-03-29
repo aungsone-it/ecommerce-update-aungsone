@@ -1,5 +1,7 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
+import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { getVendorSubdomainBase } from "../utils/vendorSubdomainBase";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
@@ -47,6 +49,40 @@ export function VendorStorefrontPage() {
       matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null
     );
   }, [storeName, location.pathname]);
+
+  /** Old bookmarks like migooonlinestore.walwal.online → current slug migoo.walwal.online (from storefront settings). */
+  useLayoutEffect(() => {
+    const subSlug = subdomainSlug;
+    if (!subSlug) return;
+    const apex = getVendorSubdomainBase();
+    if (!apex) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/by-slug/${encodeURIComponent(subSlug)}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+        );
+        if (cancelled || !res.ok) return;
+        const data = (await res.json()) as { vendor?: { storeSlug?: string } };
+        const raw = data.vendor?.storeSlug;
+        if (typeof raw !== "string" || !raw.trim()) return;
+        const canonical = raw.trim().toLowerCase();
+        if (!canonical || canonical === subSlug.toLowerCase()) return;
+        const nextHost = `${canonical}.${apex}`;
+        if (window.location.hostname.toLowerCase() === nextHost) return;
+        const dest = new URL(window.location.href);
+        dest.hostname = nextHost;
+        window.location.replace(dest.toString());
+      } catch {
+        /* non-fatal */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [subdomainSlug]);
 
   if (!storeName) {
     return (
