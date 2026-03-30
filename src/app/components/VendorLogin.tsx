@@ -4,6 +4,8 @@ import { useVendorAuth } from '../contexts/VendorAuthContext';
 import { ArrowLeft, Eye, EyeOff, Store } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { resolveVendorSubdomainStoreSlug } from '../utils/vendorSubdomainHooks';
+import { getEffectiveVendorSubdomainBase } from '../utils/vendorSubdomainBase';
+import { subdomainHostLabelForStoreSlug } from '../utils/subdomainSlugMap';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -28,16 +30,33 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   const [vendorName, setVendorName] = useState<string>('');
   const [loadingVendor, setLoadingVendor] = useState(!!storeName);
 
-  // Redirect to vendor admin panel after successful login
+  // After login: prefer vendor subdomain /admin (same as direct gogo.* entry) when slug maps; else /store/:slug/admin.
+  // Shared cookie (apex domain) carries session across www → subdomain navigation.
   useEffect(() => {
-    if (!vendor?.storeSlug) return;
+    if (!vendor?.vendorId || !vendor.storeSlug) return;
+
     const onVendorHost = !!resolveVendorSubdomainStoreSlug();
+    if (onVendorHost) {
+      console.log('✅ [VendorLogin] On vendor host → /admin');
+      navigate('/admin', { replace: true });
+      return;
+    }
+
+    const base = getEffectiveVendorSubdomainBase();
+    const hostLabel = subdomainHostLabelForStoreSlug(vendor.storeSlug);
+    if (base && hostLabel && typeof window !== 'undefined') {
+      const proto = window.location.protocol;
+      const target = `${proto}//${hostLabel}.${base}/admin`;
+      console.log('✅ [VendorLogin] Redirecting to vendor subdomain admin:', target);
+      window.location.replace(target);
+      return;
+    }
+
     console.log(
-      '✅ [VendorLogin] Vendor authenticated, redirecting to admin panel:',
-      vendor.storeSlug,
-      onVendorHost ? '(subdomain /admin)' : '(path /store/.../admin)'
+      '✅ [VendorLogin] No subdomain map for slug; using path admin:',
+      vendor.storeSlug
     );
-    navigate(onVendorHost ? '/admin' : `/store/${vendor.storeSlug}/admin`, { replace: true });
+    navigate(`/store/${encodeURIComponent(vendor.storeSlug)}/admin`, { replace: true });
   }, [vendor, navigate]);
 
   // Fetch vendor data to get the actual name

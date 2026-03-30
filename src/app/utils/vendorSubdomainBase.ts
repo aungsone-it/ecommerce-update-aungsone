@@ -15,3 +15,22 @@ export function getVendorSubdomainBase(): string {
   if (fromEnv) return fromEnv;
   return "";
 }
+
+/**
+ * Like getVendorSubdomainBase, but when the browser is already on a 2-label apex
+ * (e.g. walwal.online), returns that host — deriveNaiveVendorApexFromHost only handles 3+ labels.
+ */
+export function getEffectiveVendorSubdomainBase(): string {
+  const base = getVendorSubdomainBase().trim().toLowerCase();
+  if (base || typeof window === "undefined") return base;
+  const host = window.location.hostname.toLowerCase();
+  const labels = host.split(".").filter(Boolean);
+  if (
+    labels.length === 2 &&
+    host !== "localhost" &&
+    !/^\d{1,3}(\.\d{1,3}){3}$/.test(host)
+  ) {
+    return host;
+  }
+  return "";
+}

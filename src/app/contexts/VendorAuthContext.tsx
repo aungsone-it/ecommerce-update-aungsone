@@ -2,6 +2,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { storeSlugFromBusinessName } from '../../utils/storeSlug';
+import {
+  setVendorAuthSessionCookie,
+  readVendorAuthSessionCookie,
+  clearVendorAuthSessionCookie,
+} from '../utils/vendorAuthCookie';
 
 export interface VendorUser {
   id: string;
@@ -36,14 +41,23 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
   const checkSession = () => {
     try {
       console.log('🔍 [VendorAuth] Checking for existing vendor session...');
-      
+
       const storedVendor = localStorage.getItem('vendorAuth');
       if (storedVendor) {
         const vendorData = JSON.parse(storedVendor);
         console.log('✅ [VendorAuth] Found existing session for vendor:', vendorData.email);
         setVendor(vendorData);
       } else {
-        console.log('ℹ️ [VendorAuth] No existing session found');
+        const fromCookie = readVendorAuthSessionCookie();
+        if (fromCookie) {
+          console.log('✅ [VendorAuth] Restored session from shared cookie:', fromCookie.vendor.email);
+          setVendor(fromCookie.vendor);
+          if (fromCookie.rememberMe) {
+            localStorage.setItem('vendorAuth', JSON.stringify(fromCookie.vendor));
+          }
+        } else {
+          console.log('ℹ️ [VendorAuth] No existing session found');
+        }
       }
     } catch (error) {
       console.error('❌ [VendorAuth] Session check error:', error);
@@ -83,12 +97,25 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
       
       if (data.success && data.vendor) {
         console.log('✅ [VendorAuth] Login successful for vendor:', data.vendor.email);
-        
-        // Generate storeSlug if missing (same algorithm as server)
-        const storeSlug =
+
+        let storeSlug =
           data.vendor.storeSlug ||
           storeSlugFromBusinessName(data.vendor.storeName || data.vendor.name || "");
-        
+
+        try {
+          const fr = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${encodeURIComponent(data.vendor.id)}`,
+            { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+          );
+          if (fr.ok) {
+            const fd = (await fr.json()) as { settings?: { storeSlug?: string } };
+            const s = fd.settings?.storeSlug?.trim();
+            if (s) storeSlug = s;
+          }
+        } catch {
+          /* keep login API slug */
+        }
+
         const vendorData: VendorUser = {
           id: data.vendor.id,
           email: data.vendor.email,
@@ -99,14 +126,15 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
           storeName: data.vendor.storeName,
           storeSlug: storeSlug,
         };
-        
+
         setVendor(vendorData);
-        
-        // Store in localStorage if remember me
+
         if (rememberMe) {
           localStorage.setItem('vendorAuth', JSON.stringify(vendorData));
         }
-        
+
+        setVendorAuthSessionCookie(vendorData, rememberMe);
+
         return { success: true };
       }
 
@@ -121,6 +149,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
     console.log('🔓 [VendorAuth] Logging out vendor...');
     setVendor(null);
     localStorage.removeItem('vendorAuth');
+    clearVendorAuthSessionCookie();
     console.log('✅ [VendorAuth] Logout successful');
   };
 

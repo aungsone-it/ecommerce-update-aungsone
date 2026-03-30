@@ -46,3 +46,18 @@ export function getCanonicalSubdomainLabelIfSlugForm(label: string): string | nu
   }
   return null;
 }
+
+/**
+ * Host label for `https://{label}.{apex}/admin` from a path store slug (e.g. go-go → gogo).
+ * Returns null if the slug is not mapped (caller falls back to `/store/:slug/admin`).
+ */
+export function subdomainHostLabelForStoreSlug(storeSlug: string): string | null {
+  const trimmed = String(storeSlug || "").trim();
+  if (!trimmed) return null;
+  const fromMappedValue = getCanonicalSubdomainLabelIfSlugForm(trimmed);
+  if (fromMappedValue) return fromMappedValue;
+  const map = parseSubdomainSlugMap();
+  const lower = trimmed.toLowerCase();
+  if (map[lower] != null) return lower;
+  return null;
+}

@@ -14,6 +14,10 @@ import { compressImage } from "../../../utils/imageCompression";
 import { cacheManager } from "../../utils/cacheManager";
 import { invalidateVendorStorefrontCatalogCache } from "../../utils/module-cache";
 import { storeSlugFromBusinessName } from "../../../utils/storeSlug";
+import {
+  setVendorAuthSessionCookie,
+  readVendorAuthSessionCookie,
+} from "../../utils/vendorAuthCookie";
 
 interface StoreSettings {
   vendorId: string;
@@ -146,6 +150,9 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
             vendorData.storeName = saved.storeName;
             vendorData.storeSlug = saved.storeSlug;
             localStorage.setItem("vendorAuth", JSON.stringify(vendorData));
+            const rememberMe =
+              readVendorAuthSessionCookie()?.rememberMe ?? true;
+            setVendorAuthSessionCookie(vendorData, rememberMe);
           }
 
           console.log("🔄 Invalidating caches after settings update");
