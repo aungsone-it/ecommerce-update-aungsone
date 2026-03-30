@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Component, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, Component, type ReactNode } from "react";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { 
   ArrowLeft, 
@@ -20,7 +20,9 @@ import {
   RefreshCw,
   Plus,
   Search,
-  Check
+  Check,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -41,9 +43,23 @@ import {
 } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Checkbox } from "./ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { VendorStorefront } from "./VendorStorefront";
 import { toast } from "sonner";
-import { getCachedAdminOrdersPayload } from "../utils/module-cache";
+import {
+  getCachedAdminOrdersPayload,
+  getCachedAdminProductsPage,
+  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+  CACHE_KEYS,
+  moduleCache,
+  invalidateAdminAllProductsCache,
+} from "../utils/module-cache";
 
 type VendorStatus = "active" | "inactive" | "pending" | "suspended" | "banned";
 
@@ -306,11 +322,17 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   
   // Product selection modal state
   const [showProductSelectModal, setShowProductSelectModal] = useState(false);
+  /** Paged mode: current API page rows (already filtered to unassigned for this vendor). */
   const [allPlatformProducts, setAllPlatformProducts] = useState<any[]>([]);
   const [loadingAllProducts, setLoadingAllProducts] = useState(false);
   const [searchProductQuery, setSearchProductQuery] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [savingProducts, setSavingProducts] = useState(false);
+  const [assignPickerPage, setAssignPickerPage] = useState(1);
+  const [assignPickerPageSize, setAssignPickerPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const [assignPickerUseFullCache, setAssignPickerUseFullCache] = useState(false);
+  const [assignPickerServerTotal, setAssignPickerServerTotal] = useState(0);
+  const [assignPickerServerHasMore, setAssignPickerServerHasMore] = useState(false);
   
   // 🔥 Track vendor logo with state that can be updated (prioritize logo over avatar)
   const [currentVendorLogo, setCurrentVendorLogo] = useState<string>(vendor.logo || vendor.avatar || "");
@@ -327,6 +349,11 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   vendorRef.current = vendor;
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products;
+
+  const isProductAssignedToThisVendor = useCallback(
+    (p: any) => p?.selectedVendors?.includes(vendor.id) || p?.vendorId === vendor.id,
+    [vendor.id]
+  );
 
   // Fetch vendor's orders (load immediately for stats)
   useEffect(() => {
@@ -686,40 +713,75 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     );
   };
 
-  // Load all platform products for selection modal
-  const loadAllPlatformProducts = async () => {
-    setLoadingAllProducts(true);
-    try {
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products`, {
-        method: "GET",
-        headers: {
-          "Authorization": `Bearer ${publicAnonKey}`,
-        },
-      });
+  useEffect(() => {
+    if (!showProductSelectModal) return;
 
-      if (response.ok) {
-        const data = await response.json();
-        // Filter out products already assigned to this vendor
-        const availableProducts = data.products?.filter((p: any) => {
-          const isAssigned = p.selectedVendors?.includes(vendor.id) || p.vendorId === vendor.id;
-          return !isAssigned;
-        }) || [];
-        setAllPlatformProducts(availableProducts);
-      }
-    } catch (error) {
-      console.error("Error loading platform products:", error);
-      toast.error("Failed to load products");
-    } finally {
+    const full = moduleCache.peek<unknown[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+    if (full && Array.isArray(full) && full.length > 0) {
+      setAssignPickerUseFullCache(true);
       setLoadingAllProducts(false);
+      setAssignPickerServerTotal(0);
+      setAssignPickerServerHasMore(false);
+      setAllPlatformProducts([]);
+      return;
     }
-  };
+
+    setAssignPickerUseFullCache(false);
+    let cancelled = false;
+
+    void (async () => {
+      setLoadingAllProducts(true);
+      try {
+        const payload = await getCachedAdminProductsPage(
+          {
+            page: assignPickerPage,
+            pageSize: assignPickerPageSize,
+            q: searchProductQuery.trim(),
+            tab: "all",
+            status: "all",
+            vendor: "all",
+            collaborator: "all",
+            sort: "newest",
+          },
+          false
+        );
+        if (cancelled) return;
+        const rows = (payload.products || []).filter((p: any) => !isProductAssignedToThisVendor(p));
+        setAllPlatformProducts(rows);
+        setAssignPickerServerTotal(payload.total);
+        setAssignPickerServerHasMore(!!payload.hasMore);
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Assign picker: failed to load products page", error);
+          toast.error("Failed to load products");
+          setAllPlatformProducts([]);
+          setAssignPickerServerTotal(0);
+          setAssignPickerServerHasMore(false);
+        }
+      } finally {
+        if (!cancelled) setLoadingAllProducts(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    showProductSelectModal,
+    assignPickerPage,
+    assignPickerPageSize,
+    searchProductQuery,
+    isProductAssignedToThisVendor,
+  ]);
 
   // Open product selection modal
   const handleSelectProduct = () => {
     setSelectedProductIds([]);
     setSearchProductQuery("");
+    setAssignPickerPage(1);
+    setAssignPickerPageSize(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+    setLoadingAllProducts(true);
     setShowProductSelectModal(true);
-    loadAllPlatformProducts();
   };
 
   // Toggle product selection
@@ -771,6 +833,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
       }
       setShowProductSelectModal(false);
       setSelectedProductIds([]);
+      invalidateAdminAllProductsCache();
 
       await loadProducts();
     } catch (error) {
@@ -783,14 +846,58 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     }
   };
 
-  // Filter products by search query
-  const filteredPlatformProducts = allPlatformProducts.filter((product) => {
-    const query = searchProductQuery.toLowerCase();
-    const name = String(product?.name ?? "").toLowerCase();
-    const sku = String(product?.sku ?? "").toLowerCase();
-    const category = String(product?.category ?? "").toLowerCase();
-    return name.includes(query) || sku.includes(query) || category.includes(query);
-  });
+  const pickerAssignableFromFullCache = useMemo(() => {
+    if (!showProductSelectModal || !assignPickerUseFullCache) return [];
+    const full = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+    if (!full || !Array.isArray(full)) return [];
+    const q = searchProductQuery.toLowerCase().trim();
+    return full
+      .filter((p) => !isProductAssignedToThisVendor(p))
+      .filter((p) => {
+        if (!q) return true;
+        const name = String(p?.name ?? "").toLowerCase();
+        const sku = String(p?.sku ?? "").toLowerCase();
+        const category = String(p?.category ?? "").toLowerCase();
+        return name.includes(q) || sku.includes(q) || category.includes(q);
+      });
+  }, [
+    showProductSelectModal,
+    assignPickerUseFullCache,
+    searchProductQuery,
+    isProductAssignedToThisVendor,
+  ]);
+
+  const displayPickerRows = useMemo(() => {
+    if (assignPickerUseFullCache) {
+      const start = (assignPickerPage - 1) * assignPickerPageSize;
+      return pickerAssignableFromFullCache.slice(start, start + assignPickerPageSize);
+    }
+    return allPlatformProducts;
+  }, [
+    assignPickerUseFullCache,
+    pickerAssignableFromFullCache,
+    assignPickerPage,
+    assignPickerPageSize,
+    allPlatformProducts,
+  ]);
+
+  const assignPickerTotalPages = assignPickerUseFullCache
+    ? Math.max(1, Math.ceil(pickerAssignableFromFullCache.length / assignPickerPageSize) || 1)
+    : Math.max(1, Math.ceil(assignPickerServerTotal / assignPickerPageSize) || 1);
+
+  const assignPickerFooterProductCount = assignPickerUseFullCache
+    ? pickerAssignableFromFullCache.length
+    : assignPickerServerTotal;
+
+  const assignPickerCanGoNext = assignPickerUseFullCache
+    ? assignPickerPage < assignPickerTotalPages
+    : assignPickerServerHasMore;
+
+  const pickerShowEmpty =
+    !loadingAllProducts &&
+    (assignPickerUseFullCache
+      ? pickerAssignableFromFullCache.length === 0
+      : allPlatformProducts.length === 0 && !assignPickerServerHasMore);
 
   return (
     <div className="p-6 space-y-6">
@@ -1424,7 +1531,10 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               type="text"
               placeholder="Search products by name, SKU, or category..."
               value={searchProductQuery}
-              onChange={(e) => setSearchProductQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchProductQuery(e.target.value);
+                setAssignPickerPage(1);
+              }}
               className="pl-10"
             />
           </div>
@@ -1479,7 +1589,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                   </tbody>
                 </table>
               </div>
-            ) : filteredPlatformProducts.length === 0 ? (
+            ) : pickerShowEmpty ? (
               <div className="text-center py-12">
                 <Package className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-slate-900 mb-1">No Products Found</h3>
@@ -1494,12 +1604,17 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                     <tr className="border-b border-slate-200">
                       <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
                         <Checkbox
-                          checked={selectedProductIds.length === filteredPlatformProducts.length && filteredPlatformProducts.length > 0}
+                          checked={
+                            displayPickerRows.length > 0 &&
+                            displayPickerRows.every((p) => selectedProductIds.includes(p.id))
+                          }
                           onCheckedChange={(checked) => {
                             if (checked) {
-                              setSelectedProductIds(filteredPlatformProducts.map(p => p.id));
+                              const ids = displayPickerRows.map((p) => p.id);
+                              setSelectedProductIds((prev) => Array.from(new Set([...prev, ...ids])));
                             } else {
-                              setSelectedProductIds([]);
+                              const drop = new Set(displayPickerRows.map((p) => p.id));
+                              setSelectedProductIds((prev) => prev.filter((id) => !drop.has(id)));
                             }
                           }}
                         />
@@ -1513,7 +1628,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {filteredPlatformProducts.map((product) => (
+                    {displayPickerRows.map((product) => (
                       <tr 
                         key={product.id} 
                         className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
@@ -1561,12 +1676,67 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
             )}
           </div>
 
+          {!loadingAllProducts && !pickerShowEmpty && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1 py-2 border border-slate-200 rounded-lg bg-slate-50/80">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <span>Rows per page</span>
+                <Select
+                  value={String(assignPickerPageSize)}
+                  onValueChange={(v) => {
+                    setAssignPickerPageSize(Number(v));
+                    setAssignPickerPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-[88px] h-8">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="15">15</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-slate-500">
+                  Page {assignPickerPage} of {assignPickerTotalPages} · {assignPickerFooterProductCount}{" "}
+                  {assignPickerUseFullCache ? "available to add" : "products"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={assignPickerPage <= 1 || loadingAllProducts}
+                  onClick={() => setAssignPickerPage((p) => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8"
+                  disabled={!assignPickerCanGoNext || loadingAllProducts}
+                  onClick={() => setAssignPickerPage((p) => p + 1)}
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Footer with stats and actions */}
           <DialogFooter className="flex items-center justify-between border-t border-slate-200 pt-4">
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <span>{selectedProductIds.length} selected</span>
               <span className="text-slate-400">•</span>
-              <span>{filteredPlatformProducts.length} available</span>
+              <span>
+                {assignPickerUseFullCache
+                  ? `${pickerAssignableFromFullCache.length} available to add`
+                  : `${assignPickerServerTotal} products in catalog`}
+              </span>
             </div>
             <div className="flex gap-2">
               <Button
