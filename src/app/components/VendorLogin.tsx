@@ -30,8 +30,8 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   const [vendorName, setVendorName] = useState<string>('');
   const [loadingVendor, setLoadingVendor] = useState(!!storeName);
 
-  // After login: prefer vendor subdomain /admin (same as direct gogo.* entry) when slug maps; else /store/:slug/admin.
-  // Shared cookie (apex domain) carries session across www → subdomain navigation.
+  // After login: prefer vendor subdomain /admin when slug/name maps; else /store/:slug/admin.
+  // Re-fetch storefront so storeName/slug match KV before resolving gogo.* (branding-page login).
   useEffect(() => {
     if (!vendor?.vendorId || !vendor.storeSlug) return;
 
@@ -42,27 +42,59 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
       return;
     }
 
-    const base = getEffectiveVendorSubdomainBase();
-    const hostLabel = subdomainHostLabelForVendorProfile({
-      storeSlug: vendor.storeSlug,
-      vendorId: vendor.vendorId,
-      storeName: vendor.storeName,
-      businessName: vendor.businessName,
-      name: vendor.name,
-    });
-    if (base && hostLabel && typeof window !== 'undefined') {
-      const proto = window.location.protocol;
-      const target = `${proto}//${hostLabel}.${base}/admin`;
-      console.log('✅ [VendorLogin] Redirecting to vendor subdomain admin:', target);
-      window.location.replace(target);
-      return;
-    }
+    let cancelled = false;
+    (async () => {
+      let merged = { ...vendor };
+      try {
+        const res = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${encodeURIComponent(vendor.vendorId)}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+        );
+        if (res.ok) {
+          const data = (await res.json()) as {
+            settings?: { storeSlug?: string; storeName?: string };
+          };
+          const s = data.settings;
+          if (s) {
+            merged = {
+              ...merged,
+              storeSlug: s.storeSlug?.trim() || merged.storeSlug,
+              storeName: s.storeName?.trim() || merged.storeName,
+            };
+          }
+        }
+      } catch {
+        /* use auth vendor */
+      }
+      if (cancelled) return;
 
-    console.log(
-      '✅ [VendorLogin] No subdomain map for slug; using path admin:',
-      vendor.storeSlug
-    );
-    navigate(`/store/${encodeURIComponent(vendor.storeSlug)}/admin`, { replace: true });
+      const base = getEffectiveVendorSubdomainBase();
+      const hostLabel = subdomainHostLabelForVendorProfile({
+        storeSlug: merged.storeSlug,
+        vendorId: merged.vendorId,
+        storeName: merged.storeName,
+        businessName: merged.businessName,
+        name: merged.name,
+        email: merged.email,
+      });
+      if (base && hostLabel && typeof window !== 'undefined') {
+        const proto = window.location.protocol;
+        const target = `${proto}//${hostLabel}.${base}/admin`;
+        console.log('✅ [VendorLogin] Redirecting to vendor subdomain admin:', target);
+        window.location.replace(target);
+        return;
+      }
+
+      console.log(
+        '✅ [VendorLogin] No subdomain map for slug; using path admin:',
+        merged.storeSlug
+      );
+      navigate(`/store/${encodeURIComponent(merged.storeSlug)}/admin`, { replace: true });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [vendor, navigate]);
 
   // Fetch vendor data to get the actual name
