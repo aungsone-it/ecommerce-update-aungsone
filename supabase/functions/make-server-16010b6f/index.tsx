@@ -7232,8 +7232,9 @@ async function buildCustomerEmailToAvatarMap(): Promise<Map<string, string>> {
 }
 
 /**
- * Resolve customer profile image: prefer real photos from `user:` KV or `customer:` records.
- * Replaces empty values and placeholder (Dicebear) URLs when a real image exists.
+ * Resolve customer profile image: always prefer canonical sources (`customer:` map, `user:` KV)
+ * over whatever is stored on the conversation, so the admin chat list shows the latest profile
+ * photo after the customer updates it. Conversation snapshots are only a fallback.
  */
 async function resolveCustomerProfileImage(
   email: string,
@@ -7243,13 +7244,6 @@ async function resolveCustomerProfileImage(
   const trimmed = (email || "").trim();
   const existing = (existingUrl || "").trim();
   const lower = trimmed.toLowerCase();
-
-  const shouldReplace =
-    !existing ||
-    !existing.startsWith("http") ||
-    isPlaceholderAvatarUrl(existing);
-
-  if (!shouldReplace) return existing;
   if (!trimmed) return existing;
 
   if (customerAvatarMap?.has(lower)) {
@@ -7290,7 +7284,39 @@ async function resolveCustomerProfileImage(
     }
   }
 
+  if (existing.startsWith("http") && !isPlaceholderAvatarUrl(existing)) {
+    return existing;
+  }
+
   return existing;
+}
+
+/** Same customer email may have multiple vendor threads; use the avatar from the most recently active thread when KV has no photo. */
+function mergeLatestAvatarAcrossConversationsByEmail(conversations: any[]): any[] {
+  const emailToBest = new Map<string, { url: string; t: number }>();
+  for (const conv of conversations) {
+    const em = String(conv?.customerEmail || "")
+      .toLowerCase()
+      .trim();
+    if (!em) continue;
+    const img = String(conv?.customerProfileImage || "").trim();
+    if (!img.startsWith("http") || isPlaceholderAvatarUrl(img)) continue;
+    const t = Date.parse(conv?.timestamp || "") || 0;
+    const prev = emailToBest.get(em);
+    if (!prev || t >= prev.t) {
+      emailToBest.set(em, { url: img, t });
+    }
+  }
+  return conversations.map((conv) => {
+    const em = String(conv?.customerEmail || "")
+      .toLowerCase()
+      .trim();
+    const best = em ? emailToBest.get(em) : undefined;
+    if (best?.url) {
+      return { ...conv, customerProfileImage: best.url };
+    }
+    return conv;
+  });
 }
 
 // Get all chat conversations
@@ -7308,7 +7334,7 @@ app.get("/make-server-16010b6f/chat/conversations", async (c) => {
 
     // Enrich avatars from customer: + user: KV (replaces Dicebear/empty when a real photo exists)
     const customerAvatarMap = await buildCustomerEmailToAvatarMap();
-    const enriched = await Promise.all(
+    const enrichedRaw = await Promise.all(
       (conversations || []).map(async (conv: any) => {
         if (!conv?.customerEmail) return conv;
         const img = await resolveCustomerProfileImage(
@@ -7328,6 +7354,8 @@ app.get("/make-server-16010b6f/chat/conversations", async (c) => {
         return conv;
       })
     );
+
+    const enriched = mergeLatestAvatarAcrossConversationsByEmail(enrichedRaw);
 
     console.log(`📨 Retrieved ${enriched.length} conversations`);
     return c.json({ conversations: enriched });

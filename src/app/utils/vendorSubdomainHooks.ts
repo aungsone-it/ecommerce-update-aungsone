@@ -31,6 +31,12 @@ export function pathnameUnderAdmin(pathname: string): boolean {
   return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+/** Super-admin `/admin`, vendor-host `/admin`, and marketplace `/store|vendor/:slug/admin` panels — hide storefront-only UI (e.g. FloatingChat). */
+export function isAdminPortalRoute(pathname: string): boolean {
+  if (pathnameUnderAdmin(pathname)) return true;
+  return /\/(store|vendor)\/[^/]+\/admin(?:\/|$)/.test(pathname);
+}
+
 /** True when the vendor panel should use paths under `/admin` (vendor subdomain host), not `/store/{slug}/admin`. */
 export function isVendorSubdomainAdminPath(pathname: string): boolean {
   return !!resolveVendorSubdomainStoreSlug() && pathnameUnderAdmin(pathname);

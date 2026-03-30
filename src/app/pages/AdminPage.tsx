@@ -85,6 +85,10 @@ export function AdminPage() {
   const [adminHeaderProductSearch, setAdminHeaderProductSearch] = useState("");
   /** Bumped when user presses Enter in TopNav on Products — ProductList applies `q` then. */
   const [headerProductSearchCommitTick, setHeaderProductSearchCommitTick] = useState(0);
+  /** Product list total for breadcrumb «n» (All Products page only) */
+  const [productListingBreadcrumbCount, setProductListingBreadcrumbCount] = useState<number | null>(
+    null
+  );
   /** When set, Chat opens this customer's thread (from Customers → Message). */
   const [chatHandoff, setChatHandoff] = useState<{
     email: string;
@@ -184,6 +188,10 @@ export function AdminPage() {
     setCurrentPage(ADMIN_PAGES.GLOBAL_SEARCH);
     setAdminHeaderProductSearch(qParam);
   }, [resolvedAdminSection, qParam]);
+
+  useEffect(() => {
+    if (currentPage !== ADMIN_PAGES.PRODUCT) setProductListingBreadcrumbCount(null);
+  }, [currentPage]);
   
   // 🔗 currentPage → URL: Update URL when page changes
   const isInitialMount = useRef(true);
@@ -446,6 +454,7 @@ export function AdminPage() {
             headerSearchQuery={adminHeaderProductSearch}
             onHeaderSearchQueryChange={setAdminHeaderProductSearch}
             headerSearchCommitTick={headerProductSearchCommitTick}
+            onListingCountChange={setProductListingBreadcrumbCount}
           />
         );
       case ADMIN_PAGES.CATEGORIES:
@@ -639,6 +648,9 @@ export function AdminPage() {
                     setCurrentPage(page as AdminPage);
                     setSidebarOpen(false);
                   }}
+                  listingCount={
+                    currentPage === ADMIN_PAGES.PRODUCT ? productListingBreadcrumbCount : null
+                  }
                 />
               </div>
               {renderContent()}

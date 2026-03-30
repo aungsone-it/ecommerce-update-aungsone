@@ -62,6 +62,7 @@ import {
   reuseAssignPickerSession,
   type VendorAssignPickerSession,
 } from "../../utils/vendorAssignPickerSession";
+import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 
 /**
  * True when the in-memory assignable list can render this page/window without hitting the API.
@@ -159,6 +160,8 @@ export function VendorAdminProductsCRUD({
   const [savingPicker, setSavingPicker] = useState(false);
   const [assignPickerPage, setAssignPickerPage] = useState(1);
   const [assignPickerPageSize, setAssignPickerPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const [vendorListPage, setVendorListPage] = useState(1);
+  const [vendorListPageSize, setVendorListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [assignPickerUseFullCache, setAssignPickerUseFullCache] = useState(false);
   const [assignPickerServerTotal, setAssignPickerServerTotal] = useState(0);
   const [assignPickerServerHasMore, setAssignPickerServerHasMore] = useState(false);
@@ -607,14 +610,28 @@ export function VendorAdminProductsCRUD({
     });
   }, [products, searchQuery, statusFilter]);
 
-  // Sort products
-  const sortedProducts = [...filteredProducts].sort((a, b) => {
-    if (sortBy === "newest") {
-      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
-    } else {
+  const sortedProducts = useMemo(() => {
+    return [...filteredProducts].sort((a, b) => {
+      if (sortBy === "newest") {
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+      }
       return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
-    }
-  });
+    });
+  }, [filteredProducts, sortBy]);
+
+  useEffect(() => {
+    setVendorListPage(1);
+  }, [searchQuery, statusFilter, sortBy]);
+
+  useEffect(() => {
+    const tp = Math.max(1, Math.ceil(sortedProducts.length / vendorListPageSize) || 1);
+    setVendorListPage((p) => Math.min(p, tp));
+  }, [sortedProducts.length, vendorListPageSize]);
+
+  const pagedSortedProducts = useMemo(() => {
+    const start = (vendorListPage - 1) * vendorListPageSize;
+    return sortedProducts.slice(start, start + vendorListPageSize);
+  }, [sortedProducts, vendorListPage, vendorListPageSize]);
 
   // Get status counts
   const getStatusCount = (status: "all" | "active" | "off-shelf") => {
@@ -633,12 +650,13 @@ export function VendorAdminProductsCRUD({
     );
   };
 
-  // Toggle select all
+  const pageProductIds = pagedSortedProducts.map((p) => p.id);
+
   const toggleSelectAll = () => {
-    if (selectedProducts.length === sortedProducts.length && sortedProducts.length > 0) {
-      setSelectedProducts([]);
+    if (pageProductIds.length > 0 && pageProductIds.every((id) => selectedProducts.includes(id))) {
+      setSelectedProducts((prev) => prev.filter((id) => !pageProductIds.includes(id)));
     } else {
-      setSelectedProducts(sortedProducts.map(p => p.id));
+      setSelectedProducts((prev) => Array.from(new Set([...prev, ...pageProductIds])));
     }
   };
 
@@ -804,7 +822,10 @@ export function VendorAdminProductsCRUD({
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th className="text-left py-3 px-4 w-12">
                     <Checkbox
-                      checked={selectedProducts.length === sortedProducts.length && sortedProducts.length > 0}
+                      checked={
+                        pageProductIds.length > 0 &&
+                        pageProductIds.every((id) => selectedProducts.includes(id))
+                      }
                       onCheckedChange={toggleSelectAll}
                     />
                   </th>
@@ -817,7 +838,7 @@ export function VendorAdminProductsCRUD({
                 </tr>
               </thead>
               <tbody>
-                {sortedProducts.map((product) => (
+                {pagedSortedProducts.map((product) => (
                   <tr key={product.id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="py-3 px-4">
                       <Checkbox
@@ -888,14 +909,19 @@ export function VendorAdminProductsCRUD({
               </tbody>
             </table>
           </div>
+          {sortedProducts.length > 0 && (
+            <VendorAdminListingPagination
+              variant="cardFooter"
+              page={vendorListPage}
+              pageSize={vendorListPageSize}
+              totalCount={sortedProducts.length}
+              onPageChange={setVendorListPage}
+              onPageSizeChange={setVendorListPageSize}
+              itemLabel="products"
+              loading={loading}
+            />
+          )}
         </Card>
-      )}
-
-      {/* Summary Footer */}
-      {sortedProducts.length > 0 && (
-        <div className="text-sm text-slate-500 text-center py-4">
-          Showing {sortedProducts.length} of {products.length} products
-        </div>
       )}
 
       <Dialog

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Search, Plus, Edit, Trash2, X, FolderOpen, Info, Eye, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -15,7 +15,9 @@ import {
   invalidateVendorProductsAdminCache,
   moduleCache,
   CACHE_KEYS,
+  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
 } from "../../utils/module-cache";
+import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 
 interface Product {
   id: string;
@@ -72,6 +74,8 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
   const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [listPage, setListPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
 
   // Register cache invalidation
   useEffect(() => {
@@ -137,15 +141,38 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  const filteredCategories = categories.filter(category =>
-    category.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredCategories = useMemo(
+    () =>
+      categories.filter((category) =>
+        category.name.toLowerCase().includes(searchQuery.toLowerCase())
+      ),
+    [categories, searchQuery]
   );
 
+  useEffect(() => {
+    setListPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const tp = Math.max(1, Math.ceil(filteredCategories.length / listPageSize) || 1);
+    setListPage((p) => Math.min(p, tp));
+  }, [filteredCategories.length, listPageSize]);
+
+  const pagedCategories = useMemo(() => {
+    const start = (listPage - 1) * listPageSize;
+    return filteredCategories.slice(start, start + listPageSize);
+  }, [filteredCategories, listPage, listPageSize]);
+
+  const pageCategoryNames = pagedCategories.map((c) => c.name);
+
   const toggleSelectAll = () => {
-    if (selectedCategories.length === filteredCategories.length && filteredCategories.length > 0) {
-      setSelectedCategories([]);
+    if (
+      pageCategoryNames.length > 0 &&
+      pageCategoryNames.every((name) => selectedCategories.includes(name))
+    ) {
+      setSelectedCategories((prev) => prev.filter((n) => !pageCategoryNames.includes(n)));
     } else {
-      setSelectedCategories(filteredCategories.map(c => c.name));
+      setSelectedCategories((prev) => Array.from(new Set([...prev, ...pageCategoryNames])));
     }
   };
 
@@ -271,7 +298,10 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
                 <tr className="border-b border-slate-200 bg-white">
                   <th className="text-left py-3 px-4 w-12">
                     <Checkbox
-                      checked={selectedCategories.length === filteredCategories.length && filteredCategories.length > 0}
+                      checked={
+                        pageCategoryNames.length > 0 &&
+                        pageCategoryNames.every((name) => selectedCategories.includes(name))
+                      }
                       onCheckedChange={toggleSelectAll}
                     />
                   </th>
@@ -284,7 +314,7 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {filteredCategories.map((category) => (
+                {pagedCategories.map((category) => (
                   <tr key={category.name} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="py-3 px-4">
                       <Checkbox
@@ -333,6 +363,16 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
               </tbody>
             </table>
           </div>
+          <VendorAdminListingPagination
+            variant="cardFooter"
+            page={listPage}
+            pageSize={listPageSize}
+            totalCount={filteredCategories.length}
+            onPageChange={setListPage}
+            onPageSizeChange={setListPageSize}
+            itemLabel="categories"
+            loading={loading || listRefreshing}
+          />
         </Card>
       )}
     </div>

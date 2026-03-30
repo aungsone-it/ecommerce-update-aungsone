@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { POLLING_INTERVALS_MS } from "../../constants";
+import { CHAT_SCROLL_DEBOUNCE_MS, POLLING_INTERVALS_MS } from "../../constants";
 import imageCompression from "browser-image-compression";
 import {
   MessageSquare,
@@ -78,6 +78,41 @@ export interface ChatInitialCustomer {
   avatar?: string;
 }
 
+function isGeneratedChatAvatarUrl(url: string): boolean {
+  const u = (url || "").trim().toLowerCase();
+  if (!u.startsWith("http")) return true;
+  return (
+    u.includes("dicebear.com") ||
+    u.includes("ui-avatars.com") ||
+    u.includes("robohash.org") ||
+    u.includes("avatar.vercel.sh")
+  );
+}
+
+/** Same email can have multiple threads; show one profile photo — newest activity wins (matches server merge). */
+function mergeConversationAvatarsByEmail(conversations: Conversation[]): Conversation[] {
+  const emailToBest = new Map<string, { url: string; t: number }>();
+  for (const conv of conversations) {
+    const em = (conv.customerEmail || "").toLowerCase().trim();
+    if (!em) continue;
+    const img = (conv.customerProfileImage || "").trim();
+    if (!img.startsWith("http") || isGeneratedChatAvatarUrl(img)) continue;
+    const t = new Date(conv.timestamp || 0).getTime() || 0;
+    const prev = emailToBest.get(em);
+    if (!prev || t >= prev.t) {
+      emailToBest.set(em, { url: img, t });
+    }
+  }
+  return conversations.map((conv) => {
+    const em = (conv.customerEmail || "").toLowerCase().trim();
+    const best = em ? emailToBest.get(em) : undefined;
+    if (best?.url) {
+      return { ...conv, customerProfileImage: best.url };
+    }
+    return conv;
+  });
+}
+
 export function Chat({
   initialCustomer = null,
   onInitialCustomerHandled,
@@ -98,6 +133,7 @@ export function Chat({
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingIntervalRef = useRef<number | null>(null);
   const loadConversationsRef = useRef<() => Promise<void>>(async () => {});
   const inboxDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,7 +144,9 @@ export function Chat({
     try {
       const response = await chatApi.getConversations();
       if (response.conversations && Array.isArray(response.conversations)) {
-        setConversations(response.conversations);
+        setConversations(
+          mergeConversationAvatarsByEmail(response.conversations as Conversation[])
+        );
         const totalUnread = response.conversations.reduce(
           (sum: number, conv: Conversation) => sum + (Number(conv.unread) || 0),
           0
@@ -196,13 +234,19 @@ export function Chat({
     });
   }, [selectedConversation, docVisible]);
 
-  // Auto-scroll to bottom when new messages arrive
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  // Auto-scroll: debounce bursts; use instant scroll for long threads (less layout thrash)
   useEffect(() => {
-    scrollToBottom();
+    if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current);
+    scrollDebounceRef.current = window.setTimeout(() => {
+      scrollDebounceRef.current = null;
+      const el = messagesEndRef.current;
+      if (!el) return;
+      const behavior = messages.length > 36 ? ("auto" as const) : ("smooth" as const);
+      el.scrollIntoView({ behavior, block: "end" });
+    }, CHAT_SCROLL_DEBOUNCE_MS);
+    return () => {
+      if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current);
+    };
   }, [messages]);
 
   // Load conversations (skip when opening from Customers → Message; handoff effect loads)
@@ -252,7 +296,7 @@ export function Chat({
           ];
         }
 
-        setConversations(list);
+        setConversations(mergeConversationAvatarsByEmail(list as Conversation[]));
         setLoading(false);
         const idToUse = match?.id ?? convId;
         setSelectedConversation(idToUse);
@@ -402,7 +446,7 @@ export function Chat({
               : c
           );
 
-        setConversations((prev) => patchCustomer(prev));
+        setConversations((prev) => mergeConversationAvatarsByEmail(patchCustomer(prev)));
 
         void broadcastConversationMessage(selectedConversation, response.message);
         void broadcastInboxPing();

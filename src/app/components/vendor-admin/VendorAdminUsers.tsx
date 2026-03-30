@@ -45,6 +45,8 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
+import { ADMIN_PRODUCTS_INITIAL_PAGE_SIZE } from "../../utils/module-cache";
+import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 
 interface User {
   id: string;
@@ -112,6 +114,8 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const [filterSegment, setFilterSegment] = useState("all");
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [currentTab, setCurrentTab] = useState<"list" | "segments" | "analytics">("list");
+  const [listPage, setListPage] = useState(1);
+  const [listPageSize, setListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
 
   useEffect(() => {
     fetchUsers();
@@ -180,6 +184,22 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
     });
   }, [users, searchQuery, filterStatus, filterTier, filterSegment]);
 
+  useEffect(() => {
+    setListPage(1);
+  }, [searchQuery, filterStatus, filterTier, filterSegment]);
+
+  useEffect(() => {
+    const tp = Math.max(1, Math.ceil(filteredUsers.length / listPageSize) || 1);
+    setListPage((p) => Math.min(p, tp));
+  }, [filteredUsers.length, listPageSize]);
+
+  const pagedUsers = useMemo(() => {
+    const start = (listPage - 1) * listPageSize;
+    return filteredUsers.slice(start, start + listPageSize);
+  }, [filteredUsers, listPage, listPageSize]);
+
+  const pageUserIds = pagedUsers.map((u) => u.id);
+
   const toggleSelectCustomer = (id: string) => {
     setSelectedCustomers((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
@@ -187,10 +207,10 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   };
 
   const toggleSelectAll = () => {
-    if (selectedCustomers.length === filteredUsers.length && filteredUsers.length > 0) {
-      setSelectedCustomers([]);
+    if (pageUserIds.length > 0 && pageUserIds.every((id) => selectedCustomers.includes(id))) {
+      setSelectedCustomers((prev) => prev.filter((id) => !pageUserIds.includes(id)));
     } else {
-      setSelectedCustomers(filteredUsers.map((u) => u.id));
+      setSelectedCustomers((prev) => Array.from(new Set([...prev, ...pageUserIds])));
     }
   };
 
@@ -357,13 +377,15 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                 </p>
               </div>
             ) : (
-              <Table>
+              <>
+                <Table>
                 <TableHeader>
                   <TableRow className="bg-slate-50 hover:bg-slate-50 border-b border-slate-200">
                     <TableHead className="w-12">
                       <Checkbox
                         checked={
-                          selectedCustomers.length === filteredUsers.length && filteredUsers.length > 0
+                          pageUserIds.length > 0 &&
+                          pageUserIds.every((id) => selectedCustomers.includes(id))
                         }
                         onCheckedChange={toggleSelectAll}
                       />
@@ -378,7 +400,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredUsers.map((user) => {
+                  {pagedUsers.map((user) => {
                     const displayTags = normalizeDisplayTags(user);
                     const seg = user.segment || "Other";
                     return (
@@ -525,6 +547,17 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                   })}
                 </TableBody>
               </Table>
+                <VendorAdminListingPagination
+                  variant="cardFooter"
+                  page={listPage}
+                  pageSize={listPageSize}
+                  totalCount={filteredUsers.length}
+                  onPageChange={setListPage}
+                  onPageSizeChange={setListPageSize}
+                  itemLabel="customers"
+                  loading={loading}
+                />
+              </>
             )}
           </div>
         </>

@@ -40,6 +40,11 @@ export function notifyMigooUserSessionChanged(): void {
   window.dispatchEvent(new CustomEvent(MIGOO_USER_SESSION_CHANGED_EVENT));
 }
 
+/** Chat widget: debounce writing message history to localStorage (main thread only; no API impact). */
+export const CHAT_LOCAL_STORAGE_DEBOUNCE_MS = 400;
+/** Chat widget: coalesce scroll-to-bottom when many messages arrive at once. */
+export const CHAT_SCROLL_DEBOUNCE_MS = 72;
+
 export const POLLING_INTERVALS_MS = {
   BADGE_COUNTS: 15 * 60 * 1000,
   /** If badge cache is newer than this, skip network (see useBadgeCounts). */

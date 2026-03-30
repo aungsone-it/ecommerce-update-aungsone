@@ -65,6 +65,8 @@ interface ProductListProps {
   onHeaderSearchQueryChange?: (q: string) => void;
   /** Parent increments when user presses Enter in TopNav on Products — applies server `q`. */
   headerSearchCommitTick?: number;
+  /** Super-admin breadcrumb «total» on list view; null when not listing or still loading first page */
+  onListingCountChange?: (count: number | null) => void;
 }
 
 /** Super-admin product form may store vendor id, name, or businessName in `selectedVendors`. */
@@ -116,6 +118,7 @@ export function ProductList({
   headerSearchQuery,
   onHeaderSearchQueryChange,
   headerSearchCommitTick,
+  onListingCountChange,
 }: ProductListProps) {
   const { t } = useLanguage();
   const [products, setProducts] = useState<Product[]>([]);
@@ -244,6 +247,16 @@ export function ProductList({
   useEffect(() => {
     void loadProductPage(false);
   }, [loadProductPage]);
+
+  useEffect(() => {
+    if (!onListingCountChange) return;
+    if (currentView !== "list") {
+      onListingCountChange(null);
+      return;
+    }
+    const hideUntilKnown = loading && products.length === 0;
+    onListingCountChange(hideUntilKnown ? null : adminTotal);
+  }, [currentView, adminTotal, loading, products.length, onListingCountChange]);
 
   useEffect(() => {
     loadVendors();

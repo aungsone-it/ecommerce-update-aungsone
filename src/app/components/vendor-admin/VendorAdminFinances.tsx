@@ -32,7 +32,12 @@ import {
   Legend,
 } from "recharts";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
-import { getCachedVendorOrders, getCachedVendorProductsAdmin } from "../../utils/module-cache";
+import {
+  getCachedVendorOrders,
+  getCachedVendorProductsAdmin,
+  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+} from "../../utils/module-cache";
+import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import {
   isVendorOrderActive,
   vendorOrderDisplayTotal,
@@ -107,6 +112,8 @@ export function VendorAdminFinances({
   const [rawOrders, setRawOrders] = useState<any[]>([]);
   const [rawProducts, setRawProducts] = useState<any[]>([]);
   const [vendorContractCommissionPct, setVendorContractCommissionPct] = useState(15);
+  const [txPage, setTxPage] = useState(1);
+  const [txPageSize, setTxPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [dateFilter, setDateFilter] = useState({
     revenue: "Last 30 days",
     commission: "Last 30 days",
@@ -190,7 +197,6 @@ export function VendorAdminFinances({
 
     const trans: Transaction[] = [...pool]
       .sort((a, b) => vendorOrderTimeMs(b) - vendorOrderTimeMs(a))
-      .slice(0, 20)
       .map((order: any) => ({
         id: order.id,
         date: new Date(vendorOrderTimeMs(order)).toLocaleDateString(),
@@ -225,6 +231,20 @@ export function VendorAdminFinances({
 
   const chartRangeMonths =
     timeFilter === "3months" ? 3 : timeFilter === "6months" ? 6 : 12;
+
+  useEffect(() => {
+    setTxPage(1);
+  }, [rawOrders.length, timeFilter, dateFilter]);
+
+  useEffect(() => {
+    const tp = Math.max(1, Math.ceil(transactions.length / txPageSize) || 1);
+    setTxPage((p) => Math.min(p, tp));
+  }, [transactions.length, txPageSize]);
+
+  const pagedTransactions = useMemo(() => {
+    const start = (txPage - 1) * txPageSize;
+    return transactions.slice(start, start + txPageSize);
+  }, [transactions, txPage, txPageSize]);
 
   const StatCard = ({
     title,
@@ -535,11 +555,13 @@ export function VendorAdminFinances({
         )}
       </Card>
 
-      <Card className="p-6 border-slate-200">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">Recent Transactions</h3>
-        <div className="space-y-3">
+      <Card className="border-slate-200 overflow-hidden p-0 shadow-sm">
+        <div className="px-6 pt-6 pb-2">
+          <h3 className="text-lg font-semibold text-slate-900">Recent Transactions</h3>
+        </div>
+        <div className="px-6 space-y-3 pb-2">
           {transactions.length > 0 ? (
-            transactions.map((transaction) => (
+            pagedTransactions.map((transaction) => (
               <div
                 key={transaction.id}
                 className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
@@ -577,6 +599,18 @@ export function VendorAdminFinances({
             <div className="text-center py-12 text-slate-500">No transactions yet</div>
           )}
         </div>
+        {transactions.length > 0 && (
+          <VendorAdminListingPagination
+            variant="cardFooter"
+            page={txPage}
+            pageSize={txPageSize}
+            totalCount={transactions.length}
+            onPageChange={setTxPage}
+            onPageSizeChange={setTxPageSize}
+            itemLabel="transactions"
+            loading={loading}
+          />
+        )}
       </Card>
     </div>
   );

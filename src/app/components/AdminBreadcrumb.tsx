@@ -85,9 +85,15 @@ function crumbsForPage(currentPage: string): Crumb[] {
 interface AdminBreadcrumbProps {
   currentPage: string;
   onNavigate: (page: string) => void;
+  /** Total items for the current listing (e.g. products), shown as «n» after the last segment */
+  listingCount?: number | null;
 }
 
-export function AdminBreadcrumb({ currentPage, onNavigate }: AdminBreadcrumbProps) {
+export function AdminBreadcrumb({
+  currentPage,
+  onNavigate,
+  listingCount = null,
+}: AdminBreadcrumbProps) {
   const { t } = useLanguage();
   const segments = crumbsForPage(currentPage);
 
@@ -102,8 +108,16 @@ export function AdminBreadcrumb({ currentPage, onNavigate }: AdminBreadcrumbProp
             <Fragment key={`${crumb.fallback}-${i}`}>
               <BreadcrumbItem className="inline-flex">
                 {isLast ? (
-                  <BreadcrumbPage className="text-xs font-medium text-slate-800 dark:text-slate-100">
-                    {label}
+                  <BreadcrumbPage className="text-xs font-medium text-slate-800 dark:text-slate-100 inline-flex items-center gap-1.5 flex-wrap">
+                    <span>{label}</span>
+                    {listingCount != null && listingCount >= 0 ? (
+                      <span
+                        className="tabular-nums text-[0.95em] font-normal text-slate-500 dark:text-slate-400"
+                        aria-label={`${listingCount} items`}
+                      >
+                        «{listingCount}»
+                      </span>
+                    ) : null}
                   </BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink asChild>

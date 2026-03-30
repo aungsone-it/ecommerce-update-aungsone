@@ -6,6 +6,8 @@ import { Textarea } from "./ui/textarea";
 import { toast } from "sonner";
 import { chatApi } from "../../utils/api";
 import {
+  CHAT_LOCAL_STORAGE_DEBOUNCE_MS,
+  CHAT_SCROLL_DEBOUNCE_MS,
   MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
   MIGOO_USER_SESSION_CHANGED_EVENT,
   POLLING_INTERVALS_MS,
@@ -156,17 +158,27 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  const vendorIdForLsRef = useRef(vendorId);
+  vendorIdForLsRef.current = vendorId;
+  const lsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingIntervalRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
+  const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    scrollToBottom();
+    if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current);
+    scrollDebounceRef.current = window.setTimeout(() => {
+      scrollDebounceRef.current = null;
+      const el = messagesEndRef.current;
+      if (!el) return;
+      const behavior = messages.length > 36 ? ("auto" as const) : ("smooth" as const);
+      el.scrollIntoView({ behavior, block: "end" });
+    }, CHAT_SCROLL_DEBOUNCE_MS);
+    return () => {
+      if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current);
+    };
   }, [messages]);
 
   // Trigger mount animation on first load
@@ -263,6 +275,12 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     };
   }, [isOpen, isMinimized, conversationId, docVisible]);
 
+  // Refs keep Realtime subscription stable (avoid unsubscribe/resubscribe on every open/minimize)
+  const isOpenRef = useRef(isOpen);
+  const isMinimizedRef = useRef(isMinimized);
+  isOpenRef.current = isOpen;
+  isMinimizedRef.current = isMinimized;
+
   // Realtime: admin replies without tight polling
   useEffect(() => {
     if (!conversationId || !docVisible) return;
@@ -277,11 +295,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
       });
-      if (!isOpen || isMinimized) {
+      if (!isOpenRef.current || isMinimizedRef.current) {
         setUnreadCount((c) => c + 1);
       }
     });
-  }, [conversationId, isOpen, isMinimized, docVisible]);
+  }, [conversationId, docVisible]);
 
   // Reset unread count when chat is opened
   useEffect(() => {
@@ -331,11 +349,38 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     }
   }, [unreadCount, onUnreadCountChange]);
 
-  // 💾 PERSISTENCE: Save messages to localStorage whenever they change
+  // 💾 PERSISTENCE: debounce localStorage writes (same data; fewer main-thread JSON.stringify blocks)
   useEffect(() => {
     const storageKey = vendorId ? `migoo-chat-messages-vendor-${vendorId}` : "migoo-chat-messages";
-    localStorage.setItem(storageKey, JSON.stringify(messages));
+    if (lsDebounceRef.current) window.clearTimeout(lsDebounceRef.current);
+    lsDebounceRef.current = window.setTimeout(() => {
+      lsDebounceRef.current = null;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(messages));
+      } catch {
+        /* quota / private mode */
+      }
+    }, CHAT_LOCAL_STORAGE_DEBOUNCE_MS);
+    return () => {
+      if (lsDebounceRef.current) window.clearTimeout(lsDebounceRef.current);
+    };
   }, [messages, vendorId]);
+
+  useEffect(() => {
+    return () => {
+      if (lsDebounceRef.current) {
+        window.clearTimeout(lsDebounceRef.current);
+        lsDebounceRef.current = null;
+      }
+      const vid = vendorIdForLsRef.current;
+      const key = vid ? `migoo-chat-messages-vendor-${vid}` : "migoo-chat-messages";
+      try {
+        localStorage.setItem(key, JSON.stringify(messagesRef.current));
+      } catch {
+        /* quota / private mode */
+      }
+    };
+  }, []);
 
   // 💾 PERSISTENCE: Save isOpen state to localStorage whenever it changes
   useEffect(() => {

@@ -50,7 +50,9 @@ import {
   dispatchAdminProductsCachePatched,
   CACHE_KEYS,
   getCachedAdminAllProducts,
+  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
 } from "../../utils/module-cache";
+import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import { computeVendorCommissionEarned } from "../../utils/vendorCommissionEarned";
 import {
   daysForVendorDashboardLabel,
@@ -266,6 +268,8 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
+  const [ordersListPage, setOrdersListPage] = useState(1);
+  const [ordersListPageSize, setOrdersListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [statDateFilters, setStatDateFilters] = useState({
     revenue: "Last 30 days",
     commission: "Last 30 days",
@@ -418,26 +422,55 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     };
   }, [rawVendorOrders, vendorProducts, vendorId, vendorCommissionPct, statDateFilters]);
 
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch = 
-      order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.email.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatusFilter = statusFilter === "all" || order.status === statusFilter;
-    const matchesPaymentFilter = paymentFilter === "all" || order.paymentStatus === paymentFilter;
-    
-    const orderDate = new Date(order.date);
-    const matchesDateFrom = !dateFrom || orderDate >= dateFrom;
-    const matchesDateTo = !dateTo || orderDate <= dateTo;
-    
-    return matchesSearch && matchesStatusFilter && matchesPaymentFilter && matchesDateFrom && matchesDateTo;
-  }).sort((a, b) => {
-    // Use createdAt timestamp for accurate sorting, fallback to date string
-    const dateA = new Date(a.createdAt || a.date);
-    const dateB = new Date(b.createdAt || b.date);
-    return sortOrder === "newest" ? dateB.getTime() - dateA.getTime() : dateA.getTime() - dateB.getTime();
-  });
+  const filteredOrders = useMemo(
+    () =>
+      orders
+        .filter((order) => {
+          const matchesSearch =
+            order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            order.email.toLowerCase().includes(searchQuery.toLowerCase());
+
+          const matchesStatusFilter = statusFilter === "all" || order.status === statusFilter;
+          const matchesPaymentFilter = paymentFilter === "all" || order.paymentStatus === paymentFilter;
+
+          const orderDate = new Date(order.date);
+          const matchesDateFrom = !dateFrom || orderDate >= dateFrom;
+          const matchesDateTo = !dateTo || orderDate <= dateTo;
+
+          return (
+            matchesSearch &&
+            matchesStatusFilter &&
+            matchesPaymentFilter &&
+            matchesDateFrom &&
+            matchesDateTo
+          );
+        })
+        .sort((a, b) => {
+          const dateA = new Date(a.createdAt || a.date);
+          const dateB = new Date(b.createdAt || b.date);
+          return sortOrder === "newest"
+            ? dateB.getTime() - dateA.getTime()
+            : dateA.getTime() - dateB.getTime();
+        }),
+    [orders, searchQuery, statusFilter, paymentFilter, dateFrom, dateTo, sortOrder]
+  );
+
+  useEffect(() => {
+    setOrdersListPage(1);
+  }, [searchQuery, statusFilter, paymentFilter, dateFrom, dateTo, sortOrder]);
+
+  useEffect(() => {
+    const tp = Math.max(1, Math.ceil(filteredOrders.length / ordersListPageSize) || 1);
+    setOrdersListPage((p) => Math.min(p, tp));
+  }, [filteredOrders.length, ordersListPageSize]);
+
+  const pagedFilteredOrders = useMemo(() => {
+    const start = (ordersListPage - 1) * ordersListPageSize;
+    return filteredOrders.slice(start, start + ordersListPageSize);
+  }, [filteredOrders, ordersListPage, ordersListPageSize]);
+
+  const ordersPageIds = pagedFilteredOrders.map((o) => o.id);
 
   // Calculate filtered totals - 🔥 Exclude cancelled orders from revenue
   const filteredTotalRevenue = filteredOrders
@@ -486,10 +519,10 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
   ].filter(item => item.value > 0);
 
   const toggleSelectAll = () => {
-    if (selectedOrders.length === filteredOrders.length) {
-      setSelectedOrders([]);
+    if (ordersPageIds.length > 0 && ordersPageIds.every((id) => selectedOrders.includes(id))) {
+      setSelectedOrders((prev) => prev.filter((id) => !ordersPageIds.includes(id)));
     } else {
-      setSelectedOrders(filteredOrders.map(order => order.id));
+      setSelectedOrders((prev) => Array.from(new Set([...prev, ...ordersPageIds])));
     }
   };
 
@@ -1284,7 +1317,10 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="text-left py-3 px-4">
                       <Checkbox
-                        checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
+                        checked={
+                          ordersPageIds.length > 0 &&
+                          ordersPageIds.every((id) => selectedOrders.includes(id))
+                        }
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
@@ -1326,7 +1362,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map((order) => (
+                    pagedFilteredOrders.map((order) => (
                       <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="py-3 px-4">
                           <Checkbox
@@ -1336,7 +1372,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                         </td>
                         <td className="py-3 px-4">
                           <div>
-                            <p className="font-medium text-slate-900">{order.orderNumber}</p>
+                            <p className="text-sm font-medium text-slate-900">{order.orderNumber}</p>
                             <p className="text-xs text-slate-500">
                               {order.items} items
                               {order.deliveryService && (
@@ -1352,7 +1388,10 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                             <p className="text-xs text-slate-500">{order.email}</p>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-sm font-semibold text-slate-900">{formatMmk(order.total)}</td>
+                        <td className="py-3 px-4 text-sm font-semibold text-slate-900 tabular-nums">
+                          {Math.round(order.total).toLocaleString()}{" "}
+                          <span className="text-xs font-normal text-slate-500">MMK</span>
+                        </td>
                         <td className="py-3 px-4">{getStatusBadge(order.status)}</td>
                         <td className="py-3 px-4">{getPaymentBadge(order.paymentStatus)}</td>
                         <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
@@ -1369,6 +1408,18 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                 </tbody>
               </table>
             </div>
+            {filteredOrders.length > 0 && (
+              <VendorAdminListingPagination
+                variant="cardFooter"
+                page={ordersListPage}
+                pageSize={ordersListPageSize}
+                totalCount={filteredOrders.length}
+                onPageChange={setOrdersListPage}
+                onPageSizeChange={setOrdersListPageSize}
+                itemLabel="orders"
+                loading={isLoading}
+              />
+            )}
           </Card>
         </TabsContent>
 

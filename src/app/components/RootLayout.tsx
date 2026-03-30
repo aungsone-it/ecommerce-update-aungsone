@@ -2,7 +2,10 @@
 import { Outlet, useLocation } from "react-router";
 import { CanonicalSubdomainRedirect } from "./CanonicalSubdomainRedirect";
 import { SubdomainVendorRedirect } from "./SubdomainVendorRedirect";
-import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import {
+  resolveVendorSubdomainStoreSlug,
+  isAdminPortalRoute,
+} from "../utils/vendorSubdomainHooks";
 import { FloatingChat } from "./FloatingChat";
 import { BackToTop } from "./BackToTop";
 import { useState } from "react";
@@ -44,14 +47,14 @@ function RootLayoutContent() {
   const isVendorApplicationPage = location.pathname === '/vendor/application';
   const isLandingPage = location.pathname === '/' && subdomainStoreSlug == null;
   const isResetPasswordPage = location.pathname === '/store/reset-password';
-  const isAdminPortal = location.pathname.startsWith('/admin');
+  const isAdminPortal = isAdminPortalRoute(location.pathname);
 
   return (
     <>
       <CanonicalSubdomainRedirect />
       <SubdomainVendorRedirect />
       <Outlet />
-      {/* Global Floating Chat — not on Super Admin (/admin); storefront chat only */}
+      {/* Global Floating Chat — storefront only; hidden on all admin panels (incl. /store|vendor/.../admin) */}
       {!isCartOpen && !isLoading && !isVendorApplicationPage && !isLandingPage && !isResetPasswordPage && !isAdminPortal && (
         <FloatingChat 
           customerName={user?.fullName || user?.firstName || "Guest"}
