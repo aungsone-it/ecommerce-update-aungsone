@@ -1,5 +1,8 @@
 import { Outlet, useLocation } from "react-router";
-import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import {
+  pathnameUnderAdmin,
+  resolveVendorSubdomainStoreSlug,
+} from "../utils/vendorSubdomainHooks";
 
 /**
  * AnimatedOutlet - INSTANT TRANSITIONS (NO BLINKING)
@@ -34,7 +37,9 @@ export function AnimatedOutlet() {
     }
 
     // Admin routes (must check early to avoid conflicts)
-    if (pathname.startsWith("/admin") && !pathname.startsWith("/vendor/")) {
+    if (pathnameUnderAdmin(pathname) && !pathname.startsWith("/vendor/")) {
+      const subSlug = resolveVendorSubdomainStoreSlug();
+      if (subSlug) return `vendor-admin-subdomain-${subSlug}`;
       return "admin";
     }
 

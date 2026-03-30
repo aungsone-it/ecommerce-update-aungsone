@@ -13,7 +13,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { resolveVendorSubdomainStoreSlug } from "./utils/vendorSubdomainHooks";
-import { AdminSubdomainOrSuper } from "./components/AdminSubdomainOrSuper";
+import { AdminEntryLayout, AdminSubdomainLeaf } from "./components/AdminSubdomainOrSuper";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
@@ -184,8 +184,12 @@ export const router = createBrowserRouter([
             element: <AdminSlugFixer />,
           },
           {
-            path: "admin/*",
-            element: <AdminSubdomainOrSuper />,
+            path: "admin",
+            element: <AdminEntryLayout />,
+            children: [
+              { index: true, element: <AdminSubdomainLeaf /> },
+              { path: "*", element: <AdminSubdomainLeaf /> },
+            ],
           },
           {
             path: "store/:storeName/admin",

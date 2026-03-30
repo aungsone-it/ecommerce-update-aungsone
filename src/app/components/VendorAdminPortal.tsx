@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useParams, useNavigate, useLocation } from "react-router";
+import { useNavigate, useLocation } from "react-router";
+import {
+  pathnameUnderAdmin,
+  resolveVendorSubdomainStoreSlug,
+  useVendorAdminRouteParams,
+} from "../utils/vendorSubdomainHooks";
 import { 
   LayoutDashboard, 
   Package, 
@@ -15,7 +20,6 @@ import {
   ChevronDown,
   Bell,
   Search,
-  Megaphone,
   Users
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -34,7 +38,6 @@ import { VendorAdminCategories } from "./vendor-admin/VendorAdminCategories";
 import { VendorAdminOrderManagement } from "./vendor-admin/VendorAdminOrderManagement";
 import { VendorAdminSettings } from "./vendor-admin/VendorAdminSettings";
 import { VendorAdminFinances } from "./vendor-admin/VendorAdminFinances";
-import { VendorAdminMarketing } from "./vendor-admin/VendorAdminMarketing";
 import { VendorAdminUsers } from "./vendor-admin/VendorAdminUsers";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 
@@ -57,7 +60,7 @@ interface VendorAdminPortalProps {
   onPreviewStore?: (vendorId: string, storeSlug: string) => void;
 }
 
-type VendorPage = "dashboard" | "products" | "categories" | "orders" | "settings" | "finances" | "marketing" | "users";
+type VendorPage = "dashboard" | "products" | "categories" | "orders" | "settings" | "finances" | "users";
 
 interface SubNavItem {
   id: VendorPage;
@@ -74,10 +77,13 @@ interface NavItem {
 }
 
 export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAdminPortalProps) {
-  const params = useParams();
+  const routeParams = useVendorAdminRouteParams();
   const navigate = useNavigate();
   const location = useLocation();
-  /** /store/<slug>/admin vs legacy /vendor/<slug>/admin */
+  const vendorSubdomainSlug = resolveVendorSubdomainStoreSlug();
+  const onVendorSubdomainAdmin =
+    !!vendorSubdomainSlug && pathnameUnderAdmin(location.pathname);
+  /** /store/<slug>/admin vs legacy /vendor/<slug>/admin (not used on vendor subdomain /admin) */
   const adminPathPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
   const [currentPage, setCurrentPage] = useState<VendorPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -138,22 +144,41 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
 
   // 🔗 URL SYNCHRONIZATION: Initialize from URL
   useEffect(() => {
-    const section = params.section;
+    const section = routeParams.section;
     if (section) {
-      setCurrentPage(section as VendorPage);
+      // Promo Setting removed — old /admin/marketing links go to dashboard
+      setCurrentPage((section === "marketing" ? "dashboard" : section) as VendorPage);
     } else {
       setCurrentPage("dashboard");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.section]);
+  }, [routeParams.section]);
 
   const routeStoreSlug =
-    storefrontSnapshot?.storeSlug || params.storeName || vendor.storeSlug;
+    storefrontSnapshot?.storeSlug || routeParams.storeName || vendor.storeSlug;
+
+  // Legacy Promo Setting URL → analytics home
+  useEffect(() => {
+    if (routeParams.section !== "marketing") return;
+    const storeName = routeStoreSlug;
+    if (!storeName) return;
+    const targetPath = onVendorSubdomainAdmin
+      ? "/admin"
+      : `/${adminPathPrefix}/${storeName}/admin`;
+    navigate(targetPath, { replace: true });
+  }, [
+    routeParams.section,
+    routeStoreSlug,
+    adminPathPrefix,
+    onVendorSubdomainAdmin,
+    navigate,
+  ]);
 
   // If the URL still uses an old slug after a rename, normalize to the canonical slug from storefront settings
   useEffect(() => {
+    if (onVendorSubdomainAdmin) return;
     const snap = storefrontSnapshot?.storeSlug;
-    const urlSlug = params.storeName;
+    const urlSlug = routeParams.storeName;
     if (!snap || !urlSlug || snap === urlSlug) return;
     if (!location.pathname.includes("/admin")) return;
     const next = location.pathname
@@ -162,7 +187,13 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     if (next !== location.pathname) {
       navigate(next, { replace: true });
     }
-  }, [storefrontSnapshot?.storeSlug, params.storeName, location.pathname, navigate]);
+  }, [
+    onVendorSubdomainAdmin,
+    storefrontSnapshot?.storeSlug,
+    routeParams.storeName,
+    location.pathname,
+    navigate,
+  ]);
 
   // 🔗 currentPage → URL: Update URL when page changes
   const isInitialMount = useRef(true);
@@ -179,8 +210,11 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       return;
     }
 
-    const targetPath =
-      currentPage === "dashboard"
+    const targetPath = onVendorSubdomainAdmin
+      ? currentPage === "dashboard"
+        ? "/admin"
+        : `/admin/${currentPage}`
+      : currentPage === "dashboard"
         ? `/${adminPathPrefix}/${storeName}/admin`
         : `/${adminPathPrefix}/${storeName}/admin/${currentPage}`;
 
@@ -188,7 +222,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       navigate(targetPath, { replace: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, adminPathPrefix, routeStoreSlug]);
+  }, [currentPage, adminPathPrefix, routeStoreSlug, onVendorSubdomainAdmin]);
 
   // Poll for notifications on a long interval (see POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS)
   useEffect(() => {
@@ -253,13 +287,6 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       icon: ShoppingCart,
       color: "text-purple-600",
       bgColor: "bg-purple-50",
-    },
-    {
-      id: "marketing" as VendorPage,
-      name: "Promo Setting",
-      icon: Megaphone,
-      color: "text-indigo-600",
-      bgColor: "bg-indigo-50",
     },
     {
       id: "users" as VendorPage,
@@ -327,13 +354,22 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       case "categories":
         return <VendorAdminCategories vendorId={vendor.id} vendorName={vendor.name} />;
       case "orders":
-        return <VendorAdminOrderManagement vendorId={vendor.id} />;
+        return (
+          <VendorAdminOrderManagement
+            vendorId={vendor.id}
+            vendorStoreSlug={vendor.storeSlug}
+          />
+        );
       case "settings":
         return <VendorAdminSettings vendorId={vendor.id} vendorName={vendor.name} onPreviewStore={onPreviewStore} />;
       case "finances":
-        return <VendorAdminFinances vendorId={vendor.id} vendorName={vendor.name} />;
-      case "marketing":
-        return <VendorAdminMarketing vendorId={vendor.id} vendorName={vendor.name} />;
+        return (
+          <VendorAdminFinances
+            vendorId={vendor.id}
+            vendorName={vendor.name}
+            vendorStoreSlug={vendor.storeSlug}
+          />
+        );
       case "users":
         return <VendorAdminUsers vendorId={vendor.id} vendorName={vendor.name} />;
       default:

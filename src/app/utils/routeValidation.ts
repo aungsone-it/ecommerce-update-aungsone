@@ -3,6 +3,11 @@
  * Ensures safe navigation and prevents crashes from malformed URLs
  */
 
+import {
+  pathnameUnderAdmin,
+  resolveVendorSubdomainStoreSlug,
+} from "./vendorSubdomainHooks";
+
 /**
  * Validates and sanitizes store name for URL usage
  * Prevents XSS and ensures URL-safe characters
@@ -60,7 +65,6 @@ export function validateSection(section: string | undefined): string | null {
     'orders',
     'settings',
     'finances',
-    'marketing',
     'users',
     'vendors',
     'customers',
@@ -129,10 +133,16 @@ export function buildVendorStorefrontUrl(storeName: string, productSlug?: string
  * Checks if the current route is a vendor admin route
  */
 export function isVendorAdminRoute(pathname: string): boolean {
-  return (
-    (pathname.includes('/vendor/') && pathname.includes('/admin')) ||
-    (pathname.startsWith('/store/') && pathname.includes('/admin'))
-  );
+  if (pathname.includes("/vendor/") && pathname.includes("/admin")) return true;
+  if (pathname.startsWith("/store/") && pathname.includes("/admin")) return true;
+  if (
+    pathnameUnderAdmin(pathname) &&
+    typeof window !== "undefined" &&
+    resolveVendorSubdomainStoreSlug()
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -149,7 +159,9 @@ export function isVendorStorefrontRoute(pathname: string): boolean {
  * Checks if the current route is a super admin route
  */
 export function isSuperAdminRoute(pathname: string): boolean {
-  return pathname.startsWith('/admin') && !pathname.includes('/vendor/');
+  if (!pathnameUnderAdmin(pathname) || pathname.includes("/vendor/")) return false;
+  if (typeof window !== "undefined" && resolveVendorSubdomainStoreSlug()) return false;
+  return true;
 }
 
 /**

@@ -1,8 +1,13 @@
-import { Navigate, useLocation } from "react-router";
+import { Outlet, useLocation } from "react-router";
 import { Suspense, lazy } from "react";
 import { ProtectedLayout } from "./ProtectedLayout";
+import { VendorProtectedLayout } from "./VendorProtectedLayout";
 import { RouteLoadingFallback } from "./RouteLoadingFallback";
-import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import { NotFound } from "../pages/NotFound";
+import {
+  resolveVendorSubdomainStoreSlug,
+  parseVendorSubdomainAdminPath,
+} from "../utils/vendorSubdomainHooks";
 
 const AdminPage = lazy(() =>
   import("../pages/AdminPage").then((m) => ({ default: m.AdminPage }))
@@ -10,31 +15,69 @@ const AdminPage = lazy(() =>
 const AddCustomerPage = lazy(() =>
   import("../pages/AddCustomerPage").then((m) => ({ default: m.AddCustomerPage }))
 );
+const VendorAdminPage = lazy(() =>
+  import("../pages/VendorAdminPage").then((m) => ({ default: m.VendorAdminPage }))
+);
+const VendorAdminProductViewPage = lazy(() =>
+  import("../pages/VendorAdminProductViewPage").then((m) => ({
+    default: m.VendorAdminProductViewPage,
+  }))
+);
 
 /**
- * /admin on a vendor host (e.g. gogo.walwal.online/admin) → /store/{slug}/admin (vendor panel).
- * On apex, same paths → platform super-admin (ProtectedLayout + AuthGate via AppRouter).
+ * Layout for `/admin`: vendor subdomain → VendorProtectedLayout + `/admin/*` URLs (no `/store/.../admin` redirect).
+ * Apex → super-admin ProtectedLayout + same path.
  */
-export function AdminSubdomainOrSuper() {
+export function AdminEntryLayout() {
+  const slug = resolveVendorSubdomainStoreSlug();
+  if (slug) {
+    return (
+      <VendorProtectedLayout>
+        <Outlet />
+      </VendorProtectedLayout>
+    );
+  }
+  return (
+    <ProtectedLayout>
+      <Outlet />
+    </ProtectedLayout>
+  );
+}
+
+/**
+ * Leaf routes under `/admin`: super-admin pages on apex, vendor admin on vendor host.
+ */
+export function AdminSubdomainLeaf() {
   const slug = resolveVendorSubdomainStoreSlug();
   const location = useLocation();
 
-  if (slug) {
-    const rest = location.pathname.replace(/^\/admin/, "") || "";
-    return <Navigate to={`/store/${slug}/admin${rest}`} replace />;
+  if (!slug) {
+    const path = location.pathname;
+    const inner =
+      path === "/admin/customers/add" ? (
+        <AddCustomerPage />
+      ) : (
+        <AdminPage />
+      );
+    return <Suspense fallback={<RouteLoadingFallback />}>{inner}</Suspense>;
   }
 
-  const path = location.pathname;
-  const inner =
-    path === "/admin/customers/add" ? (
-      <AddCustomerPage />
-    ) : (
-      <AdminPage />
+  const parsed = parseVendorSubdomainAdminPath(location.pathname, slug);
+  if (parsed === null) {
+    return <NotFound />;
+  }
+
+  if (parsed.productId) {
+    return (
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <VendorAdminProductViewPage />
+      </Suspense>
     );
+  }
 
   return (
-    <ProtectedLayout>
-      <Suspense fallback={<RouteLoadingFallback />}>{inner}</Suspense>
-    </ProtectedLayout>
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <VendorAdminPage />
+    </Suspense>
   );
 }

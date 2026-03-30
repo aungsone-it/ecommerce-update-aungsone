@@ -35,17 +35,35 @@ export function SubdomainVendorRedirect() {
 
     const resolved = getStoreSlugFromSubdomainLabel(label);
     const path = location.pathname;
-    if (!path.startsWith("/store/")) return;
 
-    const homeMatch = path.match(/^\/store\/([^/]+)\/?$/);
-    if (!homeMatch) return;
+    if (path.startsWith("/store/")) {
+      const adminMatch = path.match(/^\/store\/([^/]+)\/admin(\/.*)?$/);
+      if (adminMatch) {
+        const pathSlug = decodeURIComponent(adminMatch[1]);
+        const rest = adminMatch[2] || "";
+        if (pathSlug === resolved || pathSlug === label) {
+          navigate(
+            {
+              pathname: `/admin${rest}`,
+              search: location.search,
+              hash: location.hash,
+            },
+            { replace: true }
+          );
+          return;
+        }
+      }
 
-    const pathSlug = decodeURIComponent(homeMatch[1]);
-    if (pathSlug === resolved || pathSlug === label) {
-      navigate(
-        { pathname: "/", search: location.search, hash: location.hash },
-        { replace: true }
-      );
+      const homeMatch = path.match(/^\/store\/([^/]+)\/?$/);
+      if (!homeMatch) return;
+
+      const pathSlug = decodeURIComponent(homeMatch[1]);
+      if (pathSlug === resolved || pathSlug === label) {
+        navigate(
+          { pathname: "/", search: location.search, hash: location.hash },
+          { replace: true }
+        );
+      }
     }
   }, [navigate, location.pathname, location.search, location.hash]);
 

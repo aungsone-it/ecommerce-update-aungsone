@@ -1,11 +1,9 @@
-import { useParams } from "react-router";
 import { VendorAdminPortal } from "../components/VendorAdminPortal";
 import { useVendorAuth } from "../contexts/VendorAuthContext";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
 
 export function VendorAdminPage() {
-  const { storeName } = useParams();
   const { vendor, logout } = useVendorAuth();
   const navigate = useNavigate();
 

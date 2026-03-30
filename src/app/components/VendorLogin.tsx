@@ -3,6 +3,7 @@ import { useLanguage } from '../contexts/LanguageContext';
 import { useVendorAuth } from '../contexts/VendorAuthContext';
 import { ArrowLeft, Eye, EyeOff, Store } from 'lucide-react';
 import { useNavigate } from 'react-router';
+import { resolveVendorSubdomainStoreSlug } from '../utils/vendorSubdomainHooks';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -29,10 +30,14 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
 
   // Redirect to vendor admin panel after successful login
   useEffect(() => {
-    if (vendor && vendor.storeSlug) {
-      console.log('✅ [VendorLogin] Vendor authenticated, redirecting to admin panel:', vendor.storeSlug);
-      navigate(`/store/${vendor.storeSlug}/admin`, { replace: true });
-    }
+    if (!vendor?.storeSlug) return;
+    const onVendorHost = !!resolveVendorSubdomainStoreSlug();
+    console.log(
+      '✅ [VendorLogin] Vendor authenticated, redirecting to admin panel:',
+      vendor.storeSlug,
+      onVendorHost ? '(subdomain /admin)' : '(path /store/.../admin)'
+    );
+    navigate(onVendorHost ? '/admin' : `/store/${vendor.storeSlug}/admin`, { replace: true });
   }, [vendor, navigate]);
 
   // Fetch vendor data to get the actual name

@@ -1,5 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate, useParams, useLocation } from "react-router";
+import { useNavigate, useLocation } from "react-router";
+import {
+  pathnameUnderAdmin,
+  resolveVendorSubdomainStoreSlug,
+  useVendorAdminRouteParams,
+} from "../../utils/vendorSubdomainHooks";
 import { 
   Plus, 
   Search, 
@@ -73,9 +78,16 @@ export function VendorAdminProductsCRUD({
   onHeaderSearchQueryChange,
 }: VendorAdminProductsCRUDProps) {
   const navigate = useNavigate();
-  const params = useParams();
   const location = useLocation();
-  const adminPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
+  const { storeName: routeStoreName } = useVendorAdminRouteParams();
+  const vendorSubSlug = resolveVendorSubdomainStoreSlug();
+  const onVendorSubdomainAdmin =
+    !!vendorSubSlug && pathnameUnderAdmin(location.pathname);
+  const adminPrefix = onVendorSubdomainAdmin
+    ? null
+    : location.pathname.startsWith("/store/")
+      ? "store"
+      : "vendor";
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(
     () =>
@@ -455,11 +467,15 @@ export function VendorAdminProductsCRUD({
                         variant="ghost" 
                         size="sm" 
                         className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                        onClick={() =>
-                          navigate(
-                            `/${adminPrefix}/${params.storeName}/admin/products/${product.id}/view`
-                          )
-                        }
+                        onClick={() => {
+                          if (onVendorSubdomainAdmin) {
+                            navigate(`/admin/products/${product.id}/view`);
+                          } else if (adminPrefix && routeStoreName) {
+                            navigate(
+                              `/${adminPrefix}/${routeStoreName}/admin/products/${product.id}/view`
+                            );
+                          }
+                        }}
                         title="View Product Details"
                       >
                         <Eye className="w-4 h-4" />

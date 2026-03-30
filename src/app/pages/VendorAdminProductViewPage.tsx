@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate, useLocation } from "react-router";
+import { useNavigate, useLocation } from "react-router";
+import {
+  pathnameUnderAdmin,
+  resolveVendorSubdomainStoreSlug,
+  useVendorAdminRouteParams,
+} from "../utils/vendorSubdomainHooks";
 import { ArrowLeft, Package, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -41,10 +46,17 @@ const stripHtml = (html: string) => {
 };
 
 export function VendorAdminProductViewPage() {
-  const { storeName, productId } = useParams();
+  const { storeName, productId } = useVendorAdminRouteParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const adminPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
+  const vendorSubSlug = resolveVendorSubdomainStoreSlug();
+  const onVendorSubdomainAdmin =
+    !!vendorSubSlug && pathnameUnderAdmin(location.pathname);
+  const adminPrefix = onVendorSubdomainAdmin
+    ? null
+    : location.pathname.startsWith("/store/")
+      ? "store"
+      : "vendor";
   const { vendor } = useVendorAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +85,13 @@ export function VendorAdminProductViewPage() {
   };
 
   const handleBack = () => {
-    navigate(`/${adminPrefix}/${storeName}/admin/products`);
+    if (onVendorSubdomainAdmin) {
+      navigate("/admin/products");
+      return;
+    }
+    if (adminPrefix && storeName) {
+      navigate(`/${adminPrefix}/${storeName}/admin/products`);
+    }
   };
 
   if (loading) {

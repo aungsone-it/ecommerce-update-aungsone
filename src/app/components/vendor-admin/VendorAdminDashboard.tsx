@@ -1,15 +1,55 @@
-import { useState, useEffect } from "react";
-import { Package, DollarSign, Users, ShoppingCart, TrendingUp, Eye, Loader2, ChevronDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Badge } from "../ui/badge";
+import { useState, useEffect, useMemo } from "react";
+import {
+  Package,
+  DollarSign,
+  Users,
+  ShoppingCart,
+  TrendingUp,
+  Loader2,
+  ChevronDown,
+  ArrowUpRight,
+  ArrowDownRight,
+} from "lucide-react";
+import { Card } from "../ui/card";
 import { Skeleton } from "../ui/skeleton";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
 import {
   getCachedVendorProductsAdmin,
   getCachedVendorOrders,
   moduleCache,
   CACHE_KEYS,
 } from "../../utils/module-cache";
+import {
+  daysForVendorDashboardLabel,
+  filterOrdersInRollingWindow,
+  filterOrdersInPriorWindow,
+  pctChangePriorWindow,
+  vendorOrderDisplayTotal,
+  isVendorOrderActive,
+  uniqueCustomerEmails,
+  countActiveOrders,
+  topProductsFromOrders,
+  recentOrdersFromList,
+  buildMonthlySeries,
+  countProductsLikelyAddedInWindow,
+  type TopProductRow,
+  type RecentOrderRow,
+} from "../../utils/vendorAdminAnalytics";
 
 interface DashboardStats {
   totalProducts: number;
@@ -22,21 +62,7 @@ interface DashboardStats {
   productsChange: number;
 }
 
-interface TopProduct {
-  id: string;
-  name: string;
-  sales: number;
-  revenue: number;
-}
-
-interface RecentOrder {
-  id: string;
-  customerName: string;
-  items: number;
-  total: number;
-  status: string;
-  date: string;
-}
+type DateFilterKey = "revenue" | "orders" | "customers" | "products";
 
 const defaultVendorDashboardStats: DashboardStats = {
   totalProducts: 0,
@@ -49,69 +75,14 @@ const defaultVendorDashboardStats: DashboardStats = {
   productsChange: 0,
 };
 
-function computeVendorDashboardFromSource(
-  vendorProducts: any[],
-  vendorOrders: any[]
-): { stats: DashboardStats; topProducts: TopProduct[]; recentOrders: RecentOrder[] } {
-  const totalRevenue = vendorOrders
-    .filter((order: any) => order.status !== "cancelled")
-    .reduce((sum: number, order: any) => sum + (parseFloat(order.total) || 0), 0);
-
-  const totalCustomers = new Set(vendorOrders.map((o: any) => o.email)).size;
-
-  const productSales = new Map<string, { name: string; sales: number; revenue: number }>();
-  vendorOrders.forEach((order: any) => {
-    if (order.status !== "cancelled" && order.items) {
-      order.items.forEach((item: any) => {
-        const existing = productSales.get(item.productId) || { name: item.name, sales: 0, revenue: 0 };
-        existing.sales += item.quantity;
-        existing.revenue += item.price * item.quantity;
-        productSales.set(item.productId, existing);
-      });
-    }
-  });
-
-  const topProducts = Array.from(productSales.entries())
-    .map(([id, data]) => ({ id, ...data }))
-    .sort((a, b) => b.sales - a.sales)
-    .slice(0, 4);
-
-  const recentOrders = vendorOrders
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 5)
-    .map((order: any) => ({
-      id: order.id,
-      customerName: order.name,
-      items: order.items?.length || 0,
-      total: order.total,
-      status: order.status,
-      date: order.createdAt,
-    }));
-
-  return {
-    stats: {
-      totalProducts: vendorProducts.length,
-      totalOrders: vendorOrders.length,
-      totalRevenue,
-      totalCustomers,
-      revenueChange: 0.9,
-      ordersChange: 0.9,
-      customersChange: 0.9,
-      productsChange: 0.9,
-    },
-    topProducts,
-    recentOrders,
-  };
-}
-
 interface VendorAdminDashboardProps {
   vendorId: string;
   vendorName: string;
   onNavigate: (page: string) => void;
+  /** Reserved for header/store actions from parent; analytics view does not use it yet. */
   onPreviewStore?: (vendorId: string, storeSlug: string) => void;
 }
 
-/** Session cache hit for both products and orders — avoids skeleton flash on revisit. */
 function peekCachedVendorDashboardData(vendorId: string): { products: any[]; orders: any[] } | null {
   const pPeek = moduleCache.peek<{ products?: any[] }>(CACHE_KEYS.vendorProductsAdmin(vendorId));
   const oPeek = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
@@ -126,28 +97,19 @@ function peekCachedVendorDashboardData(vendorId: string): { products: any[]; ord
   return null;
 }
 
-export function VendorAdminDashboard({ 
-  vendorId, 
-  vendorName, 
+function sumRevenue(orders: any[]): number {
+  return orders.reduce((s, o) => s + vendorOrderDisplayTotal(o), 0);
+}
+
+export function VendorAdminDashboard({
+  vendorId,
+  vendorName,
   onNavigate,
-  onPreviewStore 
 }: VendorAdminDashboardProps) {
-  const [stats, setStats] = useState<DashboardStats>(() => {
-    const cached = peekCachedVendorDashboardData(vendorId);
-    if (!cached) return defaultVendorDashboardStats;
-    return computeVendorDashboardFromSource(cached.products, cached.orders).stats;
-  });
-  const [topProducts, setTopProducts] = useState<TopProduct[]>(() => {
-    const cached = peekCachedVendorDashboardData(vendorId);
-    if (!cached) return [];
-    return computeVendorDashboardFromSource(cached.products, cached.orders).topProducts;
-  });
-  const [recentOrders, setRecentOrders] = useState<RecentOrder[]>(() => {
-    const cached = peekCachedVendorDashboardData(vendorId);
-    if (!cached) return [];
-    return computeVendorDashboardFromSource(cached.products, cached.orders).recentOrders;
-  });
-  const [loading, setLoading] = useState(() => peekCachedVendorDashboardData(vendorId) == null);
+  const cachedInit = peekCachedVendorDashboardData(vendorId);
+  const [rawOrders, setRawOrders] = useState<any[]>(() => cachedInit?.orders ?? []);
+  const [rawProducts, setRawProducts] = useState<any[]>(() => cachedInit?.products ?? []);
+  const [loading, setLoading] = useState(() => cachedInit == null);
   const [dateFilter, setDateFilter] = useState({
     revenue: "Last 30 days",
     orders: "Last 30 days",
@@ -155,15 +117,74 @@ export function VendorAdminDashboard({
     products: "Last 30 days",
   });
 
+  const derived = useMemo(() => {
+    const endMs = Date.now();
+    const pool = rawOrders.filter(isVendorOrderActive);
+
+    const revenueDays = daysForVendorDashboardLabel(dateFilter.revenue);
+    const ordersDays = daysForVendorDashboardLabel(dateFilter.orders);
+    const customersDays = daysForVendorDashboardLabel(dateFilter.customers);
+    const productsDays = daysForVendorDashboardLabel(dateFilter.products);
+
+    const revCurrent = filterOrdersInRollingWindow(pool, revenueDays, endMs);
+    const revPrev = filterOrdersInPriorWindow(pool, revenueDays, endMs - revenueDays * 86400000);
+    const totalRevenue = sumRevenue(revCurrent);
+
+    const ordCurrent = filterOrdersInRollingWindow(pool, ordersDays, endMs);
+    const ordPrev = filterOrdersInPriorWindow(pool, ordersDays, endMs - ordersDays * 86400000);
+
+    const custCurrent = filterOrdersInRollingWindow(pool, customersDays, endMs);
+    const custPrev = filterOrdersInPriorWindow(pool, customersDays, endMs - customersDays * 86400000);
+
+    const prodWindowEnd = endMs;
+    const prodWindowStart = endMs - productsDays * 86400000;
+    const prodPrevStart = prodWindowStart - productsDays * 86400000;
+    const prodPrevEnd = prodWindowStart;
+
+    const productsAddedCurrent = countProductsLikelyAddedInWindow(
+      rawProducts,
+      prodWindowStart,
+      prodWindowEnd
+    );
+    const productsAddedPrev = countProductsLikelyAddedInWindow(
+      rawProducts,
+      prodPrevStart,
+      prodPrevEnd
+    );
+
+    const stats: DashboardStats = {
+      totalProducts: rawProducts.length,
+      totalOrders: countActiveOrders(ordCurrent),
+      totalRevenue,
+      totalCustomers: uniqueCustomerEmails(custCurrent),
+      revenueChange: pctChangePriorWindow(sumRevenue(revCurrent), sumRevenue(revPrev)),
+      ordersChange: pctChangePriorWindow(ordCurrent.length, ordPrev.length),
+      customersChange: pctChangePriorWindow(
+        uniqueCustomerEmails(custCurrent),
+        uniqueCustomerEmails(custPrev)
+      ),
+      productsChange: pctChangePriorWindow(productsAddedCurrent, productsAddedPrev),
+    };
+
+    const topProducts: TopProductRow[] = topProductsFromOrders(revCurrent, 4);
+    const recentOrders: RecentOrderRow[] = recentOrdersFromList(pool, 5);
+    const chartSeries = buildMonthlySeries(rawOrders, 6);
+
+    return { stats, topProducts, recentOrders, chartSeries };
+  }, [rawOrders, rawProducts, dateFilter]);
+
+  const { stats, topProducts, recentOrders, chartSeries } = derived;
+
   useEffect(() => {
-    loadDashboardData(false);
+    void loadDashboardData(false);
   }, [vendorId]);
 
   const loadDashboardData = async (forceRefresh = false) => {
     if (!forceRefresh) {
       const cached = peekCachedVendorDashboardData(vendorId);
       if (cached != null) {
-        applyDashboardFromData(cached.products, cached.orders);
+        setRawOrders(cached.orders);
+        setRawProducts(cached.products);
         setLoading(false);
         return;
       }
@@ -175,9 +196,8 @@ export function VendorAdminDashboard({
         getCachedVendorProductsAdmin(vendorId, forceRefresh).catch(() => ({ products: [] as any[] })),
         getCachedVendorOrders(vendorId, forceRefresh).catch(() => [] as any[]),
       ]);
-
-      const vendorProducts = productsData.products || [];
-      applyDashboardFromData(vendorProducts, vendorOrders);
+      setRawProducts(productsData.products || []);
+      setRawOrders(Array.isArray(vendorOrders) ? vendorOrders : []);
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
     } finally {
@@ -185,15 +205,6 @@ export function VendorAdminDashboard({
     }
   };
 
-  function applyDashboardFromData(vendorProducts: any[], vendorOrders: any[]) {
-    const { stats: nextStats, topProducts: nextTop, recentOrders: nextRecent } =
-      computeVendorDashboardFromSource(vendorProducts, vendorOrders);
-    setStats(nextStats);
-    setTopProducts(nextTop);
-    setRecentOrders(nextRecent);
-  }
-
-  // Format currency - Myanmar Kyat (MMK)
   const formatCurrency = (num: number) => {
     return `${Math.round(num).toLocaleString()} MMK`;
   };
@@ -205,7 +216,7 @@ export function VendorAdminDashboard({
           <Skeleton className="h-8 w-48 mb-2" />
           <Skeleton className="h-4 w-96" />
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {[...Array(4)].map((_, i) => (
             <Card key={i} className="p-5">
@@ -250,22 +261,22 @@ export function VendorAdminDashboard({
     );
   }
 
-  const StatCard = ({ 
-    title, 
-    value, 
-    change, 
-    icon: Icon, 
-    iconBg, 
+  const StatCard = ({
+    title,
+    value,
+    change,
+    icon: Icon,
+    iconBg,
     iconColor,
-    filterKey 
-  }: { 
-    title: string; 
-    value: string | number; 
-    change: number; 
-    icon: any; 
-    iconBg: string; 
+    filterKey,
+  }: {
+    title: string;
+    value: string | number;
+    change: number;
+    icon: typeof DollarSign;
+    iconBg: string;
     iconColor: string;
-    filterKey: keyof typeof dateFilter;
+    filterKey: DateFilterKey;
   }) => (
     <Card className="p-5 border-slate-200 bg-white hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
@@ -273,35 +284,55 @@ export function VendorAdminDashboard({
           <p className="text-sm text-slate-600 font-medium mb-1">{title}</p>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors mb-4">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors mb-4"
+              >
                 {dateFilter[filterKey]} <ChevronDown className="w-3 h-3" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 7 days" })}>
+              <DropdownMenuItem
+                onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 7 days" })}
+              >
                 Last 7 days
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 30 days" })}>
+              <DropdownMenuItem
+                onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 30 days" })}
+              >
                 Last 30 days
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 90 days" })}>
+              <DropdownMenuItem
+                onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 90 days" })}
+              >
                 Last 90 days
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last year" })}>
+              <DropdownMenuItem
+                onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last year" })}
+              >
                 Last year
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <p className="text-xl font-bold text-slate-900 mb-2">{value}</p>
           <div className="flex items-center gap-1">
-            {change >= 0 ? (
-              <ArrowUpRight className="w-3.5 h-3.5 text-green-600" />
+            {change === 0 ? (
+              <span className="text-xs font-medium text-slate-500">No change vs prior period</span>
             ) : (
-              <ArrowDownRight className="w-3.5 h-3.5 text-red-600" />
+              <>
+                {change > 0 ? (
+                  <ArrowUpRight className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                ) : (
+                  <ArrowDownRight className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                )}
+                <span
+                  className={`text-xs font-medium ${change > 0 ? "text-green-600" : "text-red-600"}`}
+                >
+                  {change > 0 ? "+" : ""}
+                  {change}% vs prior period
+                </span>
+              </>
             )}
-            <span className={`text-xs font-medium ${change >= 0 ? "text-green-600" : "text-red-600"}`}>
-              +{change}% from last month
-            </span>
           </div>
         </div>
         <div className={`${iconBg} p-2 rounded-full ml-4 flex-shrink-0`}>
@@ -311,15 +342,17 @@ export function VendorAdminDashboard({
     </Card>
   );
 
+  const chartHasData = chartSeries.some((p) => p.revenue > 0 || p.orders > 0);
+
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-slate-900 mb-1">Analytics</h1>
-        <p className="text-sm text-slate-600">Welcome back, {vendorName}! Here's what's happening today.</p>
+        <p className="text-sm text-slate-600">
+          Welcome back, {vendorName}! Here&apos;s what&apos;s happening today.
+        </p>
       </div>
 
-      {/* Top Stats - 4 Cards in a Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Total Revenue"
@@ -359,33 +392,75 @@ export function VendorAdminDashboard({
         />
       </div>
 
-      {/* Sales Overview & Top Products */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales Overview */}
         <Card className="p-6 border-slate-200">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-slate-900 mb-1">Sales Overview</h3>
-            <p className="text-sm text-slate-600">Monthly sales and orders trend</p>
+            <p className="text-sm text-slate-600">
+              Monthly revenue ({dateFilter.revenue.toLowerCase()} for KPIs; chart shows last 6 months)
+            </p>
           </div>
-          <div className="h-64 flex items-center justify-center bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
-            <div className="text-center">
-              <TrendingUp className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-400">Chart temporarily unavailable</p>
+          {chartHasData ? (
+            <div className="h-64 w-full min-h-[256px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartSeries} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="month" stroke="#64748b" fontSize={11} tickLine={false} />
+                  <YAxis
+                    stroke="#64748b"
+                    fontSize={11}
+                    tickLine={false}
+                    tickFormatter={(v) => {
+                      const n = Number(v);
+                      if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+                      if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
+                      return String(Math.round(n));
+                    }}
+                  />
+                  <Tooltip
+                    formatter={(value: number | string) => [
+                      `${Math.round(Number(value)).toLocaleString()} MMK`,
+                      "Revenue",
+                    ]}
+                    contentStyle={{
+                      backgroundColor: "white",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    name="Revenue (MMK)"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={{ fill: "#3b82f6", r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
-          </div>
+          ) : (
+            <div className="h-64 flex items-center justify-center bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
+              <div className="text-center">
+                <TrendingUp className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-400">No sales in the last 6 months</p>
+              </div>
+            </div>
+          )}
         </Card>
 
-        {/* Top Products */}
         <Card className="p-6 border-slate-200">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-slate-900 mb-1">Top Products</h3>
-            <p className="text-sm text-slate-600">Best performing products this month</p>
+            <p className="text-sm text-slate-600">Best sellers in {dateFilter.revenue.toLowerCase()}</p>
           </div>
           <div className="space-y-4">
             {topProducts.length === 0 ? (
               <div className="text-center py-8 text-slate-500">
                 <Package className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm">No product sales yet</p>
+                <p className="text-sm">No product sales in this period</p>
               </div>
             ) : (
               topProducts.map((product) => (
@@ -407,7 +482,6 @@ export function VendorAdminDashboard({
         </Card>
       </div>
 
-      {/* Recent Orders */}
       <Card className="p-6 border-slate-200">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -415,13 +489,14 @@ export function VendorAdminDashboard({
             <p className="text-sm text-slate-600">Latest customer orders</p>
           </div>
           <button
+            type="button"
             onClick={() => onNavigate("orders")}
             className="text-sm font-medium text-blue-600 hover:text-blue-700"
           >
             View All
           </button>
         </div>
-        
+
         {recentOrders.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <ShoppingCart className="w-12 h-12 text-slate-300 mx-auto mb-2" />
@@ -432,28 +507,51 @@ export function VendorAdminDashboard({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Order ID</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Customer</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Items</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Total</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Status</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Date</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
+                    Order ID
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
+                    Customer
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
+                    Items
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
+                    Total
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
+                    Status
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
+                    Date
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {recentOrders.map((order) => (
                   <tr key={order.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-3 px-4 text-sm text-slate-900 font-medium">#{order.id.slice(0, 8)}</td>
+                    <td className="py-3 px-4 text-sm text-slate-900 font-medium">
+                      #{order.id.slice(0, 8)}
+                    </td>
                     <td className="py-3 px-4 text-sm text-slate-900">{order.customerName}</td>
                     <td className="py-3 px-4 text-sm text-slate-600">{order.items}</td>
-                    <td className="py-3 px-4 text-sm text-slate-900 font-medium">{formatCurrency(order.total)}</td>
+                    <td className="py-3 px-4 text-sm text-slate-900 font-medium">
+                      {formatCurrency(order.total)}
+                    </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        order.status === "completed" ? "bg-green-100 text-green-700" :
-                        order.status === "pending" ? "bg-yellow-100 text-yellow-700" :
-                        order.status === "processing" ? "bg-blue-100 text-blue-700" :
-                        "bg-slate-100 text-slate-700"
-                      }`}>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                          order.status === "fulfilled"
+                            ? "bg-green-100 text-green-700"
+                            : order.status === "pending"
+                              ? "bg-yellow-100 text-yellow-700"
+                              : order.status === "processing" || order.status === "ready-to-ship"
+                                ? "bg-blue-100 text-blue-700"
+                                : order.status === "cancelled"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-slate-100 text-slate-700"
+                        }`}
+                      >
                         {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
                       </span>
                     </td>

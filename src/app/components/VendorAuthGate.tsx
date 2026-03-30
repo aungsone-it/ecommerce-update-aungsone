@@ -1,11 +1,11 @@
 import { useVendorAuth } from '../contexts/VendorAuthContext';
 import { VendorLogin } from './VendorLogin';
-import { useParams } from 'react-router';
+import { useVendorAdminRouteParams } from '../utils/vendorSubdomainHooks';
 import { Loader2 } from 'lucide-react';
 
 export function VendorAuthGate({ children }: { children: React.ReactNode }) {
   const { vendor, loading } = useVendorAuth();
-  const { storeName } = useParams();
+  const { storeName } = useVendorAdminRouteParams();
 
   // Show loading spinner while checking vendor authentication
   if (loading) {
@@ -21,7 +21,7 @@ export function VendorAuthGate({ children }: { children: React.ReactNode }) {
 
   // No vendor logged in - show login page
   if (!vendor) {
-    return <VendorLogin storeName={storeName} />;
+    return <VendorLogin storeName={storeName ?? undefined} />;
   }
 
   // Vendor is authenticated - show app

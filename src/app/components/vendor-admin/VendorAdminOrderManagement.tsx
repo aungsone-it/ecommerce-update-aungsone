@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import type { LucideIcon } from "lucide-react";
+import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, BadgePercent, ChevronDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
@@ -43,12 +44,22 @@ import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { Skeleton } from "../ui/skeleton";
 import {
   getCachedVendorOrders,
+  getCachedVendorProductsAdmin,
   invalidateVendorOrdersCache,
   moduleCache,
   dispatchAdminProductsCachePatched,
   CACHE_KEYS,
   getCachedAdminAllProducts,
 } from "../../utils/module-cache";
+import { computeVendorCommissionEarned } from "../../utils/vendorCommissionEarned";
+import {
+  daysForVendorDashboardLabel,
+  filterOrdersInRollingWindow,
+  filterOrdersInPriorWindow,
+  pctChangePriorWindow,
+  vendorOrderDisplayTotal,
+  isVendorOrderActive,
+} from "../../utils/vendorAdminAnalytics";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
   syncAdminInventoryCacheAfterOrderStatusChange,
@@ -56,6 +67,31 @@ import {
   isMainMarketplaceVendorName,
 } from "../../utils/orderInventoryCacheSync";
 import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
+
+function formatMmk(n: number): string {
+  return `${Math.round(n).toLocaleString()} MMK`;
+}
+
+async function fetchVendorContractCommissionPercent(slugOrId: string | undefined): Promise<number> {
+  const key = slugOrId?.trim();
+  if (!key) return 15;
+  try {
+    const res = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/by-slug/${encodeURIComponent(key)}`,
+      { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+    );
+    if (!res.ok) return 15;
+    const data = (await res.json()) as { vendor?: { commission?: unknown } };
+    const c = data.vendor?.commission;
+    if (c == null || c === "") return 15;
+    const n = typeof c === "number" ? c : parseFloat(String(c));
+    return Number.isFinite(n) && n >= 0 ? n : 15;
+  } catch {
+    return 15;
+  }
+}
+
+type OrdersStatFilterKey = "revenue" | "commission" | "pending" | "fulfilled";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -206,9 +242,11 @@ const getShippingBadge = (status: ShippingStatus) => {
 
 interface VendorAdminOrderManagementProps {
   vendorId: string;
+  /** Contract commission % from `vendors/by-slug`; falls back to `vendorId`. */
+  vendorStoreSlug?: string;
 }
 
-export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagementProps) {
+export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: VendorAdminOrderManagementProps) {
   const [selectedTab, setSelectedTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -221,19 +259,53 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
   const [bulkStatus, setBulkStatus] = useState<OrderStatus>("processing");
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [rawVendorOrders, setRawVendorOrders] = useState<any[]>([]);
+  const [vendorProducts, setVendorProducts] = useState<any[]>([]);
+  const [vendorCommissionPct, setVendorCommissionPct] = useState(15);
   const [isLoading, setIsLoading] = useState(() => !moduleCache.peek(CACHE_KEYS.vendorOrders(vendorId)));
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
+  const [statDateFilters, setStatDateFilters] = useState({
+    revenue: "Last 30 days",
+    commission: "Last 30 days",
+    pending: "Last 30 days",
+    fulfilled: "Last 30 days",
+  });
 
   useEffect(() => {
     loadOrders(false);
   }, [vendorId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [prodRes, pct] = await Promise.all([
+          getCachedVendorProductsAdmin(vendorId, false),
+          fetchVendorContractCommissionPercent(vendorStoreSlug || vendorId),
+        ]);
+        if (cancelled) return;
+        const body = prodRes as { products?: any[] };
+        setVendorProducts(Array.isArray(body.products) ? body.products : []);
+        setVendorCommissionPct(pct);
+      } catch {
+        if (!cancelled) {
+          setVendorProducts([]);
+          setVendorCommissionPct(15);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId, vendorStoreSlug]);
+
   const loadOrders = async (forceRefresh = false) => {
     if (!forceRefresh) {
       const peeked = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
       if (peeked != null && Array.isArray(peeked)) {
+        setRawVendorOrders(peeked);
         setOrders(mapVendorMgmtApiOrders(peeked));
         setIsLoading(false);
         setListRefreshing(false);
@@ -249,6 +321,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
       console.log(`📊 Received ${data.length} orders from API`);
       const transformedOrders = mapVendorMgmtApiOrders(data);
       console.log(`✅ Transformed ${transformedOrders.length} orders`);
+      setRawVendorOrders(data);
       setOrders(transformedOrders);
       if (transformedOrders.length > 0) {
         toast.success(`Loaded ${transformedOrders.length} orders`);
@@ -276,11 +349,74 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
       }
       
       setOrders([]);
+      setRawVendorOrders([]);
     } finally {
       setIsLoading(false);
       setListRefreshing(false);
     }
   };
+
+  const orderPageKpis = useMemo(() => {
+    const endMs = Date.now();
+    const pool = rawVendorOrders.filter(isVendorOrderActive);
+
+    const revDays = daysForVendorDashboardLabel(statDateFilters.revenue);
+    const revCurrent = filterOrdersInRollingWindow(pool, revDays, endMs);
+    const revPrev = filterOrdersInPriorWindow(pool, revDays, endMs - revDays * 86400000);
+    const totalRevenueWindow = revCurrent.reduce((s, o) => s + vendorOrderDisplayTotal(o), 0);
+    const revenuePrevSum = revPrev.reduce((s, o) => s + vendorOrderDisplayTotal(o), 0);
+    const revenueChange = pctChangePriorWindow(totalRevenueWindow, revenuePrevSum);
+
+    const commDays = daysForVendorDashboardLabel(statDateFilters.commission);
+    const commCurrent = filterOrdersInRollingWindow(pool, commDays, endMs);
+    const commPrev = filterOrdersInPriorWindow(pool, commDays, endMs - commDays * 86400000);
+    const commissionCurrent = computeVendorCommissionEarned(
+      commCurrent,
+      vendorProducts,
+      vendorId,
+      vendorCommissionPct
+    );
+    const commissionPrev = computeVendorCommissionEarned(
+      commPrev,
+      vendorProducts,
+      vendorId,
+      vendorCommissionPct
+    );
+    const commissionChange = pctChangePriorWindow(commissionCurrent, commissionPrev);
+
+    const pendDays = daysForVendorDashboardLabel(statDateFilters.pending);
+    const pendCurrent = filterOrdersInRollingWindow(rawVendorOrders, pendDays, endMs);
+    const pendPrev = filterOrdersInPriorWindow(rawVendorOrders, pendDays, endMs - pendDays * 86400000);
+    const pendingCount = pendCurrent.filter(
+      (o) => String(o?.status ?? "").toLowerCase() === "pending"
+    ).length;
+    const pendingPrevCount = pendPrev.filter(
+      (o) => String(o?.status ?? "").toLowerCase() === "pending"
+    ).length;
+    const pendingChange = pctChangePriorWindow(pendingCount, pendingPrevCount);
+
+    const fulDays = daysForVendorDashboardLabel(statDateFilters.fulfilled);
+    const fulCurrent = filterOrdersInRollingWindow(rawVendorOrders, fulDays, endMs);
+    const fulPrev = filterOrdersInPriorWindow(rawVendorOrders, fulDays, endMs - fulDays * 86400000);
+    const fulfilledCount = fulCurrent.filter(
+      (o) => String(o?.status ?? "").toLowerCase() === "fulfilled"
+    ).length;
+    const fulfilledPrevCount = fulPrev.filter(
+      (o) => String(o?.status ?? "").toLowerCase() === "fulfilled"
+    ).length;
+    const fulfilledChange = pctChangePriorWindow(fulfilledCount, fulfilledPrevCount);
+
+    return {
+      totalRevenueWindow,
+      revenueChange,
+      commissionCurrent,
+      commissionChange,
+      pendingCount,
+      pendingChange,
+      fulfilledCount,
+      fulfilledChange,
+    };
+  }, [rawVendorOrders, vendorProducts, vendorId, vendorCommissionPct, statDateFilters]);
 
   const filteredOrders = orders.filter(order => {
     const matchesSearch = 
@@ -572,19 +708,6 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
     a.click();
   };
 
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
-  const pendingOrders = orders.filter(order => order.status === "pending").length;
-  const processingOrders = orders.filter(order => order.status === "processing").length;
-  const fulfilledOrders = orders.filter(order => order.status === "fulfilled").length;
-
-  // Status distribution data for pie chart
-  const statusDistributionData = [
-    { name: "Pending", value: pendingOrders },
-    { name: "Processing", value: processingOrders },
-    { name: "Fulfilled", value: fulfilledOrders },
-    { name: "Cancelled", value: orders.filter(o => o.status === "cancelled").length },
-  ].filter(item => item.value > 0);
-
   // Single Order Detail View
   if (selectedOrder) {
     return (
@@ -761,26 +884,26 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
               <div className="flex justify-between">
                 <span className="text-slate-600">Subtotal</span>
                 <span className="font-medium">
-                  ${(selectedOrder.subtotal ?? selectedOrder.total).toFixed(2)}
+                  {formatMmk(selectedOrder.subtotal ?? selectedOrder.total)}
                 </span>
               </div>
               {(selectedOrder.discount ?? 0) > 0 && (
                 <div className="flex justify-between">
                   <span className="text-slate-600">Discount</span>
                   <span className="font-medium text-emerald-700">
-                    -${(selectedOrder.discount ?? 0).toFixed(2)}
+                    -{formatMmk(selectedOrder.discount ?? 0)}
                   </span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span className="text-slate-600">Shipping</span>
-                <span className="font-medium">$0.00</span>
+                <span className="font-medium">{formatMmk(0)}</span>
               </div>
               <Separator />
               <div className="flex justify-between">
                 <span className="font-semibold">Total</span>
                 <span className="font-bold text-lg">
-                  ${vendorOrderGrandTotalDisplay(selectedOrder).toFixed(2)}
+                  {formatMmk(vendorOrderGrandTotalDisplay(selectedOrder))}
                 </span>
               </div>
               {selectedOrder.paymentMethod && (
@@ -818,8 +941,8 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
                     <p className="text-sm text-slate-600">Qty: {product.quantity}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold text-slate-900">${(product.price * product.quantity).toFixed(2)}</p>
-                    <p className="text-sm text-slate-600">${product.price.toFixed(2)} each</p>
+                    <p className="font-semibold text-slate-900">{formatMmk(product.price * product.quantity)}</p>
+                    <p className="text-sm text-slate-600">{formatMmk(product.price)} each</p>
                   </div>
                 </div>
               ))}
@@ -872,9 +995,90 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
     );
   }
 
-  // Main Orders List View - EXACT COPY FROM MIGOO
+  // Main Orders List View
+  const StatCard = ({
+    title,
+    value,
+    change,
+    icon: Icon,
+    iconBg,
+    iconColor,
+    filterKey,
+  }: {
+    title: string;
+    value: string | number;
+    change: number;
+    icon: LucideIcon;
+    iconBg: string;
+    iconColor: string;
+    filterKey: OrdersStatFilterKey;
+  }) => (
+    <Card className="p-5 border-slate-200 bg-white hover:shadow-md transition-shadow">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-sm text-slate-600 font-medium mb-1">{title}</p>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors mb-4"
+              >
+                {statDateFilters[filterKey]} <ChevronDown className="w-3 h-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last 7 days" })}
+              >
+                Last 7 days
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last 30 days" })}
+              >
+                Last 30 days
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last 90 days" })}
+              >
+                Last 90 days
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last year" })}
+              >
+                Last year
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <p className="text-xl font-bold text-slate-900 mb-2">{value}</p>
+          <div className="flex items-center gap-1">
+            {change === 0 ? (
+              <span className="text-xs font-medium text-slate-500">No change vs prior period</span>
+            ) : (
+              <>
+                {change > 0 ? (
+                  <ArrowUpRight className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                ) : (
+                  <ArrowDownRight className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                )}
+                <span
+                  className={`text-xs font-medium ${change > 0 ? "text-green-600" : "text-red-600"}`}
+                >
+                  {change > 0 ? "+" : ""}
+                  {change}% vs prior period
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className={`${iconBg} p-2 rounded-full ml-4 flex-shrink-0`}>
+          <Icon className={`w-5 h-5 ${iconColor}`} />
+        </div>
+      </div>
+    </Card>
+  );
+
   return (
-    <div className="p-8">
+    <div className="space-y-6 p-8">
       {/* Print invoices - hidden, only shown during print */}
       {showBulkInvoices && (
         <div className="print-only">
@@ -900,70 +1104,48 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
         </div>
       )}
 
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2">Orders</h1>
-        <p className="text-slate-600">Manage and track all your orders</p>
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">Orders</h1>
+        <p className="text-sm text-slate-600">Manage and track all your orders.</p>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <Card className="p-5 border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600 mb-1">Total Revenue</p>
-              <p className="text-2xl font-semibold text-slate-900">
-                ${totalRevenue.toFixed(2)}
-              </p>
-              <div className="flex items-center gap-1 mt-2">
-                <TrendingUp className="w-4 h-4 text-green-600" />
-                <span className="text-sm text-green-600 font-medium">+12.5%</span>
-              </div>
-            </div>
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <DollarSign className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </Card>
-        
-        <Card className="p-5 border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600 mb-1">Pending</p>
-              <p className="text-2xl font-semibold text-slate-900">{pendingOrders}</p>
-              <p className="text-sm text-slate-500 mt-2">Needs attention</p>
-            </div>
-            <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-              <Clock className="w-5 h-5 text-amber-600" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-5 border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600 mb-1">Processing</p>
-              <p className="text-2xl font-semibold text-slate-900">{processingOrders}</p>
-              <p className="text-sm text-slate-500 mt-2">In progress</p>
-            </div>
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Package className="w-5 h-5 text-blue-600" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-5 border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-600 mb-1">Fulfilled</p>
-              <p className="text-2xl font-semibold text-slate-900">{fulfilledOrders}</p>
-              <p className="text-sm text-slate-500 mt-2">Completed</p>
-            </div>
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-          </div>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard
+          title="Total Revenue"
+          value={formatMmk(orderPageKpis.totalRevenueWindow)}
+          change={orderPageKpis.revenueChange}
+          icon={DollarSign}
+          iconBg="bg-green-100"
+          iconColor="text-green-600"
+          filterKey="revenue"
+        />
+        <StatCard
+          title="Commission Earned"
+          value={formatMmk(orderPageKpis.commissionCurrent)}
+          change={orderPageKpis.commissionChange}
+          icon={BadgePercent}
+          iconBg="bg-purple-100"
+          iconColor="text-purple-600"
+          filterKey="commission"
+        />
+        <StatCard
+          title="Pending"
+          value={orderPageKpis.pendingCount}
+          change={orderPageKpis.pendingChange}
+          icon={Clock}
+          iconBg="bg-amber-100"
+          iconColor="text-amber-600"
+          filterKey="pending"
+        />
+        <StatCard
+          title="Fulfilled"
+          value={orderPageKpis.fulfilledCount}
+          change={orderPageKpis.fulfilledChange}
+          icon={CheckCircle}
+          iconBg="bg-green-100"
+          iconColor="text-green-600"
+          filterKey="fulfilled"
+        />
       </div>
 
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
@@ -975,7 +1157,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
         {/* Orders Tab */}
         <TabsContent value="orders">
           {/* Toolbar */}
-          <Card className="mb-4">
+          <Card className="mb-4 border-slate-200 shadow-sm">
             <div className="p-4">
               <div className="flex items-center justify-between gap-4 mb-4">
                 <h3 className="font-semibold text-slate-900">All Orders ({filteredOrders.length})</h3>
@@ -1030,8 +1212,8 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="newest">🆕 Newest First</SelectItem>
-                    <SelectItem value="oldest">📅 Oldest First</SelectItem>
+                    <SelectItem value="newest">Newest First</SelectItem>
+                    <SelectItem value="oldest">Oldest First</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -1095,7 +1277,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
           </Card>
 
           {/* Orders Table */}
-          <Card>
+          <Card className="border-slate-200 shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -1170,7 +1352,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
                             <p className="text-xs text-slate-500">{order.email}</p>
                           </div>
                         </td>
-                        <td className="py-3 px-4 text-sm font-semibold text-slate-900">${order.total.toFixed(2)}</td>
+                        <td className="py-3 px-4 text-sm font-semibold text-slate-900">{formatMmk(order.total)}</td>
                         <td className="py-3 px-4">{getStatusBadge(order.status)}</td>
                         <td className="py-3 px-4">{getPaymentBadge(order.paymentStatus)}</td>
                         <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
@@ -1192,34 +1374,55 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
 
         {/* Analytics Tab */}
         <TabsContent value="analytics" className="space-y-6">
-          {/* Revenue Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Revenue & Orders Trend</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={revenueChartData}>
+          <Card className="p-6 border-slate-200">
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold text-slate-900 mb-1">Revenue & orders trend</h3>
+              <p className="text-sm text-slate-600">
+                Last 7 days; respects Orders tab filters (search, status, payment, date range).
+              </p>
+            </div>
+            <div className="h-64 w-full min-h-[256px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={revenueChartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" stroke="#64748b" />
-                  <YAxis stroke="#64748b" />
-                  <Tooltip />
+                  <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
+                  <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "white",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "8px",
+                    }}
+                    formatter={(value, name) =>
+                      name === "Revenue (MMK)"
+                        ? [`${Math.round(Number(value)).toLocaleString()} MMK`, name]
+                        : [value, name]
+                    }
+                  />
                   <Legend />
-                  <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} name="Revenue ($)" />
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    name="Revenue (MMK)"
+                    dot={{ fill: "#3b82f6", r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
                   <Line type="monotone" dataKey="orders" stroke="#22c55e" strokeWidth={2} name="Orders" />
                 </LineChart>
               </ResponsiveContainer>
-            </CardContent>
+            </div>
           </Card>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Status Distribution */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Order Status Distribution</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+            <Card className="p-6 border-slate-200">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-1">Order status distribution</h3>
+                <p className="text-sm text-slate-600">Current filter selection</p>
+              </div>
+              <div className="h-64 w-full min-h-[256px]">
+                <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
                       data={statusPieData}
@@ -1238,16 +1441,16 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
                     <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
-              </CardContent>
+              </div>
             </Card>
 
-            {/* Payment Methods */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Methods</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+            <Card className="p-6 border-slate-200">
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-1">Payment methods</h3>
+                <p className="text-sm text-slate-600">All loaded orders</p>
+              </div>
+              <div className="h-64 w-full min-h-[256px]">
+                <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={[
                     { method: "Credit Card", count: orders.filter(o => o.paymentMethod === "credit-card").length },
                     { method: "COD", count: orders.filter(o => o.paymentMethod === "cod").length },
@@ -1260,7 +1463,7 @@ export function VendorAdminOrderManagement({ vendorId }: VendorAdminOrderManagem
                     <Bar dataKey="count" fill="#3b82f6" />
                   </BarChart>
                 </ResponsiveContainer>
-              </CardContent>
+              </div>
             </Card>
           </div>
         </TabsContent>
