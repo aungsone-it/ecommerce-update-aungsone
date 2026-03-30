@@ -5,6 +5,7 @@ import {
   fetchVendorProducts,
   fetchVendorCategories,
   fetchProductsByIds,
+  VENDOR_CATALOG_MUTATION_EVENT,
 } from "../utils/module-cache";
 import {
   readPersistedJson,
@@ -67,7 +68,11 @@ import { ProductGridSkeleton, ProductDetailSkeleton } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
 import { NotificationCenter } from "./NotificationCenter";
 import { authApi, wishlistApi } from "../../utils/api";
-import { AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS } from "../../constants";
+import {
+  AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS,
+  MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
+  notifyMigooUserSessionChanged,
+} from "../../constants";
 import { toast } from "sonner";
 import { getEffectiveVariantOptions } from "./ProductVariantChips";
 
@@ -437,6 +442,16 @@ export function VendorStoreView({
   const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  useEffect(() => {
+    const onChatNeedsAuth = () => {
+      setShowAuthModal(true);
+      setAuthMode("login");
+    };
+    window.addEventListener(MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT, onChatNeedsAuth);
+    return () =>
+      window.removeEventListener(MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT, onChatNeedsAuth);
+  }, []);
   const [vendorViewMode, setVendorViewMode] = useState<VendorAccountViewMode>(
     () => profileSegmentToMode(profileSegment ?? null) ?? "storefront"
   );
@@ -798,7 +813,8 @@ export function VendorStoreView({
       lastAuthEventRef.current = "login";
       setUser(userData);
       localStorage.setItem('migoo-user', JSON.stringify(userData));
-      
+      notifyMigooUserSessionChanged();
+
       toast.success(`Welcome back, ${userData.name || userData.email}!`);
       setShowAuthModal(false);
       setAuthForm({ email: '', password: '', name: '', phone: '' });
@@ -830,7 +846,8 @@ export function VendorStoreView({
       lastAuthEventRef.current = "register";
       setUser(userData);
       localStorage.setItem('migoo-user', JSON.stringify(userData));
-      
+      notifyMigooUserSessionChanged();
+
       toast.success(`Welcome to ${storeName}, ${userData.name}!`);
       setShowAuthModal(false);
       setAuthForm({ email: '', password: '', name: '', phone: '' });
@@ -846,6 +863,7 @@ export function VendorStoreView({
     audienceTrackedKeyRef.current = "";
     setUser(null);
     localStorage.removeItem('migoo-user');
+    notifyMigooUserSessionChanged();
     navigate(storeBase);
     toast.success("You have been logged out");
   };
@@ -2274,6 +2292,70 @@ export function VendorStoreView({
     },
     [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
   );
+
+  // Assign/unassign from vendor admin or super admin: refetch this shop immediately (same tab, other tabs, or no LS yet).
+  useEffect(() => {
+    if (savedPage) return;
+
+    const matchesMutationKeys = (msgKeys: unknown): boolean => {
+      if (!Array.isArray(msgKeys)) return false;
+      const storefront = String(vendorId).trim();
+      for (const raw of msgKeys) {
+        const k = String(raw ?? "").trim();
+        if (!k) continue;
+        if (k === storefront) return true;
+        try {
+          if (decodeURIComponent(k) === decodeURIComponent(storefront)) return true;
+        } catch {
+          /* ignore */
+        }
+      }
+      return false;
+    };
+
+    const lsPrefix = `migoo-ls-vendor-p1-${encodeURIComponent(vendorId)}`;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefetch = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        void refetchVendorCatalogPage1(true);
+      }, 320);
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea !== localStorage) return;
+      const k = e.key;
+      if (k == null || !k.startsWith(lsPrefix)) return;
+      scheduleRefetch();
+    };
+
+    const onWindowMutation = (e: Event) => {
+      const ce = e as CustomEvent<{ keys?: string[] }>;
+      if (!matchesMutationKeys(ce.detail?.keys)) return;
+      scheduleRefetch();
+    };
+
+    window.addEventListener("storage", onStorage);
+    window.addEventListener(VENDOR_CATALOG_MUTATION_EVENT, onWindowMutation as EventListener);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(VENDOR_CATALOG_MUTATION_EVENT);
+      bc.onmessage = (ev: MessageEvent<{ keys?: string[] }>) => {
+        if (!matchesMutationKeys(ev.data?.keys)) return;
+        scheduleRefetch();
+      };
+    } catch {
+      /* ignore */
+    }
+
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(VENDOR_CATALOG_MUTATION_EVENT, onWindowMutation as EventListener);
+      window.clearTimeout(debounce);
+      bc?.close();
+    };
+  }, [vendorId, savedPage, refetchVendorCatalogPage1]);
 
   const loadMoreVendorCatalog = useCallback(async () => {
     if (savedPage || !vendorCatalogHasMore || vendorCatalogLoadingMore) return;

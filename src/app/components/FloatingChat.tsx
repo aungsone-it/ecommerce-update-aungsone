@@ -5,7 +5,11 @@ import { Badge } from "./ui/badge";
 import { Textarea } from "./ui/textarea";
 import { toast } from "sonner";
 import { chatApi } from "../../utils/api";
-import { POLLING_INTERVALS_MS } from "../../constants";
+import {
+  MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
+  MIGOO_USER_SESSION_CHANGED_EVENT,
+  POLLING_INTERVALS_MS,
+} from "../../constants";
 import {
   broadcastConversationMessage,
   broadcastInboxPing,
@@ -14,9 +18,29 @@ import {
 import imageCompression from "browser-image-compression";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
-import { useNavigate } from "react-router";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { useDocumentVisible } from "../hooks/useDocumentVisible";
+
+const MIGOO_USER_STORAGE_KEY = "migoo-user";
+
+/** Customer accounts use KV/authApi session in localStorage (not Supabase AuthContext). Read fresh — state can be stale after same-tab login. */
+function hasMigooCustomerSession(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(MIGOO_USER_STORAGE_KEY);
+    if (raw == null || String(raw).trim() === "") return false;
+    const u = JSON.parse(raw) as Record<string, unknown> | null;
+    if (!u || typeof u !== "object" || Array.isArray(u)) return false;
+    const email = u.email;
+    const id = u.id ?? u.userId;
+    if (typeof email === "string" && email.trim() !== "") return true;
+    if (typeof id === "string" && id.trim() !== "") return true;
+    if (typeof id === "number" && Number.isFinite(id)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 interface Message {
   id: string;
@@ -39,22 +63,25 @@ interface FloatingChatProps {
 }
 
 export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false }: FloatingChatProps) {
-  const navigate = useNavigate();
   const docVisible = useDocumentVisible();
+  const chatBrandLabel = vendorId ? "this store" : "SECURE";
   
-  // 🔒 Check if customer is logged in by checking localStorage directly
-  const [isCustomerAuthenticated, setIsCustomerAuthenticated] = useState(() => {
-    const storedUser = localStorage.getItem("migoo-user");
-    return storedUser !== null;
-  });
+  const [isCustomerAuthenticated, setIsCustomerAuthenticated] = useState(() =>
+    hasMigooCustomerSession()
+  );
   
   // 🔒 Sign-in dialog state
   const [showSignInDialog, setShowSignInDialog] = useState(false);
   
   // Load persisted state from localStorage
   const [isOpen, setIsOpen] = useState(() => {
-    const saved = localStorage.getItem("migoo-chat-isOpen");
-    return saved ? JSON.parse(saved) : false;
+    try {
+      const saved = localStorage.getItem("migoo-chat-isOpen");
+      if (!saved || !JSON.parse(saved)) return false;
+      return hasMigooCustomerSession();
+    } catch {
+      return false;
+    }
   });
   
   const [isMinimized, setIsMinimized] = useState(() => {
@@ -263,16 +290,39 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     }
   }, [isOpen, isMinimized]);
 
-  // Handle forceOpen prop
+  // Handle forceOpen prop — still require a customer or app auth session
   useEffect(() => {
-    if (forceOpen) {
-      setIsOpen(true);
-      setIsMinimized(false);
-      if (onOpen) {
-        onOpen();
-      }
+    if (!forceOpen) return;
+    if (!hasMigooCustomerSession() && !isAuthenticated) {
+      setShowSignInDialog(true);
+      onOpen?.();
+      return;
     }
-  }, [forceOpen, onOpen]);
+    setIsOpen(true);
+    setIsMinimized(false);
+    onOpen?.();
+  }, [forceOpen, onOpen, isAuthenticated]);
+
+  // Close chat when session is missing (incl. same-tab logout via migoo-user)
+  useEffect(() => {
+    const enforce = () => {
+      setIsOpen((open) => {
+        if (!open) return open;
+        if (hasMigooCustomerSession() || isAuthenticated) return open;
+        setIsMinimized(false);
+        try {
+          localStorage.setItem("migoo-chat-isOpen", JSON.stringify(false));
+        } catch {
+          /* ignore */
+        }
+        setShowSignInDialog(true);
+        return false;
+      });
+    };
+    enforce();
+    window.addEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, enforce);
+    return () => window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, enforce);
+  }, [isOpen, isAuthenticated]);
 
   // Notify parent of unread count changes
   useEffect(() => {
@@ -297,24 +347,38 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     localStorage.setItem("migoo-chat-isMinimized", JSON.stringify(isMinimized));
   }, [isMinimized]);
   
-  // 🔒 Sync auth: other tabs (storage) + same-tab login/logout (focus — no 10s polling)
+  // 🔒 Sync auth: other tabs + window focus; merge with Supabase-backed AuthContext user
   useEffect(() => {
     const checkAuth = () => {
-      const storedUser = localStorage.getItem("migoo-user");
-      setIsCustomerAuthenticated(storedUser !== null);
+      setIsCustomerAuthenticated(hasMigooCustomerSession() || isAuthenticated);
     };
 
+    checkAuth();
     window.addEventListener("storage", checkAuth);
     window.addEventListener("focus", checkAuth);
+    window.addEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, checkAuth);
 
     return () => {
       window.removeEventListener("storage", checkAuth);
       window.removeEventListener("focus", checkAuth);
+      window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, checkAuth);
     };
-  }, []);
+  }, [isAuthenticated]);
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() && !selectedImage) return;
+    if (!hasMigooCustomerSession() && !isAuthenticated) {
+      toast.error("Please sign in to send messages");
+      setIsOpen(false);
+      setIsMinimized(false);
+      try {
+        localStorage.setItem("migoo-chat-isOpen", JSON.stringify(false));
+      } catch {
+        /* ignore */
+      }
+      setShowSignInDialog(true);
+      return;
+    }
 
     const messageText = messageInput;
     const imageUrl = selectedImage || undefined;
@@ -325,7 +389,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     let customerProfileImage = "";
     
     try {
-      const storedUser = localStorage.getItem("migoo-user");
+      const storedUser = localStorage.getItem(MIGOO_USER_STORAGE_KEY);
       if (storedUser) {
         const user = JSON.parse(storedUser);
         // Use stored user data if available
@@ -392,6 +456,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!hasMigooCustomerSession() && !isAuthenticated) {
+      toast.error("Please sign in to use chat");
+      setShowSignInDialog(true);
+      return;
+    }
 
     if (!file.type.startsWith('image/')) {
       toast.error("Please select a valid image file");
@@ -458,6 +527,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const handleAttachmentSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!hasMigooCustomerSession() && !isAuthenticated) {
+      toast.error("Please sign in to use chat");
+      setShowSignInDialog(true);
+      return;
+    }
 
     if (file.type.startsWith('image/')) {
       handleImageSelect(e);
@@ -493,17 +567,51 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // 🔒 Handle opening chat - check authentication first
+  // 🔒 Open chat only for signed-in customers (read localStorage at click — avoids stale state after same-tab login on vendor store)
   const handleOpenChat = () => {
-    if (!isCustomerAuthenticated) {
+    const hasMigoo = hasMigooCustomerSession();
+    setIsCustomerAuthenticated(hasMigoo || isAuthenticated);
+    if (!hasMigoo && !isAuthenticated) {
       setShowSignInDialog(true);
       return;
     }
     setIsOpen(true);
   };
 
-  // 🏪 Get dynamic store name
-  const storeName = vendorId ? "this store" : "SECURE";
+  const signInRequiredDialog = (
+    <Dialog open={showSignInDialog} onOpenChange={setShowSignInDialog}>
+      <DialogContent className="sm:max-w-md p-8">
+        <DialogHeader>
+          <DialogTitle>Sign In Required</DialogTitle>
+          <DialogDescription>
+            Please sign in to chat with {chatBrandLabel} customer service
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col items-center space-y-5 text-center pt-4">
+          <div className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+              <Lock className="w-8 h-8 text-red-600" />
+            </div>
+          </div>
+          <div className="flex w-full max-w-xs flex-col gap-2">
+            <Button
+              type="button"
+              onClick={() => {
+                setShowSignInDialog(false);
+                window.dispatchEvent(new CustomEvent(MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT));
+              }}
+              className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+            >
+              Sign in / Register
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setShowSignInDialog(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   // Floating chat button (when closed)
   if (!isOpen) {
@@ -533,42 +641,14 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
           </Button>
         </div>
 
-        {/* 🔒 Sign-in Dialog - Must be outside the conditional return */}
-        <Dialog open={showSignInDialog} onOpenChange={setShowSignInDialog}>
-          <DialogContent className="sm:max-w-md p-8">
-            <DialogHeader>
-              <DialogTitle>Sign In Required</DialogTitle>
-              <DialogDescription>
-                Please sign in to chat with {storeName} customer service
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col items-center space-y-5 text-center pt-4">
-              {/* Icon */}
-              <div className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center">
-                <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-                  <Lock className="w-8 h-8 text-red-600" />
-                </div>
-              </div>
-              
-              {/* Sign In Button */}
-              <Button
-                onClick={() => {
-                  setShowSignInDialog(false);
-                  toast.info("Please sign in from the main page to use chat");
-                }}
-                className="mt-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-6 py-2 rounded-lg w-full max-w-xs"
-              >
-                Close
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {signInRequiredDialog}
       </>
     );
   }
 
   // Chat window (when open)
   return (
+    <>
     <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 w-full sm:w-auto">
       <div 
         className={`bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 ${
@@ -769,5 +849,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         )}
       </div>
     </div>
+    {signInRequiredDialog}
+    </>
   );
 }

@@ -59,7 +59,16 @@ import {
   CACHE_KEYS,
   moduleCache,
   invalidateAdminAllProductsCache,
+  invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
 } from "../utils/module-cache";
+import {
+  buildAssignPickerSession,
+  reuseAssignPickerSession,
+  type VendorAssignPickerSession,
+} from "../utils/vendorAssignPickerSession";
+import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
+
+const PICKER_SEARCH_DEBOUNCE_MS = 350;
 
 type VendorStatus = "active" | "inactive" | "pending" | "suspended" | "banned";
 
@@ -76,6 +85,8 @@ interface Vendor {
   joinedDate: string;
   avatar: string;
   logo?: string; // 🔥 Logo from vendor storefront settings
+  /** Public storefront path segment — used to bust catalog cache after product assignment changes */
+  storeSlug?: string;
   description?: string;
   website?: string;
   businessName?: string;
@@ -322,18 +333,35 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   
   // Product selection modal state
   const [showProductSelectModal, setShowProductSelectModal] = useState(false);
-  /** Paged mode: current API page rows (already filtered to unassigned for this vendor). */
+  /** Paged mode: current API page rows (may include products already linked to this vendor). */
   const [allPlatformProducts, setAllPlatformProducts] = useState<any[]>([]);
   const [loadingAllProducts, setLoadingAllProducts] = useState(false);
   const [searchProductQuery, setSearchProductQuery] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [pickerAssignedUncheckedIds, setPickerAssignedUncheckedIds] = useState<string[]>([]);
   const [savingProducts, setSavingProducts] = useState(false);
   const [assignPickerPage, setAssignPickerPage] = useState(1);
   const [assignPickerPageSize, setAssignPickerPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [assignPickerUseFullCache, setAssignPickerUseFullCache] = useState(false);
   const [assignPickerServerTotal, setAssignPickerServerTotal] = useState(0);
   const [assignPickerServerHasMore, setAssignPickerServerHasMore] = useState(false);
-  
+  const [debouncedPickerQ, setDebouncedPickerQ] = useState("");
+  const assignPickerServerSessionRef = useRef<VendorAssignPickerSession | null>(null);
+
+  useEffect(() => {
+    if (!showProductSelectModal) {
+      setDebouncedPickerQ("");
+      return;
+    }
+    const q = searchProductQuery.trim();
+    if (q === "") {
+      setDebouncedPickerQ("");
+      return;
+    }
+    const t = window.setTimeout(() => setDebouncedPickerQ(q), PICKER_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [searchProductQuery, showProductSelectModal]);
+
   // 🔥 Track vendor logo with state that can be updated (prioritize logo over avatar)
   const [currentVendorLogo, setCurrentVendorLogo] = useState<string>(vendor.logo || vendor.avatar || "");
 
@@ -351,7 +379,8 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   productsRef.current = products;
 
   const isProductAssignedToThisVendor = useCallback(
-    (p: any) => p?.selectedVendors?.includes(vendor.id) || p?.vendorId === vendor.id,
+    (p: any) =>
+      p?.selectedVendors?.includes(vendor.id) || String(p?.vendorId ?? "") === String(vendor.id),
     [vendor.id]
   );
 
@@ -717,7 +746,10 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     if (!showProductSelectModal) return;
 
     const full = moduleCache.peek<unknown[]>(CACHE_KEYS.ADMIN_PRODUCTS);
-    if (full && Array.isArray(full) && full.length > 0) {
+    const useLocalCatalogOnly =
+      full && Array.isArray(full) && full.length > 0 && debouncedPickerQ === "";
+
+    if (useLocalCatalogOnly) {
       setAssignPickerUseFullCache(true);
       setLoadingAllProducts(false);
       setAssignPickerServerTotal(0);
@@ -727,6 +759,22 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     }
 
     setAssignPickerUseFullCache(false);
+
+    const reused = reuseAssignPickerSession(
+      assignPickerServerSessionRef.current,
+      vendor.id,
+      debouncedPickerQ.trim(),
+      assignPickerPage,
+      assignPickerPageSize
+    );
+    if (reused) {
+      setAllPlatformProducts(reused.rows);
+      setAssignPickerServerTotal(reused.total);
+      setAssignPickerServerHasMore(reused.hasMore);
+      setLoadingAllProducts(false);
+      return;
+    }
+
     let cancelled = false;
 
     void (async () => {
@@ -736,7 +784,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
           {
             page: assignPickerPage,
             pageSize: assignPickerPageSize,
-            q: searchProductQuery.trim(),
+            q: debouncedPickerQ,
             tab: "all",
             status: "all",
             vendor: "all",
@@ -746,10 +794,17 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
           false
         );
         if (cancelled) return;
-        const rows = (payload.products || []).filter((p: any) => !isProductAssignedToThisVendor(p));
+        const rows = (payload.products || []) as any[];
         setAllPlatformProducts(rows);
         setAssignPickerServerTotal(payload.total);
         setAssignPickerServerHasMore(!!payload.hasMore);
+        assignPickerServerSessionRef.current = buildAssignPickerSession(
+          vendor.id,
+          debouncedPickerQ.trim(),
+          assignPickerPage,
+          assignPickerPageSize,
+          payload
+        );
       } catch (error) {
         if (!cancelled) {
           console.error("Assign picker: failed to load products page", error);
@@ -757,6 +812,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
           setAllPlatformProducts([]);
           setAssignPickerServerTotal(0);
           setAssignPickerServerHasMore(false);
+          assignPickerServerSessionRef.current = null;
         }
       } finally {
         if (!cancelled) setLoadingAllProducts(false);
@@ -770,39 +826,51 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     showProductSelectModal,
     assignPickerPage,
     assignPickerPageSize,
-    searchProductQuery,
-    isProductAssignedToThisVendor,
+    debouncedPickerQ,
+    vendor.id,
   ]);
 
   // Open product selection modal
   const handleSelectProduct = () => {
+    assignPickerServerSessionRef.current = null;
     setSelectedProductIds([]);
+    setPickerAssignedUncheckedIds([]);
     setSearchProductQuery("");
+    setDebouncedPickerQ("");
     setAssignPickerPage(1);
     setAssignPickerPageSize(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
     setLoadingAllProducts(true);
     setShowProductSelectModal(true);
   };
 
-  // Toggle product selection
-  const toggleProductSelection = (productId: string) => {
-    setSelectedProductIds(prev => 
-      prev.includes(productId) 
-        ? prev.filter(id => id !== productId)
-        : [...prev, productId]
-    );
-  };
+  const toggleVendorPickerCatalogRow = useCallback(
+    (product: any) => {
+      const id = String(product?.id ?? "");
+      if (!id) return;
+      if (isProductAssignedToThisVendor(product)) {
+        setPickerAssignedUncheckedIds((prev) =>
+          prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+        );
+        return;
+      }
+      setSelectedProductIds((prev) =>
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      );
+    },
+    [isProductAssignedToThisVendor]
+  );
 
-  // Save selected products to vendor (single bulk request — avoids N parallel PUTs + SKU full-scan timeouts)
   const handleSaveSelectedProducts = async () => {
-    if (selectedProductIds.length === 0) {
-      toast.error("Please select at least one product");
+    const toAdd = selectedProductIds;
+    const toRemove = [...new Set(pickerAssignedUncheckedIds)];
+    if (toAdd.length === 0 && toRemove.length === 0) {
+      toast.error("No changes to apply");
       return;
     }
 
     setSavingProducts(true);
     try {
-      const response = await fetch(
+      const res = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/bulk-assign-vendor`,
         {
           method: "POST",
@@ -812,35 +880,49 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
           },
           body: JSON.stringify({
             vendorId: vendor.id,
-            productIds: selectedProductIds,
+            productIds: toAdd,
+            removeProductIds: toRemove,
           }),
         }
       );
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
         throw new Error(
-          typeof data?.error === "string" ? data.error : `Request failed (${response.status})`
+          typeof data?.error === "string" ? data.error : `Update failed (${res.status})`
         );
       }
-
-      const updated = typeof data.updated === "number" ? data.updated : selectedProductIds.length;
-      const failed = typeof data.failed === "number" ? data.failed : 0;
-      if (failed > 0) {
-        toast.warning(`Added ${updated} product(s); ${failed} could not be updated.`);
-      } else {
-        toast.success(`${updated} product(s) added to ${vendor.name}`);
+      let added = typeof data.added === "number" ? data.added : 0;
+      let addFailed = typeof data.addFailed === "number" ? data.addFailed : 0;
+      let removed = typeof data.removed === "number" ? data.removed : 0;
+      let removeFailed = typeof data.removeFailed === "number" ? data.removeFailed : 0;
+      if (toAdd.length > 0 && toRemove.length === 0) {
+        if (added === 0 && typeof data.updated === "number") added = data.updated;
+        if (addFailed === 0 && typeof data.failed === "number") addFailed = data.failed;
       }
+
+      if (addFailed > 0 || removeFailed > 0) {
+        toast.warning(
+          `Updated ${vendor.name}: +${added} added, −${removed} removed. Some operations failed (${addFailed + removeFailed}).`
+        );
+      } else if (toAdd.length > 0 && toRemove.length > 0) {
+        toast.success(`Added ${added} and removed ${removed} product(s) for ${vendor.name}`);
+      } else if (toRemove.length > 0) {
+        toast.success(`Removed ${removed} product(s) from ${vendor.name}`);
+      } else {
+        toast.success(`${added} product(s) added to ${vendor.name}`);
+      }
+
       setShowProductSelectModal(false);
       setSelectedProductIds([]);
+      setPickerAssignedUncheckedIds([]);
       invalidateAdminAllProductsCache();
-
+      invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(vendor.id, [
+        vendor.storeSlug,
+      ]);
       await loadProducts();
     } catch (error) {
-      console.error("Error assigning products to vendor:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to assign products"
-      );
+      console.error("Error applying vendor product picker:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to apply changes");
     } finally {
       setSavingProducts(false);
     }
@@ -850,22 +932,8 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     if (!showProductSelectModal || !assignPickerUseFullCache) return [];
     const full = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
     if (!full || !Array.isArray(full)) return [];
-    const q = searchProductQuery.toLowerCase().trim();
-    return full
-      .filter((p) => !isProductAssignedToThisVendor(p))
-      .filter((p) => {
-        if (!q) return true;
-        const name = String(p?.name ?? "").toLowerCase();
-        const sku = String(p?.sku ?? "").toLowerCase();
-        const category = String(p?.category ?? "").toLowerCase();
-        return name.includes(q) || sku.includes(q) || category.includes(q);
-      });
-  }, [
-    showProductSelectModal,
-    assignPickerUseFullCache,
-    searchProductQuery,
-    isProductAssignedToThisVendor,
-  ]);
+    return full.filter((p) => productMatchesAdminLiveSearch(p, searchProductQuery.trim()));
+  }, [showProductSelectModal, assignPickerUseFullCache, searchProductQuery]);
 
   const displayPickerRows = useMemo(() => {
     if (assignPickerUseFullCache) {
@@ -880,6 +948,23 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     assignPickerPageSize,
     allPlatformProducts,
   ]);
+
+  const pickerEveryRowChecked = useMemo(() => {
+    if (displayPickerRows.length === 0) return false;
+    return displayPickerRows.every((p) =>
+      isProductAssignedToThisVendor(p)
+        ? !pickerAssignedUncheckedIds.includes(p.id)
+        : selectedProductIds.includes(p.id)
+    );
+  }, [displayPickerRows, pickerAssignedUncheckedIds, selectedProductIds, isProductAssignedToThisVendor]);
+
+  const pickerAssignedCheckedOnPageCount = useMemo(
+    () =>
+      displayPickerRows.filter(
+        (p) => isProductAssignedToThisVendor(p) && !pickerAssignedUncheckedIds.includes(p.id)
+      ).length,
+    [displayPickerRows, pickerAssignedUncheckedIds, isProductAssignedToThisVendor]
+  );
 
   const assignPickerTotalPages = assignPickerUseFullCache
     ? Math.max(1, Math.ceil(pickerAssignableFromFullCache.length / assignPickerPageSize) || 1)
@@ -1515,7 +1600,16 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
       </Card>
 
       {/* Product Selection Modal */}
-      <Dialog open={showProductSelectModal} onOpenChange={setShowProductSelectModal}>
+      <Dialog
+        open={showProductSelectModal}
+        onOpenChange={(open) => {
+          setShowProductSelectModal(open);
+          if (!open) {
+            assignPickerServerSessionRef.current = null;
+            setPickerAssignedUncheckedIds([]);
+          }
+        }}
+      >
         <DialogContent className="!w-[80vw] !max-w-[80vw] max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Select Products</DialogTitle>
@@ -1604,17 +1698,30 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                     <tr className="border-b border-slate-200">
                       <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">
                         <Checkbox
-                          checked={
-                            displayPickerRows.length > 0 &&
-                            displayPickerRows.every((p) => selectedProductIds.includes(p.id))
-                          }
+                          checked={pickerEveryRowChecked}
                           onCheckedChange={(checked) => {
+                            const unassignedIds = displayPickerRows
+                              .filter((p) => !isProductAssignedToThisVendor(p))
+                              .map((p) => p.id);
+                            const assignedOnPageIds = displayPickerRows
+                              .filter((p) => isProductAssignedToThisVendor(p))
+                              .map((p) => p.id);
+                            const assignedSet = new Set(assignedOnPageIds);
+                            const unassignedSet = new Set(unassignedIds);
                             if (checked) {
-                              const ids = displayPickerRows.map((p) => p.id);
-                              setSelectedProductIds((prev) => Array.from(new Set([...prev, ...ids])));
+                              setSelectedProductIds((prev) =>
+                                Array.from(new Set([...prev, ...unassignedIds]))
+                              );
+                              setPickerAssignedUncheckedIds((prev) =>
+                                prev.filter((id) => !assignedSet.has(id))
+                              );
                             } else {
-                              const drop = new Set(displayPickerRows.map((p) => p.id));
-                              setSelectedProductIds((prev) => prev.filter((id) => !drop.has(id)));
+                              setSelectedProductIds((prev) =>
+                                prev.filter((id) => !unassignedSet.has(id))
+                              );
+                              setPickerAssignedUncheckedIds((prev) =>
+                                Array.from(new Set([...prev, ...assignedOnPageIds]))
+                              );
                             }
                           }}
                         />
@@ -1628,16 +1735,25 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                     </tr>
                   </thead>
                   <tbody className="bg-white">
-                    {displayPickerRows.map((product) => (
+                    {displayPickerRows.map((product) => {
+                      const alreadyOnVendor = isProductAssignedToThisVendor(product);
+                      const rowChecked = alreadyOnVendor
+                        ? !pickerAssignedUncheckedIds.includes(product.id)
+                        : selectedProductIds.includes(product.id);
+                      const linkedRow =
+                        alreadyOnVendor && !pickerAssignedUncheckedIds.includes(product.id);
+                      return (
                       <tr 
                         key={product.id} 
-                        className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
-                        onClick={() => toggleProductSelection(product.id)}
+                        className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${
+                          linkedRow ? "bg-slate-50/70" : ""
+                        }`}
+                        onClick={() => toggleVendorPickerCatalogRow(product)}
                       >
                         <td className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
                           <Checkbox
-                            checked={selectedProductIds.includes(product.id)}
-                            onCheckedChange={() => toggleProductSelection(product.id)}
+                            checked={rowChecked}
+                            onCheckedChange={() => toggleVendorPickerCatalogRow(product)}
                           />
                         </td>
                         <td className="py-3 px-4">
@@ -1669,7 +1785,8 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                         <td className="py-3 px-4 text-sm text-slate-600">{product.stock || 0}</td>
                         <td className="py-3 px-4">{getProductStatusBadge(product.status)}</td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1699,7 +1816,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                 </Select>
                 <span className="text-slate-500">
                   Page {assignPickerPage} of {assignPickerTotalPages} · {assignPickerFooterProductCount}{" "}
-                  {assignPickerUseFullCache ? "available to add" : "products"}
+                  products
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1729,12 +1846,28 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
 
           {/* Footer with stats and actions */}
           <DialogFooter className="flex items-center justify-between border-t border-slate-200 pt-4">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
-              <span>{selectedProductIds.length} selected</span>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">
+              <span>{selectedProductIds.length} to add</span>
+              {pickerAssignedUncheckedIds.length > 0 ? (
+                <>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-amber-700">
+                    {pickerAssignedUncheckedIds.length} to remove from vendor
+                  </span>
+                </>
+              ) : null}
+              {pickerAssignedCheckedOnPageCount > 0 ? (
+                <>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-slate-500">
+                    {pickerAssignedCheckedOnPageCount} on this page linked to vendor
+                  </span>
+                </>
+              ) : null}
               <span className="text-slate-400">•</span>
               <span>
                 {assignPickerUseFullCache
-                  ? `${pickerAssignableFromFullCache.length} available to add`
+                  ? `${pickerAssignableFromFullCache.length} matching catalog`
                   : `${assignPickerServerTotal} products in catalog`}
               </span>
             </div>
@@ -1748,7 +1881,10 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               <Button
                 variant="default"
                 onClick={handleSaveSelectedProducts}
-                disabled={savingProducts || selectedProductIds.length === 0}
+                disabled={
+                  savingProducts ||
+                  (selectedProductIds.length === 0 && pickerAssignedUncheckedIds.length === 0)
+                }
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {savingProducts ? (
@@ -1756,7 +1892,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                 ) : (
                   <Check className="w-4 h-4 mr-2" />
                 )}
-                Add {selectedProductIds.length > 0 ? `${selectedProductIds.length} ` : ''}Product{selectedProductIds.length !== 1 ? 's' : ''}
+                Apply changes
               </Button>
             </div>
           </DialogFooter>

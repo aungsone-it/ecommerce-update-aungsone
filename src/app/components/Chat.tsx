@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { POLLING_INTERVALS_MS } from "../../constants";
 import imageCompression from "browser-image-compression";
 import {
@@ -20,7 +20,6 @@ import {
   RefreshCw,
   Loader2,
   X,
-  Eye,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
@@ -46,23 +45,6 @@ import {
 } from "../utils/chatRealtime";
 import { useDocumentVisible } from "../hooks/useDocumentVisible";
 
-const CHAT_MESSAGES_REVEALED_KEY = "admin-chat-messages-revealed-ids";
-
-function readRevealedConversationIds(): Set<string> {
-  try {
-    const raw = sessionStorage.getItem(CHAT_MESSAGES_REVEALED_KEY);
-    const ids: unknown = raw ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(ids) ? ids.filter((x) => typeof x === "string") : []);
-  } catch {
-    return new Set();
-  }
-}
-
-function persistRevealedConversationId(conversationId: string) {
-  const set = readRevealedConversationIds();
-  set.add(conversationId);
-  sessionStorage.setItem(CHAT_MESSAGES_REVEALED_KEY, JSON.stringify([...set]));
-}
 import { toast } from "sonner";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
 
@@ -111,8 +93,6 @@ export function Chat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  /** Bumps when admin reveals messages so we re-read sessionStorage (survives remount / first load). */
-  const [messagesRevealTick, setMessagesRevealTick] = useState(0);
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -224,13 +204,6 @@ export function Chat({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
-  /** True until admin clicks "Show messages" for this conversation id (stored in sessionStorage). */
-  const showMessageSkeletonPreview = useMemo(() => {
-    if (!selectedConversation) return false;
-    const revealed = readRevealedConversationIds();
-    return !revealed.has(selectedConversation);
-  }, [selectedConversation, messagesRevealTick]);
 
   // Load conversations (skip when opening from Customers → Message; handoff effect loads)
   useEffect(() => {
@@ -813,55 +786,7 @@ export function Chat({
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50 min-h-0">
-              {showMessageSkeletonPreview ? (
-                <div className="flex flex-col min-h-full">
-                  {loadingMessages && (
-                    <div className="flex items-center justify-end gap-2 text-xs text-slate-500 mb-2">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Loading messages…</span>
-                    </div>
-                  )}
-                  <div className="space-y-4 flex-1">
-                    {Array.from({ length: 4 }).map((_, index) => (
-                      <div
-                        key={`skeleton-msg-${index}`}
-                        className={`flex ${index % 2 === 0 ? "justify-start" : "justify-end"} animate-pulse`}
-                      >
-                        <div
-                          className={`flex gap-3 max-w-[70%] ${index % 2 === 0 ? "flex-row" : "flex-row-reverse"}`}
-                        >
-                          <div className="w-8 h-8 bg-slate-200 rounded-full flex-shrink-0" />
-                          <div className="space-y-2 flex-1">
-                            <div className="h-16 bg-slate-200 rounded-lg" />
-                            <div className="h-3 bg-slate-200 rounded w-20" />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="pt-6 mt-auto flex flex-col items-center gap-2 border-t border-slate-200/80">
-                    <Button
-                      type="button"
-                      onClick={() => {
-                        if (!selectedConversation) return;
-                        try {
-                          persistRevealedConversationId(selectedConversation);
-                        } catch {
-                          /* private mode */
-                        }
-                        setMessagesRevealTick((t) => t + 1);
-                      }}
-                      className="gap-2 bg-slate-900 hover:bg-slate-800 text-white"
-                    >
-                      <Eye className="w-4 h-4" />
-                      Show messages
-                    </Button>
-                    <p className="text-xs text-slate-500 text-center max-w-sm">
-                      Stays until you turn it off — not tied to loading. Persists while this tab is open.
-                    </p>
-                  </div>
-                </div>
-              ) : loadingMessages ? (
+              {loadingMessages ? (
                 <div className="flex flex-col items-center justify-center min-h-[200px] gap-3">
                   <Loader2 className="w-10 h-10 text-slate-400 animate-spin" />
                   <p className="text-sm text-slate-500">Loading messages…</p>

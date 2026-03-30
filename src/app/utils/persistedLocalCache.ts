@@ -105,9 +105,12 @@ export function lsAdminProductsPage1Key(opts: {
   vendor: string;
   collaborator: string;
   qNorm: string;
+  /** When set, server excludes products already assigned to this vendor (assign picker). */
+  excludeVendorIdNorm?: string;
 }): string {
   const ps = Math.min(100, Math.max(1, opts.pageSize));
-  return `migoo-ls-admin-p1-ps-${ps}-t-${encodeURIComponent(opts.tab)}-st-${encodeURIComponent(opts.status)}-s-${encodeURIComponent(opts.sort)}-v-${encodeURIComponent(opts.vendor || "_")}-c-${encodeURIComponent(opts.collaborator || "_")}-q-${encodeURIComponent(opts.qNorm || "_")}-v1`;
+  const ev = encodeURIComponent((opts.excludeVendorIdNorm || "").trim() || "_");
+  return `migoo-ls-admin-p1-ps-${ps}-t-${encodeURIComponent(opts.tab)}-st-${encodeURIComponent(opts.status)}-s-${encodeURIComponent(opts.sort)}-v-${encodeURIComponent(opts.vendor || "_")}-c-${encodeURIComponent(opts.collaborator || "_")}-q-${encodeURIComponent(opts.qNorm || "_")}-ev-${ev}-v2`;
 }
 
 /** Super Admin orders table — page 1 body (`GET orders?page=1`). */

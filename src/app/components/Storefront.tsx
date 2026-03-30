@@ -65,6 +65,10 @@ import {
   gridDisplayImageUrl,
 } from "../utils/module-cache";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
+import {
+  MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
+  notifyMigooUserSessionChanged,
+} from "../../constants";
 
 // 🚀 MODULE-LEVEL CACHE - These persist across all navigations and component remounts
 // This is critical for reducing Supabase API calls from 20k → ~100-500
@@ -1010,6 +1014,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+
+  useEffect(() => {
+    const onChatNeedsAuth = () => {
+      setShowAuthModal(true);
+      setAuthMode("login");
+    };
+    window.addEventListener(MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT, onChatNeedsAuth);
+    return () =>
+      window.removeEventListener(MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT, onChatNeedsAuth);
+  }, []);
+
   const [authForm, setAuthForm] = useState({
     email: '',
     password: '',
@@ -2403,7 +2418,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       localStorage.setItem("migoo-user", JSON.stringify(userData));
       localStorage.removeItem("migoo-wishlist"); // Clear guest wishlist from localStorage
       localStorage.removeItem("migoo-guest-cart"); // 🔥 Clear guest cart from localStorage (merged to DB)
-      
+      notifyMigooUserSessionChanged();
+
       // Sync merged wishlist to database if there were any guest items
       if (guestWishlist.length > 0 && mergedWishlist.length > userWishlist.length) {
         await wishlistApi.update(userData.id, mergedWishlist);
@@ -2465,7 +2481,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setUser(userData);
       localStorage.setItem("migoo-user", JSON.stringify(userData));
       localStorage.removeItem("migoo-wishlist"); // Clear guest wishlist from localStorage
-      
+      notifyMigooUserSessionChanged();
+
       // Transfer guest wishlist to new user account
       if (guestWishlist.length > 0) {
         setWishlist(guestWishlist);
@@ -2497,6 +2514,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     setUser(null);
     localStorage.removeItem("migoo-user");
     localStorage.removeItem("migoo-guest-cart"); // Clear any guest cart remnants
+    notifyMigooUserSessionChanged();
     // 🔥 REMOVED: No notification on logout
   };
 

@@ -346,6 +346,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         return (
           <VendorAdminProductsCRUD
             vendorId={vendor.id}
+            vendorStoreSlug={vendor.storeSlug}
             vendorName={vendor.name}
             headerSearchQuery={vendorHeaderProductSearch}
             onHeaderSearchQueryChange={setVendorHeaderProductSearch}

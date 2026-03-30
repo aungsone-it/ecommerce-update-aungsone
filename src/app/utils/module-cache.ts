@@ -206,6 +206,8 @@ export type AdminProductsPageParams = {
   vendor?: string;
   collaborator?: string;
   sort?: string;
+  /** Server filters out products already assigned to this vendor (assign-product picker). */
+  excludeVendorId?: string;
 };
 
 export type AdminProductsPagePayload = {
@@ -222,10 +224,15 @@ function normAdminQ(q: string): string {
   return String(q || "").trim().slice(0, 200);
 }
 
+function normAdminExcludeVendorId(id: string | undefined): string {
+  return String(id || "").trim().slice(0, 200);
+}
+
 export function adminProductsPageCacheKey(p: AdminProductsPageParams): string {
   const pageSize = Math.min(100, Math.max(1, p.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
   const qn = normAdminQ(p.q || "");
-  return `${ADMIN_PRODUCTS_PAGE_CACHE_PREFIX}p${p.page}-ps${pageSize}-t-${p.tab || "all"}-st-${p.status || "all"}-s-${p.sort || "newest"}-v-${encodeURIComponent(p.vendor || "all")}-c-${encodeURIComponent(p.collaborator || "all")}-q-${encodeURIComponent(qn)}`;
+  const ev = normAdminExcludeVendorId(p.excludeVendorId);
+  return `${ADMIN_PRODUCTS_PAGE_CACHE_PREFIX}p${p.page}-ps${pageSize}-t-${p.tab || "all"}-st-${p.status || "all"}-s-${p.sort || "newest"}-v-${encodeURIComponent(p.vendor || "all")}-c-${encodeURIComponent(p.collaborator || "all")}-q-${encodeURIComponent(qn)}-ev-${encodeURIComponent(ev || "_")}`;
 }
 
 export async function fetchAdminProductsPage(params: AdminProductsPageParams): Promise<AdminProductsPagePayload> {
@@ -241,6 +248,8 @@ export async function fetchAdminProductsPage(params: AdminProductsPageParams): P
   if (params.vendor && params.vendor !== "all") sp.set("vendor", params.vendor);
   if (params.collaborator && params.collaborator !== "all") sp.set("collaborator", params.collaborator);
   if (params.sort) sp.set("sort", params.sort);
+  const ev = normAdminExcludeVendorId(params.excludeVendorId);
+  if (ev) sp.set("excludeVendorId", ev);
   const response = await fetch(
     `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products?${sp.toString()}`,
     { headers: { Authorization: `Bearer ${publicAnonKey}` } }
@@ -283,6 +292,7 @@ export async function getCachedAdminProductsPage(
     tab === "sales" ? "popular" : params.sort && params.sort !== "" ? params.sort : "newest";
   const vendor = params.vendor || "all";
   const collaborator = params.collaborator || "all";
+  const excludeVendorIdNorm = normAdminExcludeVendorId(params.excludeVendorId);
 
   const key = adminProductsPageCacheKey({
     ...params,
@@ -294,6 +304,7 @@ export async function getCachedAdminProductsPage(
     sort,
     vendor,
     collaborator,
+    excludeVendorId: excludeVendorIdNorm || undefined,
   });
 
   if (!forceRefresh && page === 1) {
@@ -306,6 +317,7 @@ export async function getCachedAdminProductsPage(
         vendor,
         collaborator,
         qNorm,
+        excludeVendorIdNorm,
       }),
       PERSISTED_CATALOG_TTL_MS
     );
@@ -326,6 +338,7 @@ export async function getCachedAdminProductsPage(
       sort,
       vendor,
       collaborator,
+      excludeVendorId: excludeVendorIdNorm || undefined,
     }),
     forceRefresh
   );
@@ -340,6 +353,7 @@ export async function getCachedAdminProductsPage(
         vendor,
         collaborator,
         qNorm,
+        excludeVendorIdNorm,
       }),
       data
     );
@@ -1111,6 +1125,51 @@ export function invalidateVendorStorefrontCatalogCache(vendorId: string): void {
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix(`migoo-ls-vendor-p1-${encodeURIComponent(id)}`);
   }
+}
+
+/** Same-tab + cross-tab signal so open `VendorStoreView` refetches immediately after assign/unassign. */
+export const VENDOR_CATALOG_MUTATION_EVENT = "migoo-vendor-catalog-mutation";
+
+function notifyVendorCatalogMutation(catalogKeys: string[]): void {
+  if (typeof window === "undefined") return;
+  const keys = [...new Set(catalogKeys.map((k) => String(k).trim()).filter(Boolean))];
+  if (keys.length === 0) return;
+  try {
+    window.dispatchEvent(
+      new CustomEvent(VENDOR_CATALOG_MUTATION_EVENT, { detail: { keys } })
+    );
+  } catch {
+    /* ignore */
+  }
+  try {
+    const bc = new BroadcastChannel(VENDOR_CATALOG_MUTATION_EVENT);
+    bc.postMessage({ type: "catalog-mutated", keys });
+    bc.close();
+  } catch {
+    /* ignore — private mode, etc. */
+  }
+}
+
+/**
+ * After mutating vendor↔product links, clear every client cache key the public storefront might use.
+ * Storefront routes pass the URL segment (`storeSlug`) into VendorStoreView, while APIs use internal `vendor.id`;
+ * both must be cleared or the shop keeps stale products until TTL/hard refresh.
+ */
+export function invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(
+  internalVendorId: string,
+  storefrontUrlKeys?: Array<string | undefined | null>
+): void {
+  const keys = new Set<string>();
+  keys.add(String(internalVendorId));
+  for (const k of storefrontUrlKeys || []) {
+    const s = String(k ?? "").trim();
+    if (s) keys.add(s);
+  }
+  const keyList = [...keys];
+  for (const k of keyList) {
+    invalidateVendorStorefrontCatalogCache(k);
+  }
+  notifyVendorCatalogMutation(keyList);
 }
 
 /** Super Admin `/products` grid — one fetch per session until Refresh or invalidation */

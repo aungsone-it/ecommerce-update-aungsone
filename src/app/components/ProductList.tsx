@@ -51,6 +51,7 @@ import {
   getCachedAdminProductsPage,
   invalidateAdminAllProductsCache,
   getCachedAdminVendorsForProductList,
+  invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
@@ -64,6 +65,50 @@ interface ProductListProps {
   onHeaderSearchQueryChange?: (q: string) => void;
   /** Parent increments when user presses Enter in TopNav on Products — applies server `q`. */
   headerSearchCommitTick?: number;
+}
+
+/** Super-admin product form may store vendor id, name, or businessName in `selectedVendors`. */
+function resolveVendorsFromSelectionEntries(
+  raw: unknown,
+  vendorsList: any[]
+): Map<string, { storeSlug?: string }> {
+  const out = new Map<string, { storeSlug?: string }>();
+  const arr = Array.isArray(raw) ? raw : [];
+  const byId = new Map<string, any>();
+  const byLabel = new Map<string, any>();
+  for (const v of vendorsList) {
+    if (!v?.id) continue;
+    byId.set(String(v.id), v);
+    for (const lbl of [v.name, v.businessName]) {
+      const k = String(lbl || "").trim().toLowerCase();
+      if (k) byLabel.set(k, v);
+    }
+  }
+  for (const entry of arr) {
+    const s = String(entry ?? "").trim();
+    if (!s) continue;
+    const v = byId.get(s) || byLabel.get(s.toLowerCase());
+    if (!v?.id) continue;
+    const id = String(v.id);
+    const slug = String(v.storeSlug || "").trim();
+    out.set(id, { storeSlug: slug || undefined });
+  }
+  return out;
+}
+
+/** Bust vendor shop cache + broadcast so open storefronts refetch after assign/unassign on product edit. */
+function invalidateVendorStorefrontsForProductVendorSelectionChange(
+  previousSelectedVendors: unknown,
+  nextSelectedVendors: unknown,
+  vendorsList: any[]
+): void {
+  const prev = resolveVendorsFromSelectionEntries(previousSelectedVendors, vendorsList);
+  const next = resolveVendorsFromSelectionEntries(nextSelectedVendors, vendorsList);
+  const ids = new Set([...prev.keys(), ...next.keys()]);
+  for (const id of ids) {
+    const slug = next.get(id)?.storeSlug || prev.get(id)?.storeSlug;
+    invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(id, slug ? [slug] : []);
+  }
 }
 
 export function ProductList({
@@ -282,6 +327,12 @@ export function ProductList({
       if (!response.success && !response.product) {
         throw new Error(response.error || "Failed to create product - no product returned");
       }
+      let vendorsList =
+        (moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS) as any[]) || [];
+      if (!Array.isArray(vendorsList) || vendorsList.length === 0) {
+        vendorsList = (await getCachedAdminVendorsForProductList(false)) as any[];
+      }
+      invalidateVendorStorefrontsForProductVendorSelectionChange([], data?.selectedVendors, vendorsList);
       invalidateAdminAllProductsCache();
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
       setAdminPage(1);
@@ -326,8 +377,19 @@ export function ProductList({
   };
 
   const handleUpdateProduct = async (id: string, data: any) => {
+    const prevVendors = selectedProduct?.selectedVendors;
     try {
       await productsApi.update(id, data);
+      let vendorsList =
+        (moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS) as any[]) || [];
+      if (!Array.isArray(vendorsList) || vendorsList.length === 0) {
+        vendorsList = (await getCachedAdminVendorsForProductList(false)) as any[];
+      }
+      invalidateVendorStorefrontsForProductVendorSelectionChange(
+        prevVendors,
+        data?.selectedVendors,
+        vendorsList
+      );
       invalidateProductByIdCache(id);
       toast.success("Product updated successfully!");
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);

@@ -2749,6 +2749,18 @@ app.get("/make-server-16010b6f/products", async (c) => {
         sorted = sortStorefrontProductRows(filtered, sort);
       }
 
+      /** Vendor assign picker: paginate only products not already on this vendor (matches client filter). */
+      const excludeVendorId = (c.req.query("excludeVendorId") || "").trim();
+      if (excludeVendorId) {
+        const vid = excludeVendorId;
+        sorted = sorted.filter((p: any) => {
+          const sv = p.selectedVendors;
+          if (Array.isArray(sv) && sv.some((x: any) => String(x) === vid)) return false;
+          if (String(p.vendorId ?? "") === vid) return false;
+          return true;
+        });
+      }
+
       const total = sorted.length;
       const slice = sorted.slice((page - 1) * pageSize, page * pageSize);
 
@@ -2918,26 +2930,56 @@ app.get("/make-server-16010b6f/products/by-sku/:sku", async (c) => {
 });
 
 /**
- * Assign one vendor to many platform products in one request (super admin vendor profile).
- * Avoids N parallel PUTs each scanning all products for SKU uniqueness (timeouts / failures).
+ * Assign and/or unassign one vendor on many platform products in one request.
+ * Optional `removeProductIds` removes vendor from selectedVendors (vendor admin + super admin picker).
  */
 app.post("/make-server-16010b6f/products/bulk-assign-vendor", async (c) => {
   try {
     const body = await c.req.json();
     const vendorId = String(body.vendorId ?? "").trim();
     const productIds = Array.isArray(body.productIds) ? body.productIds : [];
-    if (!vendorId || productIds.length === 0) {
-      return c.json({ error: "vendorId and non-empty productIds[] are required" }, 400);
+    const removeProductIds = Array.isArray(body.removeProductIds) ? body.removeProductIds : [];
+    if (!vendorId || (productIds.length === 0 && removeProductIds.length === 0)) {
+      return c.json(
+        { error: "vendorId and at least one of productIds[] or removeProductIds[] are required" },
+        400
+      );
     }
 
-    const results: { productId: string; ok: boolean; error?: string }[] = [];
+    const removeResults: { productId: string; ok: boolean; error?: string }[] = [];
+    for (const rawId of removeProductIds) {
+      const pid = String(rawId ?? "").trim();
+      if (!pid) continue;
+      try {
+        const existing = await withTimeout(kv.get(`product:${pid}`), 8000).catch(() => null);
+        if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+          removeResults.push({ productId: pid, ok: false, error: "not_found" });
+          continue;
+        }
+        const existingSel = Array.isArray((existing as any).selectedVendors)
+          ? [...(existing as any).selectedVendors]
+          : [];
+        const nextSel = existingSel.filter((v: string) => String(v) !== vendorId);
+        const updated = {
+          ...(existing as object),
+          selectedVendors: nextSel,
+          updatedAt: new Date().toISOString(),
+        };
+        await withTimeout(kv.set(`product:${pid}`, updated), 8000);
+        removeResults.push({ productId: pid, ok: true });
+      } catch (e: any) {
+        removeResults.push({ productId: pid, ok: false, error: String(e?.message || e) });
+      }
+    }
+
+    const addResults: { productId: string; ok: boolean; error?: string }[] = [];
     for (const rawId of productIds) {
       const pid = String(rawId ?? "").trim();
       if (!pid) continue;
       try {
         const existing = await withTimeout(kv.get(`product:${pid}`), 8000).catch(() => null);
         if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
-          results.push({ productId: pid, ok: false, error: "not_found" });
+          addResults.push({ productId: pid, ok: false, error: "not_found" });
           continue;
         }
         const existingSel = Array.isArray((existing as any).selectedVendors)
@@ -2950,25 +2992,36 @@ app.post("/make-server-16010b6f/products/bulk-assign-vendor", async (c) => {
           updatedAt: new Date().toISOString(),
         };
         await withTimeout(kv.set(`product:${pid}`, updated), 8000);
-        results.push({ productId: pid, ok: true });
+        addResults.push({ productId: pid, ok: true });
       } catch (e: any) {
-        results.push({ productId: pid, ok: false, error: String(e?.message || e) });
+        addResults.push({ productId: pid, ok: false, error: String(e?.message || e) });
       }
     }
 
     invalidateDashboardCache();
     clearCache("products");
 
-    const updated = results.filter((r) => r.ok).length;
+    const added = addResults.filter((r) => r.ok).length;
+    const addFailed = addResults.length - added;
+    const removed = removeResults.filter((r) => r.ok).length;
+    const removeFailed = removeResults.length - removed;
+    const totalOk = added + removed;
+    const totalFail = addFailed + removeFailed;
+
     return c.json({
-      success: updated > 0,
-      updated,
-      failed: results.length - updated,
-      results,
+      success: totalOk > 0,
+      added,
+      addFailed,
+      removed,
+      removeFailed,
+      removeResults,
+      addResults,
+      updated: totalOk,
+      failed: totalFail,
     });
   } catch (error: any) {
     console.error("❌ bulk-assign-vendor:", error);
-    return c.json({ error: error?.message || "Failed to assign products" }, 500);
+    return c.json({ error: error?.message || "Failed to update vendor products" }, 500);
   }
 });
 

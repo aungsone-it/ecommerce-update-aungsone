@@ -29,6 +29,17 @@ export const RETRY_CONFIG = {
  * Note: each product image loaded from Storage still counts as its own request;
  * that is separate from these timers.
  */
+/** Dispatched by `FloatingChat` so vendor / marketplace shells open the customer Auth modal. */
+export const MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT = "migoo-open-customer-auth-for-chat";
+
+/** After login / register / logout touching `migoo-user` — FloatingChat re-checks auth (same-tab). */
+export const MIGOO_USER_SESSION_CHANGED_EVENT = "migoo-user-session-changed";
+
+export function notifyMigooUserSessionChanged(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(MIGOO_USER_SESSION_CHANGED_EVENT));
+}
+
 export const POLLING_INTERVALS_MS = {
   BADGE_COUNTS: 15 * 60 * 1000,
   /** If badge cache is newer than this, skip network (see useBadgeCounts). */
