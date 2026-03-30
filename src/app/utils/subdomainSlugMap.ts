@@ -1,3 +1,5 @@
+import { storeSlugFromBusinessName } from "../../utils/storeSlug";
+
 /**
  * Short subdomain host label → real `storeSlug` in /store/:slug.
  * Shipped defaults so gogo.walwal.online / abcstore.walwal.online work without Vercel env.
@@ -60,4 +62,35 @@ export function subdomainHostLabelForStoreSlug(storeSlug: string): string | null
   const lower = trimmed.toLowerCase();
   if (map[lower] != null) return lower;
   return null;
+}
+
+function isDefaultTechnicalStoreSlug(slug: string, vendorId?: string): boolean {
+  const s = String(slug || "").trim();
+  if (/^vendor-vendor_/i.test(s)) return true;
+  if (vendorId && s === `vendor-${vendorId}`) return true;
+  return false;
+}
+
+/**
+ * Resolves `gogo` from `go-go`, map keys, or — when slug is still `vendor-vendor_*` from KV defaults —
+ * from store/business name (`Go Go` → `gogo` → map key) so branding-page login can redirect to the vendor subdomain.
+ */
+export function subdomainHostLabelForVendorProfile(input: {
+  storeSlug: string;
+  vendorId?: string;
+  storeName?: string;
+  businessName?: string;
+  name?: string;
+}): string | null {
+  const slug = String(input.storeSlug || "").trim();
+  const direct = subdomainHostLabelForStoreSlug(slug);
+  if (direct) return direct;
+
+  if (!isDefaultTechnicalStoreSlug(slug, input.vendorId)) return null;
+
+  const derived = storeSlugFromBusinessName(
+    input.storeName || input.businessName || input.name || ""
+  );
+  if (!derived || derived === "store") return null;
+  return subdomainHostLabelForStoreSlug(derived);
 }

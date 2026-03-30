@@ -5,7 +5,7 @@ import { ArrowLeft, Eye, EyeOff, Store } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { resolveVendorSubdomainStoreSlug } from '../utils/vendorSubdomainHooks';
 import { getEffectiveVendorSubdomainBase } from '../utils/vendorSubdomainBase';
-import { subdomainHostLabelForStoreSlug } from '../utils/subdomainSlugMap';
+import { subdomainHostLabelForVendorProfile } from '../utils/subdomainSlugMap';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -43,7 +43,13 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
     }
 
     const base = getEffectiveVendorSubdomainBase();
-    const hostLabel = subdomainHostLabelForStoreSlug(vendor.storeSlug);
+    const hostLabel = subdomainHostLabelForVendorProfile({
+      storeSlug: vendor.storeSlug,
+      vendorId: vendor.vendorId,
+      storeName: vendor.storeName,
+      businessName: vendor.businessName,
+      name: vendor.name,
+    });
     if (base && hostLabel && typeof window !== 'undefined') {
       const proto = window.location.protocol;
       const target = `${proto}//${hostLabel}.${base}/admin`;
