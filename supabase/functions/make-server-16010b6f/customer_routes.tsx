@@ -57,38 +57,7 @@ async function findCustomerByUserId(userId: string): Promise<any> {
   }
 }
 
-// 🔥 INITIALIZE STORAGE BUCKET ON STARTUP
-async function initializeStorageBucket() {
-  try {
-    console.log("🪣 Checking if customer images bucket exists...");
-    
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === BUCKET_NAME);
-    
-    if (!bucketExists) {
-      console.log("🪣 Creating customer images bucket...");
-      const { error } = await supabase.storage.createBucket(BUCKET_NAME, {
-        public: false, // Private bucket
-        fileSizeLimit: 524288, // 512KB = 524288 bytes
-      });
-      
-      if (error && error.message !== 'The resource already exists') {
-        console.error("❌ Failed to create bucket:", error);
-      } else if (error && error.message === 'The resource already exists') {
-        console.log("✅ Customer images bucket already exists");
-      } else {
-        console.log("✅ Customer images bucket created successfully");
-      }
-    } else {
-      console.log("✅ Customer images bucket already exists");
-    }
-  } catch (error) {
-    console.error("❌ Error initializing storage bucket:", error);
-  }
-}
-
-// Initialize bucket
-initializeStorageBucket();
+// Bucket created lazily via ensureBucket on upload routes (avoids listBuckets on every Edge cold start)
 
 // ============================================
 // CUSTOMER MANAGEMENT ENDPOINTS

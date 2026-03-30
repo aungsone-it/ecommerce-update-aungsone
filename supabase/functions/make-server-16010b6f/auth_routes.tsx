@@ -38,39 +38,8 @@ const supabaseAuth = createClient(
   }
 );
 
-// Storage bucket for profile images
+// Storage bucket for profile images (lazy `ensureBucket` on upload — no listBuckets on every cold start)
 const PROFILE_IMAGES_BUCKET = "make-16010b6f-profile-images";
-
-// Initialize storage bucket on startup
-async function initializeStorage() {
-  try {
-    const { data: buckets } = await supabaseAdmin.storage.listBuckets();
-    const bucketExists = buckets?.some(bucket => bucket.name === PROFILE_IMAGES_BUCKET);
-    
-    if (!bucketExists) {
-      console.log(`📦 Creating storage bucket: ${PROFILE_IMAGES_BUCKET}`);
-      const { error } = await supabaseAdmin.storage.createBucket(PROFILE_IMAGES_BUCKET, {
-        public: false,
-        fileSizeLimit: 524288, // 512KB (slightly more than 500KB to account for base64 overhead)
-      });
-      
-      if (error && error.message !== 'The resource already exists') {
-        console.error("❌ Error creating bucket:", error);
-      } else if (error && error.message === 'The resource already exists') {
-        console.log(`✅ Storage bucket already exists: ${PROFILE_IMAGES_BUCKET}`);
-      } else {
-        console.log(`✅ Storage bucket created: ${PROFILE_IMAGES_BUCKET}`);
-      }
-    } else {
-      console.log(`✅ Storage bucket already exists: ${PROFILE_IMAGES_BUCKET}`);
-    }
-  } catch (error) {
-    console.error("❌ Error initializing storage:", error);
-  }
-}
-
-// Initialize storage on module load
-initializeStorage();
 
 // Helper function to upload profile image to Supabase Storage
 async function uploadProfileImage(userId: string, imageDataUrl: string): Promise<string | null> {

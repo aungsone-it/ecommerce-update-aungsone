@@ -889,20 +889,40 @@ async function uploadProfileImage(userId: string, imageDataUrl: string): Promise
   }
 }
 
+/** Per-isolate memo: GET /customers and auth profile paths repeat createSignedUrl for the same paths. */
+const signedImageUrlMemo = new Map<string, { url: string; expiresAt: number }>();
+const SIGNED_IMAGE_URL_MEMO_TTL_MS = 55 * 60 * 1000;
+const SIGNED_IMAGE_URL_MEMO_MAX = 4000;
+
 // Helper function to get signed URL for profile image
 async function getSignedImageUrl(filePath: string): Promise<string | null> {
   try {
+    const key = String(filePath || "").trim();
+    if (!key) return null;
+
+    const now = Date.now();
+    const hit = signedImageUrlMemo.get(key);
+    if (hit && hit.expiresAt > now) {
+      return hit.url;
+    }
+
     const PROFILE_IMAGES_BUCKET = "make-16010b6f-profile-images";
     const { data, error } = await supabase.storage
       .from(PROFILE_IMAGES_BUCKET)
-      .createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
+      .createSignedUrl(key, 60 * 60 * 24 * 365); // 1 year expiry
 
     if (error) {
       console.error("❌ Error creating signed URL:", error);
       return null;
     }
 
-    return data.signedUrl;
+    const url = data.signedUrl;
+    if (signedImageUrlMemo.size >= SIGNED_IMAGE_URL_MEMO_MAX) {
+      const first = signedImageUrlMemo.keys().next().value as string | undefined;
+      if (first !== undefined) signedImageUrlMemo.delete(first);
+    }
+    signedImageUrlMemo.set(key, { url, expiresAt: now + SIGNED_IMAGE_URL_MEMO_TTL_MS });
+    return url;
   } catch (error) {
     console.error("❌ Error getting signed URL:", error);
     return null;
