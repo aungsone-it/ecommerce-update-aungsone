@@ -17,7 +17,7 @@ import {
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
 import { 
   ShoppingCart, 
@@ -64,7 +64,7 @@ import { useCart } from "./CartContext";
 import { CartDrawer } from "./CartDrawer";
 import { Checkout } from "./Checkout";
 import { ServerStatusBanner } from "./ServerStatusBanner";
-import { ProductGridSkeleton, ProductDetailSkeleton } from "./SkeletonLoaders";
+import { ProductDetailSkeleton, VendorStorefrontFullSkeleton } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
 import { NotificationCenter } from "./NotificationCenter";
 import { authApi, wishlistApi } from "../../utils/api";
@@ -154,6 +154,27 @@ function resolveUserIdFromRecord(u: unknown): string | null {
   if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
   if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
   return null;
+}
+
+/**
+ * Storefront URLs often use `vendor-{actualVendorId}` while KV rows use `vendorId` / `selectedVendors`
+ * with the inner id (e.g. `vendor_…`). Expanding keys synchronously avoids an empty /saved page on
+ * slow networks while `resolvedVendorId` is still loading (common on mobile).
+ */
+function expandVendorWishlistMatchKeys(storefrontParam: string, canonicalVendorId: string | null): Set<string> {
+  const s = new Set<string>();
+  const add = (v: string) => {
+    const t = v.trim();
+    if (!t) return;
+    s.add(t);
+    if (/^vendor-/i.test(t)) {
+      const inner = t.replace(/^vendor-/i, "");
+      if (inner) s.add(inner);
+    }
+  };
+  add(String(storefrontParam || ""));
+  add(String(canonicalVendorId || ""));
+  return s;
 }
 
 /**
@@ -360,7 +381,9 @@ export function VendorStoreView({
   }, [stopFaviconLoading]);
   
   // If we have an initialProductSlug, we're navigating from product grid, so skip loading overlay
-  const [serverStatus, setServerStatus] = useState<'checking' | 'healthy' | 'unhealthy'>('checking');
+  const [serverStatus, setServerStatus] = useState<'checking' | 'healthy' | 'unhealthy'>(() =>
+    savedPage ? 'healthy' : 'checking'
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [vendorCategories, setVendorCategories] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -2473,7 +2496,29 @@ export function VendorStoreView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
 
-  // Saved-only route skips catalog fetch — still resolve slug → KV vendor id for wishlist matching.
+  // Entering /saved while shop is still "checking" would hide the full-page skeleton (saved route) but
+  // leave serverStatus stuck — avoids odd hybrid UI. Catalog is optional on saved.
+  useEffect(() => {
+    if (savedPage) {
+      setServerStatus((prev) => (prev === 'checking' ? 'healthy' : prev));
+    }
+  }, [savedPage]);
+
+  // Saved route skips full catalog — still need KV id, store name, and logo for the header (same as page-1 products response).
+  useLayoutEffect(() => {
+    if (!savedPage || !vendorId) return;
+    const lsKey = lsVendorCatalogPage1Key(vendorId, "", "all", VENDOR_BROWSE_PAGE_SIZE);
+    const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
+    if (fromLs && typeof fromLs === "object") {
+      if (typeof fromLs.storeName === "string" && fromLs.storeName.trim()) {
+        setStoreName(fromLs.storeName.trim());
+      }
+      if (typeof fromLs.logo === "string" && fromLs.logo.trim()) {
+        setStoreLogo(fromLs.logo.trim());
+      }
+    }
+  }, [savedPage, vendorId]);
+
   useEffect(() => {
     if (!savedPage) return;
     let cancelled = false;
@@ -2482,6 +2527,8 @@ export function VendorStoreView({
         const data = await fetchVendorProducts(vendorId, { page: 1, pageSize: 1 });
         if (cancelled) return;
         setCanonicalVendorId(data.resolvedVendorId ?? vendorId);
+        setStoreName(data.storeName || "Vendor Store");
+        setStoreLogo(data.logo || "");
       } catch {
         if (!cancelled) setCanonicalVendorId(vendorId);
       }
@@ -2679,11 +2726,23 @@ export function VendorStoreView({
 
   // Wishlist — same API as main storefront (global product IDs)
   const [wishlist, setWishlist] = useState<string[]>([]);
+  /** False until initial GET finishes (or no user) — avoids empty-state flash on /saved */
+  const [wishlistServerLoaded, setWishlistServerLoaded] = useState(() => !resolveUserIdFromRecord(user));
+  /** True while fetchProductsByIds is in flight for current wishlist */
+  const [savedProductsFetchPending, setSavedProductsFetchPending] = useState(false);
   /** Sorted JSON snapshot from last GET/PUT — skip redundant PUTs and block PUT before hydration */
   const wishlistServerSnapshotRef = useRef<string | null>(null);
   /** Bumped when user toggles wishlist so a slow GET does not overwrite in-flight local state */
   const lastWishlistLocalChangeRef = useRef(0);
   const wishlistUserId = resolveUserIdFromRecord(user);
+
+  useLayoutEffect(() => {
+    if (!wishlistUserId) {
+      setWishlistServerLoaded(true);
+    } else {
+      setWishlistServerLoaded(false);
+    }
+  }, [wishlistUserId]);
 
   useEffect(() => {
     if (!wishlistUserId) {
@@ -2693,9 +2752,11 @@ export function VendorStoreView({
     }
     wishlistServerSnapshotRef.current = null;
     const fetchStartedAt = Date.now();
+    let cancelled = false;
     void wishlistApi
       .get(wishlistUserId)
       .then((res) => {
+        if (cancelled) return;
         const ids = res.productIds || [];
         const snap = JSON.stringify([...ids].sort());
         if (lastWishlistLocalChangeRef.current <= fetchStartedAt) {
@@ -2704,8 +2765,15 @@ export function VendorStoreView({
         wishlistServerSnapshotRef.current = snap;
       })
       .catch(() => {
+        if (cancelled) return;
         wishlistServerSnapshotRef.current = "[]";
+      })
+      .finally(() => {
+        if (!cancelled) setWishlistServerLoaded(true);
       });
+    return () => {
+      cancelled = true;
+    };
   }, [wishlistUserId]);
 
   useEffect(() => {
@@ -2724,20 +2792,17 @@ export function VendorStoreView({
     return () => clearTimeout(t);
   }, [wishlist, wishlistUserId]);
 
-  const wishlistVendorMatchKeys = useMemo(() => {
-    const s = new Set<string>();
-    const a = String(vendorId || "").trim();
-    const b = String(canonicalVendorId || "").trim();
-    if (a) s.add(a);
-    if (b) s.add(b);
-    return s;
-  }, [vendorId, canonicalVendorId]);
+  const wishlistVendorMatchKeys = useMemo(
+    () => expandVendorWishlistMatchKeys(vendorId, canonicalVendorId),
+    [vendorId, canonicalVendorId]
+  );
 
   const productBelongsToWishlistVendorKeys = useCallback(
     (p: any) => {
       const pid = String(p.vendorId ?? "");
+      const pv = String(p.vendor ?? "");
       for (const key of wishlistVendorMatchKeys) {
-        if (pid === key) return true;
+        if (pid === key || pv === key) return true;
         if (Array.isArray(p.selectedVendors)) {
           if (p.selectedVendors.some((x: string) => String(x) === key)) return true;
         }
@@ -2752,9 +2817,11 @@ export function VendorStoreView({
   useEffect(() => {
     if (wishlist.length === 0) {
       setSavedDisplayProducts([]);
+      setSavedProductsFetchPending(false);
       return;
     }
     let cancelled = false;
+    setSavedProductsFetchPending(true);
     void (async () => {
       try {
         const rows = await fetchProductsByIds(wishlist);
@@ -2776,6 +2843,8 @@ export function VendorStoreView({
           .map((id) => byId.get(id))
           .filter((p): p is Product => Boolean(p));
         setSavedDisplayProducts(ordered);
+      } finally {
+        if (!cancelled) setSavedProductsFetchPending(false);
       }
     })();
     return () => {
@@ -2796,6 +2865,24 @@ export function VendorStoreView({
       return matchesSearch && matchesCategory;
     });
   }, [products, searchQuery, selectedCategory]);
+
+  /** Full-page skeleton on /saved: wishlist GET or first product hydration — not while refetching with cards visible */
+  const showSavedPageSkeleton = useMemo(
+    () =>
+      savedPage &&
+      ((!!wishlistUserId && !wishlistServerLoaded) ||
+        (wishlist.length > 0 &&
+          savedProductsFetchPending &&
+          savedDisplayProducts.length === 0)),
+    [
+      savedPage,
+      wishlistUserId,
+      wishlistServerLoaded,
+      wishlist.length,
+      savedProductsFetchPending,
+      savedDisplayProducts.length,
+    ]
+  );
 
   const toggleWishlist = (productId: string, productName?: string, optimisticProduct?: Product | null) => {
     if (!user) {
@@ -3640,6 +3727,12 @@ export function VendorStoreView({
   }
 
   // Main Storefront — h-screen + overflow-y-auto so scrollbar-thin applies (not the default body bar)
+  const showVendorStorefrontFullSkeleton =
+    serverStatus === "checking" && vendorViewMode === "storefront" && !savedPage;
+  const showVendorPageFullSkeleton =
+    vendorViewMode === "storefront" &&
+    (showVendorStorefrontFullSkeleton || (savedPage && showSavedPageSkeleton));
+
   return (
     <>
     <div
@@ -3691,6 +3784,13 @@ export function VendorStoreView({
         }}
       />
 
+      {showVendorPageFullSkeleton ? (
+        <VendorStorefrontFullSkeleton
+          count={10}
+          savedLayout={savedPage && showSavedPageSkeleton && !showVendorStorefrontFullSkeleton}
+        />
+      ) : (
+        <>
       {/* Header */}
       <header
         className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
@@ -3934,7 +4034,7 @@ export function VendorStoreView({
                     <Heart className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 fill-white shrink-0" />
                     <h1 className="text-xl sm:text-2xl font-serif font-bold">Saved Products</h1>
                   </div>
-                  <p className="text-slate-300 text-sm">
+                  <p className="text-slate-300 text-sm min-h-[1.375rem]">
                     {(() => {
                       const n = savedDisplayProducts.length;
                       return `${n} ${n === 1 ? "item" : "items"} saved for later`;
@@ -4024,13 +4124,6 @@ export function VendorStoreView({
               </div>
             )}
 
-            {/* Show skeleton loaders while checking server status - Shopify style */}
-            {serverStatus === 'checking' && (
-              <div className="animate-smooth-fade">
-                <ProductGridSkeleton count={8} />
-              </div>
-            )}
-
             {serverStatus === 'healthy' && products.length === 0 && (
               <div className="text-center py-20">
                 <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
@@ -4112,9 +4205,11 @@ export function VendorStoreView({
           </>
         )}
       </main>
+        </>
+      )}
 
       {/* Footer */}
-      {onBack && (
+      {onBack && !showVendorPageFullSkeleton && (
         <footer className="border-t mt-16">
           <div className="max-w-7xl mx-auto px-4 py-8 text-center space-y-4">
             <p className="text-sm text-slate-600">
