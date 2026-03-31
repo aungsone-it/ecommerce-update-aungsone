@@ -80,6 +80,7 @@ import { authApi, wishlistApi } from "../../utils/api";
 import {
   AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS,
   MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
+  MIGOO_USER_SESSION_CHANGED_EVENT,
   notifyMigooUserSessionChanged,
 } from "../../constants";
 import { toast } from "sonner";
@@ -709,7 +710,8 @@ export function VendorStoreView({
   const vendorProfileAmbientLastRef = useRef(0);
   const vendorProfileRefreshInFlightRef = useRef(false);
 
-  const refreshVendorProfileFromServer = useCallback(async () => {
+  const refreshVendorProfileFromServer = useCallback(async (opts?: { force?: boolean }) => {
+    const force = opts?.force === true;
     const storedUser = localStorage.getItem("migoo-user");
     if (!storedUser) return;
     let parsedUser: any;
@@ -722,13 +724,15 @@ export function VendorStoreView({
     if (!uid) return;
 
     const now = Date.now();
-    if (now - vendorProfileAmbientLastRef.current < AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS) {
+    if (
+      !force &&
+      now - vendorProfileAmbientLastRef.current < AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS
+    ) {
       return;
     }
     if (vendorProfileRefreshInFlightRef.current) {
       return;
     }
-    vendorProfileAmbientLastRef.current = now;
     vendorProfileRefreshInFlightRef.current = true;
     try {
       const response: any = await authApi.getProfile(uid);
@@ -743,8 +747,9 @@ export function VendorStoreView({
       const updatedUser = applyServerProfileMerge(localBase, freshProfile);
       setUser(updatedUser);
       localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
+      vendorProfileAmbientLastRef.current = Date.now();
     } catch {
-      /* keep local session if profile refresh fails */
+      /* keep local session if profile refresh fails — do not advance throttle */
     } finally {
       vendorProfileRefreshInFlightRef.current = false;
     }
@@ -773,12 +778,58 @@ export function VendorStoreView({
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "visible") {
-        scheduleVendorProfileRefresh();
+        void refreshVendorProfileFromServer({ force: true });
       }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [scheduleVendorProfileRefresh]);
+  }, [refreshVendorProfileFromServer]);
+
+  useEffect(() => {
+    const syncFromStorage = () => {
+      const raw = localStorage.getItem("migoo-user");
+      if (!raw) {
+        setUser(null);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const uid = resolveUserIdFromRecord(parsed);
+        if (!uid) {
+          setUser(null);
+          return;
+        }
+        setUser({ ...(parsed as object), id: uid } as any);
+      } catch {
+        setUser(null);
+      }
+      void refreshVendorProfileFromServer({ force: true });
+    };
+
+    const onSession = () => syncFromStorage();
+    window.addEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, onSession);
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea !== localStorage || e.key !== "migoo-user") return;
+      syncFromStorage();
+    };
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, onSession);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [refreshVendorProfileFromServer]);
+
+  const prevPathForProfileExitRef = useRef<string>("");
+  useEffect(() => {
+    const path = location.pathname;
+    const wasEdit = prevPathForProfileExitRef.current.includes("/profile/edit");
+    prevPathForProfileExitRef.current = path;
+    if (wasEdit && !path.includes("/profile/edit")) {
+      void refreshVendorProfileFromServer({ force: true });
+    }
+  }, [location.pathname, refreshVendorProfileFromServer]);
 
   // Same as Storefront: cache key `migoo-shipping-addresses-${userId}` + GET/POST customers/:id/addresses
   useEffect(() => {
@@ -1031,6 +1082,7 @@ export function VendorStoreView({
       if (data.success && data.user && typeof data.user === "object") {
         setUser(data.user);
         localStorage.setItem("migoo-user", JSON.stringify(data.user));
+        notifyMigooUserSessionChanged();
         toast.success("Profile updated successfully!");
         goToProfileMode("view-profile");
       } else {
@@ -2803,6 +2855,25 @@ export function VendorStoreView({
   /** Bumped when user toggles wishlist so a slow GET does not overwrite in-flight local state */
   const lastWishlistLocalChangeRef = useRef(0);
   const wishlistUserId = resolveUserIdFromRecord(user);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!wishlistUserId) return;
+      const started = Date.now();
+      void wishlistApi
+        .get(wishlistUserId)
+        .then((res) => {
+          if (lastWishlistLocalChangeRef.current > started) return;
+          const ids = res.productIds || [];
+          setWishlist(ids);
+          wishlistServerSnapshotRef.current = JSON.stringify([...ids].sort());
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [wishlistUserId]);
 
   // Restore wishlist ids before paint so /saved and header badge don’t wait on GET every navigation.
   useLayoutEffect(() => {
