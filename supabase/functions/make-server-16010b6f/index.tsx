@@ -2674,10 +2674,10 @@ app.get("/make-server-16010b6f/products", async (c) => {
       for (const id of idList) {
         const raw = await withTimeout(kv.get(`product:${id}`), 5000).catch(() => null);
         if (!raw || typeof raw !== "object") continue;
-        const platform = !(raw as any).vendorId || (raw as any).vendorId === "migoo";
         const st = String((raw as any).status || "").toLowerCase();
         const active = !st || st === "active";
-        if (platform && active) {
+        // Include vendor-assigned products (wishlist / cart hydration); callers filter by vendor if needed.
+        if (active) {
           out.push(mapPlatformProductToListRow(raw));
         }
       }
@@ -8095,6 +8095,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
         products: vendorProducts,
         storeName,
         logo,
+        resolvedVendorId: actualVendorId,
         total: Number(rpcData.total ?? vendorProducts.length),
         page: Number(rpcData.page ?? page),
         pageSize: Number(rpcData.pageSize ?? pageSize),
@@ -8151,6 +8152,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
         products: vendorProducts,
         storeName,
         logo,
+        resolvedVendorId: actualVendorId,
         total: vendorProducts.length,
         page: 1,
         pageSize: 1,
@@ -8184,6 +8186,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
       products: vendorProducts,
       storeName,
       logo,
+      resolvedVendorId: actualVendorId,
       total: totalLegacy,
       page,
       pageSize,

@@ -373,7 +373,12 @@ export function VendorStoreView({
   const [vendorCatalogHasMore, setVendorCatalogHasMore] = useState(false);
   const [vendorCatalogLoadingMore, setVendorCatalogLoadingMore] = useState(false);
   const [savedDisplayProducts, setSavedDisplayProducts] = useState<Product[]>([]);
+  /** KV vendor id after slug resolution — matches wishlist rows where URL segment is `vendor-vendor_…`. */
+  const [canonicalVendorId, setCanonicalVendorId] = useState<string | null>(null);
   const isFirstSearchCategoryEffect = useRef(true);
+  /** Latest catalog for merging into saved list without re-subscribing the wishlist hydration effect to `products`. */
+  const productsRef = useRef<Product[]>([]);
+  productsRef.current = products;
 
   const vendorEffectiveVariantOptions = useMemo(
     () => (selectedProduct ? getEffectiveVariantOptions(selectedProduct as any) : []),
@@ -1098,8 +1103,8 @@ export function VendorStoreView({
             >
               <Heart className="w-4 h-4 mr-2 shrink-0" />
               Saved products
-              {wishlist.length > 0 ? (
-                <Badge className="ml-2 bg-amber-600">{wishlist.length}</Badge>
+              {savedDisplayProducts.length > 0 ? (
+                <Badge className="ml-2 bg-amber-600">{savedDisplayProducts.length}</Badge>
               ) : null}
             </Button>
 
@@ -2264,6 +2269,11 @@ export function VendorStoreView({
           setVendorCatalogHasMore(fromLs.hasMore);
           setStoreName(fromLs.storeName || "Vendor Store");
           setStoreLogo(fromLs.logo || "");
+          const rid =
+            typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
+              ? fromLs.resolvedVendorId.trim()
+              : undefined;
+          setCanonicalVendorId(rid ?? vendorId);
           return;
         }
       }
@@ -2285,6 +2295,7 @@ export function VendorStoreView({
       setVendorCatalogHasMore(productsData.hasMore);
       setStoreName(productsData.storeName || "Vendor Store");
       setStoreLogo(productsData.logo || "");
+      setCanonicalVendorId(productsData.resolvedVendorId ?? vendorId);
 
       if (persistEligible && productsData && typeof productsData === "object") {
         writePersistedJson(lsKey, productsData);
@@ -2457,9 +2468,28 @@ export function VendorStoreView({
   }, [vendorId]);
 
   useEffect(() => {
+    setCanonicalVendorId(null);
     loadVendorData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);
+
+  // Saved-only route skips catalog fetch — still resolve slug → KV vendor id for wishlist matching.
+  useEffect(() => {
+    if (!savedPage) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const data = await fetchVendorProducts(vendorId, { page: 1, pageSize: 1 });
+        if (cancelled) return;
+        setCanonicalVendorId(data.resolvedVendorId ?? vendorId);
+      } catch {
+        if (!cancelled) setCanonicalVendorId(vendorId);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId, savedPage]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -2651,6 +2681,8 @@ export function VendorStoreView({
   const [wishlist, setWishlist] = useState<string[]>([]);
   /** Sorted JSON snapshot from last GET/PUT — skip redundant PUTs and block PUT before hydration */
   const wishlistServerSnapshotRef = useRef<string | null>(null);
+  /** Bumped when user toggles wishlist so a slow GET does not overwrite in-flight local state */
+  const lastWishlistLocalChangeRef = useRef(0);
   const wishlistUserId = resolveUserIdFromRecord(user);
 
   useEffect(() => {
@@ -2660,12 +2692,16 @@ export function VendorStoreView({
       return;
     }
     wishlistServerSnapshotRef.current = null;
+    const fetchStartedAt = Date.now();
     void wishlistApi
       .get(wishlistUserId)
       .then((res) => {
         const ids = res.productIds || [];
-        setWishlist(ids);
-        wishlistServerSnapshotRef.current = JSON.stringify([...ids].sort());
+        const snap = JSON.stringify([...ids].sort());
+        if (lastWishlistLocalChangeRef.current <= fetchStartedAt) {
+          setWishlist(ids);
+        }
+        wishlistServerSnapshotRef.current = snap;
       })
       .catch(() => {
         wishlistServerSnapshotRef.current = "[]";
@@ -2684,12 +2720,37 @@ export function VendorStoreView({
           wishlistServerSnapshotRef.current = next;
         })
         .catch(() => {});
-    }, 500);
+    }, 250);
     return () => clearTimeout(t);
   }, [wishlist, wishlistUserId]);
 
+  const wishlistVendorMatchKeys = useMemo(() => {
+    const s = new Set<string>();
+    const a = String(vendorId || "").trim();
+    const b = String(canonicalVendorId || "").trim();
+    if (a) s.add(a);
+    if (b) s.add(b);
+    return s;
+  }, [vendorId, canonicalVendorId]);
+
+  const productBelongsToWishlistVendorKeys = useCallback(
+    (p: any) => {
+      const pid = String(p.vendorId ?? "");
+      for (const key of wishlistVendorMatchKeys) {
+        if (pid === key) return true;
+        if (Array.isArray(p.selectedVendors)) {
+          if (p.selectedVendors.some((x: string) => String(x) === key)) return true;
+        }
+      }
+      return false;
+    },
+    [wishlistVendorMatchKeys]
+  );
+
+  // Products in the user's wishlist that belong to this vendor (header badge + /saved page).
+  // Must not depend on savedPage — otherwise the heart shows global count while the page shows 0 for this shop.
   useEffect(() => {
-    if (!savedPage || wishlist.length === 0) {
+    if (wishlist.length === 0) {
       setSavedDisplayProducts([]);
       return;
     }
@@ -2698,22 +2759,29 @@ export function VendorStoreView({
       try {
         const rows = await fetchProductsByIds(wishlist);
         if (cancelled) return;
-        const here = rows.filter((p: any) => {
-          if (p.vendorId === vendorId) return true;
-          if (Array.isArray(p.selectedVendors)) {
-            return p.selectedVendors.some((x: string) => x === vendorId);
-          }
-          return false;
-        }) as Product[];
-        setSavedDisplayProducts(here);
+        const fromApi = rows.filter(productBelongsToWishlistVendorKeys) as Product[];
+        const byId = new Map<string, Product>(fromApi.map((p) => [p.id, p]));
+        for (const p of productsRef.current) {
+          if (!wishlist.includes(p.id)) continue;
+          if (!byId.has(p.id)) byId.set(p.id, p);
+        }
+        const ordered = wishlist
+          .map((id) => byId.get(id))
+          .filter((p): p is Product => Boolean(p));
+        setSavedDisplayProducts(ordered);
       } catch {
-        if (!cancelled) setSavedDisplayProducts([]);
+        if (cancelled) return;
+        const byId = new Map(productsRef.current.map((p) => [p.id, p]));
+        const ordered = wishlist
+          .map((id) => byId.get(id))
+          .filter((p): p is Product => Boolean(p));
+        setSavedDisplayProducts(ordered);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [savedPage, wishlist, vendorId]);
+  }, [wishlist, vendorId, wishlistVendorMatchKeys, productBelongsToWishlistVendorKeys]);
 
   /** Instant client filter on loaded rows (name/SKU) — pairs with debounced server fetch for q. */
   const filteredProducts = useMemo(() => {
@@ -2729,22 +2797,31 @@ export function VendorStoreView({
     });
   }, [products, searchQuery, selectedCategory]);
 
-  const toggleWishlist = (productId: string) => {
-    // Require authentication for wishlist
+  const toggleWishlist = (productId: string, productName?: string, optimisticProduct?: Product | null) => {
     if (!user) {
       toast.error("Please sign in to add items to your wishlist");
       setShowAuthModal(true);
-      setAuthMode('login');
+      setAuthMode("login");
       return;
     }
-    
-    setWishlist(prev => {
-      if (prev.includes(productId)) {
-        return prev.filter(id => id !== productId);
-      } else {
-        return [...prev, productId];
-      }
+
+    lastWishlistLocalChangeRef.current = Date.now();
+    const wasListed = wishlist.includes(productId);
+    const label = (productName || "Product").trim() || "Product";
+    setWishlist((prev) =>
+      prev.includes(productId)
+        ? prev.filter((id) => id !== productId)
+        : [...prev, productId]
+    );
+    setSavedDisplayProducts((prev) => {
+      if (wasListed) return prev.filter((p) => p.id !== productId);
+      if (!optimisticProduct) return prev;
+      if (prev.some((p) => p.id === productId)) return prev;
+      return [...prev, optimisticProduct];
     });
+    toast.success(
+      wasListed ? `${label} removed from wishlist` : `${label} added to wishlist!`
+    );
   };
 
   const vendorDetailDisplay = useMemo(() => {
@@ -2920,9 +2997,9 @@ export function VendorStoreView({
                   title="Saved products"
                 >
                   <Heart className="w-5 h-5 text-slate-700" />
-                  {wishlist.length > 0 && (
+                  {savedDisplayProducts.length > 0 && (
                     <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-amber-600 text-white text-xs border-2 border-white">
-                      {wishlist.length}
+                      {savedDisplayProducts.length}
                     </Badge>
                   )}
                 </Button>
@@ -3349,7 +3426,7 @@ export function VendorStoreView({
                 <Button 
                   variant="outline"
                   className="h-10 w-10 p-0 border-2 border-slate-300 hover:bg-slate-100 hover:border-slate-400 flex items-center justify-center flex-shrink-0 transition-all rounded-lg"
-                  onClick={() => toggleWishlist(selectedProduct.id)}
+                  onClick={() => toggleWishlist(selectedProduct.id, selectedProduct.name, selectedProduct)}
                 >
                   <Heart className={`w-4 h-4 ${wishlist.includes(selectedProduct.id) ? "fill-amber-600 text-amber-600" : "text-slate-600"}`} />
                 </Button>
@@ -3672,9 +3749,9 @@ export function VendorStoreView({
                 title="Saved products"
               >
                 <Heart className="w-5 h-5 text-slate-700" />
-                {wishlist.length > 0 && (
+                {savedDisplayProducts.length > 0 && (
                   <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-amber-600 text-white text-xs border-2 border-white">
-                    {wishlist.length}
+                    {savedDisplayProducts.length}
                   </Badge>
                 )}
               </Button>
@@ -3840,24 +3917,24 @@ export function VendorStoreView({
       {renderVendorMobileSearchOverlay()}
 
       {/* Content */}
-      <main className="max-w-7xl mx-auto px-4 py-8 w-full">
+      <main
+        className={`max-w-7xl mx-auto px-4 w-full ${
+          vendorViewMode === "storefront" && savedPage ? "pt-0 pb-8" : "py-8"
+        }`}
+      >
         {vendorViewMode !== "storefront" ? (
           renderVendorAccountPage()
         ) : savedPage ? (
           <>
-            <div className="-mx-4">
-              <div
-                className="text-white py-8 sm:py-10 md:py-11 px-4 sm:px-6 lg:px-8"
-                style={{ backgroundColor: "#223044" }}
-              >
-                <div className="max-w-7xl mx-auto">
-                  <div className="flex items-center gap-3 sm:gap-4">
-                    <Heart className="w-7 h-7 sm:w-8 sm:h-8 shrink-0 fill-white text-white" strokeWidth={1.5} />
-                    <h1 className="font-serif font-bold text-white text-2xl sm:text-3xl tracking-tight">
-                      Saved Products
-                    </h1>
+            {/* Match main storefront /saved banner: full-bleed gradient + serif title + slate subtitle */}
+            <div className="w-screen max-w-none ml-[calc(50%-50vw)]">
+              <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white py-10 sm:py-12 md:py-16">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                    <Heart className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 fill-white shrink-0" />
+                    <h1 className="text-xl sm:text-2xl font-serif font-bold">Saved Products</h1>
                   </div>
-                  <p className="mt-2 text-sm sm:text-[15px] text-white/95 font-sans font-normal">
+                  <p className="text-slate-300 text-sm">
                     {(() => {
                       const n = savedDisplayProducts.length;
                       return `${n} ${n === 1 ? "item" : "items"} saved for later`;
@@ -3916,13 +3993,7 @@ export function VendorStoreView({
                         }}
                         onToggleWishlist={(e) => {
                           e.stopPropagation();
-                          toggleWishlist(product.id);
-                          const isNowWishlisted = !wishlist.includes(product.id);
-                          toast.success(
-                            isNowWishlisted
-                              ? `${product.name} added to wishlist!`
-                              : `${product.name} removed from wishlist`
-                          );
+                          toggleWishlist(product.id, product.name, product);
                         }}
                         isWishlisted={wishlist.includes(product.id)}
                         formatPriceMMK={formatPriceMMK}
@@ -4011,9 +4082,7 @@ export function VendorStoreView({
                       }}
                       onToggleWishlist={(e) => {
                         e.stopPropagation();
-                        toggleWishlist(product.id);
-                        const isNowWishlisted = !wishlist.includes(product.id);
-                        toast.success(isNowWishlisted ? `${product.name} added to wishlist!` : `${product.name} removed from wishlist`);
+                        toggleWishlist(product.id, product.name, product);
                       }}
                       isWishlisted={wishlist.includes(product.id)}
                       formatPriceMMK={formatPriceMMK}
