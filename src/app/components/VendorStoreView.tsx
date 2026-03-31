@@ -81,6 +81,7 @@ import {
   AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS,
   MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
   MIGOO_USER_SESSION_CHANGED_EVENT,
+  VENDOR_ACCOUNT_VISIBILITY_RESYNC_MIN_MS,
   notifyMigooUserSessionChanged,
 } from "../../constants";
 import { toast } from "sonner";
@@ -776,16 +777,6 @@ export function VendorStoreView({
   }, [scheduleVendorProfileRefresh]);
 
   useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "visible") {
-        void refreshVendorProfileFromServer({ force: true });
-      }
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [refreshVendorProfileFromServer]);
-
-  useEffect(() => {
     const syncFromStorage = () => {
       const raw = localStorage.getItem("migoo-user");
       if (!raw) {
@@ -802,8 +793,10 @@ export function VendorStoreView({
         setUser({ ...(parsed as object), id: uid } as any);
       } catch {
         setUser(null);
+        return;
       }
-      void refreshVendorProfileFromServer({ force: true });
+      /* One debounced profile GET; respects AMBIENT throttle — avoids stacking calls on login/save/cross-tab */
+      scheduleVendorProfileRefresh();
     };
 
     const onSession = () => syncFromStorage();
@@ -819,7 +812,7 @@ export function VendorStoreView({
       window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, onSession);
       window.removeEventListener("storage", onStorage);
     };
-  }, [refreshVendorProfileFromServer]);
+  }, [scheduleVendorProfileRefresh]);
 
   const prevPathForProfileExitRef = useRef<string>("");
   useEffect(() => {
@@ -2854,15 +2847,32 @@ export function VendorStoreView({
   const wishlistServerSnapshotRef = useRef<string | null>(null);
   /** Bumped when user toggles wishlist so a slow GET does not overwrite in-flight local state */
   const lastWishlistLocalChangeRef = useRef(0);
+  const vendorAccountVisibilityLastRef = useRef(0);
   const wishlistUserId = resolveUserIdFromRecord(user);
 
+  /** Tab visible: one throttled bundle (profile + wishlist) so account UI catches up without spamming the API */
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
-      if (!wishlistUserId) return;
+      const now = Date.now();
+      if (now - vendorAccountVisibilityLastRef.current < VENDOR_ACCOUNT_VISIBILITY_RESYNC_MIN_MS) {
+        return;
+      }
+      vendorAccountVisibilityLastRef.current = now;
+      void refreshVendorProfileFromServer({ force: true });
+      const raw = localStorage.getItem("migoo-user");
+      if (!raw) return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        return;
+      }
+      const uid = resolveUserIdFromRecord(parsed as Record<string, unknown>);
+      if (!uid) return;
       const started = Date.now();
       void wishlistApi
-        .get(wishlistUserId)
+        .get(uid)
         .then((res) => {
           if (lastWishlistLocalChangeRef.current > started) return;
           const ids = res.productIds || [];
@@ -2873,7 +2883,7 @@ export function VendorStoreView({
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [wishlistUserId]);
+  }, [refreshVendorProfileFromServer]);
 
   // Restore wishlist ids before paint so /saved and header badge don’t wait on GET every navigation.
   useLayoutEffect(() => {

@@ -59,6 +59,12 @@ export const POLLING_INTERVALS_MS = {
 /** Min gap between ambient GET /auth/profile calls (vendor storefront tab focus, etc.). */
 export const AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS = 10 * 60 * 1000;
 
+/**
+ * Vendor storefront: min gap between “tab became visible” account bundles (profile GET + wishlist GET).
+ * Keeps header / saved list in sync after being away without firing on every focus switch.
+ */
+export const VENDOR_ACCOUNT_VISIBILITY_RESYNC_MIN_MS = 90 * 1000;
+
 // ============================================
 // SERVER CONFIGURATION
 // ============================================
