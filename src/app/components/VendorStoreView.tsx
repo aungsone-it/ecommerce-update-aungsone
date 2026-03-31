@@ -17,6 +17,7 @@ import {
   lsVendorCatalogPage1Key,
   lsVendorCategoriesKey,
   lsVendorSavedWishlistPageKey,
+  lsWishlistProductIdsKey,
 } from "../utils/persistedLocalCache";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
@@ -2803,10 +2804,23 @@ export function VendorStoreView({
   const lastWishlistLocalChangeRef = useRef(0);
   const wishlistUserId = resolveUserIdFromRecord(user);
 
+  // Restore wishlist ids before paint so /saved and header badge don’t wait on GET every navigation.
   useLayoutEffect(() => {
     if (!wishlistUserId) {
+      setWishlist([]);
+      setWishlistServerLoaded(true);
+      return;
+    }
+    const cached = readPersistedJson<string[]>(
+      lsWishlistProductIdsKey(wishlistUserId),
+      PERSISTED_CATALOG_TTL_MS
+    );
+    if (cached != null && Array.isArray(cached) && cached.every((x) => typeof x === "string")) {
+      setWishlist(cached);
+      wishlistServerSnapshotRef.current = JSON.stringify([...cached].sort());
       setWishlistServerLoaded(true);
     } else {
+      setWishlist([]);
       setWishlistServerLoaded(false);
     }
   }, [wishlistUserId]);
@@ -2817,7 +2831,6 @@ export function VendorStoreView({
       wishlistServerSnapshotRef.current = null;
       return;
     }
-    wishlistServerSnapshotRef.current = null;
     const fetchStartedAt = Date.now();
     let cancelled = false;
     void wishlistApi
@@ -2859,6 +2872,11 @@ export function VendorStoreView({
     return () => clearTimeout(t);
   }, [wishlist, wishlistUserId]);
 
+  useEffect(() => {
+    if (!wishlistUserId || !wishlistServerLoaded) return;
+    writePersistedJson(lsWishlistProductIdsKey(wishlistUserId), wishlist);
+  }, [wishlist, wishlistUserId, wishlistServerLoaded]);
+
   const wishlistVendorMatchKeys = useMemo(
     () => expandVendorWishlistMatchKeys(vendorId, canonicalVendorId),
     [vendorId, canonicalVendorId]
@@ -2898,40 +2916,60 @@ export function VendorStoreView({
       return;
     }
     let cancelled = false;
-    setSavedProductsFetchPending(true);
-    setSavedWishlistPage(1);
+    const pageSize = VENDOR_SAVED_PAGE_SIZE;
+    const cacheKey = CACHE_KEYS.vendorSavedWishlistPage(
+      wishlistUserId,
+      vendorId,
+      wishlistSig,
+      1,
+      pageSize
+    );
+    const lsKey = lsVendorSavedWishlistPageKey(wishlistUserId, vendorId, wishlistSig, 1, pageSize);
+
+    const applySavedPage1 = (payload: VendorWishlistVendorPageResult) => {
+      moduleCache.prime(cacheKey, payload);
+      const merged = mergeSavedWishlistPageWithCatalog(
+        payload.products as Product[],
+        wishlist,
+        productsRef.current
+      );
+      if (!cancelled) {
+        setSavedDisplayProducts(merged);
+        setSavedVendorWishlistTotal(payload.total);
+        setSavedWishlistHasMore(!!payload.hasMore);
+        setSavedWishlistPage(1);
+      }
+    };
+
+    let syncHydrated = false;
+    const fromLsPrime = readPersistedJson<VendorWishlistVendorPageResult>(lsKey, PERSISTED_CATALOG_TTL_MS);
+    if (
+      fromLsPrime &&
+      typeof fromLsPrime === "object" &&
+      Array.isArray(fromLsPrime.products) &&
+      typeof fromLsPrime.total === "number"
+    ) {
+      applySavedPage1(fromLsPrime);
+      syncHydrated = true;
+    } else {
+      const peeked = moduleCache.peek<VendorWishlistVendorPageResult>(cacheKey);
+      if (
+        peeked &&
+        typeof peeked === "object" &&
+        Array.isArray(peeked.products) &&
+        typeof peeked.total === "number"
+      ) {
+        applySavedPage1(peeked);
+        syncHydrated = true;
+      }
+    }
+
+    if (!syncHydrated) {
+      setSavedProductsFetchPending(true);
+    }
     setSavedWishlistLoadingMore(false);
     void (async () => {
-      const pageSize = VENDOR_SAVED_PAGE_SIZE;
-      const cacheKey = CACHE_KEYS.vendorSavedWishlistPage(
-        wishlistUserId,
-        vendorId,
-        wishlistSig,
-        1,
-        pageSize
-      );
-      const lsKey = lsVendorSavedWishlistPageKey(wishlistUserId, vendorId, wishlistSig, 1, pageSize);
       try {
-        const fromLs = readPersistedJson<VendorWishlistVendorPageResult>(lsKey, PERSISTED_CATALOG_TTL_MS);
-        if (
-          fromLs &&
-          typeof fromLs === "object" &&
-          Array.isArray(fromLs.products) &&
-          typeof fromLs.total === "number"
-        ) {
-          moduleCache.prime(cacheKey, fromLs);
-          const merged = mergeSavedWishlistPageWithCatalog(
-            fromLs.products as Product[],
-            wishlist,
-            productsRef.current
-          );
-          if (!cancelled) {
-            setSavedDisplayProducts(merged);
-            setSavedVendorWishlistTotal(fromLs.total);
-            setSavedWishlistHasMore(!!fromLs.hasMore);
-          }
-        }
-
         const data = await moduleCache.get(cacheKey, () =>
           fetchVendorWishlistVendorPage({
             vendorStorefront: vendorId,

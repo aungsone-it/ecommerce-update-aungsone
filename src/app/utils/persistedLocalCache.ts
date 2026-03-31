@@ -97,6 +97,11 @@ export function lsVendorSavedWishlistPageKey(
   return `migoo-ls-vendor-saved-wl-${encodeURIComponent(userId)}-v-${encodeURIComponent(vendorId)}-sig-${encodeURIComponent(wishlistSig)}-p-${p}-ps-${ps}-v1`;
 }
 
+/** Customer wishlist product id list — instant restore when revisiting /saved (same TTL as catalog). */
+export function lsWishlistProductIdsKey(userId: string): string {
+  return `migoo-ls-customer-wishlist-ids-${encodeURIComponent(userId)}-v1`;
+}
+
 /** `/` landing — GET platform-settings JSON body */
 export const LS_LANDING_PLATFORM_SETTINGS = "migoo-ls-landing-platform-settings-v1";
 
