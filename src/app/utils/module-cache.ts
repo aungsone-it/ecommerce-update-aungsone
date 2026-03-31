@@ -416,6 +416,67 @@ export async function fetchProductsByIds(ids: string[]) {
   return data.products || [];
 }
 
+/** Stable short id for moduleCache / localStorage keys when the wishlist revision changes. */
+export function wishlistSigFromProductIds(ids: string[]): string {
+  if (ids.length === 0) return "0";
+  let h = 2166136261;
+  for (const id of ids) {
+    for (let i = 0; i < id.length; i++) {
+      h ^= id.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    h ^= 0x9e3779b9;
+  }
+  return `${ids.length}-u${(h >>> 0).toString(36)}`;
+}
+
+export type VendorWishlistVendorPageResult = {
+  products: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+};
+
+/** Server-paginated wishlist rows filtered to one vendor storefront (POST wishlist-vendor-page). */
+export async function fetchVendorWishlistVendorPage(params: {
+  vendorStorefront: string;
+  resolvedVendorId?: string | null;
+  productIds: string[];
+  page: number;
+  pageSize?: number;
+}): Promise<VendorWishlistVendorPageResult> {
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? 24));
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/wishlist-vendor-page`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${publicAnonKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        vendorStorefront: params.vendorStorefront,
+        resolvedVendorId: params.resolvedVendorId ?? undefined,
+        productIds: params.productIds,
+        page: params.page,
+        pageSize,
+      }),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to fetch vendor wishlist page: ${response.status}`);
+  }
+  const data = await response.json();
+  return {
+    products: data.products || [],
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? params.page),
+    pageSize: Number(data.pageSize ?? pageSize),
+    hasMore: !!data.hasMore,
+  };
+}
+
 // Fetch all vendors (SECURE admin)
 export async function fetchAllVendors() {
   const response = await fetch(
@@ -1062,6 +1123,14 @@ export const CACHE_KEYS = {
   vendorProductsAdmin: (vendorId: string) => `vendor-products-admin-${vendorId}`,
   vendorCategories: (vendorId: string) => `vendor-categories-${vendorId}`,
   vendorOrders: (vendorId: string) => `vendor-orders-${vendorId}`,
+  /** Customer wishlist slice for one vendor storefront — `wishlistSig` bumps when productIds revision changes */
+  vendorSavedWishlistPage: (
+    userId: string,
+    vendorId: string,
+    wishlistSig: string,
+    page: number,
+    pageSize: number
+  ) => `vendor-saved-wl-${userId}-${vendorId}-sig${wishlistSig}-p${page}-ps${pageSize}`,
 
   /** Full product by id (GET /products/:id) — Super Admin + shared with storefront shape */
   productById: (productId: string) => `product-by-id-${productId}`,
@@ -1130,6 +1199,18 @@ export function invalidateVendorStorefrontCatalogCache(vendorId: string): void {
   moduleCache.invalidatePrefix(`vendor-products-${id}-`);
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix(`migoo-ls-vendor-p1-${encodeURIComponent(id)}`);
+  }
+}
+
+/** Wishlist changes on `/store/:slug/saved` — clear paginated module + localStorage for that user + storefront. */
+export function invalidateVendorSavedWishlistCaches(userId: string, vendorId: string): void {
+  const uid = String(userId);
+  const vid = String(vendorId);
+  moduleCache.invalidatePrefix(`vendor-saved-wl-${uid}-${vid}-`);
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix(
+      `migoo-ls-vendor-saved-wl-${encodeURIComponent(uid)}-v-${encodeURIComponent(vid)}-`
+    );
   }
 }
 

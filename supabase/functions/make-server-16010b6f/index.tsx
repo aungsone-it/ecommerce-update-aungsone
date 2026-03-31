@@ -2659,6 +2659,81 @@ async function ensureProductsListResponse(): Promise<{ products: any[]; total: n
   return response;
 }
 
+/** Same storefront / KV id expansion as client `expandVendorWishlistMatchKeys` (wishlist vendor filter). */
+function expandStorefrontWishlistVendorKeys(storefront: string, resolvedId: string | null): string[] {
+  const s = new Set<string>();
+  const add = (v: string) => {
+    const t = v.trim();
+    if (!t) return;
+    s.add(t);
+    if (/^vendor-/i.test(t)) {
+      const inner = t.replace(/^vendor-/i, "");
+      if (inner) s.add(inner);
+    }
+  };
+  add(String(storefront || ""));
+  if (resolvedId) add(resolvedId);
+  return [...s];
+}
+
+function productRawBelongsToWishlistVendorKeys(raw: any, keys: string[]): boolean {
+  const pid = String(raw?.vendorId ?? "");
+  const pv = String(raw?.vendor ?? "");
+  const sv = raw?.selectedVendors;
+  for (const key of keys) {
+    if (!key) continue;
+    if (pid === key || pv === key) return true;
+    if (Array.isArray(sv) && sv.some((x: any) => String(x) === key)) return true;
+  }
+  return false;
+}
+
+/**
+ * Paginated wishlist rows for one vendor storefront (order preserved, server-filtered).
+ * POST body: { vendorStorefront, resolvedVendorId?, productIds[], page, pageSize? }
+ */
+app.post("/make-server-16010b6f/products/wishlist-vendor-page", async (c) => {
+  try {
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || typeof body !== "object") {
+      return c.json({ error: "invalid json" }, 400);
+    }
+    const vendorStorefront = String(body.vendorStorefront ?? "").trim();
+    const resolvedVendorId =
+      body.resolvedVendorId != null && String(body.resolvedVendorId).trim()
+        ? String(body.resolvedVendorId).trim()
+        : "";
+    const rawIds = Array.isArray(body.productIds) ? body.productIds : [];
+    const productIds = rawIds.map((x) => String(x ?? "").trim()).filter(Boolean);
+    const page = Math.max(1, parseInt(String(body.page ?? "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(body.pageSize ?? "24"), 10) || 24));
+    if (!vendorStorefront) {
+      return c.json({ error: "vendorStorefront required" }, 400);
+    }
+    const MAX_IDS = 800;
+    const ids = productIds.slice(0, MAX_IDS);
+    const matchKeys = expandStorefrontWishlistVendorKeys(vendorStorefront, resolvedVendorId || null);
+    const matched: any[] = [];
+    for (const id of ids) {
+      const raw = await withTimeout(kv.get(`product:${id}`), 5000).catch(() => null);
+      if (!raw || typeof raw !== "object") continue;
+      const st = String((raw as any).status || "").toLowerCase();
+      const active = !st || st === "active";
+      if (!active) continue;
+      if (!productRawBelongsToWishlistVendorKeys(raw, matchKeys)) continue;
+      matched.push(mapPlatformProductToListRow(raw));
+    }
+    const total = matched.length;
+    const start = (page - 1) * pageSize;
+    const products = matched.slice(start, start + pageSize);
+    const hasMore = start + pageSize < total;
+    return c.json({ products, total, page, pageSize, hasMore });
+  } catch (e) {
+    console.error("wishlist-vendor-page:", e);
+    return c.json({ products: [], total: 0, page: 1, pageSize: 24, hasMore: false }, 200);
+  }
+});
+
 app.get("/make-server-16010b6f/products", async (c) => {
   try {
     console.log("📦 Fetching products...");

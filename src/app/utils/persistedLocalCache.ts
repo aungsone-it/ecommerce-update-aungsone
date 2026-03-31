@@ -84,6 +84,19 @@ export function lsVendorCategoriesKey(vendorId: string): string {
   return `migoo-ls-vendor-cats-${encodeURIComponent(String(vendorId))}-v1`;
 }
 
+/** Vendor /saved grid — one page of POST wishlist-vendor-page (per user + storefront + wishlist revision). */
+export function lsVendorSavedWishlistPageKey(
+  userId: string,
+  vendorId: string,
+  wishlistSig: string,
+  page: number,
+  pageSize: number
+): string {
+  const p = Math.max(1, page);
+  const ps = Math.min(100, Math.max(1, pageSize));
+  return `migoo-ls-vendor-saved-wl-${encodeURIComponent(userId)}-v-${encodeURIComponent(vendorId)}-sig-${encodeURIComponent(wishlistSig)}-p-${p}-ps-${ps}-v1`;
+}
+
 /** `/` landing — GET platform-settings JSON body */
 export const LS_LANDING_PLATFORM_SETTINGS = "migoo-ls-landing-platform-settings-v1";
 

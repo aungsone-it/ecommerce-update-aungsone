@@ -4,8 +4,11 @@ import {
   CACHE_KEYS,
   fetchVendorProducts,
   fetchVendorCategories,
-  fetchProductsByIds,
+  fetchVendorWishlistVendorPage,
+  wishlistSigFromProductIds,
+  invalidateVendorSavedWishlistCaches,
   VENDOR_CATALOG_MUTATION_EVENT,
+  type VendorWishlistVendorPageResult,
 } from "../utils/module-cache";
 import {
   readPersistedJson,
@@ -13,6 +16,7 @@ import {
   PERSISTED_CATALOG_TTL_MS,
   lsVendorCatalogPage1Key,
   lsVendorCategoriesKey,
+  lsVendorSavedWishlistPageKey,
 } from "../utils/persistedLocalCache";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
@@ -177,6 +181,37 @@ function expandVendorWishlistMatchKeys(storefrontParam: string, canonicalVendorI
   return s;
 }
 
+/** True when product.vendorId / selectedVendors match storefront slug or KV id (ignores human-readable `vendor` name). */
+function productVendorIdsMatchStorefront(
+  p: any,
+  storefrontParam: string,
+  canonicalVendorId: string | null
+): boolean {
+  const keys = expandVendorWishlistMatchKeys(storefrontParam, canonicalVendorId);
+  const pid = String(p?.vendorId ?? "").trim();
+  if (pid && keys.has(pid)) return true;
+  if (Array.isArray(p?.selectedVendors)) {
+    for (const x of p.selectedVendors) {
+      if (keys.has(String(x))) return true;
+    }
+  }
+  return false;
+}
+
+function mergeSavedWishlistPageWithCatalog(
+  rows: Product[],
+  wishlistIds: string[],
+  catalog: Product[]
+): Product[] {
+  if (rows.length === 0) return rows;
+  const catById = new Map(catalog.map((p) => [p.id, p]));
+  return rows.map((p) => {
+    if (!wishlistIds.includes(p.id)) return p;
+    const c = catById.get(p.id);
+    return c ?? p;
+  });
+}
+
 /**
  * Path segment for `/store/:store/product/:slug`.
  * NOTE: Use `\w` and `\s` (single backslash) in regex literals — `\\w` breaks slugify and yields empty URLs like `/product/`.
@@ -323,6 +358,8 @@ function resolveVendorProductFromSlug(products: Product[], decoded: string): Pro
 
 /** Browse mode: small pages + load more. Search mode: max edge page size so live filter + server q cover the catalog. */
 const VENDOR_BROWSE_PAGE_SIZE = 24;
+/** Saved products grid — same page size as browse; server + moduleCache + localStorage per page. */
+const VENDOR_SAVED_PAGE_SIZE = 24;
 const VENDOR_SEARCH_PAGE_SIZE = 100;
 /** Keystrokes only update client filter until this many chars, then debounced server `q`. */
 const VENDOR_SEARCH_MIN_SERVER_CHARS = 3;
@@ -352,6 +389,13 @@ export function VendorStoreView({
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
     return typeof m?.params?.productSlug === "string" ? m.params.productSlug : undefined;
   }, [location.pathname]);
+
+  const isVendorProductDetailPath = useMemo(
+    () =>
+      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) != null,
+    [location.pathname]
+  );
 
   const goToProfileMode = useCallback(
     (mode: VendorAccountViewMode) => {
@@ -396,6 +440,11 @@ export function VendorStoreView({
   const [vendorCatalogHasMore, setVendorCatalogHasMore] = useState(false);
   const [vendorCatalogLoadingMore, setVendorCatalogLoadingMore] = useState(false);
   const [savedDisplayProducts, setSavedDisplayProducts] = useState<Product[]>([]);
+  /** Server total of wishlist products belonging to this storefront (all pages). */
+  const [savedVendorWishlistTotal, setSavedVendorWishlistTotal] = useState(0);
+  const [savedWishlistPage, setSavedWishlistPage] = useState(1);
+  const [savedWishlistHasMore, setSavedWishlistHasMore] = useState(false);
+  const [savedWishlistLoadingMore, setSavedWishlistLoadingMore] = useState(false);
   /** KV vendor id after slug resolution — matches wishlist rows where URL segment is `vendor-vendor_…`. */
   const [canonicalVendorId, setCanonicalVendorId] = useState<string | null>(null);
   const isFirstSearchCategoryEffect = useRef(true);
@@ -1126,8 +1175,8 @@ export function VendorStoreView({
             >
               <Heart className="w-4 h-4 mr-2 shrink-0" />
               Saved products
-              {savedDisplayProducts.length > 0 ? (
-                <Badge className="ml-2 bg-amber-600">{savedDisplayProducts.length}</Badge>
+              {savedVendorWishlistTotal > 0 ? (
+                <Badge className="ml-2 bg-amber-600">{savedVendorWishlistTotal}</Badge>
               ) : null}
             </Button>
 
@@ -2565,25 +2614,59 @@ export function VendorStoreView({
     })();
   }, [debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
 
-  // Sync product detail from URL + catalog (pathname is source of truth — avoids races with slow loads)
-  useEffect(() => {
+  // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.
+  useLayoutEffect(() => {
+    const stillOnProduct =
+      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
+    if (!stillOnProduct) {
+      setSelectedProduct(null);
+      return;
+    }
     const slug = productSlugFromPath ?? initialProductSlug;
     if (!slug) {
       setSelectedProduct(null);
       return;
     }
     const decoded = safeDecodePathSegment(slug);
-    const product = resolveVendorProductFromSlug(products, decoded);
-    const stillOnProduct =
-      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
-      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
-    if (product && stillOnProduct) {
-      setSelectedProduct(product);
+    if (!decoded) {
+      setSelectedProduct(null);
+      return;
     }
-  }, [productSlugFromPath, initialProductSlug, products, location.pathname]);
+    const fromCatalog = resolveVendorProductFromSlug(products, decoded);
+    if (fromCatalog) {
+      setSelectedProduct(fromCatalog);
+      return;
+    }
+    const navState = location.state as { vendorProduct?: Product } | null | undefined;
+    const fromNav = navState?.vendorProduct;
+    if (fromNav?.id && resolveVendorProductFromSlug([fromNav], decoded)) {
+      setSelectedProduct(fromNav);
+      return;
+    }
+    setSelectedProduct(null);
+  }, [
+    productSlugFromPath,
+    initialProductSlug,
+    products,
+    location.pathname,
+    location.state,
+  ]);
+
+  // Shop grid and /product/* share this scroll root; opening a product after scrolling the home page
+  // otherwise keeps scrollTop — user lands mid-page (description) instead of hero + breadcrumbs.
+  useLayoutEffect(() => {
+    if (savedPage) return;
+    const st = location.state as { vendorVariantNav?: boolean } | null | undefined;
+    if (st?.vendorVariantNav) return;
+    const el = vendorScrollRootRef.current;
+    if (el) el.scrollTop = 0;
+    lastVendorScrollTopRef.current = 0;
+    setVendorNavbarSticky(false);
+  }, [productSlugFromPath, savedPage, location.key, location.pathname]);
 
   useEffect(() => {
-    if (savedPage || serverStatus !== "healthy") return;
+    if (savedPage) return;
     const slug = productSlugFromPath ?? initialProductSlug;
     if (!slug) return;
     const decoded = safeDecodePathSegment(slug);
@@ -2612,15 +2695,7 @@ export function VendorStoreView({
     return () => {
       cancelled = true;
     };
-  }, [
-    savedPage,
-    serverStatus,
-    productSlugFromPath,
-    initialProductSlug,
-    products,
-    vendorId,
-    location.pathname,
-  ]);
+  }, [savedPage, productSlugFromPath, initialProductSlug, products, vendorId, location.pathname]);
 
   // Handle browser back button - detect when URL changes back to storefront home
   useEffect(() => {
@@ -2812,37 +2887,92 @@ export function VendorStoreView({
     [wishlistVendorMatchKeys]
   );
 
+  const wishlistSig = useMemo(() => wishlistSigFromProductIds(wishlist), [wishlist]);
+
   // Products in the user's wishlist that belong to this vendor (header badge + /saved page).
-  // Must not depend on savedPage — otherwise the heart shows global count while the page shows 0 for this shop.
+  // Server-side pagination + moduleCache + localStorage (aligned with vendor catalog).
   useEffect(() => {
     if (wishlist.length === 0) {
       setSavedDisplayProducts([]);
+      setSavedVendorWishlistTotal(0);
+      setSavedWishlistPage(1);
+      setSavedWishlistHasMore(false);
+      setSavedWishlistLoadingMore(false);
+      setSavedProductsFetchPending(false);
+      return;
+    }
+    if (!wishlistUserId) {
       setSavedProductsFetchPending(false);
       return;
     }
     let cancelled = false;
     setSavedProductsFetchPending(true);
+    setSavedWishlistPage(1);
+    setSavedWishlistLoadingMore(false);
     void (async () => {
+      const pageSize = VENDOR_SAVED_PAGE_SIZE;
+      const cacheKey = CACHE_KEYS.vendorSavedWishlistPage(
+        wishlistUserId,
+        vendorId,
+        wishlistSig,
+        1,
+        pageSize
+      );
+      const lsKey = lsVendorSavedWishlistPageKey(wishlistUserId, vendorId, wishlistSig, 1, pageSize);
       try {
-        const rows = await fetchProductsByIds(wishlist);
-        if (cancelled) return;
-        const fromApi = rows.filter(productBelongsToWishlistVendorKeys) as Product[];
-        const byId = new Map<string, Product>(fromApi.map((p) => [p.id, p]));
-        for (const p of productsRef.current) {
-          if (!wishlist.includes(p.id)) continue;
-          if (!byId.has(p.id)) byId.set(p.id, p);
+        const fromLs = readPersistedJson<VendorWishlistVendorPageResult>(lsKey, PERSISTED_CATALOG_TTL_MS);
+        if (
+          fromLs &&
+          typeof fromLs === "object" &&
+          Array.isArray(fromLs.products) &&
+          typeof fromLs.total === "number"
+        ) {
+          moduleCache.prime(cacheKey, fromLs);
+          const merged = mergeSavedWishlistPageWithCatalog(
+            fromLs.products as Product[],
+            wishlist,
+            productsRef.current
+          );
+          if (!cancelled) {
+            setSavedDisplayProducts(merged);
+            setSavedVendorWishlistTotal(fromLs.total);
+            setSavedWishlistHasMore(!!fromLs.hasMore);
+          }
         }
-        const ordered = wishlist
-          .map((id) => byId.get(id))
-          .filter((p): p is Product => Boolean(p));
-        setSavedDisplayProducts(ordered);
+
+        const data = await moduleCache.get(cacheKey, () =>
+          fetchVendorWishlistVendorPage({
+            vendorStorefront: vendorId,
+            resolvedVendorId: canonicalVendorId,
+            productIds: wishlist,
+            page: 1,
+            pageSize,
+          }),
+          false
+        );
+        if (cancelled) return;
+        const merged = mergeSavedWishlistPageWithCatalog(
+          data.products as Product[],
+          wishlist,
+          productsRef.current
+        );
+        setSavedDisplayProducts(merged);
+        setSavedVendorWishlistTotal(data.total);
+        setSavedWishlistHasMore(data.hasMore);
+        setSavedWishlistPage(1);
+        writePersistedJson(lsKey, data);
       } catch {
         if (cancelled) return;
         const byId = new Map(productsRef.current.map((p) => [p.id, p]));
         const ordered = wishlist
           .map((id) => byId.get(id))
-          .filter((p): p is Product => Boolean(p));
+          .filter(
+            (p): p is Product => Boolean(p) && productBelongsToWishlistVendorKeys(p)
+          );
         setSavedDisplayProducts(ordered);
+        setSavedVendorWishlistTotal(ordered.length);
+        setSavedWishlistHasMore(false);
+        setSavedWishlistPage(1);
       } finally {
         if (!cancelled) setSavedProductsFetchPending(false);
       }
@@ -2850,7 +2980,80 @@ export function VendorStoreView({
     return () => {
       cancelled = true;
     };
-  }, [wishlist, vendorId, wishlistVendorMatchKeys, productBelongsToWishlistVendorKeys]);
+  }, [
+    wishlist,
+    wishlistSig,
+    wishlistUserId,
+    vendorId,
+    canonicalVendorId,
+    productBelongsToWishlistVendorKeys,
+  ]);
+
+  const loadMoreSavedWishlist = useCallback(async () => {
+    if (!savedWishlistHasMore || savedWishlistLoadingMore || wishlist.length === 0 || !wishlistUserId) {
+      return;
+    }
+    const pageSize = VENDOR_SAVED_PAGE_SIZE;
+    const nextPage = savedWishlistPage + 1;
+    const cacheKey = CACHE_KEYS.vendorSavedWishlistPage(
+      wishlistUserId,
+      vendorId,
+      wishlistSig,
+      nextPage,
+      pageSize
+    );
+    const lsKey = lsVendorSavedWishlistPageKey(
+      wishlistUserId,
+      vendorId,
+      wishlistSig,
+      nextPage,
+      pageSize
+    );
+    setSavedWishlistLoadingMore(true);
+    try {
+      const fromLs = readPersistedJson<VendorWishlistVendorPageResult>(lsKey, PERSISTED_CATALOG_TTL_MS);
+      if (
+        fromLs &&
+        typeof fromLs === "object" &&
+        Array.isArray(fromLs.products) &&
+        typeof fromLs.total === "number"
+      ) {
+        moduleCache.prime(cacheKey, fromLs);
+      }
+      const data = await moduleCache.get(cacheKey, () =>
+        fetchVendorWishlistVendorPage({
+          vendorStorefront: vendorId,
+          resolvedVendorId: canonicalVendorId,
+          productIds: wishlist,
+          page: nextPage,
+          pageSize,
+        }),
+        false
+      );
+      writePersistedJson(lsKey, data);
+      const merged = mergeSavedWishlistPageWithCatalog(
+        data.products as Product[],
+        wishlist,
+        productsRef.current
+      );
+      setSavedDisplayProducts((prev) => [...prev, ...merged]);
+      setSavedWishlistPage(nextPage);
+      setSavedWishlistHasMore(data.hasMore);
+    } catch {
+      /* keep existing rows */
+    } finally {
+      setSavedWishlistLoadingMore(false);
+    }
+  }, [
+    savedWishlistHasMore,
+    savedWishlistLoadingMore,
+    wishlist,
+    wishlistUserId,
+    vendorId,
+    wishlistSig,
+    canonicalVendorId,
+    savedWishlistPage,
+  ]);
 
   /** Instant client filter on loaded rows (name/SKU) — pairs with debounced server fetch for q. */
   const filteredProducts = useMemo(() => {
@@ -2895,6 +3098,27 @@ export function VendorStoreView({
     lastWishlistLocalChangeRef.current = Date.now();
     const wasListed = wishlist.includes(productId);
     const label = (productName || "Product").trim() || "Product";
+    // Header badge must update immediately; `vendor` is often a display name (e.g. "Go Go") not an id.
+    const togglingOpenDetailProduct =
+      optimisticProduct != null &&
+      selectedProduct?.id === productId &&
+      optimisticProduct.id === productId;
+    const belongsToThisStore =
+      optimisticProduct != null &&
+      (productBelongsToWishlistVendorKeys(optimisticProduct) ||
+        productVendorIdsMatchStorefront(optimisticProduct, vendorId, canonicalVendorId) ||
+        togglingOpenDetailProduct);
+    if (wishlistUserId) {
+      invalidateVendorSavedWishlistCaches(wishlistUserId, vendorId);
+    }
+    if (wasListed) {
+      const vis = savedDisplayProducts.some((p) => p.id === productId);
+      if (belongsToThisStore || vis) {
+        setSavedVendorWishlistTotal((t) => Math.max(0, t - 1));
+      }
+    } else if (belongsToThisStore) {
+      setSavedVendorWishlistTotal((t) => t + 1);
+    }
     setWishlist((prev) =>
       prev.includes(productId)
         ? prev.filter((id) => id !== productId)
@@ -3084,9 +3308,9 @@ export function VendorStoreView({
                   title="Saved products"
                 >
                   <Heart className="w-5 h-5 text-slate-700" />
-                  {savedDisplayProducts.length > 0 && (
+                  {savedVendorWishlistTotal > 0 && (
                     <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-amber-600 text-white text-xs border-2 border-white">
-                      {savedDisplayProducts.length}
+                      {savedVendorWishlistTotal}
                     </Badge>
                   )}
                 </Button>
@@ -3399,6 +3623,10 @@ export function VendorStoreView({
                                 if (v?.sku && typeof v.sku === "string" && v.sku.trim()) {
                                   navigate(`${storeBase}/product/${encodeURIComponent(v.sku.trim())}`, {
                                     replace: true,
+                                    state: {
+                                      vendorProduct: selectedProduct,
+                                      vendorVariantNav: true,
+                                    },
                                   });
                                 }
                               }}
@@ -3728,7 +3956,10 @@ export function VendorStoreView({
 
   // Main Storefront — h-screen + overflow-y-auto so scrollbar-thin applies (not the default body bar)
   const showVendorStorefrontFullSkeleton =
-    serverStatus === "checking" && vendorViewMode === "storefront" && !savedPage;
+    serverStatus === "checking" &&
+    vendorViewMode === "storefront" &&
+    !savedPage &&
+    !isVendorProductDetailPath;
   const showVendorPageFullSkeleton =
     vendorViewMode === "storefront" &&
     (showVendorStorefrontFullSkeleton || (savedPage && showSavedPageSkeleton));
@@ -3849,9 +4080,9 @@ export function VendorStoreView({
                 title="Saved products"
               >
                 <Heart className="w-5 h-5 text-slate-700" />
-                {savedDisplayProducts.length > 0 && (
+                {savedVendorWishlistTotal > 0 && (
                   <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-amber-600 text-white text-xs border-2 border-white">
-                    {savedDisplayProducts.length}
+                    {savedVendorWishlistTotal}
                   </Badge>
                 )}
               </Button>
@@ -4036,7 +4267,7 @@ export function VendorStoreView({
                   </div>
                   <p className="text-slate-300 text-sm min-h-[1.375rem]">
                     {(() => {
-                      const n = savedDisplayProducts.length;
+                      const n = savedVendorWishlistTotal;
                       return `${n} ${n === 1 ? "item" : "items"} saved for later`;
                     })()}
                   </p>
@@ -4047,7 +4278,7 @@ export function VendorStoreView({
             <div className="max-w-7xl mx-auto w-full pt-6 md:pt-12">
               {(() => {
                 const savedHere = savedDisplayProducts;
-                if (savedHere.length === 0) {
+                if (savedVendorWishlistTotal === 0 && !savedProductsFetchPending) {
                   return (
                     <Card className="text-center py-16 sm:py-20 border-0 shadow-md">
                       <Heart className="w-16 h-16 mx-auto text-slate-300 mb-4" />
@@ -4063,49 +4294,80 @@ export function VendorStoreView({
                     </Card>
                   );
                 }
+                if (savedHere.length === 0) {
+                  return null;
+                }
                 return (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6">
-                    {savedHere.map((product) => (
-                      <ProductCard
-                        key={product.id}
-                        product={productToCardProduct(product)}
-                        onProductClick={() => {
-                          const segment = buildVendorProductUrlSegment(product);
-                          navigate(`${storeBase}/product/${encodeURIComponent(segment)}`);
-                        }}
-                        onAddToCart={(e, opts) => {
-                          e?.stopPropagation();
-                          handleAddToCart(product, {
-                            variantSku: opts?.sku,
-                            variantPrice:
-                              opts?.price != null
-                                ? typeof opts.price === "number"
-                                  ? opts.price
-                                  : parseFloat(String(opts.price).replace(/[^0-9.-]/g, ""))
-                                : undefined,
-                            variantImage: opts?.image,
-                            quantity: opts?.quantity,
-                            buyNow: opts?.buyNow,
-                          });
-                          toast.success(
-                            opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
-                          );
-                        }}
-                        onToggleWishlist={(e) => {
-                          e.stopPropagation();
-                          toggleWishlist(product.id, product.name, product);
-                        }}
-                        isWishlisted={wishlist.includes(product.id)}
-                        formatPriceMMK={formatPriceMMK}
-                      />
-                    ))}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6">
+                      {savedHere.map((product) => (
+                        <ProductCard
+                          key={product.id}
+                          product={productToCardProduct(product)}
+                          onProductClick={() => {
+                            const segment = buildVendorProductUrlSegment(product);
+                            navigate(`${storeBase}/product/${encodeURIComponent(segment)}`, {
+                              state: { vendorProduct: product },
+                            });
+                          }}
+                          onAddToCart={(e, opts) => {
+                            e?.stopPropagation();
+                            handleAddToCart(product, {
+                              variantSku: opts?.sku,
+                              variantPrice:
+                                opts?.price != null
+                                  ? typeof opts.price === "number"
+                                    ? opts.price
+                                    : parseFloat(String(opts.price).replace(/[^0-9.-]/g, ""))
+                                  : undefined,
+                              variantImage: opts?.image,
+                              quantity: opts?.quantity,
+                              buyNow: opts?.buyNow,
+                            });
+                            toast.success(
+                              opts?.buyNow
+                                ? `Continue to checkout — ${product.name}`
+                                : `${product.name} added to cart!`
+                            );
+                          }}
+                          onToggleWishlist={(e) => {
+                            e.stopPropagation();
+                            toggleWishlist(product.id, product.name, product);
+                          }}
+                          isWishlisted={wishlist.includes(product.id)}
+                          formatPriceMMK={formatPriceMMK}
+                        />
+                      ))}
+                    </div>
+                    {savedVendorWishlistTotal > 0 && (
+                      <p className="text-center text-sm text-slate-500 mt-6">
+                        Showing {savedHere.length} of {savedVendorWishlistTotal} saved
+                      </p>
+                    )}
+                    {savedWishlistHasMore && (
+                      <div className="flex justify-center mt-6">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="min-w-[160px]"
+                          disabled={savedWishlistLoadingMore}
+                          onClick={() => void loadMoreSavedWishlist()}
+                        >
+                          {savedWishlistLoadingMore ? "Loading…" : "Load more"}
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 );
               })()}
             </div>
           </>
         ) : (
           <>
+            {isVendorProductDetailPath && !selectedProduct ? (
+              <ProductDetailSkeleton />
+            ) : (
+              <>
             {/* Failed load: main area was empty (only header/footer) — always show retry */}
             {serverStatus === 'unhealthy' && (
               <div className="text-center py-16 sm:py-24 max-w-lg mx-auto px-4">
@@ -4151,9 +4413,9 @@ export function VendorStoreView({
                       product={productToCardProduct(product)}
                       onProductClick={async () => {
                         const segment = buildVendorProductUrlSegment(product);
-                        navigate(
-                          `${storeBase}/product/${encodeURIComponent(segment)}`
-                        );
+                        navigate(`${storeBase}/product/${encodeURIComponent(segment)}`, {
+                          state: { vendorProduct: product },
+                        });
                       }}
                       onAddToCart={(e, opts) => {
                         e?.stopPropagation();
@@ -4200,6 +4462,8 @@ export function VendorStoreView({
                     </Button>
                   </div>
                 )}
+              </>
+            )}
               </>
             )}
           </>
