@@ -1,4 +1,4 @@
-import { Loader2, ServerCrash, RefreshCw, Clock } from "lucide-react";
+import { RefreshCw, Clock } from "lucide-react";
 import { Button } from "./ui/button";
 import { LoadingScreen } from "./LoadingScreen";
 
@@ -6,14 +6,22 @@ interface ServerStatusBannerProps {
   status: 'checking' | 'healthy' | 'unhealthy';
   onRetry?: () => void;
   storeName?: string;
+  /** When false, hide full-screen spinner while checking (parent uses skeleton). Default true for marketplace. */
+  showCheckingScreen?: boolean;
 }
 
-export function ServerStatusBanner({ status, onRetry, storeName = "SECURE E-commerce" }: ServerStatusBannerProps) {
+export function ServerStatusBanner({
+  status,
+  onRetry,
+  storeName = "SECURE E-commerce",
+  showCheckingScreen = true,
+}: ServerStatusBannerProps) {
   if (status === 'healthy') {
     return null; // Don't show anything when server is healthy
   }
 
   if (status === 'checking') {
+    if (!showCheckingScreen) return null;
     return <LoadingScreen />;
   }
 
@@ -23,10 +31,10 @@ export function ServerStatusBanner({ status, onRetry, storeName = "SECURE E-comm
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Clock className="w-6 h-6 text-amber-600 flex-shrink-0 animate-pulse" />
+              <Clock className="w-6 h-6 text-amber-600 flex-shrink-0" aria-hidden />
               <div>
                 <p className="text-sm font-semibold text-amber-900">
-                  ⏳ Server Starting - Auto-retrying in background...
+                  Server starting — retrying in the background…
                 </p>
                 <p className="text-xs text-amber-700 mt-0.5">
                   Please wait, the system will connect automatically within 30-60 seconds. No action needed!

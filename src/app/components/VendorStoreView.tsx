@@ -52,7 +52,6 @@ import {
   Trash2,
   Phone,
   EyeOff,
-  Loader2,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -68,7 +67,12 @@ import { useCart } from "./CartContext";
 import { CartDrawer } from "./CartDrawer";
 import { Checkout } from "./Checkout";
 import { ServerStatusBanner } from "./ServerStatusBanner";
-import { ProductDetailSkeleton, VendorStorefrontFullSkeleton } from "./SkeletonLoaders";
+import {
+  ProductDetailSkeleton,
+  VendorStorefrontFullSkeleton,
+  VendorOrdersListSkeleton,
+  VendorAddressesSkeleton,
+} from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
 import { NotificationCenter } from "./NotificationCenter";
 import { authApi, wishlistApi } from "../../utils/api";
@@ -1460,7 +1464,7 @@ export function VendorStoreView({
                     <span className="text-sm font-medium text-slate-700">Total Orders</span>
                   </div>
                   {ordersLoading ? (
-                    <div className="w-6 h-6 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                    <div className="h-7 w-10 animate-pulse rounded bg-slate-200" aria-hidden />
                   ) : (
                     <span className="text-lg font-bold text-amber-700">{orderCount}</span>
                   )}
@@ -1723,14 +1727,7 @@ export function VendorStoreView({
             <p className="text-slate-600 text-sm">View and track all your orders</p>
           </div>
 
-          {ordersLoading && (
-            <Card>
-              <CardContent className="py-16 text-center">
-                <div className="animate-spin w-12 h-12 border-4 border-amber-600 border-t-transparent rounded-full mx-auto mb-4" />
-                <p className="text-slate-600">Loading your orders...</p>
-              </CardContent>
-            </Card>
-          )}
+          {ordersLoading && <VendorOrdersListSkeleton rows={5} />}
 
           {!ordersLoading && ordersError && (
             <Card>
@@ -2032,9 +2029,7 @@ export function VendorStoreView({
           )}
 
           {loadingAddresses && shippingAddresses.length === 0 && !showAddressForm ? (
-            <Card>
-              <CardContent className="py-16 text-center text-slate-600">Loading addresses…</CardContent>
-            </Card>
+            <VendorAddressesSkeleton />
           ) : shippingAddresses.length === 0 && !showAddressForm ? (
             <Card>
               <CardContent className="py-16 text-center">
@@ -2281,10 +2276,7 @@ export function VendorStoreView({
                 className="w-full bg-amber-600 hover:bg-amber-700"
               >
                 {isChangingPassword ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Changing Password...
-                  </>
+                  "Changing password…"
                 ) : (
                   <>
                     <Check className="w-4 h-4 mr-2" />
@@ -3230,9 +3222,10 @@ export function VendorStoreView({
           ref={vendorScrollRootRef}
           className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-white scrollbar-thin flex flex-col"
         >
-        <ServerStatusBanner 
-          status={serverStatus} 
+        <ServerStatusBanner
+          status={serverStatus}
           onRetry={() => loadVendorData(true)}
+          showCheckingScreen={false}
         />
         
         <CartDrawer 
@@ -3978,7 +3971,7 @@ export function VendorStoreView({
           <div className="max-w-7xl mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="animate-pulse">⏳</div>
+                <Clock className="h-6 w-6 flex-shrink-0 text-amber-600" aria-hidden />
                 <div>
                   <p className="text-sm font-semibold text-amber-900">
                     Server Starting - Please wait...

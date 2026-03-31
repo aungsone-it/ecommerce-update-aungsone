@@ -147,3 +147,32 @@ export function ProductDetailSkeleton() {
     </div>
   );
 }
+
+/** Vendor account — order history list while fetching */
+export function VendorOrdersListSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="animate-pulse rounded-lg border border-slate-100 bg-white p-4 shadow-sm"
+        >
+          <div className="mb-3 h-4 w-1/3 rounded bg-slate-200" />
+          <div className="mb-2 h-3 w-2/3 rounded bg-slate-200" />
+          <div className="h-3 w-1/2 rounded bg-slate-200" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Vendor account — saved addresses while fetching */
+export function VendorAddressesSkeleton() {
+  return (
+    <div className="animate-pulse rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="mb-4 h-4 w-28 rounded bg-slate-200" />
+      <div className="mb-3 h-16 rounded-lg bg-slate-200" />
+      <div className="h-16 rounded-lg bg-slate-200" />
+    </div>
+  );
+}
