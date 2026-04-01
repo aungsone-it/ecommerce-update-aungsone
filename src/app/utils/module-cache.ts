@@ -22,7 +22,9 @@ import {
   lsAdminProductsPage1Key,
   lsAdminOrdersPage1Key,
   lsAdminCustomersPage1Key,
+  LS_ADMIN_FINANCES_ANALYTICS,
   removePersistedKeysPrefix,
+  removePersistedKey,
 } from './persistedLocalCache';
 
 interface CacheEntry<T> {
@@ -1140,6 +1142,8 @@ export const CACHE_KEYS = {
   ADMIN_ALL_CATEGORIES: 'admin-all-categories-v1',
   /** Super Admin /customers list */
   ADMIN_CUSTOMERS: 'admin-customers-v1',
+  /** Super Admin GET /finances/analytics — invalidated with orders (revenue source). */
+  ADMIN_FINANCES_ANALYTICS: 'admin-finances-analytics-v1',
   
   // Vendor specific (append vendorId)
   vendorProducts: (vendorId: string) => `vendor-products-${vendorId}`,
@@ -1446,11 +1450,52 @@ export async function getCachedAdminOrdersPayload(forceRefresh = false) {
 export function invalidateAdminOrdersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_ORDERS);
   moduleCache.invalidatePrefix(ADMIN_ORDERS_PAGE_CACHE_PREFIX);
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_FINANCES_ANALYTICS);
   SmartCache.delete("badge_counts");
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix("migoo-ls-admin-orders-p1-");
+    removePersistedKey(LS_ADMIN_FINANCES_ANALYTICS);
     window.dispatchEvent(new CustomEvent("adminOrdersUpdated"));
   }
+}
+
+/** Hydrate finances UI from session module cache or localStorage (same TTL as catalog snapshots). */
+export function readFinancialAnalyticsHydrate(): Record<string, unknown> | null {
+  const fromModule = moduleCache.peek<Record<string, unknown>>(CACHE_KEYS.ADMIN_FINANCES_ANALYTICS);
+  if (fromModule) return fromModule;
+  return readPersistedJson<Record<string, unknown>>(LS_ADMIN_FINANCES_ANALYTICS, PERSISTED_CATALOG_TTL_MS);
+}
+
+export async function fetchFinancialAnalyticsFromApi(): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 45000);
+  try {
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/finances/analytics`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${publicAnonKey}`,
+        },
+        signal: controller.signal,
+      }
+    );
+    if (!response.ok) {
+      throw new Error(`Failed to fetch financial data: ${response.statusText}`);
+    }
+    return response.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** Network fetch + prime session + persist for reload. */
+export async function fetchAndCacheFinancialAnalytics(): Promise<Record<string, unknown>> {
+  const data = await withNetworkRetry(() => fetchFinancialAnalyticsFromApi(), { retries: 1, delayMs: 500 });
+  moduleCache.prime(CACHE_KEYS.ADMIN_FINANCES_ANALYTICS, data);
+  writePersistedJson(LS_ADMIN_FINANCES_ANALYTICS, data);
+  return data;
 }
 
 export async function getCachedAdminAllCategories(forceRefresh = false) {

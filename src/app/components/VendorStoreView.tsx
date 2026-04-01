@@ -2749,9 +2749,15 @@ export function VendorStoreView({
     }
   }, [location.pathname, selectedProduct]);
 
-  const handleAddToCart = (product: Product, overrides?: VendorAddToCartOverrides) => {
+  const handleAddToCart = (product: Product, overrides?: VendorAddToCartOverrides): boolean => {
     try {
       if (overrides?.buyNow) {
+        if (!user) {
+          toast.error("Please sign in to continue to checkout");
+          setShowAuthModal(true);
+          setAuthMode("login");
+          return false;
+        }
         clearCart();
       }
       const parseNum = (x: unknown, fallback: number) => {
@@ -2826,8 +2832,10 @@ export function VendorStoreView({
       } else if (typeof window !== "undefined" && window.innerWidth >= 768) {
         setCartOpen(true);
       }
+      return true;
     } catch (error) {
       console.error('Error adding to cart:', error);
+      return false;
     }
   };
 
@@ -4424,7 +4432,7 @@ export function VendorStoreView({
                           }}
                           onAddToCart={(e, opts) => {
                             e?.stopPropagation();
-                            handleAddToCart(product, {
+                            const ok = handleAddToCart(product, {
                               variantSku: opts?.sku,
                               variantPrice:
                                 opts?.price != null
@@ -4436,11 +4444,13 @@ export function VendorStoreView({
                               quantity: opts?.quantity,
                               buyNow: opts?.buyNow,
                             });
-                            toast.success(
-                              opts?.buyNow
-                                ? `Continue to checkout — ${product.name}`
-                                : `${product.name} added to cart!`
-                            );
+                            if (ok) {
+                              toast.success(
+                                opts?.buyNow
+                                  ? `Continue to checkout — ${product.name}`
+                                  : `${product.name} added to cart!`
+                              );
+                            }
                           }}
                           onToggleWishlist={(e) => {
                             e.stopPropagation();
@@ -4531,7 +4541,7 @@ export function VendorStoreView({
                       }}
                       onAddToCart={(e, opts) => {
                         e?.stopPropagation();
-                        handleAddToCart(product, {
+                        const ok = handleAddToCart(product, {
                           variantSku: opts?.sku,
                           variantPrice:
                             opts?.price != null
@@ -4543,9 +4553,11 @@ export function VendorStoreView({
                           quantity: opts?.quantity,
                           buyNow: opts?.buyNow,
                         });
-                        toast.success(
-                          opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
-                        );
+                        if (ok) {
+                          toast.success(
+                            opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
+                          );
+                        }
                       }}
                       onToggleWishlist={(e) => {
                         e.stopPropagation();

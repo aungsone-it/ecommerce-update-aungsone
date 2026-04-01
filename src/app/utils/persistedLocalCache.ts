@@ -146,6 +146,9 @@ export function lsAdminOrdersPage1Key(opts: {
   return `migoo-ls-admin-orders-p1-ps-${ps}-st-${encodeURIComponent(opts.status)}-pay-${encodeURIComponent(opts.payment)}-v-${encodeURIComponent(opts.vendor || "_")}-df-${encodeURIComponent(opts.dateFrom || "_")}-dt-${encodeURIComponent(opts.dateTo || "_")}-s-${encodeURIComponent(opts.sort)}-q-${encodeURIComponent(opts.qNorm || "_")}-v1`;
 }
 
+/** Super Admin finances analytics (`GET finances/analytics`) — instant paint after reload; always revalidated in background. */
+export const LS_ADMIN_FINANCES_ANALYTICS = "migoo-ls-admin-finances-analytics-v1";
+
 /** Super Admin customers table — page 1 (`GET customers?page=1`). */
 export function lsAdminCustomersPage1Key(opts: {
   pageSize: number;

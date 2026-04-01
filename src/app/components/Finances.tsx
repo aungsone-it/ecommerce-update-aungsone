@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { DateRange } from "react-day-picker";
 import { useLanguage } from "../contexts/LanguageContext";
 import { DollarSign, TrendingUp, TrendingDown, CreditCard, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Calendar, Download, Search, User, X, Eye, Clock, Package, Video, Loader2 } from "lucide-react";
@@ -14,8 +14,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { formatNumber } from "../../utils/formatNumber"; // 🔥 Import number formatting
 import { format, startOfDay, endOfDay } from "date-fns";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { toast } from "sonner";
+import {
+  readFinancialAnalyticsHydrate,
+  fetchAndCacheFinancialAnalytics,
+} from "../utils/module-cache";
 
 /** Large amount + very small MMK; font scales down inside @container cards for billion-scale values. */
 function FinancesStatMmk({ value }: { value: number }) {
@@ -31,9 +34,6 @@ function FinancesStatMmk({ value }: { value: number }) {
     </p>
   );
 }
-
-// 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
-let cachedFinancialData: any = null;
 
 // Use placeholder payment method logos for production deployment
 const kbzPayLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect width='48' height='48' fill='%234f46e5' rx='8'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='white' font-family='sans-serif' font-size='16' font-weight='bold'%3EKBZ%3C/text%3E%3C/svg%3E";
@@ -64,76 +64,62 @@ export function Finances() {
   const [overviewDateRange, setOverviewDateRange] = useState<DateRange | undefined>(undefined);
   const [overviewDatePickerOpen, setOverviewDatePickerOpen] = useState(false);
 
-  // 🔥 NEW: State for real data from API
-  // 🚀 Initialize from cache if available
-  const [loading, setLoading] = useState(!cachedFinancialData);
-  const [financialData, setFinancialData] = useState<any>(() => cachedFinancialData || null);
+  const financesBoot = useMemo(() => {
+    const h = readFinancialAnalyticsHydrate();
+    return { data: h, showSkeleton: !h };
+  }, []);
+  const [financialData, setFinancialData] = useState<any>(financesBoot.data);
+  const [loading, setLoading] = useState(financesBoot.showSkeleton);
   const [error, setError] = useState<string | null>(null);
+  const financialDataRef = useRef<any>(null);
+  financialDataRef.current = financialData;
 
-  // 🔥 Fetch financial data from API
+  // Stale-while-revalidate: show module/localStorage snapshot immediately; always refetch in background.
+  // Numbers update when fresh data arrives. Order mutations invalidate cache and dispatch adminOrdersUpdated.
   useEffect(() => {
-    const fetchFinancialData = async () => {
-      // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
-      let showLoadingTimer: NodeJS.Timeout | null = null;
-      
-      showLoadingTimer = setTimeout(() => {
-        setLoading(true);
-      }, 300);
-      
+    let cancelled = false;
+
+    const load = async () => {
+      const hadData = financialDataRef.current != null;
+      if (!hadData) setLoading(true);
       try {
-        setError(null);
-        
-        // Add abort controller with 45 second timeout to match server timeout
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 45000);
-        
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/finances/analytics`,
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            signal: controller.signal,
-          }
-        );
-        
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch financial data: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log("💰 Financial data loaded:", data);
+        const data = await fetchAndCacheFinancialAnalytics();
+        if (cancelled) return;
         setFinancialData(data);
-        
-        // 🚀 CACHE THE FINANCIAL DATA FOR FUTURE USE
-        cachedFinancialData = data;
+        setError(null);
       } catch (err: any) {
+        if (cancelled) return;
         console.error("❌ Error fetching financial data:", err);
-        
-        if (err.name === 'AbortError') {
-          setError('Request timed out. Server may be starting up, please try again in a moment.');
+        const stillNoData = financialDataRef.current == null;
+        if (err.name === "AbortError") {
+          if (stillNoData) {
+            setError(
+              "Request timed out. Server may be starting up, please try again in a moment."
+            );
+          }
           toast.error("Request timeout", {
             description: "The server is starting up. Please refresh in a moment.",
           });
         } else {
-          setError(err.message);
-          toast.error("Failed to load financial data", {
+          if (stillNoData) {
+            setError(err.message);
+          }
+          toast.error(stillNoData ? "Failed to load financial data" : "Could not refresh finances", {
             description: err.message,
           });
         }
       } finally {
-        if (showLoadingTimer) {
-          clearTimeout(showLoadingTimer);
-        }
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchFinancialData();
+    void load();
+    const onOrdersUpdated = () => void load();
+    window.addEventListener("adminOrdersUpdated", onOrdersUpdated);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("adminOrdersUpdated", onOrdersUpdated);
+    };
   }, []);
 
   // Extract data from API response
