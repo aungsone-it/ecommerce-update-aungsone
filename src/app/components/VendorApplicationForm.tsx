@@ -42,7 +42,6 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     storeName: "",
     storeDescription: "",
     categories: [] as string[],
-    requestedCommission: 15,
     estimatedProducts: 0,
     
     // Business Address
@@ -650,34 +649,18 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Requested Commission * (in %)
-                  </label>
-                  <input
-                    type="number"
-                    name="requestedCommission"
-                    value={formData.requestedCommission}
-                    onChange={handleInputChange}
-                    className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                    placeholder="15"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Estimated Number of Products
-                  </label>
-                  <input
-                    type="number"
-                    name="estimatedProducts"
-                    value={formData.estimatedProducts}
-                    onChange={handleInputChange}
-                    className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                    placeholder="100"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Estimated Number of Products
+                </label>
+                <input
+                  type="number"
+                  name="estimatedProducts"
+                  value={formData.estimatedProducts}
+                  onChange={handleInputChange}
+                  className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all md:max-w-md"
+                  placeholder="100"
+                />
               </div>
             </div>
           </div>

@@ -3,7 +3,12 @@ import { useState, useEffect } from "react";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
 import { cacheManager } from "../utils/cacheManager";
-import { moduleCache, CACHE_KEYS, fetchAllVendors } from "../utils/module-cache";
+import {
+  moduleCache,
+  CACHE_KEYS,
+  fetchAllVendors,
+  invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
+} from "../utils/module-cache";
 import { formatNumber } from "../../utils/formatNumber";
 import {
   Search,
@@ -150,6 +155,8 @@ interface VendorProps {
   /** From global search — applied when token changes */
   initialListSearchQuery?: string;
   listSearchApplyToken?: number;
+  /** After approve/reject from embedded applications — refresh nav badges */
+  onVendorApplicationsMutated?: () => void;
 }
 
 export function Vendor({
@@ -158,6 +165,7 @@ export function Vendor({
   pendingApplicationsCount,
   initialListSearchQuery,
   listSearchApplyToken,
+  onVendorApplicationsMutated,
 }: VendorProps = {}) {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
@@ -309,14 +317,22 @@ export function Vendor({
 
     try {
       console.log("📝 Updating vendor:", editingVendor.id, updatedData);
-      
+
+      const body: Record<string, unknown> = { ...updatedData };
+      if (Object.prototype.hasOwnProperty.call(updatedData, "logo")) {
+        const L = updatedData.logo;
+        const url = typeof L === "string" ? L : "";
+        body.logo = url;
+        body.avatar = url;
+      }
+
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${editingVendor.id}`, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${publicAnonKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(updatedData),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -324,28 +340,28 @@ export function Vendor({
       }
 
       const result = await response.json();
-      
-      // Update local state with the updated vendor
-      const updatedVendors = vendors.map(v => v.id === editingVendor.id ? result.vendor : v);
-      setVendors(updatedVendors);
-      
-      // Update cache with the same data
-      cachedVendors = updatedVendors;
-      
-      // Invalidate vendor caches to ensure fresh data everywhere
-      console.log("🔄 Invalidating vendor caches after update");
+
+      moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
       cacheManager.reloadVendorData(editingVendor.id);
-      
-      // Dispatch event to notify other components (like ProductList) to reload vendor names
-      window.dispatchEvent(new CustomEvent('vendorDataUpdated', { detail: { vendorId: editingVendor.id } }));
-      
+      const slug = (editingVendor as Vendor & { storeSlug?: string }).storeSlug;
+      invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(editingVendor.id, [slug]);
+
+      window.dispatchEvent(new CustomEvent("vendorDataUpdated", { detail: { vendorId: editingVendor.id } }));
+      window.dispatchEvent(
+        new CustomEvent("vendorLogoUpdated", {
+          detail: {
+            vendorId: editingVendor.id,
+            logo: result.vendor?.logo || result.vendor?.avatar || "",
+          },
+        })
+      );
+
       setIsEditDialogOpen(false);
       setEditingVendor(null);
-      
+
       alert(`✅ Vendor "${result.vendor.name}" updated successfully!`);
-      
-      // Reload to get fresh data
-      await loadVendors();
+
+      await loadVendors(true);
     } catch (error: any) {
       console.error("❌ Error updating vendor:", error);
       alert(`Failed to update vendor: ${error.message}`);
@@ -576,7 +592,7 @@ export function Vendor({
     };
   }, []);
 
-  const loadVendors = async () => {
+  const loadVendors = async (forceRefresh = false) => {
     // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
     let showLoadingTimer: NodeJS.Timeout | null = null;
     
@@ -585,12 +601,12 @@ export function Vendor({
     }, 300);
     
     try {
-      // Use module cache to reduce Supabase requests
+      // Use module cache to reduce Supabase requests (forceRefresh after mutations / post-approval)
       console.log("📦 Fetching vendors...");
       const vendors = await moduleCache.get(
         CACHE_KEYS.ADMIN_VENDORS,
         fetchAllVendors,
-        false
+        forceRefresh
       );
       
       setVendors(vendors || []);
@@ -633,8 +649,9 @@ export function Vendor({
         onBack={() => setShowApplications(false)}
         onNavigateToVendorList={() => {
           setShowApplications(false);
-          loadVendors(); // Refresh vendor list
+          void loadVendors(true);
         }}
+        onApplicationsMutated={onVendorApplicationsMutated}
       />
     );
   }

@@ -17,7 +17,6 @@ import {
   Globe,
   CreditCard,
   Package,
-  Percent,
   Loader2
 } from "lucide-react";
 import { Button } from "./ui/button";
@@ -51,7 +50,6 @@ interface VendorApplication {
   description: string;
   productsCategory: string;
   estimatedProducts: number;
-  requestedCommission: number;
   appliedDate: string;
   status: ApplicationStatus;
   notes?: string;
@@ -71,11 +69,17 @@ interface VendorApplication {
 }
 
 interface VendorApplicationsProps {
-  onBack: () => void;
-  onNavigateToVendorList: () => void;
+  onBack?: () => void;
+  onNavigateToVendorList?: () => void;
+  /** Approve/reject succeeded — refresh vendor list cache badges, etc. */
+  onApplicationsMutated?: () => void;
 }
 
-export function VendorApplications({ onBack, onNavigateToVendorList }: VendorApplicationsProps) {
+export function VendorApplications({
+  onBack,
+  onNavigateToVendorList,
+  onApplicationsMutated,
+}: VendorApplicationsProps) {
   const [applications, setApplications] = useState<VendorApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -113,7 +117,6 @@ export function VendorApplications({ onBack, onNavigateToVendorList }: VendorApp
           description: app.storeDescription || app.description || "No description provided",
           productsCategory: app.categories?.join(", ") || "General",
           estimatedProducts: parseInt(app.estimatedProducts) || 0,
-          requestedCommission: parseInt(app.requestedCommission) || 15,
           appliedDate: new Date(app.submittedAt || app.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
           status: app.status,
           notes: app.reviewNotes,
@@ -182,6 +185,7 @@ export function VendorApplications({ onBack, onNavigateToVendorList }: VendorApp
         onBack={() => setReviewingApplication(null)}
         onUpdate={loadApplications}
         onNavigateToVendorList={onNavigateToVendorList}
+        onApplicationsMutated={onApplicationsMutated}
       />
     );
   }
@@ -191,9 +195,13 @@ export function VendorApplications({ onBack, onNavigateToVendorList }: VendorApp
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
+          {onBack ? (
+            <Button variant="ghost" size="icon" onClick={onBack}>
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+          ) : (
+            <div className="w-10 shrink-0" aria-hidden />
+          )}
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">Vendor Applications</h1>
             <p className="text-sm text-slate-500 mt-1">Review and manage vendor partnership requests</p>
@@ -368,9 +376,6 @@ export function VendorApplications({ onBack, onNavigateToVendorList }: VendorApp
                               </Badge>
                               <Badge variant="outline" className="bg-slate-50">
                                 ~{application.estimatedProducts} Products
-                              </Badge>
-                              <Badge variant="outline" className="bg-slate-50">
-                                {application.requestedCommission}% Commission
                               </Badge>
                               <Badge variant="outline" className="bg-slate-50">
                                 {application.businessType}

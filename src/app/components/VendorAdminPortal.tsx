@@ -119,9 +119,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         storeName: String(s.storeName || vendor.storeName || vendor.name || "Vendor Store"),
         storeSlug: String(s.storeSlug || vendor.storeSlug || ""),
       });
-      if (s.logo) {
-        setVendorLogo(s.logo);
-      }
+      setVendorLogo(typeof s.logo === "string" ? s.logo : "");
     } catch (error) {
       console.error("Failed to load vendor storefront snapshot:", error);
     }
@@ -140,6 +138,19 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     };
     window.addEventListener("vendorSettingsUpdated", onSettingsUpdated as EventListener);
     return () => window.removeEventListener("vendorSettingsUpdated", onSettingsUpdated as EventListener);
+  }, [vendor.id, loadStorefrontSnapshot]);
+
+  useEffect(() => {
+    const onLogo = (e: Event) => {
+      const d = (e as CustomEvent<{ vendorId?: string; logo?: string }>).detail;
+      if (d?.vendorId !== vendor.id) return;
+      if (typeof d.logo === "string") {
+        setVendorLogo(d.logo);
+      }
+      void loadStorefrontSnapshot();
+    };
+    window.addEventListener("vendorLogoUpdated", onLogo as EventListener);
+    return () => window.removeEventListener("vendorLogoUpdated", onLogo as EventListener);
   }, [vendor.id, loadStorefrontSnapshot]);
 
   // 🔗 URL SYNCHRONIZATION: Initialize from URL

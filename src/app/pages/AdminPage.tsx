@@ -33,6 +33,8 @@ import { OrderDetails } from "../components/OrderDetails";
 import { ServerDiagnostics } from "../components/ServerDiagnostics";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { useBadgeCounts } from "../hooks/useBadgeCounts";
+import { SmartCache } from "../../utils/cache";
+import { moduleCache, CACHE_KEYS } from "../utils/module-cache";
 
 const ADMIN_PAGES = {
   HOME: 'Home',
@@ -100,6 +102,12 @@ export function AdminPage() {
   const [ordersSearchPrefill, setOrdersSearchPrefill] = useState<{ q: string; t: number } | null>(null);
   
   const { badgeCounts, loadBadgeCounts, incrementOrdersBadge } = useBadgeCounts();
+
+  const handleVendorApplicationsMutated = useCallback(() => {
+    moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+    SmartCache.delete("badge_counts");
+    void loadBadgeCounts();
+  }, [loadBadgeCounts]);
 
   const handleChatHandoffDone = useCallback(() => setChatHandoff(null), []);
 
@@ -497,6 +505,7 @@ export function AdminPage() {
           pendingApplicationsCount={badgeCounts.vendor}
           initialListSearchQuery={vendorSearchPrefill?.q}
           listSearchApplyToken={vendorSearchPrefill?.t}
+          onVendorApplicationsMutated={handleVendorApplicationsMutated}
           onPreviewVendorStore={(vendorId, storeSlug) => {
             // Always use vendor ID for navigation
             navigate(`/vendor/${vendorId}`);
@@ -530,7 +539,16 @@ export function AdminPage() {
           }}
         />;
       case ADMIN_PAGES.VENDOR_APPLICATIONS:
-        return <VendorApplications />;
+        return (
+          <VendorApplications
+            onBack={() => navigate("/admin")}
+            onNavigateToVendorList={() => {
+              setCurrentPage(ADMIN_PAGES.VENDOR);
+              navigate("/admin/vendors");
+            }}
+            onApplicationsMutated={handleVendorApplicationsMutated}
+          />
+        );
       case ADMIN_PAGES.VENDOR_PROMOTIONS:
         return <VendorPromotions />;
       case ADMIN_PAGES.VENDOR_STORE_VIEW:

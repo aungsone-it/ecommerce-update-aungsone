@@ -14,7 +14,6 @@ import {
   Globe,
   CreditCard,
   Package,
-  Percent,
   Image as ImageIcon,
   ExternalLink
 } from "lucide-react";
@@ -42,7 +41,6 @@ interface VendorApplication {
   description: string;
   productsCategory: string;
   estimatedProducts: number;
-  requestedCommission: number;
   appliedDate: string;
   status: ApplicationStatus;
   notes?: string;
@@ -66,9 +64,16 @@ interface VendorApplicationReviewProps {
   onBack: () => void;
   onUpdate: () => void;
   onNavigateToVendorList?: () => void;
+  onApplicationsMutated?: () => void;
 }
 
-export function VendorApplicationReview({ application, onBack, onUpdate, onNavigateToVendorList }: VendorApplicationReviewProps) {
+export function VendorApplicationReview({
+  application,
+  onBack,
+  onUpdate,
+  onNavigateToVendorList,
+  onApplicationsMutated,
+}: VendorApplicationReviewProps) {
   const [reviewNotes, setReviewNotes] = useState(application.notes || "");
   const [updating, setUpdating] = useState(false);
   const [viewingImage, setViewingImage] = useState<{ url: string; name: string } | null>(null);
@@ -119,29 +124,28 @@ export function VendorApplicationReview({ application, onBack, onUpdate, onNavig
       if (response.success) {
         // Update the application status locally to prevent further clicks
         application.status = newStatus;
-        
+
+        onApplicationsMutated?.();
+        void Promise.resolve(onUpdate());
+
         if (newStatus === "approved") {
           toast.success(`Application approved! Vendor "${application.businessName}" has been created and added to your vendor list.`, {
             duration: 8000,
             description: `Please inform the vendor to visit migoo.com/vendor/setup and use their email (${application.email}) to set up their credentials.`
           });
-          
-          // Navigate to vendor list after approval
+
           if (onNavigateToVendorList) {
             setTimeout(() => {
               onNavigateToVendorList();
-            }, 500); // Small delay to allow toast to show
+            }, 500);
           } else {
-            onUpdate();
             onBack();
           }
         } else if (newStatus === "rejected") {
           toast.error("Application rejected");
-          onUpdate();
           onBack();
         } else {
           toast.success("Application status updated");
-          onUpdate();
           onBack();
         }
       } else {
@@ -307,14 +311,14 @@ export function VendorApplicationReview({ application, onBack, onUpdate, onNavig
             </div>
           </Card>
 
-          {/* Product & Commission Details */}
+          {/* Product details */}
           <Card className="border border-slate-200 bg-white">
             <div className="p-6">
               <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
                 <Package className="w-5 h-5" />
-                Product & Commission Details
+                Product Details
               </h3>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
                   <div className="flex items-center gap-2 mb-2">
                     <Package className="w-4 h-4 text-blue-600" />
@@ -328,13 +332,6 @@ export function VendorApplicationReview({ application, onBack, onUpdate, onNavig
                     <Label className="text-xs text-purple-600 font-semibold">Estimated Products</Label>
                   </div>
                   <p className="font-semibold text-slate-900">{application.estimatedProducts}</p>
-                </div>
-                <div className="bg-green-50 p-4 rounded-lg border border-green-100">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Percent className="w-4 h-4 text-green-600" />
-                    <Label className="text-xs text-green-600 font-semibold">Requested Commission</Label>
-                  </div>
-                  <p className="font-semibold text-slate-900">{application.requestedCommission}%</p>
                 </div>
               </div>
             </div>

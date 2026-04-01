@@ -5896,9 +5896,66 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
       id,
       updatedAt: new Date().toISOString(),
     };
-    
+
+    /** Keep storefront + admin list in sync: public catalog prefers `vendor_storefront_*.logo`, then `vendor.avatar`. */
+    const logoTouched =
+      Object.prototype.hasOwnProperty.call(body, "logo") ||
+      Object.prototype.hasOwnProperty.call(body, "avatar");
+    if (logoTouched) {
+      const rawLogo = Object.prototype.hasOwnProperty.call(body, "logo") ? body.logo : body.avatar;
+      const nextLogo =
+        typeof rawLogo === "string"
+          ? rawLogo
+          : rawLogo === null
+            ? ""
+            : typeof updatedVendor.logo === "string"
+              ? updatedVendor.logo
+              : typeof updatedVendor.avatar === "string"
+                ? updatedVendor.avatar
+                : "";
+      updatedVendor.logo = nextLogo;
+      updatedVendor.avatar = nextLogo || updatedVendor.avatar || "";
+    }
+
     await withTimeout(kv.set(`vendor:${id}`, updatedVendor), 5000);
-    
+
+    if (logoTouched) {
+      const nextLogo =
+        typeof updatedVendor.logo === "string"
+          ? updatedVendor.logo
+          : typeof updatedVendor.avatar === "string"
+            ? updatedVendor.avatar
+            : "";
+      try {
+        const vsKey = `vendor_settings:${id}`;
+        const existingVs = await withTimeout(kv.get(vsKey), 5000);
+        if (existingVs && typeof existingVs === "object") {
+          await withTimeout(
+            kv.set(vsKey, {
+              ...existingVs,
+              logo: nextLogo,
+              updatedAt: new Date().toISOString(),
+            }),
+            5000
+          );
+        }
+        const sfKey = `vendor_storefront_${id}`;
+        const existingSf = await withTimeout(kv.get(sfKey), 5000);
+        if (existingSf && typeof existingSf === "object") {
+          await withTimeout(
+            kv.set(sfKey, {
+              ...existingSf,
+              logo: nextLogo,
+              updatedAt: new Date().toISOString(),
+            }),
+            5000
+          );
+        }
+      } catch (syncErr) {
+        console.warn("⚠️ Vendor logo sync to settings/storefront failed (vendor row still saved):", syncErr);
+      }
+    }
+
     // 🔥 Clear vendor list cache to force refresh
     try {
       await withTimeout(kv.del("vendors"), 5000);

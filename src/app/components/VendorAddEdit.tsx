@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Building2, Mail, Phone, MapPin, Globe, Upload, DollarSign } from "lucide-react";
+import { ArrowLeft, Building2, Mail, Phone, MapPin, Globe, Upload } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card } from "./ui/card";
@@ -36,7 +36,6 @@ export function VendorAddEdit({ onBack, onSave, initialData, mode = "add", editi
     location: vendorData?.location || "",
     website: vendorData?.website || "",
     status: vendorData?.status || "pending",
-    commission: vendorData?.commission?.toString() || "",
     logo: vendorData?.logo || vendorData?.avatar || null,
   });
 
@@ -53,7 +52,6 @@ export function VendorAddEdit({ onBack, onSave, initialData, mode = "add", editi
         location: data?.location || "",
         website: data?.website || "",
         status: data?.status || "pending",
-        commission: data?.commission?.toString() || "",
         logo: data?.logo || data?.avatar || null,
       });
     }
@@ -186,17 +184,17 @@ export function VendorAddEdit({ onBack, onSave, initialData, mode = "add", editi
             </div>
           </Card>
 
-          {/* Status & Commission */}
+          {/* Account status */}
           <Card className="p-6 border border-slate-200 bg-white lg:col-span-1">
-            <h2 className="text-lg font-semibold text-slate-900 mb-4">Status & Commission</h2>
-            
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">Account Status</h2>
+
             <div className="space-y-4">
               <div>
                 <Label htmlFor="status" className="text-sm font-medium text-slate-700">
                   Account Status
                 </Label>
-                <Select 
-                  value={formData.status} 
+                <Select
+                  value={formData.status}
                   onValueChange={(value) => setFormData({ ...formData, status: value })}
                 >
                   <SelectTrigger className="mt-1.5">
@@ -210,29 +208,6 @@ export function VendorAddEdit({ onBack, onSave, initialData, mode = "add", editi
                     <SelectItem value="banned">Banned</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
-
-              <div>
-                <Label htmlFor="commission" className="text-sm font-medium text-slate-700">
-                  Commission Rate (%)
-                </Label>
-                <div className="relative mt-1.5">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
-                    id="commission"
-                    type="number"
-                    placeholder="15"
-                    value={formData.commission}
-                    onChange={(e) => setFormData({ ...formData, commission: e.target.value })}
-                    className="pl-10"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                  />
-                </div>
-                <p className="text-xs text-slate-500 mt-1.5">
-                  Percentage of sales revenue that goes to the platform
-                </p>
               </div>
             </div>
           </Card>
