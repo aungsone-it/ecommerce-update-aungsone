@@ -8,8 +8,6 @@ import {
   Package,
   MapPin,
   Phone,
-  Banknote,
-  DollarSign,
   Tag,
   X,
   XCircle,
@@ -212,43 +210,13 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
   // Order Note
   const [orderNote, setOrderNote] = useState("");
 
-  // Payment Form State
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "bank" | "kpay">("card");
+  /** Vendor checkout: card only; KPay / bank are coming soon in the Payment section below. */
   const [paymentInfo, setPaymentInfo] = useState({
     cardNumber: "",
     cardName: "",
     expiryDate: "",
     cvv: ""
   });
-
-  // KPay Settings
-  const [kpayPhone, setKpayPhone] = useState("+95 9 XXX XXX XXX");
-  const [kpayQrCode, setKpayQrCode] = useState("");
-  const [paymentScreenshot, setPaymentScreenshot] = useState<string | null>(null);
-
-  // Load KPay settings from backend
-  useEffect(() => {
-    const loadKPaySettings = async () => {
-      try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/settings/general`,
-          {
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-        if (response.ok) {
-          const data = await response.json();
-          setKpayPhone(data.kpayPhone || "+95 9 XXX XXX XXX");
-          setKpayQrCode(data.kpayQrCode || "");
-        }
-      } catch (error) {
-        console.error("Error loading KPay settings:", error);
-      }
-    };
-    loadKPaySettings();
-  }, []);
 
   // Coupon State with localStorage persistence
   const [couponCode, setCouponCode] = useState("");
@@ -366,84 +334,66 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
 
     setLoading(true);
 
-    // 💳 TEST CARD PAYMENT PROCESSING (Stripe-style)
-    if (paymentMethod === "card") {
-      // Validate card fields
-      if (!paymentInfo.cardNumber || !paymentInfo.cardName || !paymentInfo.expiryDate || !paymentInfo.cvv) {
-        toast.error("Please fill in all card details");
-        setLoading(false);
-        return;
-      }
-
-      // Remove spaces from card number for validation
-      const cardNumberClean = paymentInfo.cardNumber.replace(/\s/g, '');
-
-      // Validate card number length
-      if (cardNumberClean.length < 13 || cardNumberClean.length > 19) {
-        toast.error("Invalid card number");
-        setLoading(false);
-        return;
-      }
-
-      // Validate expiry date format
-      if (!/^\d{2}\/\d{2}$/.test(paymentInfo.expiryDate)) {
-        toast.error("Invalid expiry date format (MM/YY)");
-        setLoading(false);
-        return;
-      }
-
-      // Validate CVV
-      if (paymentInfo.cvv.length < 3 || paymentInfo.cvv.length > 4) {
-        toast.error("Invalid CVV");
-        setLoading(false);
-        return;
-      }
-
-      // 🧪 SIMULATE PAYMENT PROCESSING (like Stripe test mode)
-      toast.info("Processing payment...", { duration: 2000 });
-      
-      // Wait 2 seconds to simulate payment gateway
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // TEST CARD NUMBERS (Stripe-style)
-      const testCards = {
-        success: ['4242424242424242', '4242 4242 4242 4242'],
-        declined: ['4000000000000002', '4000 0000 0000 0002'],
-        insufficient: ['4000000000009995', '4000 0000 0000 9995'],
-        expired: ['4000000000000069', '4000 0000 0000 0069']
-      };
-
-      // Check test card results
-      if (testCards.declined.includes(cardNumberClean) || testCards.declined.includes(paymentInfo.cardNumber)) {
-        setLoading(false);
-        toast.error("💳 Card Declined - Your card was declined. Please try another card.", { duration: 5000 });
-        return;
-      }
-
-      if (testCards.insufficient.includes(cardNumberClean) || testCards.insufficient.includes(paymentInfo.cardNumber)) {
-        setLoading(false);
-        toast.error("💳 Insufficient Funds - Your card has insufficient funds.", { duration: 5000 });
-        return;
-      }
-
-      if (testCards.expired.includes(cardNumberClean) || testCards.expired.includes(paymentInfo.cardNumber)) {
-        setLoading(false);
-        toast.error("💳 Card Expired - Your card has expired. Please use a different card.", { duration: 5000 });
-        return;
-      }
-
-      // Check if it's a valid test success card
-      if (!testCards.success.includes(cardNumberClean) && !testCards.success.includes(paymentInfo.cardNumber)) {
-        // For demo purposes, accept any other card number as successful
-        // In production, you'd integrate with real payment gateway here
-        console.log("⚠️ Using non-test card number - accepting for demo");
-      }
-
-      // ✅ Payment successful!
-      toast.success("💳 Payment Successful!", { duration: 3000 });
+    // 💳 TEST CARD PAYMENT PROCESSING (Stripe-style) — only supported method on vendor checkout
+    if (!paymentInfo.cardNumber || !paymentInfo.cardName || !paymentInfo.expiryDate || !paymentInfo.cvv) {
+      toast.error("Please fill in all card details");
+      setLoading(false);
+      return;
     }
 
-    // Bank / KPay: no card simulation — proceed to order
+    const cardNumberClean = paymentInfo.cardNumber.replace(/\s/g, "");
+
+    if (cardNumberClean.length < 13 || cardNumberClean.length > 19) {
+      toast.error("Invalid card number");
+      setLoading(false);
+      return;
+    }
+
+    if (!/^\d{2}\/\d{2}$/.test(paymentInfo.expiryDate)) {
+      toast.error("Invalid expiry date format (MM/YY)");
+      setLoading(false);
+      return;
+    }
+
+    if (paymentInfo.cvv.length < 3 || paymentInfo.cvv.length > 4) {
+      toast.error("Invalid CVV");
+      setLoading(false);
+      return;
+    }
+
+    toast.info("Processing payment...", { duration: 2000 });
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
+    const testCards = {
+      success: ["4242424242424242", "4242 4242 4242 4242"],
+      declined: ["4000000000000002", "4000 0000 0000 0002"],
+      insufficient: ["4000000000009995", "4000 0000 0000 9995"],
+      expired: ["4000000000000069", "4000 0000 0000 0069"],
+    };
+
+    if (testCards.declined.includes(cardNumberClean) || testCards.declined.includes(paymentInfo.cardNumber)) {
+      setLoading(false);
+      toast.error("💳 Card Declined - Your card was declined. Please try another card.", { duration: 5000 });
+      return;
+    }
+
+    if (testCards.insufficient.includes(cardNumberClean) || testCards.insufficient.includes(paymentInfo.cardNumber)) {
+      setLoading(false);
+      toast.error("💳 Insufficient Funds - Your card has insufficient funds.", { duration: 5000 });
+      return;
+    }
+
+    if (testCards.expired.includes(cardNumberClean) || testCards.expired.includes(paymentInfo.cardNumber)) {
+      setLoading(false);
+      toast.error("💳 Card Expired - Your card has expired. Please use a different card.", { duration: 5000 });
+      return;
+    }
+
+    if (!testCards.success.includes(cardNumberClean) && !testCards.success.includes(paymentInfo.cardNumber)) {
+      console.log("⚠️ Using non-test card number - accepting for demo");
+    }
+
+    toast.success("💳 Payment Successful!", { duration: 3000 });
 
     // 🔥 SAVE items and total BEFORE clearing cart
     setConfirmedItems(items);
@@ -467,7 +417,7 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
         phone: shippingInfo.phone,
         status: "pending",
         paymentStatus: "paid", // All prepaid orders have "paid" status
-        paymentMethod: paymentMethod === "card" ? "Credit/Debit Card" : paymentMethod === "kpay" ? "KPay" : "Bank Transfer",
+        paymentMethod: "Credit/Debit Card",
         total: finalTotal,
         subtotal: totalPrice,
         discount: discountAmount,
@@ -781,45 +731,15 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
             )}
             
             {/* Payment Method */}
-            {paymentMethod && (
-              <div className="px-6 py-4 border-b border-slate-200">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Payment Method</p>
-                <div className="flex items-center gap-3">
-                  {paymentMethod === "card" && (
-                    <>
-                      <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                        <CreditCard className="w-5 h-5 text-white" strokeWidth={2} />
-                      </div>
-                      <span className="text-sm font-semibold text-slate-900">Credit / Debit Card</span>
-                    </>
-                  )}
-                  {paymentMethod === "cash" && (
-                    <>
-                      <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
-                        <DollarSign className="w-5 h-5 text-white" strokeWidth={2} />
-                      </div>
-                      <span className="text-sm font-semibold text-slate-900">Cash on Delivery</span>
-                    </>
-                  )}
-                  {paymentMethod === "bank" && (
-                    <>
-                      <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                        <Banknote className="w-5 h-5 text-white" strokeWidth={2} />
-                      </div>
-                      <span className="text-sm font-semibold text-slate-900">Bank Transfer</span>
-                    </>
-                  )}
-                  {paymentMethod === "kpay" && (
-                    <>
-                      <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                        <CreditCard className="w-5 h-5 text-white" strokeWidth={2} />
-                      </div>
-                      <span className="text-sm font-semibold text-slate-900">KPay</span>
-                    </>
-                  )}
+            <div className="px-6 py-4 border-b border-slate-200">
+              <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Payment Method</p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                  <CreditCard className="w-5 h-5 text-white" strokeWidth={2} />
                 </div>
+                <span className="text-sm font-semibold text-slate-900">Credit / Debit Card</span>
               </div>
-            )}
+            </div>
 
             {/* Order Notes */}
             {confirmedOrderNote && (
@@ -1039,70 +959,55 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
                 </div>
 
                 <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("card")}
-                    className={`w-full rounded-lg border p-4 text-left transition-all ${
-                      paymentMethod === "card"
-                        ? "border-slate-900 bg-slate-50"
-                        : "border-slate-300 bg-white hover:border-slate-400"
-                    }`}
-                  >
+                  <div className="w-full rounded-lg border border-slate-900 bg-slate-50 p-4 text-left">
                     <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
-                          paymentMethod === "card" ? "border-slate-900" : "border-slate-300"
-                        }`}
-                      >
-                        {paymentMethod === "card" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                      <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-900">
+                        <div className="h-2 w-2 rounded-full bg-slate-900" />
                       </div>
                       <span className="text-sm font-medium text-slate-900">Credit / Debit Card</span>
                     </div>
-                  </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("kpay")}
-                    className={`w-full rounded-lg border p-4 text-left transition-all ${
-                      paymentMethod === "kpay"
-                        ? "border-slate-900 bg-slate-50"
-                        : "border-slate-300 bg-white hover:border-slate-400"
-                    }`}
+                    onClick={() =>
+                      toast.info("🚀 Coming Soon! This payment method will be available soon.", {
+                        duration: 4000,
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:bg-slate-100"
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
-                          paymentMethod === "kpay" ? "border-slate-900" : "border-slate-300"
-                        }`}
-                      >
-                        {paymentMethod === "kpay" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-200 bg-white" />
+                        <span className="text-sm font-medium text-slate-600">KPay</span>
                       </div>
-                      <span className="text-sm font-medium text-slate-900">KPay</span>
+                      <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                        Coming soon
+                      </span>
                     </div>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("bank")}
-                    className={`w-full rounded-lg border p-4 text-left transition-all ${
-                      paymentMethod === "bank"
-                        ? "border-slate-900 bg-slate-50"
-                        : "border-slate-300 bg-white hover:border-slate-400"
-                    }`}
+                    onClick={() =>
+                      toast.info("🚀 Coming Soon! This payment method will be available soon.", {
+                        duration: 4000,
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:bg-slate-100"
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
-                          paymentMethod === "bank" ? "border-slate-900" : "border-slate-300"
-                        }`}
-                      >
-                        {paymentMethod === "bank" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-200 bg-white" />
+                        <span className="text-sm font-medium text-slate-600">Bank Transfer</span>
                       </div>
-                      <span className="text-sm font-medium text-slate-900">Bank Transfer</span>
+                      <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                        Coming soon
+                      </span>
                     </div>
                   </button>
                 </div>
 
-                {paymentMethod === "card" && (
-                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
+                <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
                     <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
                       <p className="text-sm font-semibold text-blue-900">💳 Credit / Debit Card Payment</p>
                     </div>
@@ -1189,78 +1094,6 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
                       <p className="text-sm text-blue-900">🔒 Your payment information is encrypted and secure</p>
                     </div>
                   </div>
-                )}
-
-                {paymentMethod === "bank" && (
-                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
-                    <div className="mb-4 rounded-lg border border-purple-200 bg-purple-50 p-3">
-                      <p className="text-sm font-semibold text-purple-900">🏦 Bank Transfer</p>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
-                      <h3 className="mb-4 font-bold text-slate-900">Transfer Details</h3>
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between border-b border-slate-200 py-2">
-                          <span className="text-slate-600">Bank Name:</span>
-                          <span className="font-semibold text-slate-900">Myanmar Bank</span>
-                        </div>
-                        <div className="flex justify-between border-b border-slate-200 py-2">
-                          <span className="text-slate-600">Account Name:</span>
-                          <span className="font-semibold text-slate-900">{storeName}</span>
-                        </div>
-                        <div className="flex justify-between border-b border-slate-200 py-2">
-                          <span className="text-slate-600">Account Number:</span>
-                          <span className="font-mono font-semibold text-slate-900">1234-5678-9012</span>
-                        </div>
-                        <div className="flex justify-between py-2">
-                          <span className="text-slate-600">Amount:</span>
-                          <span className="text-lg font-bold text-blue-600">{finalTotal.toFixed(0)} MMK</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                      <p className="text-sm text-blue-900">
-                        📌 <strong>Important:</strong> Please complete the bank transfer and include your order number in the
-                        reference. Your order will be processed after payment confirmation.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {paymentMethod === "kpay" && (
-                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
-                    <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                      <p className="text-sm font-semibold text-emerald-900">💳 KPay Payment</p>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-6">
-                      <h3 className="mb-4 font-bold text-slate-900">Scan QR Code to Pay</h3>
-                      <div className="mb-6 flex justify-center">
-                        <div className="flex h-64 w-64 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
-                          {kpayQrCode ? (
-                            <img src={kpayQrCode} alt="KPay QR Code" className="h-full w-full object-contain" />
-                          ) : (
-                            <div className="px-4 text-center">
-                              <CreditCard className="mx-auto mb-2 h-12 w-12 text-slate-400" />
-                              <p className="text-sm text-slate-500">No QR code available</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between border-b border-slate-200 py-2">
-                          <span className="text-slate-600">KPay Phone Number:</span>
-                          <span className="font-mono font-semibold text-slate-900">{kpayPhone}</span>
-                        </div>
-                        <div className="flex justify-between py-2">
-                          <span className="text-slate-600">Amount to Pay:</span>
-                          <span className="text-lg font-bold text-emerald-600">{finalTotal.toFixed(0)} MMK</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-                      <p className="text-sm text-blue-900">📱 Complete payment in KPay, then use Proceed Order below.</p>
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1414,10 +1247,8 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Processing...
                   </>
-                ) : paymentMethod === "card" ? (
-                  `Pay ${finalTotal.toFixed(0)} MMK`
                 ) : (
-                  "I've Completed Payment"
+                  `Pay ${finalTotal.toFixed(0)} MMK`
                 )}
               </Button>
             </div>
