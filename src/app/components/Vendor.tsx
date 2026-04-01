@@ -192,10 +192,17 @@ function normalizeVendorStatusRaw(status: unknown): VendorStatus | null {
     under_review: "pending",
     awaiting_review: "pending",
     awaiting_approval: "pending",
+    /** "Pending review" label / API strings → single normalized pending bucket */
+    pending_review: "pending",
+    pending_verification: "pending",
+    needs_review: "pending",
+    new_vendor: "pending",
     suspend: "suspended",
     suspended_account: "suspended",
     paused: "suspended",
     ban: "banned",
+    banned_vendor: "banned",
+    vendor_banned: "banned",
     blocked: "banned",
     blacklisted: "banned",
   };
@@ -216,6 +223,8 @@ function rawLifecycleStatus(vendor: Vendor & Record<string, unknown>): unknown {
     vendor.accountStatus ??
     vendor.vendorStatus ??
     vendor.lifecycleStatus ??
+    vendor.approvalStatus ??
+    vendor.verificationStatus ??
     vendor["Status"]
   );
 }
@@ -828,6 +837,9 @@ export function Vendor({
     try {
       const raw = await getCachedAdminVendorApplications(forceRefresh);
       setPendingApplicationRows(mapRawApplicationsToPendingRows(raw));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("adminVendorApplicationsPrimed"));
+      }
     } catch (e) {
       console.warn("Pending applications load failed:", e);
       setPendingApplicationRows([]);
@@ -863,11 +875,10 @@ export function Vendor({
   /** Matches admin mental model: vendor accounts on hold + applications not yet approved. */
   const pendingReviewTotal = pendingVendorCount + pendingApplicationsForStats;
 
-  /** Vendors in pending / suspended / banned (excludes “inactive” and incomplete). */
-  const restrictedVendorStatCount = vendors.filter((v) => {
-    const e = effectiveVendorStatus(v);
-    return e === "pending" || e === "suspended" || e === "banned";
-  }).length;
+  /** Suspended + banned only (pending has its own “Pending review” card). */
+  const restrictedVendorStatCount =
+    vendors.filter((v) => effectiveVendorStatus(v) === "suspended").length +
+    vendors.filter((v) => effectiveVendorStatus(v) === "banned").length;
 
   const stats = {
     total: vendors.length,

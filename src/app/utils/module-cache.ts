@@ -12,6 +12,7 @@
  */
 
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { SmartCache } from '../../utils/cache';
 import { vendorApplicationsApi } from '../../utils/api';
 import { withNetworkRetry } from './networkRetry';
 import {
@@ -1445,6 +1446,7 @@ export async function getCachedAdminOrdersPayload(forceRefresh = false) {
 export function invalidateAdminOrdersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_ORDERS);
   moduleCache.invalidatePrefix(ADMIN_ORDERS_PAGE_CACHE_PREFIX);
+  SmartCache.delete("badge_counts");
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix("migoo-ls-admin-orders-p1-");
     window.dispatchEvent(new CustomEvent("adminOrdersUpdated"));

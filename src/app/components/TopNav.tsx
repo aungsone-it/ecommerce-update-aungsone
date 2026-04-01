@@ -33,6 +33,10 @@ interface TopNavProps {
   onAdminGlobalSearchChange?: (value: string) => void;
   /** Enter in search — e.g. jump to Products. */
   onAdminGlobalSearchSubmit?: () => void;
+  /** Epoch ms from latest pending-order activity in cached orders payload (not “page loaded now”). */
+  pendingOrdersDigestSourceMs?: number | null;
+  /** Epoch ms from latest pending application submitted/created in cached applications. */
+  vendorApplicationsDigestSourceMs?: number | null;
 }
 
 interface Notification {
@@ -117,6 +121,8 @@ export function TopNav({
   adminGlobalSearch,
   onAdminGlobalSearchChange,
   onAdminGlobalSearchSubmit,
+  pendingOrdersDigestSourceMs = null,
+  vendorApplicationsDigestSourceMs = null,
 }: TopNavProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,13 +167,15 @@ export function TopNav({
   };
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
-  
+
+  const pendingOrdersN = Number(pendingOrdersCount) || 0;
+  const vendorAppsN = Number(vendorApplicationsCount) || 0;
+  const chatUnreadN = Number(chatUnreadCount) || 0;
+  /** Sidebar-style digest rows (not inbox API) — used for header copy + avoid `0 && …` leaking into DOM. */
+  const digestAttentionCount = pendingOrdersN + vendorAppsN + chatUnreadN;
+
   // 🔥 Add vendor applications, pending orders, and unread chat to bell badge total
-  const totalNotificationCount =
-    unreadCount +
-    (vendorApplicationsCount || 0) +
-    (pendingOrdersCount || 0) +
-    (chatUnreadCount || 0);
+  const totalNotificationCount = unreadCount + digestAttentionCount;
 
   const bellBadgeLabel =
     totalNotificationCount > 99 ? "99+" : String(totalNotificationCount);
@@ -325,7 +333,9 @@ export function TopNav({
                 <div>
                   <h3 className="font-semibold text-slate-900">Notifications</h3>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {unreadCount > 0 ? `You have ${unreadCount} unread ${unreadCount === 1 ? 'notification' : 'notifications'}` : 'All caught up!'}
+                    {totalNotificationCount > 0
+                      ? `You have ${totalNotificationCount} unread ${totalNotificationCount === 1 ? "alert" : "alerts"}`
+                      : "All caught up!"}
                   </p>
                 </div>
                 {unreadCount > 0 && (
@@ -342,11 +352,11 @@ export function TopNav({
               </div>
 
               {/* Notification List */}
-              {(notifications.length > 0 || (pendingOrdersCount && pendingOrdersCount > 0) || (vendorApplicationsCount && vendorApplicationsCount > 0) || (chatUnreadCount && chatUnreadCount > 0)) ? (
+              {notifications.length > 0 || digestAttentionCount > 0 ? (
                 <ScrollArea className="h-[420px]">
                   <div className="divide-y divide-slate-100">
                     {/* Badge-based notifications from sidebar */}
-                    {pendingOrdersCount && pendingOrdersCount > 0 && (
+                    {pendingOrdersN > 0 && (
                       <div
                         className="group relative p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-blue-50/30"
                       >
@@ -362,15 +372,21 @@ export function TopNav({
                               <div className="w-2 h-2 rounded-full bg-purple-600 flex-shrink-0 mt-1" />
                             </div>
                             <p className="text-sm text-slate-600 leading-snug mb-2">
-                              You have {pendingOrdersCount} pending {pendingOrdersCount === 1 ? 'order' : 'orders'} that need attention
+                              You have {pendingOrdersN} pending {pendingOrdersN === 1 ? "order" : "orders"} that need attention
                             </p>
-                            {digestFooter(ordersDigestAt, "From Orders section")}
+                            {digestFooter(
+                              typeof pendingOrdersDigestSourceMs === "number" &&
+                                !Number.isNaN(pendingOrdersDigestSourceMs)
+                                ? pendingOrdersDigestSourceMs
+                                : ordersDigestAt,
+                              "From Orders section"
+                            )}
                           </div>
                         </div>
                       </div>
                     )}
                     
-                    {vendorApplicationsCount && vendorApplicationsCount > 0 && (
+                    {vendorAppsN > 0 && (
                       <div
                         className="group relative p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-green-50/30"
                       >
@@ -386,15 +402,21 @@ export function TopNav({
                               <div className="w-2 h-2 rounded-full bg-purple-600 flex-shrink-0 mt-1" />
                             </div>
                             <p className="text-sm text-slate-600 leading-snug mb-2">
-                              You have {vendorApplicationsCount} pending vendor {vendorApplicationsCount === 1 ? 'application' : 'applications'} to review
+                              You have {vendorAppsN} pending vendor {vendorAppsN === 1 ? "application" : "applications"} to review
                             </p>
-                            {digestFooter(vendorDigestAt, "From Vendor section")}
+                            {digestFooter(
+                              typeof vendorApplicationsDigestSourceMs === "number" &&
+                                !Number.isNaN(vendorApplicationsDigestSourceMs)
+                                ? vendorApplicationsDigestSourceMs
+                                : vendorDigestAt,
+                              "From Vendor section"
+                            )}
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {chatUnreadCount > 0 && (
+                    {chatUnreadN > 0 && (
                       <div className="group relative p-4 hover:bg-slate-50 transition-colors cursor-pointer bg-indigo-50/30">
                         <div className="flex items-start gap-3">
                           <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center flex-shrink-0">
@@ -408,9 +430,9 @@ export function TopNav({
                               <div className="w-2 h-2 rounded-full bg-purple-600 flex-shrink-0 mt-1" />
                             </div>
                             <p className="text-sm text-slate-600 leading-snug mb-2">
-                              {chatUnreadCount === 1
+                              {chatUnreadN === 1
                                 ? "You have 1 unread customer message"
-                                : `You have ${chatUnreadCount} unread customer messages`}
+                                : `You have ${chatUnreadN} unread customer messages`}
                             </p>
                             {digestFooter(chatDigestAt, "From Chat")}
                           </div>

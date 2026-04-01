@@ -35,6 +35,10 @@ import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { useBadgeCounts } from "../hooks/useBadgeCounts";
 import { SmartCache } from "../../utils/cache";
 import { moduleCache, CACHE_KEYS } from "../utils/module-cache";
+import {
+  peekPendingOrdersDigestSourceMs,
+  peekPendingVendorApplicationsDigestSourceMs,
+} from "../utils/adminDigestSourceTimes";
 
 const ADMIN_PAGES = {
   HOME: 'Home',
@@ -103,10 +107,34 @@ export function AdminPage() {
   
   const { badgeCounts, loadBadgeCounts, incrementOrdersBadge } = useBadgeCounts();
 
+  const [digestTimesTick, setDigestTimesTick] = useState(0);
+  useEffect(() => {
+    const onOrdersUpdated = () => {
+      setDigestTimesTick((n) => n + 1);
+      void loadBadgeCounts(true);
+    };
+    const onVendorPrimed = () => setDigestTimesTick((n) => n + 1);
+    window.addEventListener("adminOrdersUpdated", onOrdersUpdated);
+    window.addEventListener("adminVendorApplicationsPrimed", onVendorPrimed);
+    return () => {
+      window.removeEventListener("adminOrdersUpdated", onOrdersUpdated);
+      window.removeEventListener("adminVendorApplicationsPrimed", onVendorPrimed);
+    };
+  }, [loadBadgeCounts]);
+
+  const pendingOrdersDigestSourceMs = useMemo(
+    () => peekPendingOrdersDigestSourceMs(),
+    [badgeCounts.orders, badgeCounts.vendor, badgeCounts.chat, currentPage, digestTimesTick]
+  );
+  const vendorApplicationsDigestSourceMs = useMemo(
+    () => peekPendingVendorApplicationsDigestSourceMs(),
+    [badgeCounts.orders, badgeCounts.vendor, badgeCounts.chat, currentPage, digestTimesTick]
+  );
+
   const handleVendorApplicationsMutated = useCallback(() => {
     moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
     SmartCache.delete("badge_counts");
-    void loadBadgeCounts();
+    void loadBadgeCounts(true);
   }, [loadBadgeCounts]);
 
   const handleChatHandoffDone = useCallback(() => setChatHandoff(null), []);
@@ -414,7 +442,7 @@ export function AdminPage() {
   };
 
   const handleOrderUpdate = () => {
-    loadBadgeCounts();
+    void loadBadgeCounts(true);
   };
 
   /** ProductList refreshes its own data; remounting forced a refetch every visit — leave empty */
@@ -637,6 +665,8 @@ export function AdminPage() {
               vendorApplicationsCount={badgeCounts.vendor}
               pendingOrdersCount={badgeCounts.orders}
               chatUnreadCount={badgeCounts.chat}
+              pendingOrdersDigestSourceMs={pendingOrdersDigestSourceMs}
+              vendorApplicationsDigestSourceMs={vendorApplicationsDigestSourceMs}
               onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
               onOpenVendorApplication={() => {
                 navigate("/vendor/application");

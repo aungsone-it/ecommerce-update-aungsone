@@ -4,9 +4,9 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { chatApi, vendorApplicationsApi } from '../../utils/api';
-import { getCachedAdminOrdersPayload } from '../utils/module-cache';
+import { getCachedAdminOrdersPayload, moduleCache, CACHE_KEYS } from '../utils/module-cache';
 import { PENDING_ORDER_STATUSES, POLLING_INTERVALS_MS } from '../../constants';
-import { SmartCache, CACHE_KEYS, CACHE_TTL } from '../../utils/cache';
+import { SmartCache } from '../../utils/cache';
 import { badgeCircuitBreaker } from '../../utils/circuit-breaker';
 import type { BadgeCounts } from '../../types';
 
@@ -62,15 +62,18 @@ export function useBadgeCounts() {
   /**
    * Load badge counts from the server
    */
-  const loadBadgeCounts = useCallback(async () => {
+  const loadBadgeCounts = useCallback(async (force = false) => {
     // Check circuit breaker
     if (!badgeCircuitBreaker.canAttempt()) {
       console.warn('⛔ Badge API circuit is open - skipping request');
       return;
     }
 
-    // Check if cache is fresh (long TTL — avoids duplicate edge calls between polls)
-    if (SmartCache.isFresh('badge_counts', POLLING_INTERVALS_MS.BADGE_COUNTS_CACHE_FRESH)) {
+    // Avoid duplicate fetches while SmartCache says recent — unless caller forces (mount, orders invalidated, etc.)
+    if (
+      !force &&
+      SmartCache.isFresh('badge_counts', POLLING_INTERVALS_MS.BADGE_COUNTS_CACHE_FRESH)
+    ) {
       console.log('✅ Badge counts cache is fresh, no need to fetch');
       badgeCircuitBreaker.recordSuccess();
       return;
@@ -82,7 +85,7 @@ export function useBadgeCounts() {
       // Pending orders — reuse module cache (same key as Super Admin Orders) to avoid duplicate /orders edge calls
       let ordersPayload: { orders: any[]; warning?: string };
       try {
-        ordersPayload = await getCachedAdminOrdersPayload(false);
+        ordersPayload = await getCachedAdminOrdersPayload(force);
       } catch (ordersError) {
         console.warn('⚠️ Orders fetch failed, retrying once...', ordersError);
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -91,16 +94,10 @@ export function useBadgeCounts() {
 
       const ordersList = ordersPayload.orders ?? [];
       const pendingStatuses: readonly string[] = PENDING_ORDER_STATUSES;
-      const pendingOrders =
-        ordersList.length === 0
-          ? null
-          : ordersList.filter((order: any) => pendingStatuses.includes(order.status));
-
-      if (ordersList.length === 0) {
-        console.log(
-          "ℹ️ Orders list empty — keeping previous orders badge; still refreshing vendor applications + chat"
-        );
-      }
+      /** Empty list from a successful payload means zero pending — do not keep a stale sidebar/bell count. */
+      const pendingOrdersCount = ordersList.filter((order: any) =>
+        pendingStatuses.includes(order.status)
+      ).length;
 
       // Get unread chat messages count with silent mode to avoid error toasts
       let unreadChats = 0;
@@ -117,9 +114,14 @@ export function useBadgeCounts() {
       try {
         const vendorResponse = await vendorApplicationsApi.getAll();
         if (vendorResponse.success && vendorResponse.data) {
-          vendorApplicationsCount = vendorResponse.data.filter(
-            (app: any) => String(app?.status ?? "").toLowerCase() === "pending"
+          const apps = vendorResponse.data as Record<string, unknown>[];
+          moduleCache.prime(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS, apps);
+          vendorApplicationsCount = apps.filter(
+            (app) => String(app?.status ?? "").toLowerCase() === "pending"
           ).length;
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("adminVendorApplicationsPrimed"));
+          }
         }
       } catch (vendorError) {
         // Silently ignore - vendor applications endpoint may not be initialized yet
@@ -128,7 +130,7 @@ export function useBadgeCounts() {
 
       setBadgeCounts((prev) => {
         const newBadgeCounts: BadgeCounts = {
-          orders: pendingOrders === null ? prev.orders : pendingOrders.length,
+          orders: pendingOrdersCount,
           vendor: vendorApplicationsCount,
           collaborator: prev.collaborator,
           chat: unreadChats,
@@ -173,7 +175,7 @@ export function useBadgeCounts() {
     
     // Sync with server in background
     setTimeout(() => {
-      loadBadgeCounts();
+      void loadBadgeCounts(true);
     }, 1000); // Small delay to let the order save to database
   }, [loadBadgeCounts]);
 
@@ -202,14 +204,14 @@ export function useBadgeCounts() {
 
   // 🔄 Auto-refresh while admin tab is visible only (no polling when hidden)
   useEffect(() => {
-    const tick = () => {
+    const tick = (force: boolean) => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
-      loadBadgeCounts();
+      void loadBadgeCounts(force);
     };
-    tick();
+    tick(true);
     const interval = setInterval(() => {
       console.log('🔄 Auto-refreshing badge counts...');
-      tick();
+      tick(false);
     }, POLLING_INTERVALS_MS.BADGE_COUNTS);
 
     return () => clearInterval(interval);
