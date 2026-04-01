@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import type { DateRange } from "react-day-picker";
 import { useLanguage } from "../contexts/LanguageContext";
 import { Bell, Tag, Percent, Gift, TrendingUp, Plus, Search, Filter, Download, Eye, Edit, Trash2, Copy, Calendar, Users, Target, BarChart3, Clock, CheckCircle, XCircle, Send, Megaphone, Sparkles, AlertCircle, Info, ShoppingCart, Truck, Star, Heart, Zap, Award, Palette, Save, Package, MoreVertical, Upload, Image, ShoppingBag } from "lucide-react";
 import { Button } from "./ui/button";
@@ -33,6 +34,8 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { format, startOfDay, endOfDay } from "date-fns";
+import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 
 // 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
 let cachedCampaigns: any[] = [];
@@ -145,8 +148,8 @@ export function Marketing() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [creatorFilter, setCreatorFilter] = useState<string>("all");
   const [creatorNameFilter, setCreatorNameFilter] = useState<string>("all");
-  const [dateRangeStart, setDateRangeStart] = useState<string>("");
-  const [dateRangeEnd, setDateRangeEnd] = useState<string>("");
+  const [campaignDateRange, setCampaignDateRange] = useState<DateRange | undefined>(undefined);
+  const [campaignDatePickerOpen, setCampaignDatePickerOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   
   // Backend integration
@@ -754,21 +757,16 @@ export function Marketing() {
     const matchesCreator = creatorFilter === "all" || campaign.creatorType === creatorFilter;
     const matchesCreatorName = creatorNameFilter === "all" || campaign.creator === creatorNameFilter;
     
-    // Date range filtering by created date
+    const campaignCreated = new Date(campaign.createdDate);
     let matchesDateRange = true;
-    if (dateRangeStart && dateRangeEnd) {
-      const campaignCreated = new Date(campaign.createdDate);
-      const filterStart = new Date(dateRangeStart);
-      const filterEnd = new Date(dateRangeEnd);
+    if (campaignDateRange?.from && campaignDateRange?.to) {
+      const filterStart = startOfDay(campaignDateRange.from);
+      const filterEnd = endOfDay(campaignDateRange.to);
       matchesDateRange = campaignCreated >= filterStart && campaignCreated <= filterEnd;
-    } else if (dateRangeStart) {
-      const campaignCreated = new Date(campaign.createdDate);
-      const filterStart = new Date(dateRangeStart);
-      matchesDateRange = campaignCreated >= filterStart;
-    } else if (dateRangeEnd) {
-      const campaignCreated = new Date(campaign.createdDate);
-      const filterEnd = new Date(dateRangeEnd);
-      matchesDateRange = campaignCreated <= filterEnd;
+    } else if (campaignDateRange?.from) {
+      matchesDateRange = campaignCreated >= startOfDay(campaignDateRange.from);
+    } else if (campaignDateRange?.to) {
+      matchesDateRange = campaignCreated <= endOfDay(campaignDateRange.to);
     }
     
     return matchesSearch && matchesStatus && matchesType && matchesCreator && matchesCreatorName && matchesDateRange;
@@ -1394,18 +1392,25 @@ export function Marketing() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Input
-                  type="date"
-                  value={dateRangeStart}
-                  onChange={(e) => setDateRangeStart(e.target.value)}
-                  className="h-9 w-[140px] border-slate-300 text-sm"
-                />
-                <Input
-                  type="date"
-                  value={dateRangeEnd}
-                  onChange={(e) => setDateRangeEnd(e.target.value)}
-                  className="h-9 w-[140px] border-slate-300 text-sm"
-                />
+                <AdminDateRangeFilterPopover
+                  value={campaignDateRange}
+                  onChange={setCampaignDateRange}
+                  hintText={t("admin.dateFilter.hintMarketing")}
+                  open={campaignDatePickerOpen}
+                  onOpenChange={setCampaignDatePickerOpen}
+                  align="start"
+                >
+                  <Button variant="outline" className="h-9 w-full min-w-[200px] justify-start border-slate-300 text-sm font-normal sm:w-auto">
+                    <Calendar className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate text-left">
+                      {!campaignDateRange?.from
+                        ? t("finances.allTime")
+                        : !campaignDateRange.to
+                          ? t("finances.selectEndDate")
+                          : `${format(campaignDateRange.from, "MMM d, yyyy")} – ${format(campaignDateRange.to, "MMM d, yyyy")}`}
+                    </span>
+                  </Button>
+                </AdminDateRangeFilterPopover>
               </div>
             </div>
           </Card>

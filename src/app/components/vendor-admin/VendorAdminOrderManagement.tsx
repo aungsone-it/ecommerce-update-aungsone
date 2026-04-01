@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import type { DateRange } from "react-day-picker";
 import type { LucideIcon } from "lucide-react";
 import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, BadgePercent, ChevronDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import { Button } from "../ui/button";
@@ -28,15 +29,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "../ui/popover";
-import { Calendar as CalendarComponent } from "../ui/calendar";
+import { AdminDateRangeFilterPopover } from "../AdminDateRangeFilterPopover";
+import { useLanguage } from "../../contexts/LanguageContext";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
-import { format } from "date-fns";
+import { format, startOfDay, endOfDay } from "date-fns";
 import { PrintInvoice } from "../PrintInvoice";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
@@ -249,12 +246,13 @@ interface VendorAdminOrderManagementProps {
 }
 
 export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: VendorAdminOrderManagementProps) {
+  const { t } = useLanguage();
   const [selectedTab, setSelectedTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
-  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [orderDateRange, setOrderDateRange] = useState<DateRange | undefined>(undefined);
+  const [orderDatePickerOpen, setOrderDatePickerOpen] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
@@ -435,8 +433,10 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           const matchesPaymentFilter = paymentFilter === "all" || order.paymentStatus === paymentFilter;
 
           const orderDate = new Date(order.date);
-          const matchesDateFrom = !dateFrom || orderDate >= dateFrom;
-          const matchesDateTo = !dateTo || orderDate <= dateTo;
+          const from = orderDateRange?.from ? startOfDay(orderDateRange.from) : undefined;
+          const to = orderDateRange?.to ? endOfDay(orderDateRange.to) : undefined;
+          const matchesDateFrom = !from || orderDate >= from;
+          const matchesDateTo = !to || orderDate <= to;
 
           return (
             matchesSearch &&
@@ -453,12 +453,12 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
             ? dateB.getTime() - dateA.getTime()
             : dateA.getTime() - dateB.getTime();
         }),
-    [orders, searchQuery, statusFilter, paymentFilter, dateFrom, dateTo, sortOrder]
+    [orders, searchQuery, statusFilter, paymentFilter, orderDateRange, sortOrder]
   );
 
   useEffect(() => {
     setOrdersListPage(1);
-  }, [searchQuery, statusFilter, paymentFilter, dateFrom, dateTo, sortOrder]);
+  }, [searchQuery, statusFilter, paymentFilter, orderDateRange, sortOrder]);
 
   useEffect(() => {
     const tp = Math.max(1, Math.ceil(filteredOrders.length / ordersListPageSize) || 1);
@@ -718,11 +718,15 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     setSearchQuery("");
     setStatusFilter("all");
     setPaymentFilter("all");
-    setDateFrom(undefined);
-    setDateTo(undefined);
+    setOrderDateRange(undefined);
   };
 
-  const hasActiveFilters = searchQuery || statusFilter !== "all" || paymentFilter !== "all" || dateFrom || dateTo;
+  const hasActiveFilters =
+    searchQuery ||
+    statusFilter !== "all" ||
+    paymentFilter !== "all" ||
+    orderDateRange?.from ||
+    orderDateRange?.to;
 
   const exportOrders = () => {
     const headers = ["Order Number", "Date", "Customer", "Email", "Total", "Items", "Status", "Payment", "Shipping"];
@@ -1273,38 +1277,25 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                     <SelectItem value="refunded">Refunded</SelectItem>
                   </SelectContent>
                 </Select>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-[120px] justify-start border-slate-300">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      {dateFrom ? format(dateFrom, "MMM dd") : "From"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={dateFrom}
-                      onSelect={setDateFrom}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-[120px] justify-start border-slate-300">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      {dateTo ? format(dateTo, "MMM dd") : "To"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={dateTo}
-                      onSelect={setDateTo}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <AdminDateRangeFilterPopover
+                  value={orderDateRange}
+                  onChange={setOrderDateRange}
+                  hintText={t("admin.dateFilter.hintOrders")}
+                  open={orderDatePickerOpen}
+                  onOpenChange={setOrderDatePickerOpen}
+                  align="start"
+                >
+                  <Button variant="outline" className="w-full sm:w-auto justify-start border-slate-300">
+                    <Calendar className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate text-left">
+                      {!orderDateRange?.from
+                        ? t("finances.allTime")
+                        : !orderDateRange.to
+                          ? t("finances.selectEndDate")
+                          : `${format(orderDateRange.from, "MMM d, yyyy")} – ${format(orderDateRange.to, "MMM d, yyyy")}`}
+                    </span>
+                  </Button>
+                </AdminDateRangeFilterPopover>
               </div>
             </div>
           </Card>

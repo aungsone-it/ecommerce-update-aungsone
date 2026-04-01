@@ -8,8 +8,7 @@ import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Calendar as CalendarComponent } from "./ui/calendar";
+import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { formatNumber } from "../../utils/formatNumber"; // 🔥 Import number formatting
 import { format, startOfDay, endOfDay } from "date-fns";
@@ -67,8 +66,8 @@ export function Finances() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMethod, setFilterMethod] = useState("all");
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
-  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [txnTableDateRange, setTxnTableDateRange] = useState<DateRange | undefined>(undefined);
+  const [txnDatePickerOpen, setTxnDatePickerOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState("7days");
   const [overviewDateRange, setOverviewDateRange] = useState<DateRange | undefined>(undefined);
@@ -250,9 +249,11 @@ export function Finances() {
     const matchesStatus = filterStatus === "all" || t.status === filterStatus;
     const matchesMethod = filterMethod === "all" || t.method === filterMethod;
     
+    const from = txnTableDateRange?.from ? startOfDay(txnTableDateRange.from) : undefined;
+    const to = txnTableDateRange?.to ? endOfDay(txnTableDateRange.to) : undefined;
     const transactionDate = new Date(t.date);
-    const matchesDateFrom = !dateFrom || transactionDate >= dateFrom;
-    const matchesDateTo = !dateTo || transactionDate <= dateTo;
+    const matchesDateFrom = !from || transactionDate >= from;
+    const matchesDateTo = !to || transactionDate <= to;
     
     return matchesSearch && matchesStatus && matchesMethod && matchesDateFrom && matchesDateTo;
   });
@@ -266,11 +267,15 @@ export function Finances() {
     setSearchQuery("");
     setFilterStatus("all");
     setFilterMethod("all");
-    setDateFrom(undefined);
-    setDateTo(undefined);
+    setTxnTableDateRange(undefined);
   };
 
-  const hasActiveFilters = searchQuery || filterStatus !== "all" || filterMethod !== "all" || dateFrom || dateTo;
+  const hasActiveFilters =
+    searchQuery ||
+    filterStatus !== "all" ||
+    filterMethod !== "all" ||
+    txnTableDateRange?.from ||
+    txnTableDateRange?.to;
 
   const exportTransactions = () => {
     const headers = ["Transaction ID", "Date", "Customer", "Vendor", "Method", "Amount", "Commission", "Status"];
@@ -359,50 +364,25 @@ export function Finances() {
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{t('finances.title')}</h1>
         <p className="text-slate-600 dark:text-slate-400">{t('finances.subtitle')}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <Popover open={overviewDatePickerOpen} onOpenChange={setOverviewDatePickerOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="font-normal">
-                <Calendar className="mr-2 h-4 w-4 shrink-0" />
-                <span className="truncate max-w-[min(100%,16rem)] text-left">
-                  {!overviewDateRange?.from
-                    ? t("finances.allTime")
-                    : !overviewDateRange.to
-                      ? t("finances.selectEndDate")
-                      : `${format(overviewDateRange.from, "MMM d, yyyy")} – ${format(overviewDateRange.to, "MMM d, yyyy")}`}
-                </span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <div className="p-3 border-b border-slate-200 dark:border-slate-700">
-                <p className="text-sm font-medium text-slate-900 dark:text-white">{t("finances.filterByDate")}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{t("finances.filterByDateHint")}</p>
-              </div>
-              <CalendarComponent
-                mode="range"
-                defaultMonth={overviewDateRange?.from}
-                selected={overviewDateRange}
-                onSelect={(range) => {
-                  setOverviewDateRange(range);
-                  if (range?.from && range?.to) setOverviewDatePickerOpen(false);
-                }}
-                numberOfMonths={2}
-              />
-              {overviewDateRange?.from && (
-                <div className="p-2 border-t border-slate-200 dark:border-slate-700 flex justify-end">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setOverviewDateRange(undefined);
-                      setOverviewDatePickerOpen(false);
-                    }}
-                  >
-                    {t("finances.clearDateFilter")}
-                  </Button>
-                </div>
-              )}
-            </PopoverContent>
-          </Popover>
+          <AdminDateRangeFilterPopover
+            value={overviewDateRange}
+            onChange={setOverviewDateRange}
+            hintText={t("finances.filterByDateHint")}
+            open={overviewDatePickerOpen}
+            onOpenChange={setOverviewDatePickerOpen}
+            align="start"
+          >
+            <Button variant="outline" size="sm" className="font-normal">
+              <Calendar className="mr-2 h-4 w-4 shrink-0" />
+              <span className="truncate max-w-[min(100%,16rem)] text-left">
+                {!overviewDateRange?.from
+                  ? t("finances.allTime")
+                  : !overviewDateRange.to
+                    ? t("finances.selectEndDate")
+                    : `${format(overviewDateRange.from, "MMM d, yyyy")} – ${format(overviewDateRange.to, "MMM d, yyyy")}`}
+              </span>
+            </Button>
+          </AdminDateRangeFilterPopover>
         </div>
       </div>
 
@@ -425,46 +405,21 @@ export function Finances() {
               </div>
             </div>
             <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
-              <Popover open={revenueCardPickerOpen} onOpenChange={setRevenueCardPickerOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
-                  >
-                    {t("finances.filterByDate")}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <div className="border-b border-slate-200 p-3 dark:border-slate-700">
-                    <p className="text-sm font-medium text-slate-900 dark:text-white">{t("finances.filterByDate")}</p>
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t("finances.statCardDateHint")}</p>
-                  </div>
-                  <CalendarComponent
-                    mode="range"
-                    defaultMonth={revenueCardDateRange?.from}
-                    selected={revenueCardDateRange}
-                    onSelect={(range) => {
-                      setRevenueCardDateRange(range);
-                      if (range?.from && range?.to) setRevenueCardPickerOpen(false);
-                    }}
-                    numberOfMonths={2}
-                  />
-                  {revenueCardDateRange?.from && (
-                    <div className="flex justify-end border-t border-slate-200 p-2 dark:border-slate-700">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setRevenueCardDateRange(undefined);
-                          setRevenueCardPickerOpen(false);
-                        }}
-                      >
-                        {t("finances.clearDateFilter")}
-                      </Button>
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
+              <AdminDateRangeFilterPopover
+                value={revenueCardDateRange}
+                onChange={setRevenueCardDateRange}
+                hintText={t("finances.statCardDateHint")}
+                open={revenueCardPickerOpen}
+                onOpenChange={setRevenueCardPickerOpen}
+                align="start"
+              >
+                <button
+                  type="button"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
+                >
+                  {t("finances.filterByDate")}
+                </button>
+              </AdminDateRangeFilterPopover>
               {revenueCardDateRange?.from && revenueCardDateRange?.to && (
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {format(revenueCardDateRange.from, "MMM d, yyyy")} – {format(revenueCardDateRange.to, "MMM d, yyyy")}
@@ -489,46 +444,21 @@ export function Finances() {
               </div>
             </div>
             <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
-              <Popover open={vendorCardPickerOpen} onOpenChange={setVendorCardPickerOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
-                  >
-                    {t("finances.filterByDate")}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <div className="border-b border-slate-200 p-3 dark:border-slate-700">
-                    <p className="text-sm font-medium text-slate-900 dark:text-white">{t("finances.filterByDate")}</p>
-                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t("finances.statCardDateHint")}</p>
-                  </div>
-                  <CalendarComponent
-                    mode="range"
-                    defaultMonth={vendorCardDateRange?.from}
-                    selected={vendorCardDateRange}
-                    onSelect={(range) => {
-                      setVendorCardDateRange(range);
-                      if (range?.from && range?.to) setVendorCardPickerOpen(false);
-                    }}
-                    numberOfMonths={2}
-                  />
-                  {vendorCardDateRange?.from && (
-                    <div className="flex justify-end border-t border-slate-200 p-2 dark:border-slate-700">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setVendorCardDateRange(undefined);
-                          setVendorCardPickerOpen(false);
-                        }}
-                      >
-                        {t("finances.clearDateFilter")}
-                      </Button>
-                    </div>
-                  )}
-                </PopoverContent>
-              </Popover>
+              <AdminDateRangeFilterPopover
+                value={vendorCardDateRange}
+                onChange={setVendorCardDateRange}
+                hintText={t("finances.statCardDateHint")}
+                open={vendorCardPickerOpen}
+                onOpenChange={setVendorCardPickerOpen}
+                align="start"
+              >
+                <button
+                  type="button"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
+                >
+                  {t("finances.filterByDate")}
+                </button>
+              </AdminDateRangeFilterPopover>
               {vendorCardDateRange?.from && vendorCardDateRange?.to && (
                 <span className="text-xs text-slate-500 dark:text-slate-400">
                   {format(vendorCardDateRange.from, "MMM d, yyyy")} – {format(vendorCardDateRange.to, "MMM d, yyyy")}
@@ -706,34 +636,25 @@ export function Finances() {
                   </SelectContent>
                 </Select>
 
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full lg:w-auto">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      Date Range
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="end">
-                    <div className="p-4 space-y-4">
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">From</label>
-                        <CalendarComponent
-                          mode="single"
-                          selected={dateFrom}
-                          onSelect={setDateFrom}
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm font-medium mb-2 block">To</label>
-                        <CalendarComponent
-                          mode="single"
-                          selected={dateTo}
-                          onSelect={setDateTo}
-                        />
-                      </div>
-                    </div>
-                  </PopoverContent>
-                </Popover>
+                <AdminDateRangeFilterPopover
+                  value={txnTableDateRange}
+                  onChange={setTxnTableDateRange}
+                  hintText={t("admin.dateFilter.hintTransactions")}
+                  open={txnDatePickerOpen}
+                  onOpenChange={setTxnDatePickerOpen}
+                  align="end"
+                >
+                  <Button variant="outline" className="w-full lg:w-auto">
+                    <Calendar className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate text-left">
+                      {!txnTableDateRange?.from
+                        ? t("finances.allTime")
+                        : !txnTableDateRange.to
+                          ? t("finances.selectEndDate")
+                          : `${format(txnTableDateRange.from, "MMM d, yyyy")} – ${format(txnTableDateRange.to, "MMM d, yyyy")}`}
+                    </span>
+                  </Button>
+                </AdminDateRangeFilterPopover>
 
                 {hasActiveFilters && (
                   <Button variant="ghost" onClick={clearFilters}>

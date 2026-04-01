@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import type { DateRange } from "react-day-picker";
 import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -27,12 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./ui/popover";
-import { Calendar as CalendarComponent } from "./ui/calendar";
+import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
 import { format } from "date-fns";
@@ -461,8 +457,10 @@ export function Orders({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [vendorFilter, setVendorFilter] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
-  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [orderDateRange, setOrderDateRange] = useState<DateRange | undefined>(undefined);
+  const [orderDatePickerOpen, setOrderDatePickerOpen] = useState(false);
+  const dateFrom = orderDateRange?.from;
+  const dateTo = orderDateRange?.to;
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
@@ -1087,38 +1085,25 @@ export function Orders({
                     ))}
                   </SelectContent>
                 </Select>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-[120px] justify-start border-slate-300">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      {dateFrom ? format(dateFrom, "MMM dd") : "From"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={dateFrom}
-                      onSelect={setDateFrom}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full sm:w-[120px] justify-start border-slate-300">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      {dateTo ? format(dateTo, "MMM dd") : "To"}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={dateTo}
-                      onSelect={setDateTo}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
+                <AdminDateRangeFilterPopover
+                  value={orderDateRange}
+                  onChange={setOrderDateRange}
+                  hintText={t("admin.dateFilter.hintOrders")}
+                  open={orderDatePickerOpen}
+                  onOpenChange={setOrderDatePickerOpen}
+                  align="start"
+                >
+                  <Button variant="outline" className="w-full sm:w-auto justify-start border-slate-300">
+                    <Calendar className="mr-2 h-4 w-4 shrink-0" />
+                    <span className="truncate text-left">
+                      {!orderDateRange?.from
+                        ? t("finances.allTime")
+                        : !orderDateRange.to
+                          ? t("finances.selectEndDate")
+                          : `${format(orderDateRange.from, "MMM d, yyyy")} – ${format(orderDateRange.to, "MMM d, yyyy")}`}
+                    </span>
+                  </Button>
+                </AdminDateRangeFilterPopover>
               </div>
             </div>
           </Card>

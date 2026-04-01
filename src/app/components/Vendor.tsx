@@ -396,9 +396,8 @@ export function Vendor({
     setVendorListPage((p) => (p > tp ? tp : p));
   }, [displayRows.length, vendorListPageSize]);
 
-  /** Skeleton while vendors load, or while applications load when the table includes application rows. */
-  const showTableSkeleton =
-    isLoading || (needsApplicationRowsInTable && isLoadingApplications);
+  /** Skeleton only while the vendor list is loading. Pending applications fetch in parallel; blocking the whole table on it caused endless skeletons when `/vendor-applications` stalled while `/vendors` had already returned (stats looked fine). */
+  const showTableSkeleton = isLoading;
 
   const vendorRowsInDisplay = useMemo(
     () => paginatedDisplayRows.filter((r): r is { kind: "vendor"; vendor: Vendor } => r.kind === "vendor"),
