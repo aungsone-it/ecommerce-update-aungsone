@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { DateRange } from "react-day-picker";
 import { useLanguage } from "../contexts/LanguageContext";
-import { DollarSign, TrendingUp, TrendingDown, CreditCard, Banknote, Wallet, ArrowUpRight, ArrowDownRight, Calendar, Download, Search, User, X, Eye, Clock, Package, Video, Loader2 } from "lucide-react";
+import { TrendingUp, CreditCard, Banknote, Wallet, ArrowUpRight, Calendar, Download, Search, X, Eye, Coins } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -42,6 +42,16 @@ const trueMoneyLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 
 const COLORS = ['#3b82f6', '#facc15', '#ef4444', '#22c55e'];
 
+function filterFinancesTransactionsByRange(transactions: any[], range: DateRange | undefined): any[] {
+  if (!range?.from || !range?.to) return transactions;
+  const from = startOfDay(range.from);
+  const to = endOfDay(range.to);
+  return transactions.filter((t: any) => {
+    const d = new Date(t.date);
+    return !Number.isNaN(d.getTime()) && d >= from && d <= to;
+  });
+}
+
 const getPaymentMethodIcon = (method: string) => {
   const lowerMethod = method.toLowerCase();
   if (lowerMethod.includes('kpay') || lowerMethod.includes('kbz')) return { icon: CreditCard, logo: kbzPayLogo, color: 'bg-indigo-500' };
@@ -63,6 +73,10 @@ export function Finances() {
   const [chartPeriod, setChartPeriod] = useState("7days");
   const [overviewDateRange, setOverviewDateRange] = useState<DateRange | undefined>(undefined);
   const [overviewDatePickerOpen, setOverviewDatePickerOpen] = useState(false);
+  const [revenueCardDateRange, setRevenueCardDateRange] = useState<DateRange | undefined>(undefined);
+  const [revenueCardPickerOpen, setRevenueCardPickerOpen] = useState(false);
+  const [vendorCardDateRange, setVendorCardDateRange] = useState<DateRange | undefined>(undefined);
+  const [vendorCardPickerOpen, setVendorCardPickerOpen] = useState(false);
 
   const financesBoot = useMemo(() => {
     const h = readFinancialAnalyticsHydrate();
@@ -141,22 +155,26 @@ export function Finances() {
   }, [transactions, overviewFilterActive, overviewDateRange?.from, overviewDateRange?.to]);
 
   const dashboardSummary = useMemo(() => {
-    let totalRevenue = 0;
     let totalCommission = 0;
     let totalVendorPayout = 0;
-    let pendingPayouts = 0;
     for (const t of scopedTransactions) {
-      totalRevenue += Number(t.amount) || 0;
       totalCommission += Number(t.commission) || 0;
       totalVendorPayout += Number(t.vendorPayout) || 0;
-      if (t.status === "completed" || t.status === "delivered") {
-        pendingPayouts += Number(t.vendorPayout) || 0;
-      }
     }
-    return { totalRevenue, totalCommission, totalVendorPayout, pendingPayouts };
+    return { totalCommission, totalVendorPayout };
   }, [scopedTransactions]);
 
-  const { totalRevenue, totalCommission, totalVendorPayout, pendingPayouts } = dashboardSummary;
+  const { totalCommission, totalVendorPayout } = dashboardSummary;
+
+  const revenueStatTotal = useMemo(() => {
+    const list = filterFinancesTransactionsByRange(transactions, revenueCardDateRange);
+    return list.reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
+  }, [transactions, revenueCardDateRange]);
+
+  const vendorStatTotal = useMemo(() => {
+    const list = filterFinancesTransactionsByRange(transactions, vendorCardDateRange);
+    return list.reduce((s: number, t: any) => s + (Number(t.vendorPayout) || 0), 0);
+  }, [transactions, vendorCardDateRange]);
 
   const periodDays = chartPeriod === "7days" ? 7 : chartPeriod === "30days" ? 30 : 90;
 
@@ -274,7 +292,7 @@ export function Finances() {
   // Prepare pie chart data for commission breakdown
   const commissionBreakdownData = [
     { name: t('finances.platformCommission'), value: totalCommission },
-    { name: t('finances.vendorPayout'), value: totalVendorPayout },
+    { name: t('finances.commissionPayout'), value: totalVendorPayout },
   ];
 
   // Show loading state
@@ -287,8 +305,8 @@ export function Finances() {
         </div>
         
         {/* Skeleton stat cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {Array.from({ length: 4 }).map((_, index) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {Array.from({ length: 2 }).map((_, index) => (
             <Card key={`skeleton-stat-${index}`} className="animate-pulse">
               <div className="p-6 space-y-3">
                 <div className="h-4 bg-slate-200 rounded w-24"></div>
@@ -388,78 +406,134 @@ export function Finances() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card className="@container">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between gap-3">
+      {/* Stats Cards — per-card date filters; amounts = sum over full analytics data unless a range is set */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <Card className="@container flex h-full min-h-[11rem] flex-col">
+          <CardContent className="flex h-full min-h-0 flex-1 flex-col p-6">
+            <div className="flex min-h-0 flex-1 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.totalRevenue')}</p>
-                <FinancesStatMmk value={totalRevenue} />
-                <div className="flex items-center gap-1 mt-2">
-                  <ArrowUpRight className="w-4 h-4 text-green-600" />
-                  <span className="text-sm text-green-600 font-medium">+12.5%</span>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t("finances.totalRevenue")}</p>
+                <FinancesStatMmk value={revenueStatTotal} />
+                <div className="mt-2 flex items-center gap-1">
+                  <ArrowUpRight className="h-4 w-4 text-green-600" />
+                  <span className="text-sm font-medium text-green-600">+12.5%</span>
                   <span className="text-sm text-slate-500 dark:text-slate-400">vs last month</span>
                 </div>
               </div>
-              <div className="w-12 h-12 shrink-0 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-green-600 dark:text-green-400" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
+            </div>
+            <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
+              <Popover open={revenueCardPickerOpen} onOpenChange={setRevenueCardPickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
+                  >
+                    {t("finances.filterByDate")}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <div className="border-b border-slate-200 p-3 dark:border-slate-700">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">{t("finances.filterByDate")}</p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t("finances.statCardDateHint")}</p>
+                  </div>
+                  <CalendarComponent
+                    mode="range"
+                    defaultMonth={revenueCardDateRange?.from}
+                    selected={revenueCardDateRange}
+                    onSelect={(range) => {
+                      setRevenueCardDateRange(range);
+                      if (range?.from && range?.to) setRevenueCardPickerOpen(false);
+                    }}
+                    numberOfMonths={2}
+                  />
+                  {revenueCardDateRange?.from && (
+                    <div className="flex justify-end border-t border-slate-200 p-2 dark:border-slate-700">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setRevenueCardDateRange(undefined);
+                          setRevenueCardPickerOpen(false);
+                        }}
+                      >
+                        {t("finances.clearDateFilter")}
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+              {revenueCardDateRange?.from && revenueCardDateRange?.to && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {format(revenueCardDateRange.from, "MMM d, yyyy")} – {format(revenueCardDateRange.to, "MMM d, yyyy")}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        <Card className="@container">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between gap-3">
+        <Card className="@container flex h-full min-h-[11rem] flex-col">
+          <CardContent className="flex h-full min-h-0 flex-1 flex-col p-6">
+            <div className="flex min-h-0 flex-1 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.platformCommission')}</p>
-                <FinancesStatMmk value={totalCommission} />
-                <div className="flex items-center gap-1 mt-2">
-                  <ArrowUpRight className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm text-blue-600 font-medium">+8.2%</span>
-                  <span className="text-sm text-slate-500 dark:text-slate-400">{t('finances.vsLastMonth')}</span>
-                </div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t("finances.commissionPayout")}</p>
+                <FinancesStatMmk value={vendorStatTotal} />
+                <p className="mt-2 text-xs leading-snug text-slate-500 dark:text-slate-400">
+                  {t("finances.commissionPayoutHint")}
+                </p>
               </div>
-              <div className="w-12 h-12 shrink-0 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+                <Coins className="h-6 w-6 text-amber-700 dark:text-amber-400" />
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="@container">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.vendorPayout')}</p>
-                <FinancesStatMmk value={totalVendorPayout} />
-                <div className="flex items-center gap-1 mt-2">
-                  <ArrowDownRight className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm text-orange-600 font-medium">{t('finances.outgoing')}</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 shrink-0 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center">
-                <Package className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="@container">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t('finances.pendingPayouts')}</p>
-                <FinancesStatMmk value={pendingPayouts} />
-                <div className="flex items-center gap-1 mt-2">
-                  <Calendar className="w-4 h-4 text-purple-600" />
-                  <span className="text-sm text-purple-600 font-medium">{t('finances.dueDate')}</span>
-                </div>
-              </div>
-              <div className="w-12 h-12 shrink-0 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
-                <Wallet className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-              </div>
+            <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
+              <Popover open={vendorCardPickerOpen} onOpenChange={setVendorCardPickerOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
+                  >
+                    {t("finances.filterByDate")}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <div className="border-b border-slate-200 p-3 dark:border-slate-700">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">{t("finances.filterByDate")}</p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t("finances.statCardDateHint")}</p>
+                  </div>
+                  <CalendarComponent
+                    mode="range"
+                    defaultMonth={vendorCardDateRange?.from}
+                    selected={vendorCardDateRange}
+                    onSelect={(range) => {
+                      setVendorCardDateRange(range);
+                      if (range?.from && range?.to) setVendorCardPickerOpen(false);
+                    }}
+                    numberOfMonths={2}
+                  />
+                  {vendorCardDateRange?.from && (
+                    <div className="flex justify-end border-t border-slate-200 p-2 dark:border-slate-700">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setVendorCardDateRange(undefined);
+                          setVendorCardPickerOpen(false);
+                        }}
+                      >
+                        {t("finances.clearDateFilter")}
+                      </Button>
+                    </div>
+                  )}
+                </PopoverContent>
+              </Popover>
+              {vendorCardDateRange?.from && vendorCardDateRange?.to && (
+                <span className="text-xs text-slate-500 dark:text-slate-400">
+                  {format(vendorCardDateRange.from, "MMM d, yyyy")} – {format(vendorCardDateRange.to, "MMM d, yyyy")}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -468,11 +542,10 @@ export function Finances() {
       {/* Tabs */}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
         <TabsList className="mb-6">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="vendor-payouts">Vendor Payouts</TabsTrigger>
-          <TabsTrigger value="collaborator-payouts">Collaborator Payouts</TabsTrigger>
-          <TabsTrigger value="payment-methods">Payment Methods</TabsTrigger>
+          <TabsTrigger value="overview">{t("finances.overview")}</TabsTrigger>
+          <TabsTrigger value="transactions">{t("finances.transactions")}</TabsTrigger>
+          <TabsTrigger value="vendor-payouts">{t("finances.vendorPayouts")}</TabsTrigger>
+          <TabsTrigger value="payment-methods">{t("finances.paymentMethods")}</TabsTrigger>
         </TabsList>
 
         {/* Overview Tab */}
@@ -811,19 +884,6 @@ export function Finances() {
                     )}
                   </tbody>
                 </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Collaborator Payouts Tab */}
-        <TabsContent value="collaborator-payouts" className="space-y-6">
-          <Card>
-            <CardContent className="p-6">
-              <div className="text-center py-12 text-slate-500 dark:text-slate-400">
-                <Clock className="w-12 h-12 mx-auto mb-4 text-slate-400" />
-                <p className="font-medium">Collaborator payouts coming soon</p>
-                <p className="text-sm mt-2">This feature will be available in the next update</p>
               </div>
             </CardContent>
           </Card>

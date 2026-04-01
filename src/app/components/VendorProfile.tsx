@@ -55,10 +55,12 @@ import { toast } from "sonner";
 import {
   getCachedAdminOrdersPayload,
   getCachedAdminProductsPage,
+  getCachedVendorProductsAdmin,
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   CACHE_KEYS,
   moduleCache,
   invalidateAdminAllProductsCache,
+  invalidateVendorProductsAdminCache,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
 } from "../utils/module-cache";
 import {
@@ -118,6 +120,28 @@ interface Order {
   items: number;
   total: number;
   status: string;
+}
+
+function mapVendorAdminJsonToProfileProducts(data: unknown): Product[] {
+  const raw = Array.isArray((data as { products?: unknown })?.products)
+    ? (data as { products: any[] }).products
+    : [];
+  return raw.map((p: any) => {
+    const st = String(p.status ?? "active").trim().toLowerCase();
+    return {
+      id: p.id,
+      name: p.name || p.title || "",
+      sku: p.sku || "",
+      category: p.category || "Uncategorized",
+      price: String(p.price ?? ""),
+      stock: typeof p.inventory === "number" ? p.inventory : Number(p.stock) || 0,
+      status: st || "active",
+      images: p.images || [],
+      image: p.images?.[0],
+      commissionRate:
+        typeof p.commissionRate === "number" ? p.commissionRate : parseFloat(p.commissionRate) || undefined,
+    };
+  });
 }
 
 interface VendorProfileProps {
@@ -368,8 +392,9 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   // 🔥 Track vendor storefront settings to get phone and other updated info
   const [storefrontSettings, setStorefrontSettings] = useState<any>(null);
 
-  // Fetch vendor's products (load immediately for stats)
+  // Fetch vendor's products — module cache first (instant revisit), then refresh when cache hit
   useEffect(() => {
+    setProducts([]);
     loadProducts();
   }, [vendor.id]);
 
@@ -377,6 +402,8 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   vendorRef.current = vendor;
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products;
+  const ordersRef = useRef<any[]>([]);
+  ordersRef.current = orders;
 
   const isProductAssignedToThisVendor = useCallback(
     (p: any) =>
@@ -384,8 +411,9 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     [vendor.id]
   );
 
-  // Fetch vendor's orders (load immediately for stats)
+  // Fetch vendor's orders — shared admin orders cache (no force on first read = instant UI)
   useEffect(() => {
+    setOrders([]);
     loadOrders();
   }, [vendor.id]);
 
@@ -397,24 +425,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
 
   useEffect(() => {
     const onAdminOrdersUpdated = () => {
-      void (async () => {
-        const v = vendorRef.current;
-        const catalog = buildVendorCatalogKeys(productsRef.current);
-        try {
-          const payload = await getCachedAdminOrdersPayload(true);
-          const rawList = Array.isArray(payload.orders) ? payload.orders : [];
-          const vendorOrders = rawList.filter((order: any) => {
-            try {
-              return orderTouchesVendor(order, v, catalog);
-            } catch {
-              return false;
-            }
-          });
-          setOrders(vendorOrders);
-        } catch (e) {
-          console.error("[VENDOR PROFILE] adminOrdersUpdated refresh failed:", e);
-        }
-      })();
+      void loadOrders(true);
     };
     window.addEventListener("adminOrdersUpdated", onAdminOrdersUpdated);
     return () => window.removeEventListener("adminOrdersUpdated", onAdminOrdersUpdated);
@@ -456,90 +467,90 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     setCurrentVendorLogo(vendor.logo || vendor.avatar || "");
   }, [vendor.logo, vendor.avatar]);
 
-  const loadProducts = async () => {
-    setIsLoadingProducts(true);
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), 60000);
-    try {
-      // Dedicated endpoint — avoids waiting on shared moduleCache(ADMIN_PRODUCTS) if another
-      // screen's /products fetch is stuck or very slow (that caused endless skeletons here).
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${encodeURIComponent(vendor.id)}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-
-      if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error(
-          typeof errBody?.error === "string" ? errBody.error : `Request failed (${response.status})`
-        );
+  const applyVendorOrdersFromPayload = (payload: { orders?: unknown }, v: Vendor, catalog: VendorCatalogKeys) => {
+    const rawList = Array.isArray(payload.orders) ? payload.orders : [];
+    return rawList.filter((order: any) => {
+      try {
+        return orderTouchesVendor(order, v, catalog);
+      } catch {
+        return false;
       }
+    });
+  };
 
-      const data = await response.json();
-      const raw = Array.isArray(data.products) ? data.products : [];
+  /** Module cache + stale-while-revalidate. Pass true after order mutations or Refresh Data. */
+  const loadProducts = async (forceRefresh = false) => {
+    const vid = vendorRef.current.id;
+    const key = CACHE_KEYS.vendorProductsAdmin(vid);
+    const hadCache = !forceRefresh && moduleCache.has(key);
 
-      const vendorProducts: Product[] = raw.map((p: any) => {
-        const st = String(p.status ?? "active").trim().toLowerCase();
-        return {
-          id: p.id,
-          name: p.name || p.title || "",
-          sku: p.sku || "",
-          category: p.category || "Uncategorized",
-          price: String(p.price ?? ""),
-          stock: typeof p.inventory === "number" ? p.inventory : Number(p.stock) || 0,
-          status: st || "active",
-          images: p.images || [],
-          image: p.images?.[0],
-          commissionRate:
-            typeof p.commissionRate === "number" ? p.commissionRate : parseFloat(p.commissionRate) || undefined,
-        };
-      });
+    if (forceRefresh) {
+      if (productsRef.current.length === 0) setIsLoadingProducts(true);
+    } else if (!hadCache) {
+      setIsLoadingProducts(true);
+    }
 
-      setProducts(vendorProducts);
-      console.log(`[VENDOR PROFILE] Loaded ${vendorProducts.length} products for vendor ${vendor.name}`);
+    try {
+      const data = await getCachedVendorProductsAdmin(vid, forceRefresh);
+      setProducts(mapVendorAdminJsonToProfileProducts(data));
+      console.log(
+        `[VENDOR PROFILE] Products loaded for ${vendorRef.current.name} (forceRefresh=${forceRefresh})`
+      );
     } catch (error) {
       console.error("Error loading vendor products:", error);
-      const msg =
-        error instanceof Error && error.name === "AbortError"
-          ? "Loading products timed out. Try again."
-          : "Could not load vendor products.";
-      toast.error(msg);
-      setProducts([]);
+      toast.error(
+        error instanceof Error ? error.message : "Could not load vendor products."
+      );
+      if (!forceRefresh || productsRef.current.length === 0) {
+        setProducts([]);
+      }
     } finally {
-      window.clearTimeout(timeoutId);
       setIsLoadingProducts(false);
+    }
+
+    if (!forceRefresh && hadCache) {
+      void getCachedVendorProductsAdmin(vid, true)
+        .then((fresh) => setProducts(mapVendorAdminJsonToProfileProducts(fresh)))
+        .catch((e) => console.warn("[VENDOR PROFILE] background product refresh failed:", e));
     }
   };
 
-  const loadOrders = async () => {
-    setIsLoadingOrders(true);
+  const loadOrders = async (forceRefresh = false) => {
+    const v = vendorRef.current;
+    const catalog = buildVendorCatalogKeys(productsRef.current);
+    const ordersKey = CACHE_KEYS.ADMIN_ORDERS;
+    const hadCache = !forceRefresh && moduleCache.has(ordersKey);
+
+    if (forceRefresh) {
+      if (ordersRef.current.length === 0) setIsLoadingOrders(true);
+    } else if (!hadCache) {
+      setIsLoadingOrders(true);
+    }
+
     try {
-      const payload = await getCachedAdminOrdersPayload(true);
-      const catalog = buildVendorCatalogKeys(productsRef.current);
-
-      const rawList = Array.isArray(payload.orders) ? payload.orders : [];
-      const vendorOrders = rawList.filter((order: any) => {
-        try {
-          return orderTouchesVendor(order, vendor, catalog);
-        } catch {
-          return false;
-        }
-      });
-
+      const payload = await getCachedAdminOrdersPayload(forceRefresh);
+      const vendorOrders = applyVendorOrdersFromPayload(payload, v, catalog);
       setOrders(vendorOrders);
-      console.log(`[VENDOR PROFILE] Loaded ${vendorOrders.length} orders for vendor ${vendor.name}`);
+      console.log(
+        `[VENDOR PROFILE] Orders loaded for ${v.name}: ${vendorOrders.length} (forceRefresh=${forceRefresh})`
+      );
     } catch (error) {
       console.error("Error loading vendor orders:", error);
       toast.error("Could not load vendor orders.");
-      setOrders([]);
+      if (!forceRefresh || ordersRef.current.length === 0) {
+        setOrders([]);
+      }
     } finally {
       setIsLoadingOrders(false);
+    }
+
+    if (!forceRefresh && hadCache) {
+      void getCachedAdminOrdersPayload(true)
+        .then((fresh) => {
+          const next = applyVendorOrdersFromPayload(fresh, vendorRef.current, buildVendorCatalogKeys(productsRef.current));
+          setOrders(next);
+        })
+        .catch((e) => console.warn("[VENDOR PROFILE] background orders refresh failed:", e));
     }
   };
 
@@ -916,10 +927,11 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
       setSelectedProductIds([]);
       setPickerAssignedUncheckedIds([]);
       invalidateAdminAllProductsCache();
+      invalidateVendorProductsAdminCache(vendor.id);
       invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(vendor.id, [
         vendor.storeSlug,
       ]);
-      await loadProducts();
+      await loadProducts(true);
     } catch (error) {
       console.error("Error applying vendor product picker:", error);
       toast.error(error instanceof Error ? error.message : "Failed to apply changes");
@@ -1310,7 +1322,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                 </div>
               </div>
               
-              {isLoadingProducts ? (
+              {isLoadingProducts && products.length === 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -1431,10 +1443,13 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                     type="button"
                     variant="outline" 
                     size="sm"
-                    onClick={() => { loadOrders(); loadProducts(); }}
-                    disabled={isLoadingOrders}
+                    onClick={() => {
+                      void loadOrders(true);
+                      void loadProducts(true);
+                    }}
+                    disabled={isLoadingOrders || isLoadingProducts}
                   >
-                    {isLoadingOrders ? (
+                    {isLoadingOrders || isLoadingProducts ? (
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
                       <RefreshCw className="w-4 h-4 mr-2" />
@@ -1445,7 +1460,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                 </div>
               </div>
               
-              {isLoadingOrders ? (
+              {isLoadingOrders && safeOrders.length === 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
