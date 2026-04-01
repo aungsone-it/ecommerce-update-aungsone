@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { POLLING_INTERVALS_MS } from "../../constants";
 import { Bell, Search, Menu, Check, Clock, Store, Package, Star, ShoppingCart, AlertCircle, User, Edit, Trash2, LogOut, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
@@ -41,6 +41,8 @@ interface Notification {
   title: string;
   message: string;
   timestamp: string;
+  /** Some API payloads use `createdAt` instead of `timestamp`. */
+  createdAt?: string;
   isRead: boolean;
 }
 
@@ -58,6 +60,50 @@ const iconColorMap = {
   review: "bg-yellow-500",
   system: "bg-red-500",
 };
+
+const DIGEST_TS_STORAGE_KEY = "migoo-admin-topnav-digest-ts-v1";
+
+type DigestTimestampSnap = {
+  pendingOrders?: number;
+  ordersAt?: number;
+  vendorApplications?: number;
+  vendorAt?: number;
+  chatUnread?: number;
+  chatAt?: number;
+};
+
+function readDigestTimestampSnap(): DigestTimestampSnap {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(DIGEST_TS_STORAGE_KEY);
+    if (!raw) return {};
+    const p = JSON.parse(raw) as DigestTimestampSnap;
+    return p && typeof p === "object" ? p : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeDigestTimestampSnap(snap: DigestTimestampSnap) {
+  try {
+    localStorage.setItem(DIGEST_TS_STORAGE_KEY, JSON.stringify(snap));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+/** Fixed clock label: date + time in local locale (persists meaning across reloads). */
+function formatNotificationDateTime(ms: number): string {
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export function TopNav({
   currentUser,
@@ -86,7 +132,26 @@ export function TopNav({
   const loadNotifications = async () => {
     try {
       const response = await notificationsApi.getAll();
-      setNotifications(response.notifications || []);
+      const raw = (response as { notifications?: Notification[]; data?: unknown }).notifications;
+      const fromData = Array.isArray((response as { data?: unknown }).data)
+        ? (response as { data: Notification[] }).data
+        : [];
+      const incoming = Array.isArray(raw) ? raw : fromData;
+      setNotifications((prev) => {
+        const prevById = new Map(prev.map((p) => [p.id, p]));
+        return incoming.map((n) => {
+          const old = prevById.get(n.id);
+          const ts =
+            n.timestamp ||
+            (n as { createdAt?: string }).createdAt ||
+            old?.timestamp;
+          return {
+            ...n,
+            isRead: n.isRead ?? (n as { read?: boolean }).read ?? false,
+            timestamp: ts || new Date().toISOString(),
+          };
+        });
+      });
     } catch (error) {
       // Silently fail - notifications are optional feature
       setNotifications([]); // Set empty array so UI still works
@@ -142,68 +207,69 @@ export function TopNav({
     }
   };
 
-  const getTimeAgo = (timestamp: string) => {
-    const now = new Date();
-    const time = new Date(timestamp);
-    if (Number.isNaN(time.getTime())) return "Recently";
-    const diff = Math.floor((now.getTime() - time.getTime()) / 1000);
-
-    if (diff < 60) return "Just now";
-    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} hour${Math.floor(diff / 3600) > 1 ? 's' : ''} ago`;
-    return `${Math.floor(diff / 86400)} day${Math.floor(diff / 86400) > 1 ? 's' : ''} ago`;
-  };
-
-  /** When sidebar badge counts change, treat digest rows as refreshed at that moment */
-  const prevDigestCountsRef = useRef<{
-    po?: number;
-    va?: number;
-    cu?: number;
-  }>({});
-  const [ordersDigestAt, setOrdersDigestAt] = useState(() => Date.now());
-  const [vendorDigestAt, setVendorDigestAt] = useState(() => Date.now());
-  const [chatDigestAt, setChatDigestAt] = useState(() => Date.now());
-  const [, setDigestRelativeTick] = useState(0);
+  /**
+   * Persist “last time this digest count changed” in localStorage so refresh does not reset
+   * the displayed time to “now” while counts are unchanged.
+   */
+  const [ordersDigestAt, setOrdersDigestAt] = useState(() => {
+    const p = readDigestTimestampSnap();
+    return typeof p.ordersAt === "number" ? p.ordersAt : Date.now();
+  });
+  const [vendorDigestAt, setVendorDigestAt] = useState(() => {
+    const p = readDigestTimestampSnap();
+    return typeof p.vendorAt === "number" ? p.vendorAt : Date.now();
+  });
+  const [chatDigestAt, setChatDigestAt] = useState(() => {
+    const p = readDigestTimestampSnap();
+    return typeof p.chatAt === "number" ? p.chatAt : Date.now();
+  });
 
   useEffect(() => {
-    const p = prevDigestCountsRef.current;
-    if (p.po !== pendingOrdersCount) {
-      setOrdersDigestAt(Date.now());
+    const po = Number(pendingOrdersCount) || 0;
+    const va = Number(vendorApplicationsCount) || 0;
+    const cu = Number(chatUnreadCount) || 0;
+
+    const prev = readDigestTimestampSnap();
+    const next: DigestTimestampSnap = { ...prev };
+    const now = Date.now();
+
+    let ordersAt = typeof prev.ordersAt === "number" ? prev.ordersAt : now;
+    if (prev.pendingOrders !== po) {
+      ordersAt = now;
+      next.pendingOrders = po;
+      next.ordersAt = ordersAt;
     }
-    if (p.va !== vendorApplicationsCount) {
-      setVendorDigestAt(Date.now());
+
+    let vendorAt = typeof prev.vendorAt === "number" ? prev.vendorAt : now;
+    if (prev.vendorApplications !== va) {
+      vendorAt = now;
+      next.vendorApplications = va;
+      next.vendorAt = vendorAt;
     }
-    if (p.cu !== chatUnreadCount) {
-      setChatDigestAt(Date.now());
+
+    let chatAt = typeof prev.chatAt === "number" ? prev.chatAt : now;
+    if (prev.chatUnread !== cu) {
+      chatAt = now;
+      next.chatUnread = cu;
+      next.chatAt = chatAt;
     }
-    prevDigestCountsRef.current = {
-      po: pendingOrdersCount,
-      va: vendorApplicationsCount,
-      cu: chatUnreadCount,
-    };
+
+    writeDigestTimestampSnap(next);
+    setOrdersDigestAt(ordersAt);
+    setVendorDigestAt(vendorAt);
+    setChatDigestAt(chatAt);
   }, [pendingOrdersCount, vendorApplicationsCount, chatUnreadCount]);
 
-  useEffect(() => {
-    const t = window.setInterval(() => setDigestRelativeTick((n) => n + 1), 45_000);
-    return () => window.clearInterval(t);
-  }, []);
-
   const digestFooter = (asOfMs: number, sourceLabel: string) => {
-    const abs = new Date(asOfMs);
-    const absLabel = Number.isNaN(abs.getTime())
-      ? undefined
-      : abs.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    const label = formatNotificationDateTime(asOfMs);
     return (
-      <p
-        className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap"
-        title={absLabel ? `${absLabel} — counts last matched this` : undefined}
-      >
+      <p className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap" title={label}>
         <Clock className="w-3 h-3 shrink-0" />
         <span>{sourceLabel}</span>
         <span className="text-slate-300" aria-hidden>
           ·
         </span>
-        <span className="tabular-nums">{getTimeAgo(abs.toISOString())}</span>
+        <span className="tabular-nums">{label}</span>
       </p>
     );
   };
@@ -386,7 +452,15 @@ export function TopNav({
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap min-w-0">
                                   <Clock className="w-3 h-3 shrink-0" />
-                                  <span className="tabular-nums">{getTimeAgo(notification.timestamp)}</span>
+                                  <span className="tabular-nums">
+                                    {formatNotificationDateTime(
+                                      new Date(
+                                        notification.timestamp ||
+                                          notification.createdAt ||
+                                          ""
+                                      ).getTime()
+                                    )}
+                                  </span>
                                 </p>
                                 <Button
                                   variant="ghost"

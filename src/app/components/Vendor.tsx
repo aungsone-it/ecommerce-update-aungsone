@@ -285,7 +285,7 @@ export function Vendor({
     setSearchQuery(String(initialListSearchQuery).trim());
   }, [initialListSearchQuery, listSearchApplyToken]);
 
-  const [statusFilter, setStatusFilter] = useState<VendorStatus | "all" | "incomplete">("all");
+  const [statusFilter, setStatusFilter] = useState<VendorStatus | "all">("all");
   const [vendorListPage, setVendorListPage] = useState(1);
   const [vendorListPageSize, setVendorListPageSize] = useState(20);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
@@ -336,9 +336,7 @@ export function Vendor({
         safeLower(vendor.email).includes(searchLower) ||
         safeLower(vendor.location).includes(searchLower);
       const eff = effectiveVendorStatus(vendor);
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "incomplete" ? eff === "incomplete" : eff === statusFilter);
+      const matchesStatus = statusFilter === "all" || eff === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [vendors, searchLower, statusFilter]);
@@ -865,10 +863,16 @@ export function Vendor({
   /** Matches admin mental model: vendor accounts on hold + applications not yet approved. */
   const pendingReviewTotal = pendingVendorCount + pendingApplicationsForStats;
 
+  /** Vendors in pending / suspended / banned (excludes “inactive” and incomplete). */
+  const restrictedVendorStatCount = vendors.filter((v) => {
+    const e = effectiveVendorStatus(v);
+    return e === "pending" || e === "suspended" || e === "banned";
+  }).length;
+
   const stats = {
     total: vendors.length,
     active: vendors.filter((v) => effectiveVendorStatus(v) === "active").length,
-    inactive: vendors.filter((v) => effectiveVendorStatus(v) === "inactive").length,
+    restrictedVendors: restrictedVendorStatCount,
     pendingReviewTotal,
     pendingVendorCount,
     pendingApplications: pendingApplicationsForStats,
@@ -1067,12 +1071,14 @@ export function Vendor({
 
         <Card className="p-4 border border-slate-200">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-500">{t('vendor.inactive')}</p>
-              <p className="text-2xl font-semibold text-gray-600 mt-1">{stats.inactive}</p>
+            <div className="min-w-0 pr-2">
+              <p className="text-sm text-slate-500 leading-snug">{t("vendor.restrictedVendorStat")}</p>
+              <p className="text-2xl font-semibold text-orange-700 mt-1 tabular-nums">
+                {stats.restrictedVendors}
+              </p>
             </div>
-            <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-              <Package className="w-5 h-5 text-gray-600" />
+            <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center shrink-0">
+              <AlertTriangle className="w-5 h-5 text-orange-600" />
             </div>
           </div>
         </Card>
@@ -1127,7 +1133,7 @@ export function Vendor({
           </div>
 
           {/* Status Filter */}
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as VendorStatus | "all" | "incomplete")}>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as VendorStatus | "all")}>
             <SelectTrigger className="w-[180px]">
               <Filter className="w-4 h-4 mr-2" />
               <SelectValue placeholder={t('vendor.filterStatus')} />
@@ -1137,7 +1143,6 @@ export function Vendor({
               <SelectItem value="active">{t('vendor.active')}</SelectItem>
               <SelectItem value="inactive">{t('vendor.inactive')}</SelectItem>
               <SelectItem value="pending">{t('vendor.pending')}</SelectItem>
-              <SelectItem value="incomplete">Incomplete</SelectItem>
               <SelectItem value="suspended">{t('vendor.suspended')}</SelectItem>
               <SelectItem value="banned">{t('vendor.banned')}</SelectItem>
             </SelectContent>
