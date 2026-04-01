@@ -1,5 +1,5 @@
 // Vendor Management Component - Force rebuild
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
 import { cacheManager } from "../utils/cacheManager";
@@ -7,13 +7,14 @@ import {
   moduleCache,
   CACHE_KEYS,
   fetchAllVendors,
+  getCachedAdminVendorApplications,
+  invalidateAdminVendorApplicationsCache,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
 } from "../utils/module-cache";
 import { formatNumber } from "../../utils/formatNumber";
 import {
   Search,
   Filter,
-  Download,
   Mail,
   Phone,
   MapPin,
@@ -29,6 +30,8 @@ import {
   FileText,
   Store,
   Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -58,6 +61,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { VendorApplications } from "./VendorApplications";
+import { VendorApplicationReview } from "./VendorApplicationReview";
 import { VendorProfile } from "./VendorProfile";
 import { VendorAddEdit } from "./VendorAddEdit";
 import { VendorForm } from "./VendorForm";
@@ -87,6 +91,70 @@ interface Vendor {
   website?: string;
 }
 
+/** Shape expected by `VendorApplicationReview` (mirrors `VendorApplications` mapping). */
+type ApplicationReviewShape = {
+  id: string;
+  businessName: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  location: string;
+  website?: string;
+  businessType: string;
+  taxId: string;
+  description: string;
+  productsCategory: string;
+  estimatedProducts: number;
+  appliedDate: string;
+  status: "pending" | "approved" | "rejected";
+  notes?: string;
+  avatar: string;
+  files?: {
+    businessLicense?: { name: string; type: string; data: string };
+    idDocument?: { name: string; type: string; data: string };
+  };
+};
+
+function mapApiApplicationToReviewShape(app: Record<string, unknown>): ApplicationReviewShape {
+  const companyName = (app.companyName as string) || (app.businessName as string) || "";
+  return {
+    id: String(app.id ?? ""),
+    businessName: companyName || "Unknown",
+    contactName: (app.contactName as string) || "N/A",
+    email: String(app.email ?? ""),
+    phone: String(app.phone ?? ""),
+    location:
+      app.city && app.country
+        ? `${app.city}, ${app.country}`
+        : String((app.address as string) || "N/A"),
+    website: app.website as string | undefined,
+    businessType: String(app.businessType ?? ""),
+    taxId: String((app.registrationNumber as string) || (app.taxId as string) || "N/A"),
+    description: String(
+      (app.storeDescription as string) || (app.description as string) || "No description provided"
+    ),
+    productsCategory: Array.isArray(app.categories) ? (app.categories as string[]).join(", ") : "General",
+    estimatedProducts: parseInt(String(app.estimatedProducts ?? "0"), 10) || 0,
+    appliedDate: new Date(
+      (app.submittedAt as string) || (app.createdAt as string) || Date.now()
+    ).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    status: (app.status as ApplicationReviewShape["status"]) || "pending",
+    notes: app.reviewNotes as string | undefined,
+    avatar: companyName.substring(0, 2).toUpperCase() || "VN",
+    files: app.files as ApplicationReviewShape["files"],
+  };
+}
+
+function mapRawApplicationsToPendingRows(raw: Record<string, unknown>[]): ApplicationReviewShape[] {
+  return raw
+    .filter((a) => String(a?.status ?? "").toLowerCase() === "pending")
+    .map((a) => mapApiApplicationToReviewShape(a));
+}
+
+type VendorTableRow =
+  | { kind: "vendor"; vendor: Vendor }
+  | { kind: "application"; application: ApplicationReviewShape };
+
 const mockVendors: Vendor[] = [];
 
 function safeLower(value: unknown): string {
@@ -106,13 +174,55 @@ const KNOWN_VENDOR_STATUSES: VendorStatus[] = [
   "banned",
 ];
 
+/** Normalize API casing/spacing and common aliases for filters and stats. */
+function normalizeVendorStatusRaw(status: unknown): VendorStatus | null {
+  if (status === null || status === undefined) return null;
+  const raw = typeof status === "string" ? status : String(status);
+  const s = raw.trim().toLowerCase().replace(/\s+/g, "_").replace(/-/g, "_");
+  if (!s) return null;
+
+  const alias: Record<string, VendorStatus> = {
+    approved: "active",
+    enabled: "active",
+    enable: "active",
+    disabled: "inactive",
+    disable: "inactive",
+    deactivated: "inactive",
+    in_review: "pending",
+    under_review: "pending",
+    awaiting_review: "pending",
+    awaiting_approval: "pending",
+    suspend: "suspended",
+    suspended_account: "suspended",
+    paused: "suspended",
+    ban: "banned",
+    blocked: "banned",
+    blacklisted: "banned",
+  };
+  const mapped = alias[s];
+  if (mapped) return mapped;
+
+  return KNOWN_VENDOR_STATUSES.includes(s as VendorStatus) ? (s as VendorStatus) : null;
+}
+
 function isKnownVendorStatus(status: unknown): status is VendorStatus {
-  return typeof status === "string" && KNOWN_VENDOR_STATUSES.includes(status as VendorStatus);
+  return normalizeVendorStatusRaw(status) != null;
+}
+
+/** Read lifecycle status from common API field names. */
+function rawLifecycleStatus(vendor: Vendor & Record<string, unknown>): unknown {
+  return (
+    vendor.status ??
+    vendor.accountStatus ??
+    vendor.vendorStatus ??
+    vendor.lifecycleStatus ??
+    vendor["Status"]
+  );
 }
 
 /** Missing or invalid API status — not the same as workflow "pending". */
 function effectiveVendorStatus(vendor: Vendor): VendorStatus | "incomplete" {
-  return isKnownVendorStatus(vendor.status) ? vendor.status : "incomplete";
+  return normalizeVendorStatusRaw(rawLifecycleStatus(vendor as Vendor & Record<string, unknown>)) ?? "incomplete";
 }
 
 function vendorDisplayName(vendor: Vendor & { id?: string }): string {
@@ -176,16 +286,36 @@ export function Vendor({
   }, [initialListSearchQuery, listSearchApplyToken]);
 
   const [statusFilter, setStatusFilter] = useState<VendorStatus | "all" | "incomplete">("all");
+  const [vendorListPage, setVendorListPage] = useState(1);
+  const [vendorListPageSize, setVendorListPageSize] = useState(20);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [viewingVendor, setViewingVendor] = useState<Vendor | null>(null);
   const [showApplications, setShowApplications] = useState(false);
-  
-  // 🚀 Initialize from cache if available
-  const [vendors, setVendors] = useState<Vendor[]>(() => cachedVendors || []);
-  const [isLoading, setIsLoading] = useState(!cachedVendors.length);
+  const [pendingApplicationRows, setPendingApplicationRows] = useState<ApplicationReviewShape[]>(() => {
+    const raw = moduleCache.peek<Record<string, unknown>[]>(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS);
+    return Array.isArray(raw) ? mapRawApplicationsToPendingRows(raw) : [];
+  });
+  const [reviewingApplication, setReviewingApplication] = useState<ApplicationReviewShape | null>(null);
+  const [isLoadingApplications, setIsLoadingApplications] = useState(
+    () => !moduleCache.has(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS)
+  );
+
+  // 🚀 Initialize from module cache — revisiting Vendors tab uses cached rows; filters are client-side only.
+  const [vendors, setVendors] = useState<Vendor[]>(() => {
+    const peeked = moduleCache.peek<Vendor[]>(CACHE_KEYS.ADMIN_VENDORS);
+    if (Array.isArray(peeked)) {
+      cachedVendors = peeked;
+      return peeked;
+    }
+    return cachedVendors || [];
+  });
+  const [isLoading, setIsLoading] = useState(() => {
+    if ((cachedVendors?.length ?? 0) > 0) return false;
+    return !moduleCache.has(CACHE_KEYS.ADMIN_VENDORS);
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -197,23 +327,80 @@ export function Vendor({
     status: "active" as VendorStatus,
   });
 
-  const searchLower = searchQuery.toLowerCase();
-  const filteredVendors = vendors.filter((vendor) => {
-    const matchesSearch =
-      !searchLower ||
-      safeLower(vendor.name).includes(searchLower) ||
-      safeLower(vendor.email).includes(searchLower) ||
-      safeLower(vendor.location).includes(searchLower);
-    const eff = effectiveVendorStatus(vendor);
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "incomplete" ? eff === "incomplete" : eff === statusFilter);
-    return matchesSearch && matchesStatus;
-  });
+  const searchLower = searchQuery.toLowerCase().trim();
+  const filteredVendors = useMemo(() => {
+    return vendors.filter((vendor) => {
+      const matchesSearch =
+        !searchLower ||
+        safeLower(vendor.name).includes(searchLower) ||
+        safeLower(vendor.email).includes(searchLower) ||
+        safeLower(vendor.location).includes(searchLower);
+      const eff = effectiveVendorStatus(vendor);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "incomplete" ? eff === "incomplete" : eff === statusFilter);
+      return matchesSearch && matchesStatus;
+    });
+  }, [vendors, searchLower, statusFilter]);
+
+  const filteredPendingApplications = useMemo(() => {
+    return pendingApplicationRows.filter((app) => {
+      if (app.status !== "pending") return false;
+      if (!searchLower) return true;
+      return (
+        safeLower(app.businessName).includes(searchLower) ||
+        safeLower(app.contactName).includes(searchLower) ||
+        safeLower(app.email).includes(searchLower) ||
+        safeLower(app.location).includes(searchLower)
+      );
+    });
+  }, [pendingApplicationRows, searchLower]);
+
+  /** Pending applications appear with "All statuses" and "Pending review" filters. */
+  const needsApplicationRowsInTable =
+    statusFilter === "pending" || statusFilter === "all";
+
+  const displayRows: VendorTableRow[] = useMemo(() => {
+    if (!needsApplicationRowsInTable) {
+      return filteredVendors.map((vendor) => ({ kind: "vendor" as const, vendor }));
+    }
+    const vendorPart = filteredVendors.map((vendor) => ({ kind: "vendor" as const, vendor }));
+    const appPart = filteredPendingApplications.map((application) => ({
+      kind: "application" as const,
+      application,
+    }));
+    return [...appPart, ...vendorPart];
+  }, [needsApplicationRowsInTable, filteredVendors, filteredPendingApplications]);
+
+  const vendorTableTotal = displayRows.length;
+  const vendorTableTotalPages = Math.max(1, Math.ceil(vendorTableTotal / vendorListPageSize) || 1);
+  const paginatedDisplayRows = useMemo(() => {
+    if (displayRows.length === 0) return [];
+    const start = (vendorListPage - 1) * vendorListPageSize;
+    return displayRows.slice(start, start + vendorListPageSize);
+  }, [displayRows, vendorListPage, vendorListPageSize]);
+
+  useEffect(() => {
+    setVendorListPage(1);
+  }, [searchQuery, statusFilter]);
+
+  useEffect(() => {
+    const tp = Math.max(1, Math.ceil(displayRows.length / vendorListPageSize) || 1);
+    setVendorListPage((p) => (p > tp ? tp : p));
+  }, [displayRows.length, vendorListPageSize]);
+
+  /** Skeleton while vendors load, or while applications load when the table includes application rows. */
+  const showTableSkeleton =
+    isLoading || (needsApplicationRowsInTable && isLoadingApplications);
+
+  const vendorRowsInDisplay = useMemo(
+    () => paginatedDisplayRows.filter((r): r is { kind: "vendor"; vendor: Vendor } => r.kind === "vendor"),
+    [paginatedDisplayRows]
+  );
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedVendors(filteredVendors.map(v => v.id));
+      setSelectedVendors(vendorRowsInDisplay.map((r) => r.vendor.id));
     } else {
       setSelectedVendors([]);
     }
@@ -232,7 +419,7 @@ export function Vendor({
     const variants: Record<VendorStatus | "incomplete", { color: string; label: string }> = {
       active: { color: "bg-green-100 text-green-700 border-green-200", label: "Active" },
       inactive: { color: "bg-gray-100 text-gray-700 border-gray-200", label: "Inactive" },
-      pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Pending" },
+      pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: t("vendor.pending") },
       suspended: { color: "bg-orange-100 text-orange-700 border-orange-200", label: "Suspended" },
       banned: { color: "bg-red-100 text-red-700 border-red-200", label: "Banned" },
       incomplete: {
@@ -535,9 +722,10 @@ export function Vendor({
       
       console.log(`✅ Vendor ${vendorId} status successfully changed to "${newStatus}"`);
       
-      // Reload to get fresh data (with error handling)
+      // Must invalidate module cache — otherwise loadVendors() returns stale rows and filters (suspended/banned/all) break
+      moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
       try {
-        await loadVendors();
+        await loadVendors(true);
       } catch (reloadError) {
         console.warn("⚠️ Failed to reload vendors after status update:", reloadError);
         // Don't throw - the update was successful, just the reload failed
@@ -549,9 +737,9 @@ export function Vendor({
       const errorMessage = error?.message || "Unknown error occurred";
       toast.error(`Failed to update vendor status: ${errorMessage}`);
       
-      // Reload to ensure UI is in sync with backend
+      moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
       try {
-        await loadVendors();
+        await loadVendors(true);
       } catch (reloadError) {
         console.error("❌ Failed to reload vendors after error:", reloadError);
       }
@@ -582,7 +770,8 @@ export function Vendor({
     // 🔥 Listen for vendor logo updates from vendor admin portal
     const handleLogoUpdate = (event: CustomEvent) => {
       console.log("🔄 Vendor logo updated, refreshing vendor list...", event.detail);
-      loadVendors(); // Reload vendors to get updated logo
+      moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+      void loadVendors(true);
     };
     
     window.addEventListener('vendorLogoUpdated', handleLogoUpdate as EventListener);
@@ -593,13 +782,15 @@ export function Vendor({
   }, []);
 
   const loadVendors = async (forceRefresh = false) => {
-    // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
     let showLoadingTimer: NodeJS.Timeout | null = null;
-    
-    showLoadingTimer = setTimeout(() => {
+    if (forceRefresh) {
       setIsLoading(true);
-    }, 300);
-    
+    } else {
+      showLoadingTimer = setTimeout(() => {
+        setIsLoading(true);
+      }, 300);
+    }
+
     try {
       // Use module cache to reduce Supabase requests (forceRefresh after mutations / post-approval)
       console.log("📦 Fetching vendors...");
@@ -629,29 +820,114 @@ export function Vendor({
     }
   };
 
-  // Calculate stats (pending = vendor profiles awaiting activation + open vendor applications)
-  const pendingVendorProfiles = vendors.filter((v) => v.status === "pending").length;
-  const pendingApplications =
-    typeof pendingApplicationsCount === "number" ? pendingApplicationsCount : 0;
+  const loadPendingApplications = async (forceRefresh = false) => {
+    let showTimer: NodeJS.Timeout | null = null;
+    if (forceRefresh) {
+      setIsLoadingApplications(true);
+    } else {
+      showTimer = setTimeout(() => setIsLoadingApplications(true), 300);
+    }
+    try {
+      const raw = await getCachedAdminVendorApplications(forceRefresh);
+      setPendingApplicationRows(mapRawApplicationsToPendingRows(raw));
+    } catch (e) {
+      console.warn("Pending applications load failed:", e);
+      setPendingApplicationRows([]);
+    } finally {
+      if (showTimer) clearTimeout(showTimer);
+      setIsLoadingApplications(false);
+    }
+  };
+
+  const pendingAppsBadgeKeyRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const key = String(pendingApplicationsCount ?? "∅");
+    if (pendingAppsBadgeKeyRef.current === undefined) {
+      pendingAppsBadgeKeyRef.current = key;
+      void loadPendingApplications(false);
+      return;
+    }
+    if (pendingAppsBadgeKeyRef.current === key) return;
+    pendingAppsBadgeKeyRef.current = key;
+    void loadPendingApplications(true);
+  }, [pendingApplicationsCount]);
+
+  /** Pending apps for stats: use loaded rows (cache/API) once idle; while loading, max(nav badge, local) so the card never undercounts. */
+  const pendingApplicationsForStats = isLoadingApplications
+    ? Math.max(
+        pendingApplicationRows.length,
+        typeof pendingApplicationsCount === "number" ? pendingApplicationsCount : 0
+      )
+    : pendingApplicationRows.length;
+
+  /** Must match the status filter logic (effectiveVendorStatus). */
+  const pendingVendorCount = vendors.filter((v) => effectiveVendorStatus(v) === "pending").length;
+  /** Matches admin mental model: vendor accounts on hold + applications not yet approved. */
+  const pendingReviewTotal = pendingVendorCount + pendingApplicationsForStats;
 
   const stats = {
     total: vendors.length,
-    active: vendors.filter(v => v.status === "active").length,
-    inactive: vendors.filter(v => v.status === "inactive").length,
-    pending: pendingVendorProfiles + pendingApplications,
+    active: vendors.filter((v) => effectiveVendorStatus(v) === "active").length,
+    inactive: vendors.filter((v) => effectiveVendorStatus(v) === "inactive").length,
+    pendingReviewTotal,
+    pendingVendorCount,
+    pendingApplications: pendingApplicationsForStats,
     totalRevenue: vendors.reduce((sum, v) => sum + safeNumber(v.totalRevenue), 0),
   };
+
+  const pendingCardSubtitle = (() => {
+    const v = pendingVendorCount;
+    const a = pendingApplicationsForStats;
+    if (pendingReviewTotal === 0) return null;
+    if (v > 0 && a > 0) {
+      return t("vendor.pendingSubBoth")
+        .replace("{vendorCount}", String(v))
+        .replace("{appCount}", String(a));
+    }
+    if (v > 0) {
+      return t("vendor.pendingSubVendorsOnly").replace("{count}", String(v));
+    }
+    return t("vendor.pendingSubAppsOnly").replace("{count}", String(a));
+  })();
+
+  if (reviewingApplication) {
+    return (
+      <VendorApplicationReview
+        application={reviewingApplication}
+        onBack={() => setReviewingApplication(null)}
+        onUpdate={async () => {
+          await loadVendors(true);
+        }}
+        onNavigateToVendorList={() => {
+          setReviewingApplication(null);
+        }}
+        onApplicationsMutated={() => {
+          invalidateAdminVendorApplicationsCache();
+          void loadPendingApplications(true);
+          onVendorApplicationsMutated?.();
+        }}
+      />
+    );
+  }
 
   // 🔥 If viewing applications, show the applications component
   if (showApplications) {
     return (
       <VendorApplications
-        onBack={() => setShowApplications(false)}
+        onBack={() => {
+          setShowApplications(false);
+          void loadPendingApplications(false);
+        }}
         onNavigateToVendorList={() => {
           setShowApplications(false);
           void loadVendors(true);
+          void loadPendingApplications(false);
         }}
-        onApplicationsMutated={onVendorApplicationsMutated}
+        onApplicationsMutated={() => {
+          invalidateAdminVendorApplicationsCache();
+          void loadPendingApplications(true);
+          onVendorApplicationsMutated?.();
+        }}
       />
     );
   }
@@ -802,12 +1078,15 @@ export function Vendor({
         </Card>
 
         <Card className="p-4 border border-slate-200">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
               <p className="text-sm text-slate-500">{t('vendor.pending')}</p>
-              <p className="text-2xl font-semibold text-yellow-600 mt-1">{stats.pending}</p>
+              <p className="text-2xl font-semibold text-yellow-600 mt-1 tabular-nums">{stats.pendingReviewTotal}</p>
+              {pendingCardSubtitle && (
+                <p className="text-xs text-slate-500 mt-1 leading-snug">{pendingCardSubtitle}</p>
+              )}
             </div>
-            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center shrink-0">
               <Package className="w-5 h-5 text-yellow-600" />
             </div>
           </div>
@@ -863,12 +1142,6 @@ export function Vendor({
               <SelectItem value="banned">{t('vendor.banned')}</SelectItem>
             </SelectContent>
           </Select>
-
-          {/* Export */}
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" />
-            {t('vendor.export')}
-          </Button>
         </div>
       </Card>
 
@@ -895,49 +1168,58 @@ export function Vendor({
 
       {/* Vendors Table */}
       <Card className="border border-slate-200">
-        {isLoading ? (
+        {showTableSkeleton ? (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
                   <th className="text-left p-4 w-12">
-                    <div className="w-4 h-4 bg-slate-200 rounded"></div>
+                    <div className="w-4 h-4 bg-slate-200 rounded animate-pulse" aria-hidden />
                   </th>
-                  <th className="text-left p-4 text-sm font-medium text-slate-600">Name</th>
-                  <th className="text-left p-4 text-sm font-medium text-slate-600">Email</th>
-                  <th className="text-left p-4 text-sm font-medium text-slate-600">Products</th>
-                  <th className="text-left p-4 text-sm font-medium text-slate-600">Status</th>
-                  <th className="text-right p-4 text-sm font-medium text-slate-600">Actions</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">{t("vendor.name")}</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">{t("vendor.email")}</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">Location</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">{t("vendor.products")}</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">{t("vendor.status")}</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">{t("vendor.joined")}</th>
+                  <th className="text-left p-4 text-sm font-medium text-slate-600">{t("vendor.actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {Array.from({ length: 5 }).map((_, index) => (
+                {Array.from({ length: 6 }).map((_, index) => (
                   <tr key={`skeleton-${index}`} className="border-b border-slate-100 animate-pulse">
                     <td className="p-4">
-                      <div className="w-4 h-4 bg-slate-200 rounded"></div>
+                      <div className="w-4 h-4 bg-slate-200 rounded" />
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-slate-200 rounded-full"></div>
+                        <div className="w-12 h-12 bg-slate-200 rounded-xl" />
                         <div className="space-y-2">
-                          <div className="h-4 bg-slate-200 rounded w-32"></div>
-                          <div className="h-3 bg-slate-200 rounded w-24"></div>
+                          <div className="h-4 bg-slate-200 rounded w-32" />
+                          <div className="h-3 bg-slate-200 rounded w-24" />
                         </div>
                       </div>
                     </td>
                     <td className="p-4">
-                      <div className="h-4 bg-slate-200 rounded w-40"></div>
+                      <div className="h-4 bg-slate-200 rounded w-40 mb-2" />
+                      <div className="h-3 bg-slate-200 rounded w-28" />
                     </td>
                     <td className="p-4">
-                      <div className="h-4 bg-slate-200 rounded w-16"></div>
+                      <div className="h-4 bg-slate-200 rounded w-36" />
                     </td>
                     <td className="p-4">
-                      <div className="h-6 bg-slate-200 rounded-full w-20"></div>
+                      <div className="h-4 bg-slate-200 rounded w-12" />
                     </td>
                     <td className="p-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <div className="h-8 w-16 bg-slate-200 rounded"></div>
-                        <div className="h-8 w-8 bg-slate-200 rounded"></div>
+                      <div className="h-6 bg-slate-200 rounded-full w-24" />
+                    </td>
+                    <td className="p-4">
+                      <div className="h-4 bg-slate-200 rounded w-24" />
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 bg-slate-200 rounded" />
+                        <div className="h-8 w-8 bg-slate-200 rounded" />
                       </div>
                     </td>
                   </tr>
@@ -953,7 +1235,11 @@ export function Vendor({
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="text-left p-4 w-12">
                       <Checkbox
-                        checked={selectedVendors.length === filteredVendors.length && filteredVendors.length > 0}
+                        checked={
+                          vendorRowsInDisplay.length > 0 &&
+                          selectedVendors.length === vendorRowsInDisplay.length &&
+                          vendorRowsInDisplay.every((r) => selectedVendors.includes(r.vendor.id))
+                        }
                         onCheckedChange={handleSelectAll}
                       />
                     </th>
@@ -967,153 +1253,276 @@ export function Vendor({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredVendors.map((vendor) => {
+                  {paginatedDisplayRows.map((row) => {
+                    if (row.kind === "application") {
+                      const app = row.application;
+                      const seed = app.id || app.businessName;
+                      return (
+                        <tr
+                          key={`application-${app.id}`}
+                          className="border-b border-slate-100 hover:bg-amber-50/40 transition-colors bg-amber-50/20"
+                        >
+                          <td className="p-4">
+                            <Checkbox disabled className="opacity-40" aria-label="" />
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
+                                <img
+                                  src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}`}
+                                  alt=""
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div>
+                                <div className="text-sm font-semibold text-slate-900">{app.businessName}</div>
+                                <div className="text-xs text-slate-500">{app.contactName}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Mail className="w-3.5 h-3.5" />
+                                <span className="truncate max-w-[150px]">{app.email?.trim() || "—"}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Phone className="w-3.5 h-3.5" />
+                                <span>{app.phone?.trim() || "—"}</span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                              <MapPin className="w-3.5 h-3.5" />
+                              <span>{app.location?.trim() || "—"}</span>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center gap-2">
+                              <Package className="w-4 h-4 text-slate-400" />
+                              <span className="text-sm font-medium text-slate-900 tabular-nums">
+                                ~{app.estimatedProducts || 0}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 border">
+                              {t("vendor.pending")}
+                            </Badge>
+                          </td>
+                          <td className="p-4">
+                            <span className="text-sm text-slate-600">{app.appliedDate}</span>
+                          </td>
+                          <td className="p-4">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="border-amber-200 bg-white hover:bg-amber-50"
+                              onClick={() => setReviewingApplication(app)}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              {t("vendor.review")}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const vendor = row.vendor;
                     const label = vendorDisplayName(vendor);
                     const avatarSeed = vendor.id || label;
+                    const rowStatus = effectiveVendorStatus(vendor);
                     return (
-                    <tr key={vendor.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
-                      <td className="p-4">
-                        <Checkbox
-                          checked={selectedVendors.includes(vendor.id)}
-                          onCheckedChange={(checked) => handleSelectVendor(vendor.id, checked as boolean)}
-                        />
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
-                            {(vendor.logo || vendor.avatar) ? (
-                              <img 
-                                src={vendor.logo || vendor.avatar}
-                                alt={label}
-                                className="w-full h-full object-cover"
-                                onError={(e) => {
-                                  // Fallback to DiceBear if image fails to load
-                                  e.currentTarget.src = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}`;
-                                }}
-                              />
-                            ) : (
-                              <img 
-                                src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}`}
-                                alt={label}
-                                className="w-full h-full object-cover"
-                              />
-                            )}
+                      <tr key={vendor.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="p-4">
+                          <Checkbox
+                            checked={selectedVendors.includes(vendor.id)}
+                            onCheckedChange={(checked) => handleSelectVendor(vendor.id, checked as boolean)}
+                          />
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200">
+                              {vendor.logo || vendor.avatar ? (
+                                <img
+                                  src={vendor.logo || vendor.avatar}
+                                  alt={label}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.src = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}`;
+                                  }}
+                                />
+                              ) : (
+                                <img
+                                  src={`https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(avatarSeed)}`}
+                                  alt={label}
+                                  className="w-full h-full object-cover"
+                                />
+                              )}
+                            </div>
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{label}</div>
+                              <div className="text-xs text-slate-500">{vendor.email?.trim() || "—"}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-sm font-semibold text-slate-900">{label}</div>
-                            <div className="text-xs text-slate-500">{vendor.email?.trim() || "—"}</div>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                              <Mail className="w-3.5 h-3.5" />
+                              <span className="truncate max-w-[150px]">{vendor.email?.trim() || "—"}</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                              <Phone className="w-3.5 h-3.5" />
+                              <span>{vendor.phone?.trim() || "—"}</span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-col gap-1">
+                        </td>
+                        <td className="p-4">
                           <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <Mail className="w-3.5 h-3.5" />
-                            <span className="truncate max-w-[150px]">{vendor.email?.trim() || "—"}</span>
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span>{vendor.location?.trim() || "—"}</span>
                           </div>
-                          <div className="flex items-center gap-2 text-sm text-slate-600">
-                            <Phone className="w-3.5 h-3.5" />
-                            <span>{vendor.phone?.trim() || "—"}</span>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <Package className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm font-medium text-slate-900">{safeNumber(vendor.productsCount)}</span>
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2 text-sm text-slate-600">
-                          <MapPin className="w-3.5 h-3.5" />
-                          <span>{vendor.location?.trim() || "—"}</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <Package className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm font-medium text-slate-900">{safeNumber(vendor.productsCount)}</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        {getStatusBadge(vendor)}
-                      </td>
-                      <td className="p-4">
-                        <span className="text-sm text-slate-600">{vendorDisplayJoined(vendor)}</span>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => setViewingVendor(vendor)}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <Box className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => setViewingVendor(vendor)}>
-                                <Eye className="w-4 h-4 mr-2" />
-                                {t('vendor.viewProfile')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEditVendor(vendor)}>
-                                <Edit className="w-4 h-4 mr-2" />
-                                {t('vendor.edit')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleSendEmail(vendor)}>
-                                <Mail className="w-4 h-4 mr-2" />
-                                {t('vendor.sendEmail')}
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              
-                              {/* Show Activate option for suspended, banned, or inactive vendors */}
-                              {(vendor.status === 'suspended' || vendor.status === 'banned' || vendor.status === 'inactive') && (
-                                <DropdownMenuItem 
-                                  className="text-green-600"
-                                  onClick={() => handleChangeVendorStatus(vendor.id, "active")}
-                                >
-                                  <TrendingUp className="w-4 h-4 mr-2" />
-                                  Activate Vendor
+                        </td>
+                        <td className="p-4">{getStatusBadge(vendor)}</td>
+                        <td className="p-4">
+                          <span className="text-sm text-slate-600">{vendorDisplayJoined(vendor)}</span>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="sm" onClick={() => setViewingVendor(vendor)}>
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <Box className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setViewingVendor(vendor)}>
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  {t("vendor.viewProfile")}
                                 </DropdownMenuItem>
-                              )}
-                              
-                              {/* Show Suspend option only for active vendors */}
-                              {vendor.status === 'active' && (
-                                <DropdownMenuItem 
-                                  className="text-orange-600"
-                                  onClick={() => handleChangeVendorStatus(vendor.id, "suspended")}
-                                >
-                                  <AlertTriangle className="w-4 h-4 mr-2" />
-                                  {t('vendor.suspend')}
+                                <DropdownMenuItem onClick={() => handleEditVendor(vendor)}>
+                                  <Edit className="w-4 h-4 mr-2" />
+                                  {t("vendor.edit")}
                                 </DropdownMenuItem>
-                              )}
-                              
-                              {/* Show Ban option only for non-banned vendors */}
-                              {vendor.status !== 'banned' && (
-                                <DropdownMenuItem 
-                                  className="text-red-600"
-                                  onClick={() => handleChangeVendorStatus(vendor.id, "banned")}
-                                >
-                                  <Ban className="w-4 h-4 mr-2" />
-                                  Ban Vendor
+                                <DropdownMenuItem onClick={() => handleSendEmail(vendor)}>
+                                  <Mail className="w-4 h-4 mr-2" />
+                                  {t("vendor.sendEmail")}
                                 </DropdownMenuItem>
-                              )}
-                              
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteVendor(vendor.id)}>
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                {t('vendor.delete')}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
+                                <DropdownMenuSeparator />
+
+                                {(rowStatus === "suspended" || rowStatus === "banned" || rowStatus === "inactive") && (
+                                  <DropdownMenuItem
+                                    className="text-green-600"
+                                    onClick={() => handleChangeVendorStatus(vendor.id, "active")}
+                                  >
+                                    <TrendingUp className="w-4 h-4 mr-2" />
+                                    Activate Vendor
+                                  </DropdownMenuItem>
+                                )}
+
+                                {rowStatus === "active" && (
+                                  <DropdownMenuItem
+                                    className="text-orange-600"
+                                    onClick={() => handleChangeVendorStatus(vendor.id, "suspended")}
+                                  >
+                                    <AlertTriangle className="w-4 h-4 mr-2" />
+                                    {t("vendor.suspend")}
+                                  </DropdownMenuItem>
+                                )}
+
+                                {rowStatus !== "banned" && (
+                                  <DropdownMenuItem
+                                    className="text-red-600"
+                                    onClick={() => handleChangeVendorStatus(vendor.id, "banned")}
+                                  >
+                                    <Ban className="w-4 h-4 mr-2" />
+                                    Ban Vendor
+                                  </DropdownMenuItem>
+                                )}
+
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem className="text-red-600" onClick={() => handleDeleteVendor(vendor.id)}>
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  {t("vendor.delete")}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
 
-            {filteredVendors.length === 0 && (
-              <div className="p-12 text-center">
+            {vendorTableTotal > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/80">
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <span>Rows per page</span>
+                  <Select
+                    value={String(vendorListPageSize)}
+                    onValueChange={(v) => {
+                      setVendorListPageSize(Number(v));
+                      setVendorListPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-[88px] h-8">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="15">15</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-slate-500">
+                    Page {vendorListPage} of {vendorTableTotalPages} · {vendorTableTotal}{" "}
+                    {vendorTableTotal === 1 ? "row" : "rows"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    disabled={vendorListPage <= 1}
+                    onClick={() => setVendorListPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8"
+                    disabled={vendorListPage >= vendorTableTotalPages}
+                    onClick={() => setVendorListPage((p) => p + 1)}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {displayRows.length === 0 && (
+              <div className="p-12 text-center border-t border-slate-100">
                 <Package className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-slate-900 mb-1">{t('vendor.noResults')}</h3>
+                <h3 className="text-lg font-medium text-slate-900 mb-1">{t("vendor.noResults")}</h3>
                 <p className="text-sm text-slate-500">Try adjusting your search or filters</p>
               </div>
             )}

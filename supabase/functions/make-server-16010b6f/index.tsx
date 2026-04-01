@@ -5479,7 +5479,10 @@ app.get("/make-server-16010b6f/vendors", async (c) => {
       const id = String(vendor.id);
       return {
         ...vendor,
-        ...settings,
+        ...(settings && typeof settings === "object" ? settings : {}),
+        id,
+        // Storefront/settings must not override vendor profile lifecycle fields (breaks admin status filters)
+        status: vendor?.status,
         productsCount: productCountByVendorId.get(id) ?? 0,
         totalRevenue: revenueByVendorId.get(id) ?? 0,
       };

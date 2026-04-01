@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
+import { Button } from "./ui/button";
 
 interface VendorApplicationFormProps {
   onBack?: () => void;
@@ -435,6 +436,23 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   <p className="text-sm sm:text-base font-semibold text-slate-900 truncate">{formData.email}</p>
                 </div>
               </div>
+            </div>
+            <div className="mt-10 flex justify-center">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 px-6 border-slate-200 text-slate-800 hover:bg-slate-50"
+                onClick={() => {
+                  if (onBack) {
+                    onBack();
+                  } else if (typeof window !== "undefined") {
+                    window.history.back();
+                  }
+                }}
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                {source === "storefront" ? "Back to home" : "Back"}
+              </Button>
             </div>
           </div>
         </div>

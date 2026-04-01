@@ -25,6 +25,7 @@ import { Textarea } from "./ui/textarea";
 import { Separator } from "./ui/separator";
 import { vendorApplicationsApi } from "../../utils/api";
 import { toast } from "sonner";
+import { useLanguage } from "../contexts/LanguageContext";
 
 type ApplicationStatus = "pending" | "approved" | "rejected";
 
@@ -74,13 +75,14 @@ export function VendorApplicationReview({
   onNavigateToVendorList,
   onApplicationsMutated,
 }: VendorApplicationReviewProps) {
+  const { t } = useLanguage();
   const [reviewNotes, setReviewNotes] = useState(application.notes || "");
   const [updating, setUpdating] = useState(false);
   const [viewingImage, setViewingImage] = useState<{ url: string; name: string } | null>(null);
 
   const getStatusBadge = (status: ApplicationStatus) => {
     const variants: Record<ApplicationStatus, { color: string; label: string; icon: any }> = {
-      pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Pending Review", icon: Clock },
+      pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: t("vendor.pending"), icon: Clock },
       approved: { color: "bg-green-100 text-green-700 border-green-200", label: "Approved", icon: Check },
       rejected: { color: "bg-red-100 text-red-700 border-red-200", label: "Rejected", icon: X },
     };

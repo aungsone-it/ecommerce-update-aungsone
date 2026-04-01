@@ -12,9 +12,9 @@ import {
   resolveVendorSubdomainStoreSlug,
   useVendorAdminRouteParams,
 } from "../../utils/vendorSubdomainHooks";
-import {
-  Plus,
-  Search,
+import { 
+  Plus, 
+  Search, 
   Eye,
   Package,
   Check,
@@ -149,7 +149,7 @@ export function VendorAdminProductsCRUD({
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "off-shelf">("all");
   const [sortBy, setSortBy] = useState("newest");
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-
+  
   const [showProductSelectModal, setShowProductSelectModal] = useState(false);
   const [allPlatformProducts, setAllPlatformProducts] = useState<any[]>([]);
   const [loadingAllProducts, setLoadingAllProducts] = useState(false);
@@ -203,7 +203,7 @@ export function VendorAdminProductsCRUD({
     setLoading(true);
     try {
       const data = await getCachedVendorProductsAdmin(vendorId, forceRefresh);
-      setProducts(data.products || []);
+        setProducts(data.products || []);
     } catch (error) {
       console.error("Error loading products:", error);
       toast.error("Failed to load products");
@@ -605,15 +605,15 @@ export function VendorAdminProductsCRUD({
         statusFilter === "all" ||
         (statusFilter === "active" &&
           (product.status === "active" || product.status === "Active")) ||
-        (statusFilter === "off-shelf" && product.status === "off-shelf");
-      return matchesSearch && matchesStatus;
-    });
+      (statusFilter === "off-shelf" && product.status === "off-shelf");
+    return matchesSearch && matchesStatus;
+  });
   }, [products, searchQuery, statusFilter]);
 
   const sortedProducts = useMemo(() => {
     return [...filteredProducts].sort((a, b) => {
-      if (sortBy === "newest") {
-        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    if (sortBy === "newest") {
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
       }
       return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
     });
@@ -735,9 +735,9 @@ export function VendorAdminProductsCRUD({
             onClick={handleOpenSelectProduct}
             className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
           >
-            <Plus className="w-4 h-4 mr-2" />
+          <Plus className="w-4 h-4 mr-2" />
             Select Product
-          </Button>
+        </Button>
           <Badge variant="secondary">{products.length} total</Badge>
         </div>
       </div>
@@ -799,8 +799,8 @@ export function VendorAdminProductsCRUD({
             {searchQuery ? "No products found" : "No products yet"}
           </h3>
           <p className="text-slate-600 mb-6">
-            {searchQuery
-              ? "Try adjusting your search"
+            {searchQuery 
+              ? "Try adjusting your search" 
               : "Choose products from the platform catalog to sell in your store"}
           </p>
           {!searchQuery && (
@@ -894,10 +894,10 @@ export function VendorAdminProductsCRUD({
                           if (onVendorSubdomainAdmin) {
                             navigate(`/admin/products/${product.id}/view`);
                           } else if (adminPrefix && routeStoreName) {
-                            navigate(
+                          navigate(
                               `/${adminPrefix}/${routeStoreName}/admin/products/${product.id}/view`
                             );
-                          }
+                        }
                         }}
                         title="View Product Details"
                       >
@@ -1171,8 +1171,8 @@ export function VendorAdminProductsCRUD({
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
-            </div>
-          )}
+        </div>
+      )}
 
           <DialogFooter className="flex items-center justify-between border-t border-slate-200 pt-4">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-600">

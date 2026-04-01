@@ -12,6 +12,7 @@
  */
 
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { vendorApplicationsApi } from '../../utils/api';
 import { withNetworkRetry } from './networkRetry';
 import {
   readPersistedJson,
@@ -492,6 +493,29 @@ export async function fetchAllVendors() {
 
   const data = await response.json();
   return data.vendors || [];
+}
+
+/** Full vendor applications list (admin) — mirrors `vendorApplicationsApi.getAll().data`. */
+export async function fetchAdminVendorApplicationsRaw(): Promise<Record<string, unknown>[]> {
+  const res = await vendorApplicationsApi.getAll();
+  if (res.success && Array.isArray(res.data)) {
+    return res.data as Record<string, unknown>[];
+  }
+  return [];
+}
+
+export async function getCachedAdminVendorApplications(
+  forceRefresh = false
+): Promise<Record<string, unknown>[]> {
+  return moduleCache.get(
+    CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS,
+    fetchAdminVendorApplicationsRaw,
+    forceRefresh
+  );
+}
+
+export function invalidateAdminVendorApplicationsCache(): void {
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS);
 }
 
 /** Super Admin orders API — full payload (supports warning + order shape for Vendor Profile). */
@@ -1106,6 +1130,8 @@ export const CACHE_KEYS = {
   // SECURE Admin
   /** Bump when vendor list semantics change (e.g. aggregated productsCount/totalRevenue from KV). */
   ADMIN_VENDORS: 'admin-vendors-v4',
+  /** Vendor applications GET list — invalidate on approve/reject/new application. */
+  ADMIN_VENDOR_APPLICATIONS: 'admin-vendor-applications-v1',
   ADMIN_PRODUCTS: 'admin-products',
   /** Full `/orders` JSON: `{ orders, warning? }` — bumped key when shape changed */
   ADMIN_ORDERS: 'admin-orders-v2-payload',

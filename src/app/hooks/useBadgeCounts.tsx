@@ -90,16 +90,17 @@ export function useBadgeCounts() {
       }
 
       const ordersList = ordersPayload.orders ?? [];
-      if (ordersList.length === 0) {
-        console.log('ℹ️ Orders data not ready yet, keeping cached counts');
-        badgeCircuitBreaker.recordSuccess();
-        return;
-      }
-
       const pendingStatuses: readonly string[] = PENDING_ORDER_STATUSES;
-      const pendingOrders = ordersList.filter((order: any) =>
-        pendingStatuses.includes(order.status)
-      );
+      const pendingOrders =
+        ordersList.length === 0
+          ? null
+          : ordersList.filter((order: any) => pendingStatuses.includes(order.status));
+
+      if (ordersList.length === 0) {
+        console.log(
+          "ℹ️ Orders list empty — keeping previous orders badge; still refreshing vendor applications + chat"
+        );
+      }
 
       // Get unread chat messages count with silent mode to avoid error toasts
       let unreadChats = 0;
@@ -116,29 +117,28 @@ export function useBadgeCounts() {
       try {
         const vendorResponse = await vendorApplicationsApi.getAll();
         if (vendorResponse.success && vendorResponse.data) {
-          vendorApplicationsCount = vendorResponse.data.filter((app: any) => app.status === 'pending').length;
+          vendorApplicationsCount = vendorResponse.data.filter(
+            (app: any) => String(app?.status ?? "").toLowerCase() === "pending"
+          ).length;
         }
       } catch (vendorError) {
         // Silently ignore - vendor applications endpoint may not be initialized yet
         console.debug('Vendor applications count not available, using default value of 0');
       }
 
-      const newBadgeCounts: BadgeCounts = {
-        orders: pendingOrders.length,
-        vendor: vendorApplicationsCount,
-        collaborator: 0, // TODO: Implement collaborator applications count
-        chat: unreadChats,
-      };
+      setBadgeCounts((prev) => {
+        const newBadgeCounts: BadgeCounts = {
+          orders: pendingOrders === null ? prev.orders : pendingOrders.length,
+          vendor: vendorApplicationsCount,
+          collaborator: prev.collaborator,
+          chat: unreadChats,
+        };
+        SmartCache.set('badge_counts', newBadgeCounts);
+        console.log("✅ Badge counts updated:", newBadgeCounts);
+        return newBadgeCounts;
+      });
 
-      setBadgeCounts(newBadgeCounts);
-      
-      // Cache for instant loading next time
-      SmartCache.set('badge_counts', newBadgeCounts);
-      
-      // Record success with circuit breaker
       badgeCircuitBreaker.recordSuccess();
-      
-      console.log('✅ Badge counts updated:', newBadgeCounts);
     } catch (error) {
       // Record failure with circuit breaker
       badgeCircuitBreaker.recordFailure();

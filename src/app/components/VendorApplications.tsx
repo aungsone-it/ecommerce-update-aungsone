@@ -31,8 +31,14 @@ import {
   SelectValue,
 } from "./ui/select";
 import { Separator } from "./ui/separator";
-import { vendorApplicationsApi } from "../../utils/api";
+import {
+  moduleCache,
+  CACHE_KEYS,
+  getCachedAdminVendorApplications,
+  invalidateAdminVendorApplicationsCache,
+} from "../utils/module-cache";
 import { toast } from "sonner";
+import { useLanguage } from "../contexts/LanguageContext";
 import { VendorApplicationReview } from "./VendorApplicationReview";
 
 type ApplicationStatus = "pending" | "approved" | "rejected";
@@ -75,73 +81,72 @@ interface VendorApplicationsProps {
   onApplicationsMutated?: () => void;
 }
 
+function mapRawRecordToVendorApplication(app: Record<string, unknown>): VendorApplication {
+  return {
+    id: String(app.id ?? ""),
+    businessName: (app.companyName || app.businessName || "Unknown") as string,
+    contactName: (app.contactName || "N/A") as string,
+    email: String(app.email ?? ""),
+    phone: String(app.phone ?? ""),
+    location:
+      app.city && app.country
+        ? `${app.city}, ${app.country}`
+        : String(app.address || "N/A"),
+    website: app.website as string | undefined,
+    businessType: String(app.businessType ?? ""),
+    taxId: String(app.registrationNumber || app.taxId || "N/A"),
+    description: String(app.storeDescription || app.description || "No description provided"),
+    productsCategory: Array.isArray(app.categories) ? (app.categories as string[]).join(", ") : "General",
+    estimatedProducts: parseInt(String(app.estimatedProducts), 10) || 0,
+    appliedDate: new Date(
+      (app.submittedAt || app.createdAt) as string
+    ).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+    status: app.status as ApplicationStatus,
+    notes: app.reviewNotes as string | undefined,
+    avatar: String(
+      (app.companyName || app.businessName)?.toString().substring(0, 2).toUpperCase() || "VN"
+    ),
+    files: app.files as VendorApplication["files"],
+  };
+}
+
 export function VendorApplications({
   onBack,
   onNavigateToVendorList,
   onApplicationsMutated,
 }: VendorApplicationsProps) {
-  const [applications, setApplications] = useState<VendorApplication[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { t } = useLanguage();
+  const [applications, setApplications] = useState<VendorApplication[]>(() => {
+    const raw = moduleCache.peek<Record<string, unknown>[]>(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS);
+    return Array.isArray(raw) ? raw.map(mapRawRecordToVendorApplication) : [];
+  });
+  const [loading, setLoading] = useState(
+    () => !moduleCache.has(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS)
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">("all");
   const [reviewingApplication, setReviewingApplication] = useState<VendorApplication | null>(null);
 
-  // 🔥 Fetch applications from backend
   useEffect(() => {
-    loadApplications();
+    void loadApplications(false);
   }, []);
 
-  const loadApplications = async () => {
-    try {
+  const loadApplications = async (forceRefresh = false) => {
+    let showTimer: ReturnType<typeof setTimeout> | null = null;
+    if (forceRefresh) {
       setLoading(true);
-      
-      // Add timeout protection
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout
-      
-      const response = await vendorApplicationsApi.getAll();
-      clearTimeout(timeoutId);
-      
-      if (response.success && response.data) {
-        // Map backend response to component format
-        const mappedApplications = response.data.map((app: any) => ({
-          id: app.id,
-          businessName: app.companyName || app.businessName || "Unknown",
-          contactName: app.contactName || "N/A",
-          email: app.email,
-          phone: app.phone,
-          location: app.city && app.country ? `${app.city}, ${app.country}` : app.address || "N/A",
-          website: app.website,
-          businessType: app.businessType,
-          taxId: app.registrationNumber || app.taxId || "N/A",
-          description: app.storeDescription || app.description || "No description provided",
-          productsCategory: app.categories?.join(", ") || "General",
-          estimatedProducts: parseInt(app.estimatedProducts) || 0,
-          appliedDate: new Date(app.submittedAt || app.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          status: app.status,
-          notes: app.reviewNotes,
-          avatar: (app.companyName || app.businessName)?.substring(0, 2).toUpperCase() || "VN",
-          files: app.files // Include files data for viewing/downloading
-        }));
-        
-        setApplications(mappedApplications);
-        console.log(`✅ Loaded ${mappedApplications.length} vendor applications`);
-      } else {
-        console.warn("⚠️ No vendor applications found");
-        setApplications([]);
-      }
-    } catch (error: any) {
+    } else {
+      showTimer = setTimeout(() => setLoading(true), 300);
+    }
+    try {
+      const raw = await getCachedAdminVendorApplications(forceRefresh);
+      setApplications(raw.map(mapRawRecordToVendorApplication));
+    } catch (error: unknown) {
       console.error("Failed to load vendor applications:", error);
-      
-      // Don't show error toast for timeout - just log it
-      if (error.name !== 'AbortError') {
-        toast.error("Failed to load applications");
-      } else {
-        console.warn("⏱️ Vendor applications request timed out - using empty list");
-      }
-      
+      toast.error("Failed to load applications");
       setApplications([]);
     } finally {
+      if (showTimer) clearTimeout(showTimer);
       setLoading(false);
     }
   };
@@ -156,7 +161,7 @@ export function VendorApplications({
 
   const getStatusBadge = (status: ApplicationStatus) => {
     const variants: Record<ApplicationStatus, { color: string; label: string; icon: any }> = {
-      pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Pending Review", icon: Clock },
+      pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: t("vendor.pending"), icon: Clock },
       approved: { color: "bg-green-100 text-green-700 border-green-200", label: "Approved", icon: Check },
       rejected: { color: "bg-red-100 text-red-700 border-red-200", label: "Rejected", icon: X },
     };
@@ -183,9 +188,12 @@ export function VendorApplications({
       <VendorApplicationReview 
         application={reviewingApplication}
         onBack={() => setReviewingApplication(null)}
-        onUpdate={loadApplications}
+        onUpdate={() => void loadApplications(true)}
         onNavigateToVendorList={onNavigateToVendorList}
-        onApplicationsMutated={onApplicationsMutated}
+        onApplicationsMutated={() => {
+          invalidateAdminVendorApplicationsCache();
+          onApplicationsMutated?.();
+        }}
       />
     );
   }
@@ -230,7 +238,7 @@ export function VendorApplications({
         <Card className="p-4 border border-slate-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-slate-500">Pending Review</p>
+              <p className="text-sm text-slate-500">{t("vendor.pending")}</p>
               <p className="text-2xl font-semibold text-yellow-600 mt-1">{stats.pending}</p>
             </div>
             <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
@@ -286,7 +294,7 @@ export function VendorApplications({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Applications</SelectItem>
-              <SelectItem value="pending">Pending Review</SelectItem>
+              <SelectItem value="pending">{t("vendor.pending")}</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
               <SelectItem value="rejected">Rejected</SelectItem>
             </SelectContent>
