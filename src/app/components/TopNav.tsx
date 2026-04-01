@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { POLLING_INTERVALS_MS } from "../../constants";
 import { Bell, Search, Menu, Check, Clock, Store, Package, Star, ShoppingCart, AlertCircle, User, Edit, Trash2, LogOut, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
@@ -145,12 +145,67 @@ export function TopNav({
   const getTimeAgo = (timestamp: string) => {
     const now = new Date();
     const time = new Date(timestamp);
+    if (Number.isNaN(time.getTime())) return "Recently";
     const diff = Math.floor((now.getTime() - time.getTime()) / 1000);
 
     if (diff < 60) return "Just now";
     if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)} hour${Math.floor(diff / 3600) > 1 ? 's' : ''} ago`;
     return `${Math.floor(diff / 86400)} day${Math.floor(diff / 86400) > 1 ? 's' : ''} ago`;
+  };
+
+  /** When sidebar badge counts change, treat digest rows as refreshed at that moment */
+  const prevDigestCountsRef = useRef<{
+    po?: number;
+    va?: number;
+    cu?: number;
+  }>({});
+  const [ordersDigestAt, setOrdersDigestAt] = useState(() => Date.now());
+  const [vendorDigestAt, setVendorDigestAt] = useState(() => Date.now());
+  const [chatDigestAt, setChatDigestAt] = useState(() => Date.now());
+  const [, setDigestRelativeTick] = useState(0);
+
+  useEffect(() => {
+    const p = prevDigestCountsRef.current;
+    if (p.po !== pendingOrdersCount) {
+      setOrdersDigestAt(Date.now());
+    }
+    if (p.va !== vendorApplicationsCount) {
+      setVendorDigestAt(Date.now());
+    }
+    if (p.cu !== chatUnreadCount) {
+      setChatDigestAt(Date.now());
+    }
+    prevDigestCountsRef.current = {
+      po: pendingOrdersCount,
+      va: vendorApplicationsCount,
+      cu: chatUnreadCount,
+    };
+  }, [pendingOrdersCount, vendorApplicationsCount, chatUnreadCount]);
+
+  useEffect(() => {
+    const t = window.setInterval(() => setDigestRelativeTick((n) => n + 1), 45_000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const digestFooter = (asOfMs: number, sourceLabel: string) => {
+    const abs = new Date(asOfMs);
+    const absLabel = Number.isNaN(abs.getTime())
+      ? undefined
+      : abs.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+    return (
+      <p
+        className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap"
+        title={absLabel ? `${absLabel} — counts last matched this` : undefined}
+      >
+        <Clock className="w-3 h-3 shrink-0" />
+        <span>{sourceLabel}</span>
+        <span className="text-slate-300" aria-hidden>
+          ·
+        </span>
+        <span className="tabular-nums">{getTimeAgo(abs.toISOString())}</span>
+      </p>
+    );
   };
 
   const { logout } = useAuth();
@@ -243,10 +298,7 @@ export function TopNav({
                             <p className="text-sm text-slate-600 leading-snug mb-2">
                               You have {pendingOrdersCount} pending {pendingOrdersCount === 1 ? 'order' : 'orders'} that need attention
                             </p>
-                            <p className="text-xs text-slate-400 flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              From Orders section
-                            </p>
+                            {digestFooter(ordersDigestAt, "From Orders section")}
                           </div>
                         </div>
                       </div>
@@ -270,10 +322,7 @@ export function TopNav({
                             <p className="text-sm text-slate-600 leading-snug mb-2">
                               You have {vendorApplicationsCount} pending vendor {vendorApplicationsCount === 1 ? 'application' : 'applications'} to review
                             </p>
-                            <p className="text-xs text-slate-400 flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              From Vendor section
-                            </p>
+                            {digestFooter(vendorDigestAt, "From Vendor section")}
                           </div>
                         </div>
                       </div>
@@ -297,10 +346,7 @@ export function TopNav({
                                 ? "You have 1 unread customer message"
                                 : `You have ${chatUnreadCount} unread customer messages`}
                             </p>
-                            <p className="text-xs text-slate-400 flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              From Chat
-                            </p>
+                            {digestFooter(chatDigestAt, "From Chat")}
                           </div>
                         </div>
                       </div>
@@ -337,10 +383,10 @@ export function TopNav({
                               <p className="text-sm text-slate-600 leading-snug mb-2">
                                 {notification.message}
                               </p>
-                              <div className="flex items-center justify-between">
-                                <p className="text-xs text-slate-400 flex items-center gap-1">
-                                  <Clock className="w-3 h-3" />
-                                  {getTimeAgo(notification.timestamp)}
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap min-w-0">
+                                  <Clock className="w-3 h-3 shrink-0" />
+                                  <span className="tabular-nums">{getTimeAgo(notification.timestamp)}</span>
                                 </p>
                                 <Button
                                   variant="ghost"
