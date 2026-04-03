@@ -57,6 +57,8 @@ import {
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
 import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
+import { buildVendorDisplayLookup, resolveVendorDisplayLabel } from "../utils/vendorDisplay";
+import { useAuth } from "../contexts/AuthContext";
 
 interface ProductListProps {
   onProductsChanged?: () => void; // 🔥 NEW: Callback when products change
@@ -121,6 +123,7 @@ export function ProductList({
   onListingCountChange,
 }: ProductListProps) {
   const { t } = useLanguage();
+  const { user: sessionUser } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
@@ -301,22 +304,14 @@ export function ProductList({
     if (!forceRefresh) {
       const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS);
       if (peeked != null && Array.isArray(peeked)) {
-        const map: Record<string, string> = {};
-        peeked.forEach((vendor: any) => {
-          if (vendor.id && vendor.name) map[vendor.id] = vendor.name;
-        });
-        setVendorsMap(map);
+        setVendorsMap(buildVendorDisplayLookup(peeked));
         return;
       }
     }
     try {
       const vendorsList = await getCachedAdminVendorsForProductList(forceRefresh);
       if (Array.isArray(vendorsList)) {
-        const map: Record<string, string> = {};
-        vendorsList.forEach((vendor: any) => {
-          if (vendor.id && vendor.name) map[vendor.id] = vendor.name;
-        });
-        setVendorsMap(map);
+        setVendorsMap(buildVendorDisplayLookup(vendorsList));
         const names = [
           ...new Set(
             vendorsList
@@ -336,7 +331,10 @@ export function ProductList({
     setCurrentView("list");
     setLoading(true);
     try {
-      const response = await productsApi.create(data);
+      const response = await productsApi.create({
+        ...data,
+        performedByUserId: sessionUser?.id,
+      });
       if (!response.success && !response.product) {
         throw new Error(response.error || "Failed to create product - no product returned");
       }
@@ -392,7 +390,7 @@ export function ProductList({
   const handleUpdateProduct = async (id: string, data: any) => {
     const prevVendors = selectedProduct?.selectedVendors;
     try {
-      await productsApi.update(id, data);
+      await productsApi.update(id, { ...data, performedByUserId: sessionUser?.id });
       let vendorsList =
         (moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS) as any[]) || [];
       if (!Array.isArray(vendorsList) || vendorsList.length === 0) {
@@ -430,7 +428,7 @@ export function ProductList({
     SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
     toast.success("Product deleted!", { duration: 2000 });
     try {
-      await productsApi.delete(id);
+      await productsApi.delete(id, sessionUser?.id);
       invalidateProductByIdCache(id);
       invalidateAdminAllProductsCache();
       await loadProductPage(true);
@@ -468,7 +466,7 @@ export function ProductList({
 
         for (const productId of selectedProducts) {
           try {
-            await productsApi.delete(productId);
+            await productsApi.delete(productId, sessionUser?.id);
             invalidateProductByIdCache(productId);
             successCount++;
             removedIds.add(productId);
@@ -504,7 +502,7 @@ export function ProductList({
       } else if (productToDelete) {
         let removedOk = false;
         try {
-          await productsApi.delete(productToDelete);
+          await productsApi.delete(productToDelete, sessionUser?.id);
           invalidateProductByIdCache(productToDelete);
           removedOk = true;
           toast.success("Product deleted successfully!");
@@ -1040,9 +1038,9 @@ export function ProductList({
                           <td className="py-3 px-4 text-sm text-slate-700">
                             {Array.isArray(product.selectedVendors) && product.selectedVendors.length > 0 ? (
                               <div className="flex flex-wrap gap-1">
-                                {product.selectedVendors.slice(0, 2).map((vendorId, index) => (
+                                {product.selectedVendors.slice(0, 2).map((vendorEntry, index) => (
                                   <Badge key={index} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                                    {vendorsMap[vendorId] || vendorId}
+                                    {resolveVendorDisplayLabel(String(vendorEntry), vendorsMap)}
                                   </Badge>
                                 ))}
                                 {product.selectedVendors.length > 2 && (

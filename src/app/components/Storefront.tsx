@@ -1,5 +1,13 @@
 // Storefront Component - Cache bust: 20260317001
-import { useState, useEffect, useMemo, useCallback, memo, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  memo,
+  useRef,
+  type ChangeEvent,
+} from "react";
 import { useNavigate, useLocation, useParams } from "react-router";
 import { 
   ShoppingCart, Search, User, Heart, Menu, X, ChevronRight, Star, 
@@ -10,7 +18,7 @@ import {
   Smartphone, Laptop, Watch, Headphones, Camera, Monitor, Tablet,
   ShoppingBag, Gift, Percent, Bell, Crown, Sparkles, Dumbbell, Gamepad2, Grid3x3,
   LogOut, UserCircle, Folder, Copy, FileText, Shirt, Box, Utensils, Briefcase,
-  Backpack, Sofa, Eye, EyeOff, MessageSquare, Settings, Keyboard, Mic, Pen
+  Backpack, Sofa, Eye, EyeOff, MessageSquare, Settings, Keyboard, Mic, Pen, Pencil, Upload
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Button } from "./ui/button";
@@ -23,6 +31,12 @@ import { Separator } from "./ui/separator";
 import { Checkbox } from "./ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { SearchInput } from "./SearchInput";
 import { CouponInput } from "./CouponInput";
 import { productsApi, authApi, wishlistApi, ordersApi, customersApi, categoriesApi, blogApi, apiClient } from "../../utils/api";
@@ -63,6 +77,8 @@ import {
   fetchAppearanceSettingsApi,
   getCachedProductById,
   gridDisplayImageUrl,
+  fetchCustomerOrdersList,
+  invalidateCustomerOrdersCache,
 } from "../utils/module-cache";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 import {
@@ -1096,6 +1112,88 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     phone: "",
     profileImage: null as string | null,
   });
+  const storefrontEditProfilePhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStorefrontEditProfilePhotoChange = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+
+      toast.loading("Compressing image...", { id: "compress" });
+
+      try {
+        const compressImage = (f: File, maxSizeKB: number = 400): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                  reject(new Error("Canvas not supported"));
+                  return;
+                }
+
+                let width = img.width;
+                let height = img.height;
+
+                const maxDimension = 2048;
+                if (width > maxDimension || height > maxDimension) {
+                  if (width > height) {
+                    height = (height * maxDimension) / width;
+                    width = maxDimension;
+                  } else {
+                    width = (width * maxDimension) / height;
+                    height = maxDimension;
+                  }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let quality = 0.9;
+                let dataUrl = "";
+                let iterations = 0;
+                const maxIterations = 10;
+
+                const compress = () => {
+                  dataUrl = canvas.toDataURL("image/jpeg", quality);
+                  const sizeKB = Math.round((dataUrl.length * 3) / 4 / 1024);
+
+                  if (sizeKB > maxSizeKB && quality > 0.1 && iterations < maxIterations) {
+                    quality -= 0.1;
+                    iterations++;
+                    compress();
+                  } else {
+                    resolve(dataUrl);
+                  }
+                };
+
+                compress();
+              };
+              img.onerror = () => reject(new Error("Failed to load image"));
+              img.src = event.target?.result as string;
+            };
+            reader.onerror = () => reject(new Error("Failed to read file"));
+            reader.readAsDataURL(f);
+          });
+        };
+
+        const compressedDataUrl = await compressImage(file, 400);
+        setProfileForm((prev) => ({ ...prev, profileImage: compressedDataUrl }));
+
+        toast.dismiss("compress");
+      } catch (error) {
+        console.error("Image compression error:", error);
+        toast.error("Failed to process image. Please try another file.", { id: "compress" });
+      }
+    },
+    []
+  );
+
   const [saving, setSaving] = useState(false);
   
   // Order history page states
@@ -2112,51 +2210,57 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   }, [orderApiUserId, viewMode]);
 
-  // Fetch user orders for order history page
+  // Fetch user orders for order history page (session cache + background revalidate)
   useEffect(() => {
-    const fetchUserOrders = async () => {
-      if (!orderApiUserId) {
-        setOrdersLoading(false);
-        return;
-      }
-
-      setOrdersLoading(true);
-      setOrdersError(null);
-
-      try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${orderApiUserId}/orders`,
-          {
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          setUserOrders(data.orders || []);
-        } else {
-          throw new Error('Failed to fetch orders');
-        }
-      } catch (error) {
-        console.error('Error fetching user orders:', error);
-        setOrdersError(error instanceof Error ? error.message : 'Failed to load orders');
-      } finally {
-        setOrdersLoading(false);
-      }
-    };
-
     const onOrdersUrl =
       location.pathname === "/profile/orders" ||
       location.pathname.startsWith("/profile/orders/");
-    if (
+    const needsOrders =
       viewMode === "order-history" ||
       viewMode === "order-detail" ||
-      onOrdersUrl
-    ) {
-      fetchUserOrders();
+      onOrdersUrl;
+
+    if (!needsOrders) return;
+
+    if (!orderApiUserId) {
+      setOrdersLoading(false);
+      return;
     }
+
+    const key = CACHE_KEYS.customerOrders(orderApiUserId);
+    const cached = moduleCache.peek<any[]>(key);
+    if (cached && Array.isArray(cached)) {
+      setUserOrders(cached);
+      setOrdersLoading(false);
+    } else {
+      setOrdersLoading(true);
+    }
+
+    let cancelled = false;
+    setOrdersError(null);
+
+    void moduleCache
+      .get(key, () => fetchCustomerOrdersList(orderApiUserId), true)
+      .then((orders) => {
+        if (cancelled) return;
+        setUserOrders(orders);
+        setOrdersError(null);
+      })
+      .catch((error) => {
+        console.error("Error fetching user orders:", error);
+        if (cancelled) return;
+        setOrdersError(error instanceof Error ? error.message : "Failed to load orders");
+        if (!cached || !Array.isArray(cached)) {
+          setUserOrders([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setOrdersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [orderApiUserId, viewMode, location.pathname]);
 
   // Redirect to auth page if user tries to access protected pages without login
@@ -3235,6 +3339,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         totalFormatted: formatPriceMMK(`$${(orderTotal - (appliedCoupon?.discountAmount || 0)).toFixed(2)}`) // Convert to MMK format
       });
       
+      if (user?.id) {
+        invalidateCustomerOrdersCache(user.id);
+      }
       setViewMode("order-confirmation");
       
       // 🔥 Clear cart only if it was a cart order (not Buy Now)
@@ -3657,7 +3764,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           setViewMode("edit-profile");
                         }}
                       >
-                        <Settings className="w-4 h-4 mr-3" />
+                        <Pencil className="w-4 h-4 mr-3" />
                         Edit Profile
                       </Button>
                       <Button 
@@ -4603,18 +4710,25 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     <UserCircle className="w-16 h-16 text-white" />
                   </div>
                 )}
-                <div className="flex-1 text-center md:text-left">
-                  <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
-                    {user?.name || "Guest User"}
-                  </h1>
-                  <p className="text-slate-600 mb-4">{user?.email || "No email provided"}</p>
-                  <Button 
-                    onClick={() => setViewMode("edit-profile")}
-                    className="bg-amber-600 hover:bg-amber-700"
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    Edit Profile
-                  </Button>
+                <div className="flex-1 w-full min-w-0">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 text-center md:text-left">
+                    <div className="min-w-0">
+                      <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
+                        {user?.name || "Guest User"}
+                      </h1>
+                      <p className="text-slate-600">{user?.email || "No email provided"}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="mx-auto md:mx-0 shrink-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      onClick={() => setViewMode("edit-profile")}
+                      aria-label="Edit profile"
+                    >
+                      <Pencil className="w-5 h-5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -4750,140 +4864,69 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Profile Picture */}
-              <div className="flex items-center gap-6">
-                {profileForm.profileImage ? (
-                  <img 
-                    src={profileForm.profileImage} 
-                    alt="Profile preview" 
-                    className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
+              <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+                <div className="relative mx-auto sm:mx-0 w-[100px] h-[100px] shrink-0">
+                  {profileForm.profileImage ? (
+                    <img
+                      src={profileForm.profileImage}
+                      alt="Profile preview"
+                      className="w-full h-full rounded-lg object-cover ring-2 ring-slate-100"
+                    />
+                  ) : userProfileImageUrl && !profileImageLoadFailed ? (
+                    <img
+                      src={userProfileImageUrl}
+                      alt={user.name || "Profile"}
+                      className="w-full h-full rounded-lg object-cover ring-2 ring-slate-100"
+                      onError={() => setProfileImageLoadFailed(true)}
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center ring-2 ring-slate-100">
+                      <UserCircle className="w-14 h-14 text-white" />
+                    </div>
+                  )}
+                  <input
+                    ref={storefrontEditProfilePhotoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg,image/gif"
+                    className="hidden"
+                    onChange={handleStorefrontEditProfilePhotoChange}
                   />
-                ) : userProfileImageUrl && !profileImageLoadFailed ? (
-                  <img 
-                    src={userProfileImageUrl} 
-                    alt={user.name || "Profile"} 
-                    className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
-                    onError={() => setProfileImageLoadFailed(true)}
-                  />
-                ) : (
-                  <div className="w-[100px] h-[100px] rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0">
-                    <UserCircle className="w-14 h-14 text-white" />
-                  </div>
-                )}
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-900 mb-1">Profile Picture</p>
-                  <p className="text-xs text-slate-500 mb-2">Upload a photo (JPG/PNG/WEBP, auto-compressed)</p>
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/jpeg,image/png,image/webp,image/jpg,image/gif';
-                        input.onchange = async (e: any) => {
-                          const file = e.target?.files?.[0];
-                          if (!file) return;
-
-                          // Show compression progress
-                          toast.loading("Compressing image...", { id: "compress" });
-
-                          try {
-                            // Function to compress image to under 400KB (to fit within 512KB storage limit)
-                            const compressImage = (file: File, maxSizeKB: number = 400): Promise<string> => {
-                              return new Promise((resolve, reject) => {
-                                const reader = new FileReader();
-                                reader.onload = (event) => {
-                                  const img = new Image();
-                                  img.onload = () => {
-                                    const canvas = document.createElement('canvas');
-                                    const ctx = canvas.getContext('2d');
-                                    if (!ctx) {
-                                      reject(new Error('Canvas not supported'));
-                                      return;
-                                    }
-
-                                    // Start with original dimensions
-                                    let width = img.width;
-                                    let height = img.height;
-
-                                    // If image is very large, scale it down first
-                                    const maxDimension = 2048;
-                                    if (width > maxDimension || height > maxDimension) {
-                                      if (width > height) {
-                                        height = (height * maxDimension) / width;
-                                        width = maxDimension;
-                                      } else {
-                                        width = (width * maxDimension) / height;
-                                        height = maxDimension;
-                                      }
-                                    }
-
-                                    canvas.width = width;
-                                    canvas.height = height;
-                                    ctx.drawImage(img, 0, 0, width, height);
-
-                                    // Compress with decreasing quality until under maxSizeKB
-                                    let quality = 0.9;
-                                    let dataUrl = '';
-                                    let iterations = 0;
-                                    const maxIterations = 10;
-
-                                    const compress = () => {
-                                      dataUrl = canvas.toDataURL('image/jpeg', quality);
-                                      const sizeKB = Math.round((dataUrl.length * 3) / 4 / 1024);
-                                      
-                                      console.log(`🖼️ Compression attempt ${iterations + 1}: ${sizeKB}KB at quality ${quality.toFixed(2)}`);
-
-                                      if (sizeKB > maxSizeKB && quality > 0.1 && iterations < maxIterations) {
-                                        quality -= 0.1;
-                                        iterations++;
-                                        compress();
-                                      } else {
-                                        const finalSizeKB = Math.round((dataUrl.length * 3) / 4 / 1024);
-                                        console.log(`✅ Final compressed size: ${finalSizeKB}KB`);
-                                        resolve(dataUrl);
-                                      }
-                                    };
-
-                                    compress();
-                                  };
-                                  img.onerror = () => reject(new Error('Failed to load image'));
-                                  img.src = event.target?.result as string;
-                                };
-                                reader.onerror = () => reject(new Error('Failed to read file'));
-                                reader.readAsDataURL(file);
-                              });
-                            };
-
-                            // Compress the image to 400KB (ensures it fits in 512KB storage bucket)
-                            const compressedDataUrl = await compressImage(file, 400);
-                            setProfileForm({ ...profileForm, profileImage: compressedDataUrl });
-                            
-                            // Dismiss loading toast silently
-                            toast.dismiss("compress");
-                          } catch (error) {
-                            console.error("Image compression error:", error);
-                            toast.error("Failed to process image. Please try another file.", { id: "compress" });
-                          }
-                        };
-                        input.click();
-                      }}
-                      className="bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-                    >
-                      Upload Photo
-                    </Button>
-                    {(profileForm.profileImage || userProfileImageUrl) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <Button
                         type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setProfileForm({ ...profileForm, profileImage: null })}
+                        variant="default"
+                        size="icon"
+                        className="absolute bottom-0.5 right-0.5 h-7 w-7 min-h-0 rounded-md border-2 border-white bg-slate-900 p-0 text-white shadow-md hover:bg-slate-800 hover:text-white focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 [&_svg]:!size-3.5"
+                        aria-label="Edit profile photo"
                       >
-                        Remove
+                        <Pencil className="size-3.5" strokeWidth={2.5} />
                       </Button>
-                    )}
-                  </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="w-44">
+                      <DropdownMenuItem
+                        className="cursor-pointer"
+                        onSelect={() =>
+                          requestAnimationFrame(() => storefrontEditProfilePhotoInputRef.current?.click())
+                        }
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Change photo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="cursor-pointer text-slate-700 focus:text-slate-900"
+                        disabled={!profileForm.profileImage && !userProfileImageUrl}
+                        onSelect={() => setProfileForm((prev) => ({ ...prev, profileImage: null }))}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Remove photo
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="flex-1 text-center sm:text-left min-w-0">
+                  <p className="text-sm font-medium text-slate-900">Profile Picture</p>
+                  <p className="text-xs text-slate-500 mt-1">Tap the pencil — JPG, PNG or WEBP (auto-compressed)</p>
                 </div>
               </div>
 
@@ -4929,7 +4972,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 <Button 
                   onClick={handleSaveProfile}
                   disabled={saving}
-                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                  className="flex-1 bg-[#1a1d29] hover:bg-slate-900 text-white font-semibold shadow-lg transition-colors"
                 >
                   <Check className="w-4 h-4 mr-2" />
                   {saving ? "Saving..." : "Save Changes"}

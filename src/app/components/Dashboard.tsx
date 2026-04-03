@@ -1,18 +1,19 @@
 // Dashboard Component - Main dashboard view
-import { DollarSign, ShoppingCart, Users, Package, TrendingUp, ArrowUpRight, ArrowDownRight, Sparkles, RefreshCw } from "lucide-react";
+import { DollarSign, ShoppingCart, Users, Package, TrendingUp, Calendar } from "lucide-react";
 import { StatCard } from "./StatCard";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { useLanguage } from "../contexts/LanguageContext";
-import { useState, useEffect } from "react";
-import { toast } from "sonner";
-import { productsApi } from "../../utils/api";
+import { useState, useEffect, useMemo } from "react";
+import type { DateRange } from "react-day-picker";
+import { format } from "date-fns";
 import {
   getCachedAdminDashboardStats,
-  invalidateAdminDashboardStatsCaches,
   moduleCache,
   adminDashboardStatsCacheKey,
+  encodeAdminDashboardDateFilter,
   type AdminDashboardFilters,
 } from "../utils/module-cache";
 // TEMPORARY: Recharts disabled for production build fix
@@ -47,27 +48,72 @@ export function Dashboard() {
   const { t } = useLanguage();
   
   const [stats, setStats] = useState(defaultStats);
-  const initialFilters: AdminDashboardFilters = {
-    revenue: "Last 30 days",
-    orders: "Last 30 days",
-    customers: "Last 30 days",
-    products: "Last 30 days",
+  const allTimeFilters: AdminDashboardFilters = {
+    revenue: "All time",
+    orders: "All time",
+    customers: "All time",
+    products: "All time",
+    globalSection: "All time",
   };
   const [loading, setLoading] = useState(
-    () => !moduleCache.peek(adminDashboardStatsCacheKey(initialFilters))
+    () => !moduleCache.peek(adminDashboardStatsCacheKey(allTimeFilters))
   );
-  const [statsRefreshing, setStatsRefreshing] = useState(false);
-  const [seeding, setSeeding] = useState(false);
-  const [filters, setFilters] = useState({
-    revenue: "Last 30 days",
-    orders: "Last 30 days",
-    customers: "Last 30 days",
-    products: "Last 30 days",
-  });
-  
+  const [revenueRange, setRevenueRange] = useState<DateRange | undefined>(undefined);
+  const [ordersRange, setOrdersRange] = useState<DateRange | undefined>(undefined);
+  const [customersRange, setCustomersRange] = useState<DateRange | undefined>(undefined);
+  const [productsRange, setProductsRange] = useState<DateRange | undefined>(undefined);
+
+  const [revenueApiFilter, setRevenueApiFilter] = useState("All time");
+  const [ordersApiFilter, setOrdersApiFilter] = useState("All time");
+  const [customersApiFilter, setCustomersApiFilter] = useState("All time");
+  const [productsApiFilter, setProductsApiFilter] = useState("All time");
+
+  const [globalSectionRange, setGlobalSectionRange] = useState<DateRange | undefined>(undefined);
+  const [globalApiFilter, setGlobalApiFilter] = useState("All time");
+  const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!globalSectionRange?.from) setGlobalApiFilter("All time");
+    else if (globalSectionRange.to) setGlobalApiFilter(encodeAdminDashboardDateFilter(globalSectionRange));
+  }, [globalSectionRange]);
+
+  useEffect(() => {
+    if (!revenueRange?.from) setRevenueApiFilter("All time");
+    else if (revenueRange.to) setRevenueApiFilter(encodeAdminDashboardDateFilter(revenueRange));
+  }, [revenueRange]);
+  useEffect(() => {
+    if (!ordersRange?.from) setOrdersApiFilter("All time");
+    else if (ordersRange.to) setOrdersApiFilter(encodeAdminDashboardDateFilter(ordersRange));
+  }, [ordersRange]);
+  useEffect(() => {
+    if (!customersRange?.from) setCustomersApiFilter("All time");
+    else if (customersRange.to) setCustomersApiFilter(encodeAdminDashboardDateFilter(customersRange));
+  }, [customersRange]);
+  useEffect(() => {
+    if (!productsRange?.from) setProductsApiFilter("All time");
+    else if (productsRange.to) setProductsApiFilter(encodeAdminDashboardDateFilter(productsRange));
+  }, [productsRange]);
+
+  const filterPayload = useMemo(
+    (): AdminDashboardFilters => ({
+      revenue: revenueApiFilter,
+      orders: ordersApiFilter,
+      customers: customersApiFilter,
+      products: productsApiFilter,
+      globalSection: globalApiFilter,
+    }),
+    [revenueApiFilter, ordersApiFilter, customersApiFilter, productsApiFilter, globalApiFilter]
+  );
+
   useEffect(() => {
     fetchDashboardStats();
-  }, [filters.revenue, filters.orders, filters.customers, filters.products]);
+  }, [
+    filterPayload.revenue,
+    filterPayload.orders,
+    filterPayload.customers,
+    filterPayload.products,
+    filterPayload.globalSection,
+  ]);
   
   const applyDashboardPayload = (data: Record<string, unknown>) => {
     if (data.cached) {
@@ -98,13 +144,7 @@ export function Dashboard() {
       setLoading(true);
     }, 300);
 
-    const filterKey: AdminDashboardFilters = {
-      revenue: filters.revenue,
-      orders: filters.orders,
-      customers: filters.customers,
-      products: filters.products,
-    };
-    const cacheKey = adminDashboardStatsCacheKey(filterKey);
+    const cacheKey = adminDashboardStatsCacheKey(filterPayload);
 
     if (!forceRefresh) {
       const peeked = moduleCache.peek<Record<string, unknown>>(cacheKey);
@@ -112,14 +152,12 @@ export function Dashboard() {
         applyDashboardPayload(peeked);
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
         setLoading(false);
-        setStatsRefreshing(false);
         return;
       }
     }
 
-    setStatsRefreshing(forceRefresh);
     try {
-      const data = await getCachedAdminDashboardStats(filterKey, forceRefresh);
+      const data = await getCachedAdminDashboardStats(filterPayload, forceRefresh);
       applyDashboardPayload(data);
     } catch (error) {
       console.error("Error fetching dashboard stats:", error);
@@ -128,7 +166,6 @@ export function Dashboard() {
         clearTimeout(showLoadingTimer);
       }
       setLoading(false);
-      setStatsRefreshing(false);
     }
   };
   
@@ -152,50 +189,6 @@ export function Dashboard() {
     return `${sign}${change.toFixed(1)}% ${t('dashboard.fromLastMonth')}`;
   };
   
-  // Seed sample products function
-  const handleSeedProducts = async () => {
-    try {
-      setSeeding(true);
-      const data = await productsApi.seedSampleProducts();
-      toast.success(
-        <div>
-          <p className="font-semibold">✅ Successfully created {data.count} sample products and {data.coupons?.length || 0} coupons!</p>
-          <p className="mt-2 text-sm font-medium">Products:</p>
-          <ul className="mt-1 text-sm space-y-1">
-            {data.products.map((p: any) => (
-              <li key={p.sku}>• {p.sku} - {p.name}</li>
-            ))}
-          </ul>
-          {data.coupons && data.coupons.length > 0 && (
-            <>
-              <p className="mt-3 text-sm font-medium">Coupons (try them in the Storefront!):</p>
-              <ul className="mt-1 text-sm space-y-1">
-                {data.coupons.map((c: any) => (
-                  <li key={c.code} className="flex items-center gap-2">
-                    <span className="font-mono bg-green-100 text-green-700 px-2 py-0.5 rounded text-xs">{c.code}</span>
-                    <span className="text-xs">- {c.discount} off {c.minAmount !== 'No minimum' ? `(min ${c.minAmount})` : ''}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          <p className="mt-2 text-xs text-slate-600">View products in Product page/Storefront. Try coupons at checkout!</p>
-        </div>,
-        { duration: 10000 }
-      );
-      
-      invalidateAdminDashboardStatsCaches();
-      setTimeout(() => {
-        fetchDashboardStats(true);
-      }, 1000);
-    } catch (error) {
-      console.error("Error seeding products:", error);
-      toast.error("❌ Failed to seed products. Please try again.");
-    } finally {
-      setSeeding(false);
-    }
-  };
-  
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
       {/* Header */}
@@ -204,51 +197,33 @@ export function Dashboard() {
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Analytics</h1>
           <p className="text-slate-500 mt-1">{t('dashboard.welcome').replace('{name}', 'Aung Sone')}</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-slate-300 self-start sm:self-auto"
-          disabled={statsRefreshing || loading}
-          onClick={() => fetchDashboardStats(true)}
+        <AdminDateRangeFilterPopover
+          value={globalSectionRange}
+          onChange={setGlobalSectionRange}
+          hintText={t("dashboard.globalDateFilterHint")}
+          titleText={t("dashboard.globalDateFilterTitle")}
+          open={globalPickerOpen}
+          onOpenChange={setGlobalPickerOpen}
+          align="end"
         >
-          <RefreshCw className={`w-4 h-4 mr-2 ${statsRefreshing ? "animate-spin" : ""}`} />
-          Refresh stats
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="max-w-full border-slate-300 self-start font-normal sm:self-auto"
+            disabled={loading}
+            type="button"
+          >
+            <Calendar className="mr-2 h-4 w-4 shrink-0" />
+            <span className="truncate text-left">
+              {!globalSectionRange?.from
+                ? t("finances.allTime")
+                : !globalSectionRange.to
+                  ? t("finances.selectEndDate")
+                  : `${format(globalSectionRange.from, "MMM d, yyyy")} – ${format(globalSectionRange.to, "MMM d, yyyy")}`}
+            </span>
+          </Button>
+        </AdminDateRangeFilterPopover>
       </div>
-
-      {/* Quick Actions Card - Show only if no products */}
-      {stats.totalProducts === 0 && !loading && (
-        <Card className="p-6 bg-gradient-to-r from-orange-50 to-yellow-50 border-orange-200">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center">
-              <Sparkles className="w-6 h-6 text-white" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-slate-900 mb-1">Get Started with Sample Products & Coupons</h3>
-              <p className="text-sm text-slate-600 mb-4">
-                Your store is empty! Add some sample products and coupons to see how everything works. This will create 5 demo products (electronics & fashion) and 3 test coupons (PROMO, OFF, SAVE15) that you can try at checkout!
-              </p>
-              <Button 
-                onClick={handleSeedProducts}
-                disabled={seeding}
-                className="bg-orange-600 hover:bg-orange-700 text-white"
-              >
-                {seeding ? (
-                  <>
-                    <Package className="w-4 h-4 mr-2 animate-spin" />
-                    Creating Products & Coupons...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Create Sample Products & Coupons
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 stagger-children">
@@ -259,7 +234,9 @@ export function Dashboard() {
           changeType={stats.revenueChange >= 0 ? "positive" : "negative"}
           icon={DollarSign}
           iconBgColor="bg-gradient-to-br from-green-400 to-green-600"
-          onFilterChange={(filter) => setFilters({ ...filters, revenue: filter })}
+          dateRange={revenueRange}
+          onDateRangeChange={setRevenueRange}
+          hintText={t("dashboard.analyticsKpiDateHint")}
         />
         <StatCard
           title={t('dashboard.orders')}
@@ -268,7 +245,9 @@ export function Dashboard() {
           changeType={stats.ordersChange >= 0 ? "positive" : "negative"}
           icon={ShoppingCart}
           iconBgColor="bg-gradient-to-br from-blue-400 to-blue-600"
-          onFilterChange={(filter) => setFilters({ ...filters, orders: filter })}
+          dateRange={ordersRange}
+          onDateRangeChange={setOrdersRange}
+          hintText={t("dashboard.analyticsKpiDateHint")}
         />
         <StatCard
           title={t('dashboard.customers')}
@@ -277,7 +256,9 @@ export function Dashboard() {
           changeType={stats.customersChange >= 0 ? "positive" : "negative"}
           icon={Users}
           iconBgColor="bg-gradient-to-br from-purple-400 to-purple-600"
-          onFilterChange={(filter) => setFilters({ ...filters, customers: filter })}
+          dateRange={customersRange}
+          onDateRangeChange={setCustomersRange}
+          hintText={t("dashboard.analyticsKpiDateHint")}
         />
         <StatCard
           title={t('dashboard.products')}
@@ -286,7 +267,9 @@ export function Dashboard() {
           changeType={stats.productsChange >= 0 ? "positive" : "negative"}
           icon={Package}
           iconBgColor="bg-gradient-to-br from-orange-400 to-orange-600"
-          onFilterChange={(filter) => setFilters({ ...filters, products: filter })}
+          dateRange={productsRange}
+          onDateRangeChange={setProductsRange}
+          hintText={t("dashboard.analyticsKpiDateHint")}
         />
       </div>
 
@@ -311,7 +294,7 @@ export function Dashboard() {
         <Card className="p-6">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-slate-900">{t('dashboard.topProducts')}</h3>
-            <p className="text-sm text-slate-500">{t('dashboard.topProductsDesc')}</p>
+            <p className="text-sm text-slate-500">{t("dashboard.topProductsDescGlobal")}</p>
           </div>
           {loading || stats.topProducts.length === 0 ? (
             <div className="text-center py-8 text-slate-400">

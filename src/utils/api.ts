@@ -67,9 +67,9 @@ export const productsApi = {
   },
 
   /**
-   * Create a new product
+   * Create a new product (`performedByUserId`: Supabase Auth UUID of acting staff — for audit timeline)
    */
-  create: async (data: Partial<Product>): Promise<ApiResponse<Product>> => {
+  create: async (data: Partial<Product> & { performedByUserId?: string }): Promise<ApiResponse<Product>> => {
     return apiClient.post<ApiResponse<Product>>('/products', data);
   },
 
@@ -78,16 +78,20 @@ export const productsApi = {
    */
   update: async (
     id: string,
-    data: Partial<Product>
+    data: Partial<Product> & { performedByUserId?: string }
   ): Promise<ApiResponse<Product>> => {
     return apiClient.put<ApiResponse<Product>>(`/products/${id}`, data);
   },
 
   /**
-   * Delete a product
+   * Delete a product (`performedByUserId` logged on staff timeline when provided)
    */
-  delete: async (id: string): Promise<ApiResponse> => {
-    return apiClient.delete<ApiResponse>(`/products/${id}`);
+  delete: async (id: string, performedByUserId?: string): Promise<ApiResponse> => {
+    const q =
+      performedByUserId && String(performedByUserId).trim()
+        ? `?performedByUserId=${encodeURIComponent(String(performedByUserId).trim())}`
+        : "";
+    return apiClient.delete<ApiResponse>(`/products/${id}${q}`);
   },
 
   /**

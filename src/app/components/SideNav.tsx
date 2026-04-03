@@ -1,5 +1,6 @@
 // Side Navigation Component - Main navigation menu
 import { useState, useEffect } from "react";
+import { Link } from "react-router";
 import { Home, Package, ShoppingCart, UserCheck, Megaphone, Video, MessageSquare, Users, DollarSign, Truck, FileText, Settings, ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
@@ -12,6 +13,9 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 
 // Use placeholder images for production deployment
 const spidermanAvatar = "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix";
+
+/** When set, only these nav labels are shown (must match item.label / subItem.label). */
+export type SideNavAllowedLabels = Set<string>;
 
 interface SubNavItem {
   label: string;
@@ -37,9 +41,20 @@ interface SideNavProps {
   };
   sidebarOpen?: boolean;
   setSidebarOpen?: (open: boolean) => void;
+  /** Restrict sidebar for Shopify-style staff roles; omit = show all. */
+  allowedPageLabels?: SideNavAllowedLabels;
 }
 
-export function SideNav({ currentPage, onNavigate, currentUser, onViewProfile, badgeCounts, sidebarOpen, setSidebarOpen }: SideNavProps) {
+export function SideNav({
+  currentPage,
+  onNavigate,
+  currentUser,
+  onViewProfile,
+  badgeCounts,
+  sidebarOpen,
+  setSidebarOpen,
+  allowedPageLabels,
+}: SideNavProps) {
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const { t } = useLanguage();
   const [storeLogo, setStoreLogo] = useState<string>("");
@@ -191,8 +206,7 @@ export function SideNav({ currentPage, onNavigate, currentUser, onViewProfile, b
     { icon: MessageSquare, label: "Chat", badge: badgeCounts?.chat || 0 },
     { icon: Users, label: "Customers" },
     { icon: DollarSign, label: "Finances" },
-    // TEMPORARILY HIDDEN - Logistics Navigation
-    // { icon: Truck, label: "Logistics" },
+    { icon: Truck, label: "Logistics" },
     // HIDDEN: Blog post section (can be restored later)
     // { 
     //   icon: FileText, 
@@ -204,6 +218,20 @@ export function SideNav({ currentPage, onNavigate, currentUser, onViewProfile, b
     // },
     { icon: Settings, label: "Settings" },
   ];
+
+  const filteredNavItems =
+    !allowedPageLabels || allowedPageLabels.size === 0
+      ? navItems
+      : (navItems
+          .map((item) => {
+            if (item.subItems && item.subItems.length > 0) {
+              const subs = item.subItems.filter((s) => allowedPageLabels.has(s.label));
+              if (subs.length === 0) return null;
+              return { ...item, subItems: subs };
+            }
+            return allowedPageLabels.has(item.label) ? item : null;
+          })
+          .filter(Boolean) as NavItem[]);
 
   // Auto-expand Product section if we're on a product sub-page
   useEffect(() => {
@@ -243,9 +271,10 @@ export function SideNav({ currentPage, onNavigate, currentUser, onViewProfile, b
       lg:translate-x-0
       ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
     `}>
-      {/* Logo */}
-      <button 
-        onClick={() => window.location.href = '/store'}
+      {/* Logo — admin home */}
+      <Link
+        to="/admin"
+        onClick={() => setSidebarOpen?.(false)}
         className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer w-full"
       >
         <div className="flex items-center gap-3">
@@ -276,12 +305,12 @@ export function SideNav({ currentPage, onNavigate, currentUser, onViewProfile, b
             <span className="text-xs text-slate-400 dark:text-slate-500 font-medium tracking-widest uppercase">E-Commerce</span>
           </div>
         </div>
-      </button>
+      </Link>
 
       {/* Navigation */}
       <nav className="flex-1 px-4 py-6 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-400 dark:hover:scrollbar-thumb-slate-500 scrollbar-thumb-rounded-full">
         <ul className="space-y-1.5">
-          {navItems.map((item) => {
+          {filteredNavItems.map((item) => {
             const isActive = currentPage === item.label;
             
             return (

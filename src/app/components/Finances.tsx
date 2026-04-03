@@ -171,9 +171,14 @@ export function Finances() {
   }, [transactions, revenueCardDateRange]);
 
   const vendorStatTotal = useMemo(() => {
+    const hasCardRange = Boolean(vendorCardDateRange?.from && vendorCardDateRange?.to);
+    const summaryTotal = Number(financialData?.summary?.totalVendorPayout);
+    if (!hasCardRange && Number.isFinite(summaryTotal)) {
+      return summaryTotal;
+    }
     const list = filterFinancesTransactionsByRange(transactions, vendorCardDateRange);
     return list.reduce((s: number, t: any) => s + (Number(t.vendorPayout) || 0), 0);
-  }, [transactions, vendorCardDateRange]);
+  }, [transactions, vendorCardDateRange, financialData?.summary?.totalVendorPayout]);
 
   const periodDays = chartPeriod === "7days" ? 7 : chartPeriod === "30days" ? 30 : 90;
 

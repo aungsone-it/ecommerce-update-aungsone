@@ -7,6 +7,8 @@ import {
   fetchVendorWishlistVendorPage,
   wishlistSigFromProductIds,
   invalidateVendorSavedWishlistCaches,
+  invalidateCustomerOrdersCache,
+  fetchCustomerOrdersList,
   VENDOR_CATALOG_MUTATION_EVENT,
   type VendorWishlistVendorPageResult,
 } from "../utils/module-cache";
@@ -22,7 +24,15 @@ import {
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+  useMemo,
+  type ChangeEvent,
+} from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
 import { 
   ShoppingCart, 
@@ -30,6 +40,7 @@ import {
   Search,
   Star,
   Settings,
+  Pencil,
   Eye,
   Menu,
   X,
@@ -51,10 +62,17 @@ import {
   ShoppingBag,
   Check,
   Trash2,
+  Upload,
   Phone,
   EyeOff,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
@@ -67,6 +85,7 @@ import { useFaviconLoader } from "../hooks/useFaviconLoader";
 import { useCart } from "./CartContext";
 import { CartDrawer } from "./CartDrawer";
 import { Checkout } from "./Checkout";
+import { OrderDetailView } from "./OrderDetailView";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import {
   ProductDetailSkeleton,
@@ -113,6 +132,8 @@ interface VendorStoreViewProps {
   initialProductSlug?: string;
   /** From URL `/store/:slug/profile/...` — drives account view mode */
   profileSegment?: string | null;
+  /** `/store/:slug/profile/orders/:orderId` — show this order in storefront context */
+  profileOrderId?: string | null;
   /** `/store/:slug/saved` — saved products (wishlist) for this storefront */
   savedPage?: boolean;
 }
@@ -379,6 +400,7 @@ export function VendorStoreView({
   onBack,
   initialProductSlug,
   profileSegment = null,
+  profileOrderId = null,
   savedPage = false,
 }: VendorStoreViewProps) {
   const navigate = useNavigate();
@@ -882,47 +904,56 @@ export function VendorStoreView({
     if (!uid) {
       setOrderHistory([]);
       setOrdersError(null);
+      setOrdersLoading(false);
       return;
     }
     const needsOrders =
       vendorViewMode === "order-history" ||
       vendorViewMode === "view-profile" ||
       profileSegment === "view" ||
-      profileSegment === "orders";
+      profileSegment === "orders" ||
+      Boolean(profileOrderId);
     if (!needsOrders) return;
 
-    const loadOrderHistory = async () => {
+    const key = CACHE_KEYS.customerOrders(uid);
+    const cached = moduleCache.peek<any[]>(key);
+    if (cached && Array.isArray(cached)) {
+      setOrderHistory(cached);
+      setOrdersLoading(false);
+    } else {
       setOrdersLoading(true);
-      setOrdersError(null);
-      try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${uid}/orders`,
-          {
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-        if (!response.ok) {
-          const t = await response.text();
-          throw new Error(t || "Failed to fetch orders");
-        }
-        const data = await response.json();
-        setOrderHistory(Array.isArray(data.orders) ? data.orders : []);
-      } catch (error) {
+    }
+
+    let cancelled = false;
+    setOrdersError(null);
+
+    void moduleCache
+      .get(key, () => fetchCustomerOrdersList(uid), true)
+      .then((orders) => {
+        if (cancelled) return;
+        setOrderHistory(orders);
+        setOrdersError(null);
+      })
+      .catch((error) => {
         console.error("Failed to load vendor storefront order history:", error);
-        setOrderHistory([]);
+        if (cancelled) return;
         const msg = error instanceof Error ? error.message : "Failed to load orders";
         setOrdersError(msg);
+        if (!cached || !Array.isArray(cached)) {
+          setOrderHistory([]);
+        }
         if (vendorViewMode === "order-history") {
           toast.error("Could not load order history");
         }
-      } finally {
-        setOrdersLoading(false);
-      }
+      })
+      .finally(() => {
+        if (!cancelled) setOrdersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
     };
-    void loadOrderHistory();
-  }, [vendorViewMode, profileSegment, user?.id]);
+  }, [vendorViewMode, profileSegment, profileOrderId, user?.id]);
 
   // 🔐 Authentication Handlers
   const handleLogin = async () => {
@@ -1029,6 +1060,88 @@ export function VendorStoreView({
   useEffect(() => {
     setProfileImageLoadFailed(false);
   }, [userProfileImageUrl]);
+
+  const vendorEditProfilePhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleVendorEditProfilePhotoChange = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+
+      toast.loading("Compressing image...", { id: "compress" });
+
+      try {
+        const compressImage = (f: File, maxSizeKB: number = 400): Promise<string> => {
+          return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+                if (!ctx) {
+                  reject(new Error("Canvas not supported"));
+                  return;
+                }
+
+                let width = img.width;
+                let height = img.height;
+
+                const maxDimension = 2048;
+                if (width > maxDimension || height > maxDimension) {
+                  if (width > height) {
+                    height = (height * maxDimension) / width;
+                    width = maxDimension;
+                  } else {
+                    width = (width * maxDimension) / height;
+                    height = maxDimension;
+                  }
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let quality = 0.9;
+                let dataUrl = "";
+                let iterations = 0;
+                const maxIterations = 10;
+
+                const compress = () => {
+                  dataUrl = canvas.toDataURL("image/jpeg", quality);
+                  const sizeKB = Math.round((dataUrl.length * 3) / 4 / 1024);
+
+                  if (sizeKB > maxSizeKB && quality > 0.1 && iterations < maxIterations) {
+                    quality -= 0.1;
+                    iterations++;
+                    compress();
+                  } else {
+                    resolve(dataUrl);
+                  }
+                };
+
+                compress();
+              };
+              img.onerror = () => reject(new Error("Failed to load image"));
+              img.src = event.target?.result as string;
+            };
+            reader.onerror = () => reject(new Error("Failed to read file"));
+            reader.readAsDataURL(f);
+          });
+        };
+
+        const compressedDataUrl = await compressImage(file, 400);
+        setProfileForm((prev) => ({ ...prev, profileImage: compressedDataUrl }));
+
+        toast.dismiss("compress");
+      } catch (error) {
+        console.error("Image compression error:", error);
+        toast.error("Failed to process image. Please try another file.", { id: "compress" });
+      }
+    },
+    []
+  );
 
   const handleSaveProfile = async () => {
     const uid = resolveUserIdFromRecord(user);
@@ -1291,7 +1404,7 @@ export function VendorStoreView({
                   className="w-full justify-start hover:bg-slate-50"
                   onClick={() => handleProfileAction("edit-profile")}
                 >
-                  <Settings className="w-4 h-4 mr-2" />
+                  <Pencil className="w-4 h-4 mr-2" />
                   Edit Profile
                 </Button>
                 <Button
@@ -1437,6 +1550,41 @@ export function VendorStoreView({
       return status || "Pending";
     };
 
+    if (profileOrderId) {
+      const want = String(profileOrderId).trim();
+      const orderMatches = (o: any) => {
+        if (!o || !want) return false;
+        const id = String(o.id ?? "").trim();
+        const num = String(o.orderNumber ?? "").trim();
+        return id === want || num === want;
+      };
+      const order = orderHistory.find(orderMatches);
+      const loadingList = ordersLoading && orderHistory.length === 0;
+
+      if (loadingList) {
+        return (
+          <div className="max-w-4xl mx-auto">
+            <VendorOrdersListSkeleton rows={6} />
+          </div>
+        );
+      }
+
+      const formatOrderDetailPrice = (price: string) => {
+        const numPrice = parseFloat(String(price).replace(/[^0-9.-]+/g, ""));
+        return `${Math.round(Number.isFinite(numPrice) ? numPrice : 0)} MMK`;
+      };
+
+      return (
+        <div className="max-w-4xl mx-auto w-full">
+          <OrderDetailView
+            order={order}
+            onBack={() => goToProfileMode("order-history")}
+            formatPriceMMK={formatOrderDetailPrice}
+          />
+        </div>
+      );
+    }
+
     if (vendorViewMode === "view-profile") {
       return (
         <div className="max-w-4xl mx-auto">
@@ -1464,15 +1612,25 @@ export function VendorStoreView({
                     <UserCircle className="w-16 h-16 text-white" />
                   </div>
                 )}
-                <div className="flex-1 text-center md:text-left">
-                  <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
-                    {user?.name || "Guest User"}
-                  </h1>
-                  <p className="text-slate-600 mb-4">{user?.email || "No email provided"}</p>
-                  <Button onClick={() => goToProfileMode("edit-profile")} className="bg-amber-600 hover:bg-amber-700">
-                    <Settings className="w-4 h-4 mr-2" />
-                    Edit Profile
-                  </Button>
+                <div className="flex-1 w-full min-w-0">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 text-center md:text-left">
+                    <div className="min-w-0">
+                      <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
+                        {user?.name || "Guest User"}
+                      </h1>
+                      <p className="text-slate-600">{user?.email || "No email provided"}</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="mx-auto md:mx-0 shrink-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      onClick={() => goToProfileMode("edit-profile")}
+                      aria-label="Edit profile"
+                    >
+                      <Pencil className="w-5 h-5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -1576,129 +1734,68 @@ export function VendorStoreView({
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6 min-w-0">
-                {profileForm.profileImage ? (
-                  <CacheFriendlyImg
-                    src={profileForm.profileImage}
-                    alt="Profile preview"
-                    className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
+                <div className="relative mx-auto sm:mx-0 w-[100px] h-[100px] shrink-0">
+                  {profileForm.profileImage ? (
+                    <CacheFriendlyImg
+                      src={profileForm.profileImage}
+                      alt="Profile preview"
+                      className="w-full h-full rounded-lg object-cover ring-2 ring-slate-100"
+                    />
+                  ) : userProfileImageUrl && !profileImageLoadFailed ? (
+                    <CacheFriendlyImg
+                      src={userProfileImageUrl}
+                      alt={user.name || "Profile"}
+                      className="w-full h-full rounded-lg object-cover ring-2 ring-slate-100"
+                      onError={() => setProfileImageLoadFailed(true)}
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center ring-2 ring-slate-100">
+                      <UserCircle className="w-14 h-14 text-white" />
+                    </div>
+                  )}
+                  <input
+                    ref={vendorEditProfilePhotoInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg,image/gif"
+                    className="hidden"
+                    onChange={handleVendorEditProfilePhotoChange}
                   />
-                ) : userProfileImageUrl && !profileImageLoadFailed ? (
-                  <CacheFriendlyImg
-                    src={userProfileImageUrl}
-                    alt={user.name || "Profile"}
-                    className="w-[100px] h-[100px] rounded-lg object-cover flex-shrink-0"
-                    onError={() => setProfileImageLoadFailed(true)}
-                  />
-                ) : (
-                  <div className="w-[100px] h-[100px] rounded-lg bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center flex-shrink-0">
-                    <UserCircle className="w-14 h-14 text-white" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0 w-full sm:w-auto">
-                  <p className="text-sm font-medium text-slate-900 mb-3">Profile Picture</p>
-                  <div className="flex flex-col gap-2 max-w-full">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full sm:w-auto shrink-0 bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100"
-                      onClick={() => {
-                        const input = document.createElement("input");
-                        input.type = "file";
-                        input.accept = "image/jpeg,image/png,image/webp,image/jpg,image/gif";
-                        input.onchange = async (e: Event) => {
-                          const target = e.target as HTMLInputElement;
-                          const file = target.files?.[0];
-                          if (!file) return;
-
-                          toast.loading("Compressing image...", { id: "compress" });
-
-                          try {
-                            const compressImage = (file: File, maxSizeKB: number = 400): Promise<string> => {
-                              return new Promise((resolve, reject) => {
-                                const reader = new FileReader();
-                                reader.onload = (event) => {
-                                  const img = new Image();
-                                  img.onload = () => {
-                                    const canvas = document.createElement("canvas");
-                                    const ctx = canvas.getContext("2d");
-                                    if (!ctx) {
-                                      reject(new Error("Canvas not supported"));
-                                      return;
-                                    }
-
-                                    let width = img.width;
-                                    let height = img.height;
-
-                                    const maxDimension = 2048;
-                                    if (width > maxDimension || height > maxDimension) {
-                                      if (width > height) {
-                                        height = (height * maxDimension) / width;
-                                        width = maxDimension;
-                                      } else {
-                                        width = (width * maxDimension) / height;
-                                        height = maxDimension;
-                                      }
-                                    }
-
-                                    canvas.width = width;
-                                    canvas.height = height;
-                                    ctx.drawImage(img, 0, 0, width, height);
-
-                                    let quality = 0.9;
-                                    let dataUrl = "";
-                                    let iterations = 0;
-                                    const maxIterations = 10;
-
-                                    const compress = () => {
-                                      dataUrl = canvas.toDataURL("image/jpeg", quality);
-                                      const sizeKB = Math.round((dataUrl.length * 3) / 4 / 1024);
-
-                                      if (sizeKB > maxSizeKB && quality > 0.1 && iterations < maxIterations) {
-                                        quality -= 0.1;
-                                        iterations++;
-                                        compress();
-                                      } else {
-                                        resolve(dataUrl);
-                                      }
-                                    };
-
-                                    compress();
-                                  };
-                                  img.onerror = () => reject(new Error("Failed to load image"));
-                                  img.src = event.target?.result as string;
-                                };
-                                reader.onerror = () => reject(new Error("Failed to read file"));
-                                reader.readAsDataURL(file);
-                              });
-                            };
-
-                            const compressedDataUrl = await compressImage(file, 400);
-                            setProfileForm((prev) => ({ ...prev, profileImage: compressedDataUrl }));
-
-                            toast.dismiss("compress");
-                          } catch (error) {
-                            console.error("Image compression error:", error);
-                            toast.error("Failed to process image. Please try another file.", { id: "compress" });
-                          }
-                        };
-                        input.click();
-                      }}
-                    >
-                      Upload Photo
-                    </Button>
-                    {(profileForm.profileImage || userProfileImageUrl) && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <Button
                         type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-full sm:w-auto shrink-0"
-                        onClick={() => setProfileForm((prev) => ({ ...prev, profileImage: null }))}
+                        variant="default"
+                        size="icon"
+                        className="absolute bottom-0.5 right-0.5 h-7 w-7 min-h-0 rounded-md border-2 border-white bg-slate-900 p-0 text-white shadow-md hover:bg-slate-800 hover:text-white focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 [&_svg]:!size-3.5"
+                        aria-label="Edit profile photo"
                       >
-                        Remove
+                        <Pencil className="size-3.5" strokeWidth={2.5} />
                       </Button>
-                    )}
-                  </div>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="w-44">
+                      <DropdownMenuItem
+                        className="cursor-pointer"
+                        onSelect={() =>
+                          requestAnimationFrame(() => vendorEditProfilePhotoInputRef.current?.click())
+                        }
+                      >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Change photo
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="cursor-pointer text-slate-700 focus:text-slate-900"
+                        disabled={!profileForm.profileImage && !userProfileImageUrl}
+                        onSelect={() => setProfileForm((prev) => ({ ...prev, profileImage: null }))}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Remove photo
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+                <div className="flex-1 min-w-0 w-full sm:w-auto text-center sm:text-left">
+                  <p className="text-sm font-medium text-slate-900">Profile Picture</p>
+                  <p className="text-xs text-slate-500 mt-1">Tap the pencil — JPG, PNG or WEBP (auto-compressed)</p>
                 </div>
               </div>
 
@@ -1740,7 +1837,7 @@ export function VendorStoreView({
                 <Button
                   onClick={handleSaveProfile}
                   disabled={isProfileSaving}
-                  className="flex-1 bg-amber-600 hover:bg-amber-700"
+                  className="flex-1 bg-[#1a1d29] hover:bg-slate-900 text-white font-semibold shadow-lg transition-colors"
                 >
                   <Check className="w-4 h-4 mr-2" />
                   {isProfileSaving ? "Saving..." : "Save Changes"}
@@ -1841,7 +1938,9 @@ export function VendorStoreView({
                       <Button
                         variant="outline"
                         className="w-full sm:w-auto"
-                        onClick={() => navigate(`/profile/orders/${order.id}`)}
+                        onClick={() =>
+                          navigate(`${storeBase}/profile/orders/${encodeURIComponent(String(order.id))}`)
+                        }
                       >
                         <Eye className="w-4 h-4 mr-2" />
                         View Details
@@ -3324,6 +3423,9 @@ export function VendorStoreView({
           vendorId={vendorId}
           vendorName={storeName}
           accountUser={user}
+          onOrderPlacedSuccess={(ctx) => {
+            if (ctx?.userId) invalidateCustomerOrdersCache(ctx.userId);
+          }}
         />
       </div>
     );
@@ -3521,7 +3623,7 @@ export function VendorStoreView({
                           View Profile
                         </Button>
                         <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("edit-profile")}>
-                          <Settings className="w-4 h-4 mr-3" />
+                          <Pencil className="w-4 h-4 mr-3" />
                           Edit Profile
                         </Button>
                         <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("order-history")}>
@@ -4293,7 +4395,7 @@ export function VendorStoreView({
                         View Profile
                       </Button>
                       <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("edit-profile")}>
-                        <Settings className="w-4 h-4 mr-3" />
+                        <Pencil className="w-4 h-4 mr-3" />
                         Edit Profile
                       </Button>
                       <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("order-history")}>

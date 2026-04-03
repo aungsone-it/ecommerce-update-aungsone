@@ -7,6 +7,15 @@ import { VendorStoreView } from "../components/VendorStoreView";
 import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 
+function vendorProfileOrderIdFromPathname(pathname: string, storeName: string): string | null {
+  const m =
+    matchPath({ path: "/store/:storeName/profile/orders/:orderId", end: true }, pathname) ??
+    matchPath({ path: "/vendor/:storeName/profile/orders/:orderId", end: true }, pathname);
+  if (m?.params?.storeName !== storeName) return null;
+  const id = m.params.orderId;
+  return typeof id === "string" && id.trim() ? decodeURIComponent(id) : null;
+}
+
 function vendorProfileSegmentFromPathname(
   pathname: string,
   storeName: string
@@ -35,10 +44,16 @@ export function VendorStorefrontPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const profileOrderId = useMemo(() => {
+    if (!storeName) return null;
+    return vendorProfileOrderIdFromPathname(location.pathname, storeName);
+  }, [storeName, location.pathname]);
+
   const profileSegment = useMemo(() => {
     if (!storeName) return null;
+    if (profileOrderId) return "orders";
     return vendorProfileSegmentFromPathname(location.pathname, storeName);
-  }, [storeName, location.pathname]);
+  }, [storeName, location.pathname, profileOrderId]);
 
   const savedPage = useMemo(() => {
     if (!storeName) return false;
@@ -86,6 +101,7 @@ export function VendorStorefrontPage() {
           onBack={handleBack}
           initialProductSlug={productSlug}
           profileSegment={profileSegment}
+          profileOrderId={profileOrderId}
           savedPage={savedPage}
         />
       </CartProvider>

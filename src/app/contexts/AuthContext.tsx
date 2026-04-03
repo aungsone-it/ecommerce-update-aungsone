@@ -33,7 +33,14 @@ const getSupabaseClient = (): SupabaseClient => {
 // Export the single client instance
 export const supabase = getSupabaseClient();
 
-export type UserRole = 'super-admin' | 'vendor-admin' | 'collaborator' | 'data-entry';
+export type UserRole =
+  | 'super-admin'
+  | 'store-owner'
+  | 'administrator'
+  | 'warehouse'
+  | 'data-entry'
+  | 'vendor-admin'
+  | 'collaborator';
 
 export interface AuthUser {
   id: string;
@@ -43,6 +50,20 @@ export interface AuthUser {
   role: UserRole;
   storeId?: string; // For vendor admins and collaborators
   tempPassword?: boolean; // If they need to change password on first login
+  profileImage?: string;
+  profileImageUrl?: string;
+  bio?: string;
+  location?: string;
+  addressLine1?: string;
+  addressLine2?: string;
+  city?: string;
+  region?: string;
+  postalCode?: string;
+  country?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  authCreatedAt?: string;
+  lastSignInAt?: string;
 }
 
 interface AuthContextType {
@@ -171,7 +192,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(profile);
         
         // 🔥 AUTO-CLEANUP: Run database cleanup silently in the background (super admin only)
-        if (profile.role === 'super-admin' && !isBackgroundRefresh) {
+        if (
+          (profile.role === 'super-admin' || profile.role === 'store-owner') &&
+          !isBackgroundRefresh
+        ) {
           setTimeout(() => {
             autoCleanupCorruptedData();
           }, 2000); // Wait 2 seconds after login to let server warm up

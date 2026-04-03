@@ -5,6 +5,11 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import type { User } from "../types/user";
 import type { Order } from "../types";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  getAllowedSuperAdminPages,
+  canAccessSuperAdminPage,
+  getDefaultSuperAdminLandingPage,
+} from "../utils/superAdminRolePermissions";
 import { Dashboard } from "../components/Dashboard";
 import { ProductList } from "../components/ProductList";
 import { Categories } from "../components/Categories";
@@ -78,11 +83,16 @@ export function AdminPage() {
     return splat.split("/").filter(Boolean)[0];
   }, [params.section, params["*"]]);
   const navigate = useNavigate();
-  const { refreshUser } = useAuth();
+  const { refreshUser, user: authUser } = useAuth();
+  const allowedAdminPages = useMemo(
+    () => getAllowedSuperAdminPages(authUser?.role),
+    [authUser?.role]
+  );
   const [currentPage, setCurrentPage] = useState<AdminPage>(ADMIN_PAGES.HOME);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [viewingUserProfile, setViewingUserProfile] = useState<User | null>(null);
+  const [userProfileInitialEdit, setUserProfileInitialEdit] = useState(false);
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
   const [serverChecked, setServerChecked] = useState(false);
   const [appKey] = useState(() => Date.now());
@@ -144,7 +154,7 @@ export function AdminPage() {
     id: "current-user",
     name: "Aung Sone",
     email: "aungsone@store.com",
-    role: "product-manager",
+    role: "store-owner",
     status: "active",
     avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=AungSone",
     lastActive: "2026-02-05",
@@ -215,6 +225,43 @@ export function AdminPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedAdminSection]);
+
+  useEffect(() => {
+    if (!authUser?.id) return;
+    const ext = authUser as Record<string, unknown>;
+    const str = (k: string) => (typeof ext[k] === "string" ? (ext[k] as string) : undefined);
+    setCurrentUser((prev) => ({
+      ...prev,
+      id: authUser.id,
+      email: authUser.email,
+      name: authUser.name,
+      role: authUser.role as User["role"],
+      phone: authUser.phone ?? prev.phone,
+      profileImageUrl: str("profileImageUrl") ?? prev.profileImageUrl,
+      avatar: str("profileImageUrl") ?? str("avatar") ?? prev.avatar,
+      bio: str("bio") ?? prev.bio,
+      location: str("location") ?? prev.location,
+      addressLine1: str("addressLine1") ?? prev.addressLine1,
+      addressLine2: str("addressLine2") ?? prev.addressLine2,
+      city: str("city") ?? prev.city,
+      region: str("region") ?? prev.region,
+      postalCode: str("postalCode") ?? prev.postalCode,
+      country: str("country") ?? prev.country,
+      createdAt: str("createdAt") ?? prev.createdAt,
+      updatedAt: str("updatedAt") ?? prev.updatedAt,
+      authCreatedAt: str("authCreatedAt") ?? prev.authCreatedAt,
+      lastSignInAt: str("lastSignInAt") ?? prev.lastSignInAt,
+    }));
+  }, [authUser]);
+
+  useEffect(() => {
+    if (!authUser?.role) return;
+    if (canAccessSuperAdminPage(authUser.role, currentPage)) return;
+    const land = getDefaultSuperAdminLandingPage(authUser.role);
+    setCurrentPage(land as AdminPage);
+    const sec = pageToSection[land as AdminPage];
+    navigate(sec ? `/admin/${sec}` : "/admin", { replace: true });
+  }, [authUser?.role, currentPage, navigate]);
 
   const qParam = searchParams.get("q") ?? "";
 
@@ -439,6 +486,7 @@ export function AdminPage() {
     }
     
     setViewingUserProfile(null);
+    setUserProfileInitialEdit(false);
   };
 
   const handleOrderUpdate = () => {
@@ -454,6 +502,9 @@ export function AdminPage() {
   };
 
   const renderContent = () => {
+    if (authUser?.role && !canAccessSuperAdminPage(authUser.role, currentPage)) {
+      return <Dashboard />;
+    }
     switch (currentPage) {
       case ADMIN_PAGES.HOME:
         return <Dashboard />;
@@ -622,7 +673,12 @@ export function AdminPage() {
       {viewingUserProfile && (
         <UserProfile
           user={viewingUserProfile}
-          onBack={() => setViewingUserProfile(null)}
+          initialEditMode={userProfileInitialEdit}
+          backLabel="Back"
+          onBack={() => {
+            setViewingUserProfile(null);
+            setUserProfileInitialEdit(false);
+          }}
           onSave={handleSaveUserProfile}
         />
       )}
@@ -653,10 +709,14 @@ export function AdminPage() {
               setSidebarOpen(false);
             }}
             currentUser={currentUser}
-            onViewProfile={() => setViewingUserProfile(currentUser)}
+            onViewProfile={() => {
+              setUserProfileInitialEdit(false);
+              setViewingUserProfile(currentUser);
+            }}
             badgeCounts={badgeCounts}
             sidebarOpen={sidebarOpen}
             setSidebarOpen={setSidebarOpen}
+            allowedPageLabels={authUser?.role ? allowedAdminPages : undefined}
           />
           
           <div className="flex-1 flex flex-col overflow-hidden lg:ml-64">
@@ -667,12 +727,19 @@ export function AdminPage() {
               chatUnreadCount={badgeCounts.chat}
               pendingOrdersDigestSourceMs={pendingOrdersDigestSourceMs}
               vendorApplicationsDigestSourceMs={vendorApplicationsDigestSourceMs}
+              showAdminGlobalSearch={allowedAdminPages.has("Search")}
               onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
               onOpenVendorApplication={() => {
                 navigate("/vendor/application");
               }}
-              onViewProfile={() => setViewingUserProfile(currentUser)}
-              onEditProfile={() => setViewingUserProfile(currentUser)}
+              onViewProfile={() => {
+                setUserProfileInitialEdit(false);
+                setViewingUserProfile(currentUser);
+              }}
+              onEditProfile={() => {
+                setUserProfileInitialEdit(true);
+                setViewingUserProfile(currentUser);
+              }}
               adminGlobalSearch={adminHeaderProductSearch}
               onAdminGlobalSearchChange={setAdminHeaderProductSearch}
               onAdminGlobalSearchSubmit={() => {

@@ -37,6 +37,8 @@ interface TopNavProps {
   pendingOrdersDigestSourceMs?: number | null;
   /** Epoch ms from latest pending application submitted/created in cached applications. */
   vendorApplicationsDigestSourceMs?: number | null;
+  /** Staff roles without global search (e.g. warehouse / data entry). */
+  showAdminGlobalSearch?: boolean;
 }
 
 interface Notification {
@@ -123,6 +125,7 @@ export function TopNav({
   onAdminGlobalSearchSubmit,
   pendingOrdersDigestSourceMs = null,
   vendorApplicationsDigestSourceMs = null,
+  showAdminGlobalSearch = true,
 }: TopNavProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -293,24 +296,28 @@ export function TopNav({
           <Menu className="w-5 h-5" />
         </Button>
 
-        {/* Search - Centered */}
+        {/* Search - Centered (hidden for restricted staff roles) */}
         <div className="flex-1 flex justify-center max-w-2xl mx-auto">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="Search… (on Products, press Enter to load matches)"
-              className="pl-10 bg-slate-50 border-slate-200 focus:bg-white w-full"
-              value={adminGlobalSearch ?? ""}
-              onChange={(e) => onAdminGlobalSearchChange?.(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  onAdminGlobalSearchSubmit?.();
-                }
-              }}
-              aria-label="Search admin portal"
-            />
-          </div>
+          {showAdminGlobalSearch ? (
+            <div className="relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder="Search… (on Products, press Enter to load matches)"
+                className="pl-10 bg-slate-50 border-slate-200 focus:bg-white w-full"
+                value={adminGlobalSearch ?? ""}
+                onChange={(e) => onAdminGlobalSearchChange?.(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    onAdminGlobalSearchSubmit?.();
+                  }
+                }}
+                aria-label="Search admin portal"
+              />
+            </div>
+          ) : (
+            <div className="w-full" aria-hidden />
+          )}
         </div>
 
         {/* Right Actions - Notification & Profile */}

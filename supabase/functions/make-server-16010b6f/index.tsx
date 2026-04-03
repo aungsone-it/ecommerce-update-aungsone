@@ -8,6 +8,12 @@ import customerApp from "./customer_routes.tsx";
 import userApp from "./user_routes.tsx";
 import { createPaymentIntent, verifyPayment } from "./stripe_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
+import {
+  collectProductImageRefs,
+  deleteOwnedStorageRefs,
+  refsRemovedSinceUpdate,
+} from "./storage_delete_helpers.tsx";
+import { appendStaffActivity } from "./staff_activity_helpers.tsx";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
 const originalConsoleError = console.error;
@@ -168,8 +174,9 @@ function getDashboardCacheKey(filters: {
   ordersFilter: string;
   customersFilter: string;
   productsFilter: string;
+  globalFilter: string;
 }): string {
-  return `${filters.revenueFilter}|${filters.ordersFilter}|${filters.customersFilter}|${filters.productsFilter}`;
+  return `${filters.revenueFilter}|${filters.ordersFilter}|${filters.customersFilter}|${filters.productsFilter}|${filters.globalFilter}`;
 }
 
 // Helper function to check if cache is valid
@@ -377,9 +384,20 @@ app.post("/make-server-16010b6f/settings/general", async (c) => {
     if (!body.storeName || !body.storeEmail || !body.currency) {
       return c.json({ error: "Missing required fields" }, 400);
     }
+
+    const prevGeneral = await kv.get("site_settings_general");
     
     // Save settings to KV store
     await kv.set("site_settings_general", body);
+
+    const oldLogo =
+      prevGeneral && typeof (prevGeneral as { storeLogo?: string }).storeLogo === "string"
+        ? (prevGeneral as { storeLogo: string }).storeLogo.trim()
+        : "";
+    const newLogo = typeof body.storeLogo === "string" ? body.storeLogo.trim() : "";
+    if (oldLogo && oldLogo !== newLogo) {
+      await deleteOwnedStorageRefs(supabase, [oldLogo]);
+    }
     
     console.log("✅ General settings saved:", body);
     return c.json({ success: true, settings: body });
@@ -527,6 +545,15 @@ app.post("/make-server-16010b6f/settings/upload-logo", async (c) => {
     }
     
     console.log(`✅ Logo uploaded successfully: ${fileName}`);
+
+    const prevGeneral = await kv.get("site_settings_general");
+    const prevLogo =
+      prevGeneral && typeof (prevGeneral as { storeLogo?: string }).storeLogo === "string"
+        ? (prevGeneral as { storeLogo: string }).storeLogo.trim()
+        : "";
+    if (prevLogo) {
+      await deleteOwnedStorageRefs(supabase, [prevLogo]);
+    }
     
     return c.json({
       success: true,
@@ -621,6 +648,21 @@ app.post("/make-server-16010b6f/settings/upload-banner", async (c) => {
     }
     
     console.log(`✅ Banner uploaded successfully: ${fileName}`);
+
+    const prevBanners = await kv.get("settings:banners");
+    if (Array.isArray(prevBanners) && bannerId) {
+      const bid = String(bannerId);
+      const prevBanner = prevBanners.find(
+        (b: { id?: string | number }) => b != null && String(b.id) === bid
+      ) as { backgroundImage?: string } | undefined;
+      const prevBg =
+        prevBanner && typeof prevBanner.backgroundImage === "string"
+          ? prevBanner.backgroundImage.trim()
+          : "";
+      if (prevBg) {
+        await deleteOwnedStorageRefs(supabase, [prevBg]);
+      }
+    }
     
     return c.json({
       success: true,
@@ -645,9 +687,34 @@ app.post("/make-server-16010b6f/settings/banners", async (c) => {
     if (!body.banners || !Array.isArray(body.banners)) {
       return c.json({ error: "Invalid banners data" }, 400);
     }
+
+    const prevBanners = await kv.get("settings:banners");
     
     // Save banners to KV store
     await kv.set("settings:banners", body.banners);
+
+    const toRemove: unknown[] = [];
+    if (Array.isArray(prevBanners)) {
+      const nextArr = body.banners as { id?: string | number; backgroundImage?: string }[];
+      const nextById = new Map(nextArr.map((b) => [String(b?.id), b]));
+      for (const ob of prevBanners) {
+        if (!ob || typeof ob !== "object") continue;
+        const oid = String((ob as { id?: string | number }).id);
+        const nb = nextById.get(oid);
+        const oimg =
+          typeof (ob as { backgroundImage?: string }).backgroundImage === "string"
+            ? (ob as { backgroundImage: string }).backgroundImage.trim()
+            : "";
+        if (!nb) {
+          if (oimg) toRemove.push(oimg);
+        } else {
+          const nimg =
+            typeof nb.backgroundImage === "string" ? nb.backgroundImage.trim() : "";
+          if (oimg && oimg !== nimg) toRemove.push(oimg);
+        }
+      }
+    }
+    await deleteOwnedStorageRefs(supabase, toRemove);
     
     console.log("✅ Banners saved:", body.banners.length, "banners");
     return c.json({ success: true, banners: body.banners });
@@ -1221,57 +1288,6 @@ app.get("/make-server-16010b6f/auth/users", async (c) => {
   }
 });
 
-// Update user (admin only)
-app.put("/make-server-16010b6f/auth/user/:userId", async (c) => {
-  try {
-    const userId = c.req.param("userId");
-    const body = await c.req.json();
-    const { name, phone, role, avatar, status } = body;
-    
-    console.log(`🔄 Updating user: ${userId}`);
-    
-    // Get userId -> email mapping
-    const userIdMapping = await withTimeout(kv.get(`userId:${userId}`), 5000);
-    if (!userIdMapping || !userIdMapping.email) {
-      return c.json({ error: "User not found" }, 404);
-    }
-    
-    const email = userIdMapping.email;
-    
-    // Get existing user data
-    const existingUser = await withTimeout(kv.get(`user:${email}`), 5000);
-    if (!existingUser) {
-      return c.json({ error: "User not found" }, 404);
-    }
-    
-    // Update user data
-    const updatedUser = {
-      ...existingUser,
-      name: name !== undefined ? name : existingUser.name,
-      phone: phone !== undefined ? phone : existingUser.phone,
-      role: role !== undefined ? role : existingUser.role,
-      avatar: avatar !== undefined ? avatar : existingUser.avatar,
-      status: status !== undefined ? status : existingUser.status,
-      updatedAt: new Date().toISOString(),
-    };
-    
-    await withTimeout(kv.set(`user:${email}`, updatedUser), 5000);
-    
-    console.log(`✅ User updated: ${email}`);
-    
-    // Return user without password
-    const { password: _, ...userWithoutPassword } = updatedUser;
-    return c.json({ 
-      success: true,
-      user: userWithoutPassword,
-      message: "User updated successfully"
-    });
-  } catch (error) {
-    console.error("❌ Error updating user:", error);
-    return c.json({ error: "Failed to update user", details: String(error) }, 500);
-  }
-});
-
 // 🔥 Validate email and phone availability (real-time check)
 app.post("/make-server-16010b6f/auth/validate", async (c) => {
   try {
@@ -1733,11 +1749,18 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
       const authKvProfile = await withTimeout(kv.get(`auth:user:${userId}`), 5000);
       if (authKvProfile && typeof authKvProfile === "object") {
         let profileImagePath = (authKvProfile as { profileImage?: string }).profileImage;
+        const prevAuthImg =
+          typeof (authKvProfile as { profileImage?: string }).profileImage === "string"
+            ? String((authKvProfile as { profileImage: string }).profileImage).trim()
+            : "";
         if (body.profileImage) {
           const uploadedPath = await uploadProfileImage(userId, body.profileImage);
           if (uploadedPath) {
             profileImagePath = uploadedPath;
             console.log(`📸 Profile image uploaded (auth:user KV): ${profileImagePath}`);
+            if (prevAuthImg && prevAuthImg !== uploadedPath) {
+              await deleteOwnedStorageRefs(supabase, [prevAuthImg]);
+            }
           }
         }
         const updatedProfile = {
@@ -1782,12 +1805,17 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
       if (customer) {
         let profileImagePath: string | undefined =
           typeof customer.profileImage === "string" ? customer.profileImage : undefined;
+        const prevCustImg =
+          typeof customer.profileImage === "string" ? customer.profileImage.trim() : "";
 
         if (body.profileImage) {
           const uploadedPath = await uploadProfileImage(userId, body.profileImage);
           if (uploadedPath) {
             profileImagePath = uploadedPath;
             console.log(`📸 Profile image uploaded (customer): ${profileImagePath}`);
+            if (prevCustImg && prevCustImg !== uploadedPath) {
+              await deleteOwnedStorageRefs(supabase, [prevCustImg]);
+            }
           }
         }
 
@@ -1845,11 +1873,16 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
     
     // Handle profile image upload if provided
     let profileImagePath = existingUser.profileImage;
+    const prevLegacyImg =
+      typeof existingUser.profileImage === "string" ? String(existingUser.profileImage).trim() : "";
     if (body.profileImage) {
       const uploadedPath = await uploadProfileImage(userId, body.profileImage);
       if (uploadedPath) {
         profileImagePath = uploadedPath;
         console.log(`📸 Profile image uploaded: ${profileImagePath}`);
+        if (prevLegacyImg && prevLegacyImg !== uploadedPath) {
+          await deleteOwnedStorageRefs(supabase, [prevLegacyImg]);
+        }
       }
       // Remove the data URL from body before saving
       delete body.profileImage;
@@ -1918,6 +1951,24 @@ app.delete("/make-server-16010b6f/auth/user/:userId", async (c) => {
       console.log(`❌ Could not find user with userId: ${userId}`);
       return c.json({ error: "User not found" }, 404);
     }
+
+    const storageCleanup: unknown[] = [];
+    const legacyRow = await withTimeout(kv.get(`user:${userEmail}`), 5000).catch(() => null);
+    if (
+      legacyRow &&
+      typeof (legacyRow as { profileImage?: string }).profileImage === "string" &&
+      (legacyRow as { profileImage: string }).profileImage.trim()
+    ) {
+      storageCleanup.push((legacyRow as { profileImage: string }).profileImage);
+    }
+    const authKvRow = await withTimeout(kv.get(`auth:user:${userId}`), 5000).catch(() => null);
+    if (
+      authKvRow &&
+      typeof (authKvRow as { profileImage?: string }).profileImage === "string" &&
+      (authKvRow as { profileImage: string }).profileImage.trim()
+    ) {
+      storageCleanup.push((authKvRow as { profileImage: string }).profileImage);
+    }
     
     // Step 2: Delete all user-related data
     const deletionPromises: Promise<any>[] = [];
@@ -1957,6 +2008,16 @@ app.delete("/make-server-16010b6f/auth/user/:userId", async (c) => {
     
     if (customerRecords.length > 0) {
       console.log(`🗑️ Found ${customerRecords.length} customer record(s) to delete`);
+
+      for (const customer of customerRecords) {
+        if (
+          customer &&
+          typeof (customer as { profileImage?: string }).profileImage === "string" &&
+          (customer as { profileImage: string }).profileImage.trim()
+        ) {
+          storageCleanup.push((customer as { profileImage: string }).profileImage);
+        }
+      }
       
       for (const customer of customerRecords) {
         console.log(`🗑️ Deleting customer:${customer.id}`);
@@ -2005,6 +2066,8 @@ app.delete("/make-server-16010b6f/auth/user/:userId", async (c) => {
     
     // Execute all deletions
     await Promise.allSettled(deletionPromises);
+
+    await deleteOwnedStorageRefs(supabase, storageCleanup);
     
     console.log(`✅ USER DELETION COMPLETE for ${userEmail} (${userId})`);
     
@@ -2631,32 +2694,48 @@ function toSlimListRow(p: any) {
   };
 }
 
+/** Full platform product list (KV scan) — coalesce concurrent callers on the same isolate to cut duplicate scans. */
+let ensureProductsListInflight: Promise<{ products: any[]; total: number }> | null = null;
+
+/** Server TTL for mapped platform list; cleared on product POST/PUT/DELETE. Slightly long to suit many concurrent readers. */
+const PRODUCTS_LIST_SERVER_CACHE_MS = 180_000;
+
 async function ensureProductsListResponse(): Promise<{ products: any[]; total: number }> {
-  const cached = getCached("products", 120000);
+  const cached = getCached("products", PRODUCTS_LIST_SERVER_CACHE_MS);
   if (cached && Array.isArray(cached.products)) {
     return cached;
   }
 
-  let productsData;
-  try {
-    productsData = await withRetry(
-      () => withTimeout(kv.getByPrefix("product:"), 30000),
-      5,
-      1500
-    );
-  } catch (timeoutError) {
-    console.error("⚠️ Database query failed - returning empty array");
-    const emptyResponse = { products: [], total: 0 };
-    setCache("products", emptyResponse);
-    return emptyResponse;
+  if (ensureProductsListInflight) {
+    return ensureProductsListInflight;
   }
 
-  const products = Array.isArray(productsData) ? productsData.filter((p) => p != null) : [];
-  const platformProducts = products.filter((p) => !p.vendorId || p.vendorId === "migoo");
-  const productsForList = platformProducts.map((product) => mapPlatformProductToListRow(product));
-  const response = { products: productsForList, total: productsForList.length };
-  setCache("products", response);
-  return response;
+  ensureProductsListInflight = (async () => {
+    let productsData;
+    try {
+      productsData = await withRetry(
+        () => withTimeout(kv.getByPrefix("product:"), 30000),
+        5,
+        1500
+      );
+    } catch (timeoutError) {
+      console.error("⚠️ Database query failed - returning empty array");
+      const emptyResponse = { products: [], total: 0 };
+      setCache("products", emptyResponse);
+      return emptyResponse;
+    }
+
+    const products = Array.isArray(productsData) ? productsData.filter((p) => p != null) : [];
+    const platformProducts = products.filter((p) => !p.vendorId || p.vendorId === "migoo");
+    const productsForList = platformProducts.map((product) => mapPlatformProductToListRow(product));
+    const response = { products: productsForList, total: productsForList.length };
+    setCache("products", response);
+    return response;
+  })().finally(() => {
+    ensureProductsListInflight = null;
+  });
+
+  return ensureProductsListInflight;
 }
 
 /** Same storefront / KV id expansion as client `expandVendorWishlistMatchKeys` (wishlist vendor filter). */
@@ -2957,7 +3036,7 @@ app.get("/make-server-16010b6f/products", async (c) => {
       });
     }
 
-    const cached = getCached("products", 120000);
+    const cached = getCached("products", PRODUCTS_LIST_SERVER_CACHE_MS);
     if (cached) {
       console.log("⚡ Returning cached products (legacy)");
       return c.json(cached);
@@ -3120,7 +3199,10 @@ app.get("/make-server-16010b6f/products/:id", async (c) => {
 app.post("/make-server-16010b6f/products", async (c) => {
   try {
     console.log(`➕ Starting product creation...`);
-    const body = await c.req.json();
+    const rawBody = await c.req.json();
+    const performedByUserId =
+      typeof rawBody.performedByUserId === "string" ? rawBody.performedByUserId.trim() : "";
+    const { performedByUserId: _actorStrip, ...body } = rawBody;
     const id = `prod_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
     // Format price properly for storage and display
@@ -3224,6 +3306,14 @@ app.post("/make-server-16010b6f/products", async (c) => {
     try {
       await withTimeout(kv.set(`product:${id}`, productData), timeoutMs);
       console.log(`✅ Product saved successfully: ${id}`);
+
+      const pname = String(productData.name || productData.title || "Product").slice(0, 160);
+      const psku = String(productData.sku || "—");
+      await appendStaffActivity(performedByUserId, {
+        type: "product_created",
+        action: "Product created",
+        detail: `${pname} · SKU ${psku}`,
+      });
       
       // 🗑️ Invalidate dashboard cache since we created a new product
       invalidateDashboardCache();
@@ -3257,8 +3347,15 @@ app.post("/make-server-16010b6f/products", async (c) => {
 app.put("/make-server-16010b6f/products/:id", async (c) => {
   try {
     const id = c.req.param("id");
-    const body = await c.req.json();
-    const { _addToSelectedVendors, selectedVendors: bodySelectedVendors, ...restPatch } = body;
+    const rawBody = await c.req.json();
+    const performedByUserId =
+      typeof rawBody.performedByUserId === "string" ? rawBody.performedByUserId.trim() : "";
+    const {
+      performedByUserId: _actorStrip,
+      _addToSelectedVendors,
+      selectedVendors: bodySelectedVendors,
+      ...restPatch
+    } = rawBody;
     
     console.log(`🔄 Updating product: ${id}`);
     
@@ -3340,7 +3437,7 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
     });
     
     // Super-admin vendor assignment: only selectedVendors/_add (skip full-catalog SKU scan — avoids timeouts)
-    const patchKeys = Object.keys(body || {});
+    const patchKeys = Object.keys(rawBody || {}).filter((k) => k !== "performedByUserId");
     const isVendorOnlyUpdate =
       patchKeys.length > 0 &&
       patchKeys.every((k) => k === "selectedVendors" || k === "_addToSelectedVendors");
@@ -3375,6 +3472,20 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
     try {
       await withTimeout(kv.set(`product:${id}`, updatedProduct), timeoutMs);
       console.log(`✅ Product updated successfully: ${id}`);
+
+      const removedImageRefs = refsRemovedSinceUpdate(
+        collectProductImageRefs(existingProduct),
+        collectProductImageRefs(updatedProduct)
+      );
+      await deleteOwnedStorageRefs(supabase, removedImageRefs);
+
+      const uname = String(updatedProduct.name || updatedProduct.title || "Product").slice(0, 160);
+      const usku = String(updatedProduct.sku || "—");
+      await appendStaffActivity(performedByUserId, {
+        type: "product_updated",
+        action: "Product updated",
+        detail: `${uname} · SKU ${usku}`,
+      });
       
       // 🗑️ Invalidate dashboard cache since we updated a product
       invalidateDashboardCache();
@@ -3409,6 +3520,7 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
 app.delete("/make-server-16010b6f/products/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    const performedByUserId = String(c.req.query("performedByUserId") || "").trim();
     
     console.log(`🗑️ Deleting product: ${id}`);
     const existingProduct = await withTimeout(kv.get(`product:${id}`), 5000);
@@ -3418,6 +3530,16 @@ app.delete("/make-server-16010b6f/products/:id", async (c) => {
     
     await withTimeout(kv.del(`product:${id}`), 5000);
     console.log(`✅ Product deleted: ${id}`);
+
+    const dname = String(existingProduct.name || existingProduct.title || id).slice(0, 160);
+    const dsku = String(existingProduct.sku || "—");
+    await appendStaffActivity(performedByUserId || undefined, {
+      type: "product_deleted",
+      action: "Product deleted",
+      detail: `${dname} · SKU ${dsku}`,
+    });
+
+    await deleteOwnedStorageRefs(supabase, collectProductImageRefs(existingProduct));
     
     // 🗑️ Invalidate dashboard cache since we deleted a product
     invalidateDashboardCache();
@@ -6864,6 +6986,18 @@ app.post("/make-server-16010b6f/appearance-settings", async (c) => {
     const body = await c.req.json();
     
     console.log("🎨 Saving appearance settings...");
+
+    const prevAppearance = await withRetry(
+      () => withTimeout(kv.get("appearance:settings"), 10000),
+      3,
+      1000
+    ).catch(() => null);
+    const oldAppearanceImg =
+      prevAppearance &&
+      typeof (prevAppearance as { image?: string }).image === "string" &&
+      (prevAppearance as { image: string }).image.trim()
+        ? (prevAppearance as { image: string }).image.trim()
+        : "";
     
     const settings = {
       ...body,
@@ -6876,6 +7010,10 @@ app.post("/make-server-16010b6f/appearance-settings", async (c) => {
       3,
       1000
     );
+
+    if (body.image !== undefined && oldAppearanceImg && String(body.image) !== oldAppearanceImg) {
+      await deleteOwnedStorageRefs(supabase, [oldAppearanceImg]);
+    }
     
     console.log("✅ Appearance settings saved successfully");
     
@@ -7139,16 +7277,64 @@ app.get("/make-server-16010b6f/finances/analytics", async (c) => {
       }
     });
     
-    // 🔥 Create product lookup map for commission rates
-    const productMap = new Map();
-    validProducts.forEach(product => {
-      if (product?.id) {
-        productMap.set(product.id, {
-          name: product.name || product.title,
-          commissionRate: product.commissionRate !== undefined ? product.commissionRate : 0, // Product-level commission
-        });
+    const parseMoney = (v: unknown): number => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") return parseFloat(v.replace(/[^0-9.-]/g, "")) || 0;
+      return 0;
+    };
+
+    /** Positive commission % from number or string (e.g. 10, "10", "10%"). */
+    const parseCommissionPercent = (v: unknown): number => {
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+      if (v == null || v === "") return 0;
+      const n = parseFloat(String(v).replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    // 🔥 Create product lookup map for commission rates + owning vendor (line-level payout split)
+    const productMap = new Map<string, { name: string; commissionRate: unknown; vendorId: string | null }>();
+    validProducts.forEach((product: any) => {
+      if (product?.id == null || String(product.id).trim() === "") return;
+      const vid =
+        product.vendorId ??
+        (Array.isArray(product.selectedVendors) && product.selectedVendors.length
+          ? product.selectedVendors[0]
+          : null);
+      const info = {
+        name: product.name || product.title,
+        commissionRate:
+          product.commissionRate !== undefined && product.commissionRate !== null
+            ? product.commissionRate
+            : 0,
+        vendorId: vid != null && String(vid).trim() !== "" ? String(vid) : null,
+      };
+      const idKey = String(product.id).trim();
+      productMap.set(idKey, info);
+      const sku = product.sku != null ? String(product.sku).trim() : "";
+      if (sku && sku !== idKey) {
+        productMap.set(sku, info);
       }
     });
+
+    const resolveProductInfo = (item: any) => {
+      const keys: string[] = [];
+      const rawPid = item?.productId ?? item?.id;
+      if (rawPid != null) {
+        const s = String(rawPid).trim();
+        if (s) {
+          keys.push(s);
+          if (s.includes(":")) keys.push(s.split(":")[0]!.trim());
+        }
+      }
+      const sku = item?.sku != null ? String(item.sku).trim() : "";
+      if (sku) keys.push(sku);
+      for (const k of keys) {
+        if (!k) continue;
+        const hit = productMap.get(k);
+        if (hit) return hit;
+      }
+      return undefined;
+    };
 
     // Calculate financial metrics from orders
     let totalRevenue = 0;
@@ -7168,59 +7354,116 @@ app.get("/make-server-16010b6f/finances/analytics", async (c) => {
         return; // Skip cancelled orders entirely
       }
 
-      const orderTotal = typeof order.total === 'string' 
-        ? parseFloat(order.total.replace('$', '')) 
-        : (order.total || 0);
+      const orderTotal = parseMoney(order.total);
       
-      const vendorInfo = vendorMap.get(order.vendorId || order.vendor) || { 
-        name: order.vendor || "Unknown Vendor", 
+      const orderVendorFallback = order.vendorId || order.vendor || "Unknown";
+      const vendorInfoFallback = vendorMap.get(orderVendorFallback) || {
+        name: order.vendor || "Unknown Vendor",
         commission: 15,
-        email: "" 
+        email: "",
       };
-      
-      // 🔥 CALCULATE COMMISSION FROM PRODUCT RATES (not vendor rate)
-      let orderCommission = 0;
-      
+
+      let commission = 0;
+      let vendorPayout = 0;
+      /** Per-vendor earnings for this order (multi-vendor carts). */
+      const orderVendorNetByKey = new Map<
+        string,
+        { vendorName: string; email: string; net: number }
+      >();
+
+      const addVendorNet = (keyRaw: string, vendorName: string, email: string, net: number) => {
+        const key = String(keyRaw || "Unknown");
+        const cur = orderVendorNetByKey.get(key) || { vendorName, email, net: 0 };
+        cur.net += net;
+        if (vendorName) cur.vendorName = vendorName;
+        if (email) cur.email = email;
+        orderVendorNetByKey.set(key, cur);
+      };
+
       if (order.items && Array.isArray(order.items) && order.items.length > 0) {
-        // Calculate commission per product in the order
-        order.items.forEach(item => {
-          const productId = item.productId || item.id;
-          const productInfo = productMap.get(productId);
-          
-          if (productInfo && productInfo.commissionRate > 0) {
-            // Use product's commission rate
-            const itemTotal = (item.price || 0) * (item.quantity || 1);
-            const itemCommission = itemTotal * (productInfo.commissionRate / 100);
-            orderCommission += itemCommission;
-            console.log(`💰 Product "${productInfo.name}" commission: ${productInfo.commissionRate}% of ${itemTotal} = ${itemCommission}`);
-          }
-        });
+        type LinePart = {
+          vendorKey: string;
+          vendorName: string;
+          email: string;
+          sub: number;
+          comm: number;
+        };
+        const lineParts: LinePart[] = [];
+
+        for (const item of order.items) {
+          const productInfo = resolveProductInfo(item);
+          const lineSub = parseMoney(item.price) * (item.quantity || 1);
+          // Per-line %: prefer snapshot on the order line (checkout), then catalog product.
+          const rateFromLine = parseCommissionPercent(
+            item.commissionRate ?? item.commission ?? item.product?.commissionRate
+          );
+          const rateFromProduct = parseCommissionPercent(productInfo?.commissionRate);
+          const rate = rateFromLine > 0 ? rateFromLine : rateFromProduct;
+          const lineComm = lineSub * (rate / 100);
+          commission += lineComm;
+
+          const lineVendorKey =
+            (item.vendorId != null && String(item.vendorId).trim() !== "" && String(item.vendorId)) ||
+            (item.vendor != null && String(item.vendor).trim() !== "" && String(item.vendor)) ||
+            (productInfo?.vendorId != null && String(productInfo.vendorId)) ||
+            String(orderVendorFallback);
+
+          const vMeta =
+            vendorMap.get(lineVendorKey) ||
+            (lineVendorKey === String(orderVendorFallback) ? vendorInfoFallback : null) || {
+              name: String(lineVendorKey),
+              email: "",
+            };
+
+          lineParts.push({
+            vendorKey: lineVendorKey,
+            vendorName: vMeta.name || String(lineVendorKey),
+            email: vMeta.email || "",
+            sub: lineSub,
+            comm: lineComm,
+          });
+        }
+
+        const vendorPool = Math.max(0, orderTotal - commission);
+        const sumLineNet = lineParts.reduce((s, p) => s + (p.sub - p.comm), 0);
+        const delta = vendorPool - sumLineNet;
+        if (lineParts.length > 0 && Math.abs(delta) > 0.01) {
+          lineParts[0].sub += delta;
+        }
+
+        for (const p of lineParts) {
+          const net = Math.max(0, p.sub - p.comm);
+          addVendorNet(p.vendorKey, p.vendorName, p.email, net);
+        }
+
+        vendorPayout = vendorPool;
+      } else {
+        commission = 0;
+        vendorPayout = orderTotal;
+        addVendorNet(
+          String(orderVendorFallback),
+          vendorInfoFallback.name,
+          vendorInfoFallback.email,
+          vendorPayout
+        );
       }
-      
-      // If no product commission calculated (old orders or missing data), fallback to 0
-      if (orderCommission === 0) {
+
+      if (commission === 0 && order.items?.length) {
         console.log(`⚠️ No product commission for order ${order.orderNumber}, using 0%`);
       }
-      
-      const commission = orderCommission;
-      const vendorPayout = orderTotal - commission;
-      
-      // Gateway fee (1% for digital payments, 0 for cash)
-      const gatewayFee = (order.paymentMethod !== "Cash" && order.paymentMethod !== "COD") 
-        ? orderTotal * 0.01 
-        : 0;
 
-      // Add to totals
+      // Gateway fee (1% for digital payments, 0 for cash)
+      const gatewayFee =
+        order.paymentMethod !== "Cash" && order.paymentMethod !== "COD" ? orderTotal * 0.01 : 0;
+
       totalRevenue += orderTotal;
       totalCommission += commission;
       totalVendorPayout += vendorPayout;
 
-      // Track pending payouts (completed/delivered orders)
-      if (order.status === 'completed' || order.status === 'delivered') {
+      if (order.status === "completed" || order.status === "delivered") {
         pendingPayouts += vendorPayout;
       }
 
-      // Track payment methods
       const paymentMethod = order.paymentMethod || "Cash";
       const existing = paymentMethodsMap.get(paymentMethod) || { count: 0, amount: 0 };
       paymentMethodsMap.set(paymentMethod, {
@@ -7228,47 +7471,47 @@ app.get("/make-server-16010b6f/finances/analytics", async (c) => {
         amount: existing.amount + orderTotal,
       });
 
-      // Track daily revenue
       const orderDate = order.date || order.createdAt;
       if (orderDate) {
-        const dateKey = new Date(orderDate).toISOString().split('T')[0];
-        const existing = dailyRevenueMap.get(dateKey) || { revenue: 0, commission: 0 };
+        const dateKey = new Date(orderDate).toISOString().split("T")[0];
+        const existingDay = dailyRevenueMap.get(dateKey) || { revenue: 0, commission: 0 };
         dailyRevenueMap.set(dateKey, {
-          revenue: existing.revenue + orderTotal,
-          commission: existing.commission + commission,
+          revenue: existingDay.revenue + orderTotal,
+          commission: existingDay.commission + commission,
         });
       }
 
-      // Track vendor payouts
-      const vendorKey = order.vendorId || order.vendor || "Unknown";
-      const existingVendor = vendorPayoutsMap.get(vendorKey) || {
-        vendor: vendorInfo.name,
-        email: vendorInfo.email,
-        payout: 0,
-        orders: 0,
-        status: "pending"
-      };
-      vendorPayoutsMap.set(vendorKey, {
-        ...existingVendor,
-        payout: existingVendor.payout + vendorPayout,
-        orders: existingVendor.orders + 1,
-      });
+      for (const [vKey, row] of orderVendorNetByKey.entries()) {
+        const existingVendor = vendorPayoutsMap.get(vKey) || {
+          vendor: row.vendorName,
+          email: row.email,
+          payout: 0,
+          orders: 0,
+          status: "pending",
+        };
+        vendorPayoutsMap.set(vKey, {
+          ...existingVendor,
+          vendor: row.vendorName || existingVendor.vendor,
+          email: row.email || existingVendor.email,
+          payout: existingVendor.payout + row.net,
+          orders: existingVendor.orders + 1,
+        });
+      }
 
-      // Create transaction record
       transactionsList.push({
         id: order.orderNumber || order.id,
         date: order.date || order.createdAt,
         customer: order.customer || "Guest",
         customerEmail: order.email || "",
-        vendor: vendorInfo.name,
-        vendorId: order.vendorId || order.vendor,
+        vendor: vendorInfoFallback.name,
+        vendorId: orderVendorFallback,
         amount: orderTotal,
         method: paymentMethod,
-        status: order.status === 'delivered' || order.status === 'completed' ? 'completed' : order.status,
-        commission: commission,
-        vendorPayout: vendorPayout,
+        status: order.status === "delivered" || order.status === "completed" ? "completed" : order.status,
+        commission,
+        vendorPayout,
         products: order.items || [],
-        gatewayFee: gatewayFee,
+        gatewayFee,
         shippingAddress: order.shippingAddress || "",
         trackingNumber: order.trackingNumber || "",
       });
@@ -7554,20 +7797,48 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
       5000
     );
 
-    // Determine vendor source name
+    // Determine vendor source name (never persist raw technical ids as the display label)
+    const looksLikeTechnicalVendorId = (s: string) =>
+      /^vendor[_-]vendor_/i.test(s) ||
+      /^vendor-vendor_/i.test(s) ||
+      /^vendor_\d/i.test(s);
+
+    const vendorLookupKeys = (raw: string): string[] => {
+      const id = String(raw || "").trim();
+      const out = new Set<string>([id]);
+      const lower = id.toLowerCase();
+      if (lower.startsWith("vendor-")) {
+        out.add(id.slice(7));
+        const inner = id.slice(7);
+        const m = inner.match(/^(vendor_[\w]+)$/i);
+        if (m) out.add(m[1]);
+      }
+      return [...out];
+    };
+
     let vendorSource = "SECURE"; // Default to SECURE main store
     if (vendorId) {
-      // Get vendor name from vendors list
       const vendorsData = await withTimeout(kv.get("vendors"), 5000);
+      const vid = String(vendorId).trim();
       if (vendorsData && Array.isArray(vendorsData)) {
-        const vendor = vendorsData.find((v: any) => v.storeSlug === vendorId || v.id === vendorId);
+        const keys = vendorLookupKeys(vid);
+        const vendor = vendorsData.find((v: any) => {
+          if (!v) return false;
+          const vId = String(v.id || "");
+          const slug = String(v.storeSlug || "");
+          return keys.some(
+            (k) => k === vId || k === slug || k === `vendor-${vId}` || `vendor-${vId}` === vid
+          );
+        });
         if (vendor) {
-          vendorSource = vendor.businessName || vendor.storeSlug || vendorId;
+          vendorSource =
+            String(vendor.businessName || vendor.name || vendor.storeSlug || vendor.id || "").trim() ||
+            "Vendor store";
         } else {
-          vendorSource = vendorId; // Use vendorId as fallback
+          vendorSource = looksLikeTechnicalVendorId(vid) ? "Vendor store" : vid;
         }
       } else {
-        vendorSource = vendorId; // Use vendorId as fallback
+        vendorSource = looksLikeTechnicalVendorId(vid) ? "Vendor store" : vid;
       }
     }
 
@@ -9343,12 +9614,14 @@ app.get("/make-server-16010b6f/dashboard/stats", async (c) => {
     const ordersFilter = c.req.query("ordersFilter") || "Last 30 days";
     const customersFilter = c.req.query("customersFilter") || "Last 30 days";
     const productsFilter = c.req.query("productsFilter") || "Last 30 days";
+    /** Sales trend, top products, recent orders — independent of per-card KPI filters. */
+    const globalFilter = c.req.query("globalFilter") || "All time";
     const forceRefresh = c.req.query("forceRefresh") === "true"; // Allow manual cache bypass
     
-    console.log("🔍 Filters:", { revenueFilter, ordersFilter, customersFilter, productsFilter, forceRefresh });
+    console.log("🔍 Filters:", { revenueFilter, ordersFilter, customersFilter, productsFilter, globalFilter, forceRefresh });
     
     // 🚀 CHECK CACHE FIRST
-    const cacheKey = getDashboardCacheKey({ revenueFilter, ordersFilter, customersFilter, productsFilter });
+    const cacheKey = getDashboardCacheKey({ revenueFilter, ordersFilter, customersFilter, productsFilter, globalFilter });
     const cachedEntry = dashboardStatsCache.get(cacheKey);
     
     if (!forceRefresh && cachedEntry && isCacheValid(cachedEntry.timestamp)) {
@@ -9367,6 +9640,17 @@ app.get("/make-server-16010b6f/dashboard/stats", async (c) => {
     // Helper function to get date range based on filter
     const getDateRange = (filter: string) => {
       const now = new Date();
+      const custom = filter.match(/^DashboardRange:(\d{4}-\d{2}-\d{2}):(\d{4}-\d{2}-\d{2})$/);
+      if (custom) {
+        const [, ymdFrom, ymdTo] = custom;
+        const startDate = new Date(`${ymdFrom}T00:00:00`);
+        const endDate = new Date(`${ymdTo}T23:59:59.999`);
+        const periodMs = Math.max(24 * 60 * 60 * 1000, endDate.getTime() - startDate.getTime() + 1);
+        const compareEndDate = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate(), 0, 0, 0, 0);
+        const compareStartDate = new Date(compareEndDate.getTime() - periodMs);
+        return { startDate, endDate, compareStartDate, compareEndDate };
+      }
+
       let startDate: Date;
       let compareStartDate: Date;
       let compareEndDate: Date;
@@ -9508,42 +9792,79 @@ app.get("/make-server-16010b6f/dashboard/stats", async (c) => {
       ? ((currentProductsPeriod.length - compareProductsPeriod.length) / compareProductsPeriod.length * 100)
       : 0;
     
+    const globalRange = getDateRange(globalFilter);
+    
+    const sectionOrders = orders.filter(order => {
+      const orderDate = new Date(order.date || order.createdAt);
+      return orderDate >= globalRange.startDate && orderDate <= globalRange.endDate;
+    });
+    
     // ============================================
-    // SALES TREND DATA (Last 7 months)
+    // SALES TREND (global date scope)
     // ============================================
     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const now = new Date();
-    const salesTrend = [];
+    const salesTrend: { name: string; sales: number; orders: number }[] = [];
+    const MAX_TREND_MONTHS = 36;
     
-    for (let i = 6; i >= 0; i--) {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
-      const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
-      
-      const monthOrders = orders.filter(order => {
-        const orderDate = new Date(order.date || order.createdAt);
-        return orderDate >= monthStart && orderDate <= monthEnd;
-      });
-      
-      const monthRevenue = monthOrders.reduce((sum, order) => {
-        const total = typeof order.total === 'number' ? order.total : parseFloat(order.total) || 0;
-        return sum + total;
-      }, 0);
-      
-      salesTrend.push({
-        name: monthNames[monthDate.getMonth()],
-        sales: Math.round(monthRevenue),
-        orders: monthOrders.length
-      });
+    if (globalFilter === "All time") {
+      const now = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+        const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0, 23, 59, 59);
+        
+        const monthOrders = orders.filter(order => {
+          const orderDate = new Date(order.date || order.createdAt);
+          return orderDate >= monthStart && orderDate <= monthEnd;
+        });
+        
+        const monthRevenue = monthOrders.reduce((sum, order) => {
+          const total = typeof order.total === 'number' ? order.total : parseFloat(order.total) || 0;
+          return sum + total;
+        }, 0);
+        
+        salesTrend.push({
+          name: monthNames[monthDate.getMonth()],
+          sales: Math.round(monthRevenue),
+          orders: monthOrders.length
+        });
+      }
+    } else {
+      let cursor = new Date(globalRange.startDate.getFullYear(), globalRange.startDate.getMonth(), 1);
+      let n = 0;
+      while (cursor.getTime() <= globalRange.endDate.getTime() && n < MAX_TREND_MONTHS) {
+        const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+        const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0, 23, 59, 59, 999);
+        const sliceStart = monthStart.getTime() < globalRange.startDate.getTime() ? globalRange.startDate : monthStart;
+        const sliceEnd = monthEnd.getTime() > globalRange.endDate.getTime() ? globalRange.endDate : monthEnd;
+        
+        const monthOrders = orders.filter(order => {
+          const orderDate = new Date(order.date || order.createdAt);
+          return orderDate >= sliceStart && orderDate <= sliceEnd;
+        });
+        
+        const monthRevenue = monthOrders.reduce((sum, order) => {
+          const total = typeof order.total === 'number' ? order.total : parseFloat(order.total) || 0;
+          return sum + total;
+        }, 0);
+        
+        salesTrend.push({
+          name: `${monthNames[cursor.getMonth()]} ${cursor.getFullYear()}`,
+          sales: Math.round(monthRevenue),
+          orders: monthOrders.length
+        });
+        
+        cursor.setMonth(cursor.getMonth() + 1);
+        n++;
+      }
     }
     
     // ============================================
-    // TOP PRODUCTS (based on revenue filter period)
+    // TOP PRODUCTS (global date scope — not KPI card revenue filter)
     // ============================================
-    // Count sales per product from filtered orders
     const productSalesMap = new Map();
     
-    currentPeriodOrders.forEach(order => {
+    sectionOrders.forEach(order => {
       if (order.items && Array.isArray(order.items)) {
         order.items.forEach((item: any) => {
           const productId = item.productId || item.id;
@@ -9598,9 +9919,9 @@ app.get("/make-server-16010b6f/dashboard/stats", async (c) => {
       }));
     
     // ============================================
-    // RECENT ORDERS (Last 5)
+    // RECENT ORDERS (global date scope, max 5)
     // ============================================
-    const recentOrders = orders
+    const recentOrders = sectionOrders
       .sort((a, b) => {
         const dateA = new Date(a.date || a.createdAt).getTime();
         const dateB = new Date(b.date || b.createdAt).getTime();

@@ -2,6 +2,8 @@ import { Hono } from "npm:hono@4";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
+import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
+import { isValidStaffActorId } from "./staff_activity_helpers.tsx";
 
 const authApp = new Hono();
 
@@ -109,6 +111,76 @@ async function getSignedImageUrl(filePath: string): Promise<string | null> {
   }
 }
 
+/** Only these may be stored on new/updated staff (setup still creates `super-admin`). */
+const CANONICAL_STAFF_ROLES = new Set([
+  "store-owner",
+  "administrator",
+  "data-entry",
+  "warehouse",
+]);
+
+const OWNER_ROLES = new Set(["super-admin", "store-owner"]);
+const ADMIN_TIER_ROLES = new Set([
+  "administrator",
+  "platform-admin",
+  "product-manager",
+  "developer",
+]);
+
+function canAssignStaffRoleBackend(creatorRole: string, targetRole: string): boolean {
+  const t = String(targetRole || "").trim();
+  if (!CANONICAL_STAFF_ROLES.has(t)) return false;
+  const c = String(creatorRole || "").trim();
+  if (OWNER_ROLES.has(c)) return true;
+  if (ADMIN_TIER_ROLES.has(c)) return t === "warehouse" || t === "data-entry";
+  if (c === "vendor-admin") return true;
+  return false;
+}
+
+/** Same email twice in auth:users-list (legacy sync / duplicate IDs) → one row for Settings UI. */
+function profileRolePriority(role: string): number {
+  const r = String(role || "").trim();
+  if (OWNER_ROLES.has(r)) return 100;
+  if (ADMIN_TIER_ROLES.has(r)) return 50;
+  return 10;
+}
+
+function dedupeAuthProfilesByEmail(profiles: any[]): any[] {
+  const byEmail = new Map<string, any[]>();
+  const noEmail: any[] = [];
+  for (const p of profiles) {
+    if (!p || typeof p !== "object") continue;
+    const em = String(p.email || "").trim().toLowerCase();
+    if (!em) {
+      noEmail.push(p);
+      continue;
+    }
+    const g = byEmail.get(em) || [];
+    g.push(p);
+    byEmail.set(em, g);
+  }
+  const out: any[] = [...noEmail];
+  for (const [em, group] of byEmail) {
+    if (group.length === 1) {
+      out.push(group[0]);
+      continue;
+    }
+    console.warn(
+      `⚠️ Deduped ${group.length} staff profiles for email ${em} — kept one canonical row (merge auth:users-list in KV if needed)`
+    );
+    group.sort((a, b) => {
+      const pr = profileRolePriority(b.role) - profileRolePriority(a.role);
+      if (pr !== 0) return pr;
+      const ta = new Date(a.createdAt || 0).getTime();
+      const tb = new Date(b.createdAt || 0).getTime();
+      if (tb !== ta) return tb - ta;
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    });
+    out.push(group[0]);
+  }
+  return out;
+}
+
 // Generate random password
 function generatePassword(): string {
   const length = 12;
@@ -154,7 +226,7 @@ authApp.post("/setup", async (c) => {
       user_metadata: {
         name,
         phone: phone || "",
-        role: "super-admin",
+        role: "store-owner",
       },
     });
 
@@ -169,7 +241,7 @@ authApp.post("/setup", async (c) => {
       email,
       name,
       phone: phone || "",
-      role: "super-admin",
+      role: "store-owner",
       tempPassword: false,
       createdAt: new Date().toISOString(),
     });
@@ -227,6 +299,16 @@ authApp.get("/profile/:userId", async (c) => {
       if (typeof out.profileImage === "string" && out.profileImage.trim()) {
         const signedUrl = await getSignedImageUrl(out.profileImage.trim());
         if (signedUrl) out.profileImageUrl = signedUrl;
+      }
+      try {
+        const { data: au, error: authErr } = await supabaseAdmin.auth.admin.getUserById(userId);
+        if (!authErr && au?.user) {
+          const u = au.user;
+          if (u.last_sign_in_at) out.lastSignInAt = u.last_sign_in_at;
+          if (u.created_at) out.authCreatedAt = u.created_at;
+        }
+      } catch (e) {
+        console.warn("⚠️ Profile: could not enrich from Supabase Auth:", e);
       }
       console.log(`✅ API Success: auth:user profile for ${userId}`);
       return c.json({ user: out });
@@ -299,12 +381,27 @@ authApp.post("/update-temp-password", async (c) => {
 // ============================================
 authApp.post("/create-user", async (c) => {
   try {
-    const { name, email, phone, role, storeId, createdBy } = await c.req.json();
+    const { name, email, phone, role, storeId, createdBy, profileImage } = await c.req.json();
 
-    // Verify creator is super admin or vendor admin
+    if (!createdBy || String(createdBy).trim() === "") {
+      return c.json({ error: "createdBy is required" }, 400);
+    }
+
     const creator = await kv.get(`auth:user:${createdBy}`);
-    if (!creator || (creator.role !== "super-admin" && creator.role !== "vendor-admin")) {
+    if (!creator || typeof creator !== "object") {
       return c.json({ error: "Unauthorized" }, 403);
+    }
+
+    const cr = String((creator as { role?: string }).role || "");
+    const canCreate =
+      OWNER_ROLES.has(cr) || ADMIN_TIER_ROLES.has(cr) || cr === "vendor-admin";
+    if (!canCreate) {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
+
+    const targetRole = String(role || "data-entry").trim();
+    if (!canAssignStaffRoleBackend(cr, targetRole)) {
+      return c.json({ error: "You cannot assign this role" }, 403);
     }
 
     // Generate temporary password
@@ -318,7 +415,7 @@ authApp.post("/create-user", async (c) => {
       user_metadata: {
         name,
         phone: phone || "",
-        role,
+        role: targetRole,
         storeId: storeId || "",
       },
     });
@@ -328,30 +425,58 @@ authApp.post("/create-user", async (c) => {
       return c.json({ error: error?.message || "Failed to create user" }, 500);
     }
 
-    // Store user profile in KV
-    await kv.set(`auth:user:${data.user.id}`, {
+    let profileImagePath: string | undefined;
+    if (profileImage && typeof profileImage === "string" && profileImage.startsWith("data:image/")) {
+      const uploaded = await uploadProfileImage(data.user.id, profileImage);
+      if (uploaded) profileImagePath = uploaded;
+    }
+
+    const kvProfile: Record<string, unknown> = {
       id: data.user.id,
       email,
       name,
       phone: phone || "",
-      role,
+      role: targetRole,
       storeId: storeId || "",
       tempPassword: true,
       createdBy,
       createdAt: new Date().toISOString(),
-    });
+    };
+    if (profileImagePath) kvProfile.profileImage = profileImagePath;
+
+    await kv.set(`auth:user:${data.user.id}`, kvProfile);
+
+    if (profileImagePath) {
+      const { error: metaErr } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+        user_metadata: {
+          name,
+          phone: phone || "",
+          role: targetRole,
+          storeId: storeId || "",
+          profileImage: profileImagePath,
+        },
+      });
+      if (metaErr) console.error("⚠️ Auth metadata profileImage update:", metaErr);
+    }
 
     // Add to users list
     const users = (await kv.get("auth:users-list")) || [];
     users.push(data.user.id);
     await kv.set("auth:users-list", users);
 
-    console.log(`✅ User created: ${email} with role ${role}`);
+    console.log(`✅ User created: ${email} with role ${targetRole}`);
+
+    let profileImageUrl: string | undefined;
+    if (profileImagePath) {
+      const su = await getSignedImageUrl(profileImagePath);
+      if (su) profileImageUrl = su;
+    }
 
     return c.json({
       success: true,
       userId: data.user.id,
       tempPassword, // Return this so admin can share it
+      profileImageUrl,
     });
   } catch (error: any) {
     console.error("Create user error:", error);
@@ -369,14 +494,19 @@ authApp.get("/users", async (c) => {
 
     for (const userId of userIds) {
       const profile = await withTimeout(kv.get(`auth:user:${userId}`), 30000);
-      if (profile) {
-        // Don't send sensitive info
-        delete profile.tempPassword;
-        users.push(profile);
+      if (profile && typeof profile === "object") {
+        const safe = { ...(profile as Record<string, unknown>) };
+        delete (safe as { tempPassword?: unknown }).tempPassword;
+        const path = typeof safe.profileImage === "string" ? safe.profileImage.trim() : "";
+        if (path) {
+          const signed = await getSignedImageUrl(path);
+          if (signed) (safe as { profileImageUrl?: string }).profileImageUrl = signed;
+        }
+        users.push(safe);
       }
     }
 
-    return c.json(users);
+    return c.json(dedupeAuthProfilesByEmail(users));
   } catch (error: any) {
     console.error("Get users error:", error);
     return c.json({ error: error.message }, 500);
@@ -389,97 +519,152 @@ authApp.get("/users", async (c) => {
 authApp.put("/user/:userId", async (c) => {
   try {
     const userId = c.req.param("userId");
-    const { name, email, phone, role, storeId, profileImage } = await c.req.json();
+    const body = await c.req.json();
+    const {
+      name,
+      email,
+      phone,
+      role,
+      storeId,
+      profileImage,
+      updatedBy,
+      removeProfileImage,
+      location,
+      addressLine1,
+      addressLine2,
+      city,
+      region,
+      postalCode,
+      country,
+      bio,
+    } = body;
 
     const profile = await kv.get(`auth:user:${userId}`);
     if (!profile) {
       return c.json({ error: "User not found" }, 404);
     }
 
-    console.log(`🔄 Updating user ${userId}:`, { name, email, phone, role });
+    const p = profile as Record<string, unknown> & {
+      email?: string;
+      name?: string;
+      phone?: string;
+      role?: string;
+      storeId?: string;
+      profileImage?: string;
+    };
 
-    // Prepare updates for Supabase Auth
-    const supabaseUpdates: any = {};
-    const metadataUpdates: any = {};
+    if (role !== undefined && role !== p.role) {
+      if (!updatedBy || String(updatedBy).trim() === "") {
+        return c.json({ error: "updatedBy is required when changing role" }, 400);
+      }
+      const actor = await kv.get(`auth:user:${updatedBy}`);
+      const ar = actor && typeof actor === "object" ? String((actor as { role?: string }).role || "") : "";
+      const newRole = String(role || "").trim();
+      if (!canAssignStaffRoleBackend(ar, newRole)) {
+        return c.json({ error: "You cannot assign this role" }, 403);
+      }
+      const prevRole = String(p.role || "");
+      if (OWNER_ROLES.has(prevRole) && !OWNER_ROLES.has(ar)) {
+        return c.json({ error: "Only store owners can change owner-level roles" }, 403);
+      }
+    }
 
-    // Update email in Supabase if changed
-    if (email && email !== profile.email) {
+    const hasNewImageData =
+      profileImage && typeof profileImage === "string" && profileImage.startsWith("data:image/");
+    const shouldClearImage = removeProfileImage === true && !hasNewImageData;
+
+    let uploadedPath: string | null = null;
+    if (hasNewImageData) {
+      uploadedPath = await uploadProfileImage(userId, profileImage);
+    }
+
+    console.log(`🔄 Updating user ${userId}:`, { name, email, phone, role, shouldClearImage });
+
+    const supabaseUpdates: Record<string, unknown> = {};
+    if (email && email !== p.email) {
       supabaseUpdates.email = email;
       console.log(`📧 Email will be updated to: ${email}`);
     }
 
-    // Update phone in Supabase if changed
-    if (phone !== undefined && phone !== profile.phone) {
-      // Supabase stores phone in user_metadata, not as the main phone field
-      metadataUpdates.phone = phone;
-      console.log(`📱 Phone will be updated to: ${phone}`);
-    }
+    const needsAuthMetaUpdate =
+      shouldClearImage ||
+      !!uploadedPath ||
+      (name !== undefined && name !== p.name) ||
+      (phone !== undefined && phone !== p.phone) ||
+      (role !== undefined && role !== p.role) ||
+      (storeId !== undefined && storeId !== p.storeId);
 
-    // Update name in metadata
-    if (name && name !== profile.name) {
-      metadataUpdates.name = name;
-    }
-
-    // Update role in metadata
-    if (role && role !== profile.role) {
-      metadataUpdates.role = role;
-    }
-
-    // Update storeId in metadata
-    if (storeId !== undefined && storeId !== profile.storeId) {
-      metadataUpdates.storeId = storeId;
-    }
-
-    // Upload profile image if provided
-    if (profileImage) {
-      const filePath = await uploadProfileImage(userId, profileImage);
-      if (filePath) {
-        metadataUpdates.profileImage = filePath;
-        console.log(`📸 Profile image will be updated to: ${filePath}`);
+    if (Object.keys(supabaseUpdates).length > 0 || needsAuthMetaUpdate) {
+      const { data: guData, error: guErr } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (guErr || !guData?.user) {
+        console.error("❌ getUserById failed:", guErr);
+        return c.json({ error: guErr?.message || "User lookup failed" }, 500);
       }
-    }
-
-    // Apply updates to Supabase Auth if there are any
-    if (Object.keys(supabaseUpdates).length > 0 || Object.keys(metadataUpdates).length > 0) {
-      const updatePayload: any = { ...supabaseUpdates };
-      
-      if (Object.keys(metadataUpdates).length > 0) {
-        updatePayload.user_metadata = metadataUpdates;
+      const merged: Record<string, unknown> = { ...(guData.user.user_metadata || {}) };
+      if (name !== undefined) merged.name = name;
+      if (phone !== undefined) merged.phone = phone;
+      if (role !== undefined && String(role).trim() !== "") merged.role = role;
+      if (storeId !== undefined) merged.storeId = storeId;
+      if (shouldClearImage) {
+        delete merged.profileImage;
+      } else if (uploadedPath) {
+        merged.profileImage = uploadedPath;
       }
 
-      console.log(`🔄 Updating Supabase Auth with:`, updatePayload);
+      const updatePayload: Record<string, unknown> = { ...supabaseUpdates, user_metadata: merged };
+      console.log(`🔄 Updating Supabase Auth (merged metadata)`);
 
       const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, updatePayload);
-      
       if (error) {
         console.error("❌ Error updating Supabase Auth:", error);
         return c.json({ error: error.message }, 500);
       }
-
       console.log(`✅ Supabase Auth updated successfully`);
     }
 
-    // Update profile in KV
-    const updatedProfile = {
-      ...profile,
-      name: name || profile.name,
-      email: email || profile.email,
-      phone: phone !== undefined ? phone : profile.phone,
-      role: role || profile.role,
-      storeId: storeId !== undefined ? storeId : profile.storeId,
-      profileImage: metadataUpdates.profileImage || profile.profileImage,
+    const updatedProfile: Record<string, unknown> = {
+      ...p,
+      name: name !== undefined ? name : p.name,
+      email: email !== undefined ? email : p.email,
+      phone: phone !== undefined ? phone : p.phone,
+      role: role !== undefined ? role : p.role,
+      storeId: storeId !== undefined ? storeId : p.storeId,
       updatedAt: new Date().toISOString(),
     };
+
+    if (location !== undefined) updatedProfile.location = location;
+    if (addressLine1 !== undefined) updatedProfile.addressLine1 = addressLine1;
+    if (addressLine2 !== undefined) updatedProfile.addressLine2 = addressLine2;
+    if (city !== undefined) updatedProfile.city = city;
+    if (region !== undefined) updatedProfile.region = region;
+    if (postalCode !== undefined) updatedProfile.postalCode = postalCode;
+    if (country !== undefined) updatedProfile.country = country;
+    if (bio !== undefined) updatedProfile.bio = bio;
+
+    if (shouldClearImage) {
+      delete updatedProfile.profileImage;
+      delete updatedProfile.profileImageUrl;
+    } else if (uploadedPath) {
+      updatedProfile.profileImage = uploadedPath;
+    }
 
     await kv.set(`auth:user:${userId}`, updatedProfile);
     console.log(`✅ KV profile updated successfully`);
 
-    // Generate signed URL for profile image if exists
-    if (updatedProfile.profileImage) {
-      const signedUrl = await getSignedImageUrl(updatedProfile.profileImage);
+    const prevImg = typeof p.profileImage === "string" ? p.profileImage.trim() : "";
+    if (shouldClearImage && prevImg) {
+      await deleteOwnedStorageRefs(supabaseAdmin, [prevImg]);
+    } else if (uploadedPath && prevImg && prevImg !== uploadedPath) {
+      await deleteOwnedStorageRefs(supabaseAdmin, [prevImg]);
+    }
+
+    if (typeof updatedProfile.profileImage === "string" && updatedProfile.profileImage.trim()) {
+      const signedUrl = await getSignedImageUrl(String(updatedProfile.profileImage).trim());
       if (signedUrl) {
         updatedProfile.profileImageUrl = signedUrl;
       }
+    } else {
+      delete updatedProfile.profileImageUrl;
     }
 
     return c.json({ success: true, user: updatedProfile });
@@ -501,9 +686,8 @@ authApp.delete("/user/:userId", async (c) => {
       return c.json({ error: "User not found" }, 404);
     }
 
-    // Can't delete super admin
-    if (profile.role === "super-admin") {
-      return c.json({ error: "Cannot delete super admin" }, 400);
+    if (profile.role === "super-admin" || profile.role === "store-owner") {
+      return c.json({ error: "Cannot delete owner-level account" }, 400);
     }
 
     // Delete from Supabase Auth
@@ -519,6 +703,14 @@ authApp.delete("/user/:userId", async (c) => {
     const userIds = (await kv.get("auth:users-list")) || [];
     const filtered = userIds.filter((id: string) => id !== userId);
     await kv.set("auth:users-list", filtered);
+
+    const staffImg =
+      profile && typeof (profile as { profileImage?: string }).profileImage === "string"
+        ? (profile as { profileImage: string }).profileImage.trim()
+        : "";
+    if (staffImg) {
+      await deleteOwnedStorageRefs(supabaseAdmin, [staffImg]);
+    }
 
     console.log(`✅ User deleted: ${profile.email}`);
 
@@ -1096,6 +1288,22 @@ authApp.post("/register", async (c) => {
   } catch (error: any) {
     console.error("Registration error:", error);
     return c.json({ error: error.message || "Registration failed" }, 500);
+  }
+});
+
+// Recent staff actions (product create/update/delete) for profile timeline
+authApp.get("/staff-activity/:userId", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    if (!isValidStaffActorId(userId)) {
+      return c.json({ activities: [] });
+    }
+    const data = await kv.get(`staff:activity:${userId.trim()}`);
+    const activities = Array.isArray(data) ? data : [];
+    return c.json({ activities });
+  } catch (error: any) {
+    console.error("staff-activity GET:", error);
+    return c.json({ activities: [] });
   }
 });
 

@@ -11,6 +11,7 @@
  * - Premium UX with instant data access
  */
 
+import { format } from 'date-fns';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { SmartCache } from '../../utils/cache';
 import { vendorApplicationsApi } from '../../utils/api';
@@ -923,12 +924,20 @@ export type AdminDashboardFilters = {
   orders: string;
   customers: string;
   products: string;
+  /** Sales trend, top products, recent orders — separate from per-card KPI filters. */
+  globalSection: string;
 };
+
+/** Custom range from admin Home analytics date popovers — parsed by `dashboard/stats` edge handler. */
+export function encodeAdminDashboardDateFilter(range: { from?: Date; to?: Date } | undefined): string {
+  if (!range?.from || !range?.to) return 'All time';
+  return `DashboardRange:${format(range.from, 'yyyy-MM-dd')}:${format(range.to, 'yyyy-MM-dd')}`;
+}
 
 const DASH_STATS_PREFIX = 'admin-dashboard-stats:';
 
 export function adminDashboardStatsCacheKey(filters: AdminDashboardFilters): string {
-  return `${DASH_STATS_PREFIX}${filters.revenue}|${filters.orders}|${filters.customers}|${filters.products}`;
+  return `${DASH_STATS_PREFIX}${filters.revenue}|${filters.orders}|${filters.customers}|${filters.products}|${filters.globalSection}`;
 }
 
 export async function fetchAdminDashboardStatsRaw(filters: AdminDashboardFilters): Promise<Record<string, unknown>> {
@@ -937,6 +946,7 @@ export async function fetchAdminDashboardStatsRaw(filters: AdminDashboardFilters
     ordersFilter: filters.orders,
     customersFilter: filters.customers,
     productsFilter: filters.products,
+    globalFilter: filters.globalSection,
   });
   const response = await fetch(
     `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/dashboard/stats?${params}`,
@@ -1172,7 +1182,28 @@ export const CACHE_KEYS = {
   productImage: (productId: string, imageUrl: string) => `product-image-${productId}-${imageUrl}`,
   vendorLogo: (vendorId: string) => `vendor-logo-${vendorId}`,
   profileImage: (userId: string) => `profile-image-${userId}`,
+  /** Customer order list GET `/user/:id/orders` — storefront + vendor profile order history */
+  customerOrders: (userId: string) => `customer-orders-${userId}`,
 };
+
+/** Logged-in customer orders (same endpoint as VendorStoreView / Storefront profile). */
+export async function fetchCustomerOrdersList(userId: string): Promise<any[]> {
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${encodeURIComponent(userId)}/orders`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) {
+    const t = await response.text();
+    throw new Error(t || "Failed to fetch orders");
+  }
+  const data = await response.json();
+  return Array.isArray(data.orders) ? data.orders : [];
+}
+
+export function invalidateCustomerOrdersCache(userId: string): void {
+  if (!userId || !String(userId).trim()) return;
+  moduleCache.invalidate(CACHE_KEYS.customerOrders(String(userId).trim()));
+}
 
 /** Full product JSON (GET /products/:id) — same payload Super Admin uses via productsApi.getById */
 export async function fetchProductByIdFromApi(productId: string) {

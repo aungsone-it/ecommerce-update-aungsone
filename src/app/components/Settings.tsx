@@ -1,5 +1,6 @@
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
-import { useState, useEffect } from "react";
+import { compressImage } from '../../utils/imageCompression';
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { 
   Store, 
@@ -13,8 +14,7 @@ import {
   ShieldCheck,
   FileEdit,
   Upload,
-  Code,
-  Briefcase,
+  Warehouse,
   User,
   Globe,
   Loader2,
@@ -52,6 +52,11 @@ import {
 import { UserProfile } from "./UserProfile";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  assignableRolesForCreator,
+  canManageStaffAccounts,
+  canonicalizeStaffRoleForSave,
+} from "../utils/superAdminRolePermissions";
 import { toast } from 'sonner';
 import { VendorDomainsList } from "./VendorDomainsList";
 
@@ -65,7 +70,8 @@ export function Settings() {
   const { language, setLanguage, t } = useLanguage();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState("users"); // Changed from "general" to "users"
+  const [activeTab, setActiveTab] = useState("general");
+  const didApplyDefaultUsersTab = useRef(false);
   
   const settingsTabs: SettingsTab[] = [
     { id: "general", label: t('settings.general'), icon: Store },
@@ -73,9 +79,13 @@ export function Settings() {
     { id: "appearance", label: t('settings.appearance'), icon: Palette },
   ];
 
+  const visibleSettingsTabs = settingsTabs.filter(
+    (tab) => tab.id !== "users" || canManageStaffAccounts(user?.role)
+  );
+
   const [showUserDialog, setShowUserDialog] = useState(false);
-  const [editingUser, setEditingUser] = useState<any>(null);
   const [viewingUserProfile, setViewingUserProfile] = useState<any>(null);
+  const [userProfileInitialEdit, setUserProfileInitialEdit] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -144,7 +154,7 @@ export function Settings() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [userPhone, setUserPhone] = useState("");
-  const [userRole, setUserRole] = useState("vendor-admin");
+  const [userRole, setUserRole] = useState("data-entry");
   const [userStoreId, setUserStoreId] = useState("");
   const [userAvatar, setUserAvatar] = useState("");
   const [avatarPreview, setAvatarPreview] = useState("");
@@ -157,6 +167,21 @@ export function Settings() {
       fetchUsers();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "users" && !canManageStaffAccounts(user?.role)) {
+      setActiveTab("general");
+    }
+  }, [activeTab, user?.role]);
+
+  /** Super-admin / administrators default to Users; data-entry stays on General. */
+  useLayoutEffect(() => {
+    if (!user?.role || didApplyDefaultUsersTab.current) return;
+    if (canManageStaffAccounts(user.role)) {
+      didApplyDefaultUsersTab.current = true;
+      setActiveTab("users");
+    }
+  }, [user?.id, user?.role]);
 
   const loadGeneralSettings = async () => {
     try {
@@ -413,17 +438,21 @@ export function Settings() {
       }
       
       // Transform backend data to match UI expectations
-      const transformedUsers = data.map((u: any) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        phone: u.phone || '',
-        role: u.role,
-        storeId: u.storeId || '',
-        status: u.status || "active", // Use backend status or default to active
-        avatar: `https://api.dicebear.com/7.x/pixel-art/svg?seed=${u.email}`,
-        lastActive: u.createdAt ? new Date(u.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
-      }));
+      const transformedUsers = data.map((u: any) => {
+        const fallback = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(u.email || "user")}`;
+        return {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          phone: u.phone || '',
+          role: u.role,
+          storeId: u.storeId || '',
+          status: u.status || "active",
+          profileImageUrl: u.profileImageUrl,
+          avatar: u.profileImageUrl || fallback,
+          lastActive: u.createdAt ? new Date(u.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
+        };
+      });
 
       // Filter users based on logged-in user's role and storeId
       let filteredUsers = transformedUsers;
@@ -433,20 +462,20 @@ export function Settings() {
         const userStoreId = user.storeId || "";
         filteredUsers = transformedUsers.filter((u: any) => (u.storeId || "") === userStoreId);
         console.log(`🔒 Store owner filter: Showing ${filteredUsers.length} users from store "${user.storeId || '(empty)'}"`);
-      } else if (user?.role === 'super-admin') {
-        // Super admin sees all users
-        console.log(`👑 Super admin: Showing all ${filteredUsers.length} users`);
+      } else if (canManageStaffAccounts(user?.role)) {
+        console.log(`👑 Staff manager (${user?.role}): Showing all ${filteredUsers.length} users`);
       } else {
-        // Other roles see all users (you can customize this)
         console.log(`ℹ️ Role ${user?.role}: Showing all ${filteredUsers.length} users`);
       }
 
       setUsers(filteredUsers);
       
       // Add super admin to list
-      const superAdminUser = transformedUsers.find((u: any) => u.role === 'super-admin');
-      if (superAdminUser) {
-        console.log('✅ Super admin loaded:', superAdminUser.email);
+      const ownerRow = transformedUsers.find(
+        (u: any) => u.role === "super-admin" || u.role === "store-owner"
+      );
+      if (ownerRow) {
+        console.log("✅ Store owner row loaded:", ownerRow.email);
       }
     } catch (err: any) {
       console.error('Error fetching users:', err);
@@ -495,53 +524,49 @@ export function Settings() {
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        // Handle image upload
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file, 500);
+      setUserAvatar(dataUrl);
+      setAvatarPreview(dataUrl);
+    } catch (err: any) {
+      toast.error(err?.message || "Could not process image");
     }
+    e.target.value = "";
   };
 
   const getRoleInfo = (role: string) => {
-    switch (role) {
+    const canon = canonicalizeStaffRoleForSave(role);
+    switch (canon) {
       case "store-owner":
         return {
-          label: t('role.storeOwner'),
+          label: t("role.storeOwner"),
           icon: Store,
           color: "text-purple-600 bg-purple-100",
-          description: t('role.storeOwner.desc'),
+          description: t("role.storeOwner.desc"),
         };
       case "administrator":
         return {
-          label: t('role.administrator'),
+          label: t("role.administrator"),
           icon: ShieldCheck,
           color: "text-blue-600 bg-blue-100",
-          description: t('role.administrator.desc'),
+          description: t("role.administrator.desc"),
+        };
+      case "warehouse":
+        return {
+          label: t("role.warehouse"),
+          icon: Warehouse,
+          color: "text-amber-600 bg-amber-100",
+          description: t("role.warehouse.desc"),
         };
       case "data-entry":
         return {
-          label: t('role.dataEntry'),
+          label: t("role.dataEntry"),
           icon: FileEdit,
           color: "text-green-600 bg-green-100",
-          description: t('role.dataEntry.desc'),
-        };
-      case "developer":
-        return {
-          label: t('role.developer'),
-          icon: Code,
-          color: "text-orange-600 bg-orange-100",
-          description: t('role.developer.desc'),
-        };
-      case "product-manager":
-        return {
-          label: t('role.productManager'),
-          icon: Briefcase,
-          color: "text-pink-600 bg-pink-100",
-          description: t('role.productManager.desc'),
+          description: t("role.dataEntry.desc"),
         };
       default:
         return {
@@ -554,24 +579,13 @@ export function Settings() {
   };
 
   const openAddDialog = () => {
-    setEditingUser(null);
     setUserName("");
     setUserEmail("");
     setUserPhone("");
-    setUserRole("data-entry");
+    const choices = assignableRolesForCreator(user?.role);
+    setUserRole(choices[0] || "data-entry");
     setUserAvatar("");
     setAvatarPreview("");
-    setShowUserDialog(true);
-  };
-
-  const openEditDialog = (user: any) => {
-    setEditingUser(user);
-    setUserName(user.name);
-    setUserEmail(user.email);
-    setUserPhone(user.phone);
-    setUserRole(user.role);
-    setUserAvatar(user.avatar);
-    setAvatarPreview(user.avatar);
     setShowUserDialog(true);
   };
 
@@ -582,123 +596,75 @@ export function Settings() {
     setError('');
 
     try {
-      if (editingUser) {
-        // Edit existing user - UPDATE in backend
-        console.log(`🔄 Updating user: ${editingUser.id}`);
-        
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/user/${editingUser.id}`,
-          {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            body: JSON.stringify({
-              name: userName,
-              phone: userPhone,
-              role: userRole,
-              avatar: userAvatar,
-            }),
-          }
-        );
+      console.log(`➕ Creating new user: ${userEmail}`);
+      if (!user?.id) {
+        throw new Error("You must be signed in to create staff accounts.");
+      }
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || 'Failed to update user');
+      const createPayload: Record<string, unknown> = {
+        email: userEmail,
+        name: userName,
+        phone: userPhone,
+        role: canonicalizeStaffRoleForSave(userRole),
+        storeId: user?.storeId || '',
+        createdBy: user.id,
+      };
+      if (typeof userAvatar === "string" && userAvatar.startsWith("data:image")) {
+        createPayload.profileImage = userAvatar;
+      }
+
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify(createPayload),
         }
+      );
 
-        const data = await response.json();
-        console.log('✅ User updated:', data);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create user');
+      }
 
-        // Update local state with new data
-        setUsers(users.map(u =>
-          u.id === editingUser.id
-            ? {
-                ...u,
-                name: userName,
-                email: userEmail,
-                phone: userPhone,
-                role: userRole,
-                avatar: userAvatar,
-              }
-            : u
-        ));
-        
-        toast.success('User updated successfully!');
+      const data = await response.json();
+      console.log('✅ User created:', data);
+
+      const fallbackAv =
+        `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(userEmail || userName || "user")}`;
+      const newUser = {
+        id: data.userId,
+        name: userName,
+        email: userEmail,
+        phone: userPhone,
+        role: canonicalizeStaffRoleForSave(userRole),
+        storeId: user?.storeId || '',
+        status: "active",
+        profileImageUrl: data.profileImageUrl,
+        avatar: data.profileImageUrl || fallbackAv,
+        lastActive: new Date().toISOString().split("T")[0],
+      };
+      setUsers([...users, newUser]);
+
+      if (data.tempPassword != null && data.tempPassword !== "") {
+        toast.success(
+          <div className="space-y-2">
+            <p className="font-semibold flex items-center gap-2">
+              <span className="text-green-600">✓</span> User created successfully!
+            </p>
+            <div className="mt-3 pt-3 border-t border-green-200">
+              <p className="text-sm font-medium">Temporary password:</p>
+              <p className="font-mono bg-green-50 px-3 py-2 rounded mt-1 text-sm font-semibold">{data.tempPassword}</p>
+              <p className="text-xs mt-2 text-slate-600">Please share this with the user securely.</p>
+            </div>
+          </div>,
+          { duration: 20000, className: 'bg-green-50 border-green-200' }
+        );
       } else {
-        // Add new user - CREATE in backend
-        console.log(`➕ Creating new user: ${userEmail}`);
-        
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/signup`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${publicAnonKey}`,
-            },
-            body: JSON.stringify({
-              email: userEmail,
-              name: userName,
-              phone: userPhone,
-              role: userRole,
-              storeId: user?.storeId || '', // Inherit storeId from logged-in user
-            }),
-          }
-        );
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          
-          // If user already exists, just refresh the list
-          if (errorData.error === 'User already exists') {
-            console.log('ℹ️ User already exists, refreshing list...');
-            setShowUserDialog(false);
-            toast.info('User already exists. Refreshing list...');
-            await new Promise(resolve => setTimeout(resolve, 500));
-            await fetchUsers();
-            return;
-          }
-          
-          throw new Error(errorData.error || 'Failed to create user');
-        }
-
-        const data = await response.json();
-        console.log('✅ User created:', data);
-
-        // Add to local state
-        const newUser = {
-          id: data.user.id,
-          name: userName,
-          email: userEmail,
-          phone: userPhone,
-          role: userRole,
-          storeId: user?.storeId || '',
-          status: "active",
-          avatar: userAvatar || `https://api.dicebear.com/7.x/pixel-art/svg?seed=${userName.toLowerCase().replace(/\s/g, "")}`,
-          lastActive: new Date().toISOString().split("T")[0],
-        };
-        setUsers([...users, newUser]);
-        
-        // Show temporary password to admin
-        if (data.tempPassword) {
-          toast.success(
-            <div className="space-y-2">
-              <p className="font-semibold flex items-center gap-2">
-                <span className="text-green-600">✓</span> User created successfully!
-              </p>
-              <div className="mt-3 pt-3 border-t border-green-200">
-                <p className="text-sm font-medium">Temporary password:</p>
-                <p className="font-mono bg-green-50 px-3 py-2 rounded mt-1 text-sm font-semibold">{data.tempPassword}</p>
-                <p className="text-xs mt-2 text-slate-600">Please share this with the user securely.</p>
-              </div>
-            </div>,
-            { duration: 20000, className: 'bg-green-50 border-green-200' }
-          );
-        } else {
-          toast.success('User created successfully!');
-        }
+        toast.success('User created successfully!');
       }
 
       setShowUserDialog(false);
@@ -800,10 +766,20 @@ export function Settings() {
   };
 
   const handleSaveUserProfile = (updatedUser: any) => {
-    setUsers(users.map(u =>
-      u.id === updatedUser.id ? updatedUser : u
-    ));
+    const fallback = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(updatedUser.email || "user")}`;
+    const avatar =
+      updatedUser.profileImageUrl ||
+      (typeof updatedUser.avatar === "string" && updatedUser.avatar.startsWith("http")
+        ? updatedUser.avatar
+        : null) ||
+      fallback;
+    setUsers(
+      users.map((u) =>
+        u.id === updatedUser.id ? { ...u, ...updatedUser, avatar, profileImageUrl: updatedUser.profileImageUrl } : u
+      )
+    );
     setViewingUserProfile(null);
+    setUserProfileInitialEdit(false);
   };
 
   const renderTabContent = () => {
@@ -1166,17 +1142,17 @@ export function Settings() {
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const base64String = reader.result as string;
-                          setKpayQrCode(base64String);
-                          setKpayQrCodePreview(base64String);
-                        };
-                        reader.readAsDataURL(file);
+                      if (!file) return;
+                      try {
+                        const dataUrl = await compressImage(file, 500);
+                        setKpayQrCode(dataUrl);
+                        setKpayQrCodePreview(dataUrl);
+                      } catch (err: any) {
+                        toast.error(err?.message || "Could not process image");
                       }
+                      e.target.value = "";
                     }}
                   />
                   
@@ -1247,17 +1223,17 @@ export function Settings() {
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const base64String = reader.result as string;
-                          setStoreLogo(base64String);
-                          setStoreLogoPreview(base64String);
-                        };
-                        reader.readAsDataURL(file);
+                      if (!file) return;
+                      try {
+                        const dataUrl = await compressImage(file, 500);
+                        setStoreLogo(dataUrl);
+                        setStoreLogoPreview(dataUrl);
+                      } catch (err: any) {
+                        toast.error(err?.message || "Could not process image");
                       }
+                      e.target.value = "";
                     }}
                   />
                   
@@ -1409,18 +1385,31 @@ export function Settings() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setViewingUserProfile(user)}>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setUserProfileInitialEdit(false);
+                                    setViewingUserProfile(user);
+                                  }}
+                                >
                                   <User className="w-4 h-4 mr-2" />
                                   {t('settings.users.viewProfile')}
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => openEditDialog(user)}>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setUserProfileInitialEdit(true);
+                                    setViewingUserProfile(user);
+                                  }}
+                                >
                                   <Edit className="w-4 h-4 mr-2" />
                                   {t('settings.users.editUser')}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleDeleteUser(user.id)}
                                   className="text-red-600"
-                                  disabled={user.role === "store-owner"}
+                                  disabled={
+                                    user.role === "store-owner" ||
+                                    user.role === "super-admin"
+                                  }
                                 >
                                   <Trash2 className="w-4 h-4 mr-2" />
                                   {t('settings.users.deleteUser')}
@@ -1475,10 +1464,9 @@ export function Settings() {
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
                         <li>Manage products, categories, and inventory</li>
-                        <li>Process and manage orders</li>
-                        <li>Access marketing and blog features</li>
-                        <li>View reports and analytics</li>
-                        <li>Cannot access owner settings or financial data</li>
+                        <li>Process and manage orders, vendors, customers, chat, marketing</li>
+                        <li>Cannot access Finances or Settings (including Users)</li>
+                        <li>Can invite only Data entry and Warehouse accounts</li>
                       </ul>
                     </div>
                   </div>
@@ -1506,44 +1494,21 @@ export function Settings() {
                   </div>
                 </div>
 
-                {/* Developer */}
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                {/* Warehouse */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
-                      <Code className="w-5 h-5 text-orange-600" />
+                    <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                      <Warehouse className="w-5 h-5 text-amber-600" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-slate-900 mb-1">Developer</h4>
+                      <h4 className="font-semibold text-sm text-slate-900 mb-1">Warehouse</h4>
                       <p className="text-xs text-slate-600 mb-2">
-                        Technical access for integrations and customizations:
+                        Fulfillment-focused access:
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                        <li>Access to API documentation and tools</li>
-                        <li>Implement custom features and integrations</li>
-                        <li>Debug and troubleshoot technical issues</li>
-                        <li>No access to user data or financial information</li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Product Manager */}
-                <div className="bg-pink-50 border border-pink-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-pink-100 flex items-center justify-center flex-shrink-0">
-                      <Briefcase className="w-5 h-5 text-pink-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-slate-900 mb-1">Product Manager</h4>
-                      <p className="text-xs text-slate-600 mb-2">
-                        Define and manage product strategy and roadmap:
-                      </p>
-                      <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                        <li>Develop product vision and goals</li>
-                        <li>Plan and prioritize product features</li>
-                        <li>Collaborate with development and marketing teams</li>
-                        <li>Monitor product performance and feedback</li>
-                        <li>No access to user data or financial information</li>
+                        <li>Orders, inventory, and logistics</li>
+                        <li>No products/catalog editing, vendors, marketing, or customers</li>
+                        <li>No Finances, Settings, or global search</li>
                       </ul>
                     </div>
                   </div>
@@ -1551,17 +1516,13 @@ export function Settings() {
               </div>
             </div>
 
-            {/* Add/Edit User Dialog */}
+            {/* Add User Dialog (editing is on the full Edit User Profile page) */}
             <Dialog open={showUserDialog} onOpenChange={setShowUserDialog}>
               <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                  <DialogTitle>
-                    {editingUser ? "Edit user" : "Add new user"}
-                  </DialogTitle>
+                  <DialogTitle>Add new user</DialogTitle>
                   <DialogDescription>
-                    {editingUser
-                      ? "Update the user information and role."
-                      : "Create a new user account with role and permissions."}
+                    Create a new user account with role and permissions.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -1619,11 +1580,11 @@ export function Settings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="store-owner">Store Owner - Full access</SelectItem>
-                        <SelectItem value="administrator">Administrator - Manage operations</SelectItem>
-                        <SelectItem value="data-entry">Data Entry - Limited access</SelectItem>
-                        <SelectItem value="developer">Developer - Technical access</SelectItem>
-                        <SelectItem value="product-manager">Product Manager - Strategy and roadmap</SelectItem>
+                        {assignableRolesForCreator(user?.role).map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {getRoleInfo(r).label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-slate-500 mt-1">
@@ -1670,10 +1631,10 @@ export function Settings() {
                     {saving ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        {editingUser ? "Saving..." : "Creating..."}
+                        Creating...
                       </>
                     ) : (
-                      editingUser ? "Save changes" : "Add user"
+                      "Add user"
                     )}
                   </Button>
                 </DialogFooter>
@@ -1885,7 +1846,11 @@ export function Settings() {
     return (
       <UserProfile
         user={viewingUserProfile}
-        onBack={() => setViewingUserProfile(null)}
+        initialEditMode={userProfileInitialEdit}
+        onBack={() => {
+          setViewingUserProfile(null);
+          setUserProfileInitialEdit(false);
+        }}
         onSave={handleSaveUserProfile}
       />
     );
@@ -1899,7 +1864,7 @@ export function Settings() {
         <aside className="w-64 bg-white border-r border-slate-200 overflow-y-auto flex-shrink-0">
           <nav className="p-4">
             <ul className="space-y-1">
-              {settingsTabs.map((tab) => {
+              {visibleSettingsTabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <li key={tab.id}>

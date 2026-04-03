@@ -2,6 +2,7 @@ import { Hono } from "npm:hono@4";
 import * as kv from "./kv_store.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
+import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
 
 const userApp = new Hono();
 
@@ -94,6 +95,13 @@ userApp.post("/users/:userId/avatar", async (c) => {
       return c.json({ error: "No image data provided" }, 400);
     }
 
+    const existingForAvatar = await kv.get(`user:${userId}`);
+    const prevAvatarUrl =
+      existingForAvatar &&
+      typeof (existingForAvatar as { avatar?: string }).avatar === "string"
+        ? (existingForAvatar as { avatar: string }).avatar.trim()
+        : "";
+
     const bucketName = "make-16010b6f-user-avatars";
     await ensureBucket(supabase, bucketName, {
       public: false,
@@ -143,6 +151,10 @@ userApp.post("/users/:userId/avatar", async (c) => {
         updatedAt: new Date().toISOString(),
       };
       await kv.set(`user:${userId}`, updatedUser);
+    }
+
+    if (prevAvatarUrl) {
+      await deleteOwnedStorageRefs(supabase, [prevAvatarUrl]);
     }
 
     console.log(`✅ Avatar uploaded successfully: ${avatarUrl}`);

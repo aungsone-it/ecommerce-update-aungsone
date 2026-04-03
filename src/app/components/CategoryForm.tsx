@@ -16,6 +16,8 @@ import {
 import { compressImage } from "../../utils/imageCompression";
 import { toast } from "sonner";
 import { categoriesApi, productsApi } from "../../utils/api";
+import { getCachedAdminAllProducts } from "../utils/module-cache";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Product {
   id: string;
@@ -43,6 +45,7 @@ interface CategoryFormProps {
 }
 
 export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormProps) {
+  const { user: sessionUser } = useAuth();
   const [categoryName, setCategoryName] = useState("");
   const [description, setDescription] = useState("");
   const [coverPhoto, setCoverPhoto] = useState("");
@@ -70,12 +73,8 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
 
   const loadProducts = async () => {
     try {
-      const response = await productsApi.getAll();
-      if (response && response.products && Array.isArray(response.products)) {
-        setProducts(response.products);
-      } else {
-        setProducts([]);
-      }
+      const list = await getCachedAdminAllProducts(false);
+      setProducts(Array.isArray(list) ? list : []);
     } catch (error) {
       console.error("Failed to load products:", error);
       setProducts([]);
@@ -187,7 +186,10 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
       if (productsToUpdate.length > 0) {
         await Promise.all(
           productsToUpdate.map(productId => 
-            productsApi.update(productId, { category: categoryName })
+            productsApi.update(productId, {
+              category: categoryName,
+              performedByUserId: sessionUser?.id,
+            })
           )
         );
         console.log(`✅ Updated ${productsToUpdate.length} products with category "${categoryName}"`);
@@ -197,7 +199,10 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
       if (editingCategory && oldCategoryName !== categoryName && productsStillSelected.length > 0) {
         await Promise.all(
           productsStillSelected.map(productId => 
-            productsApi.update(productId, { category: categoryName })
+            productsApi.update(productId, {
+              category: categoryName,
+              performedByUserId: sessionUser?.id,
+            })
           )
         );
         console.log(`✅ Updated category name for ${productsStillSelected.length} products to "${categoryName}"`);
@@ -207,7 +212,7 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
       if (productsToUnassign.length > 0) {
         await Promise.all(
           productsToUnassign.map(productId => 
-            productsApi.update(productId, { category: "" })
+            productsApi.update(productId, { category: "", performedByUserId: sessionUser?.id })
           )
         );
         console.log(`✅ Removed category from ${productsToUnassign.length} products`);

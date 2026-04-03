@@ -66,9 +66,18 @@ interface CheckoutProps {
   vendorName?: string;
   /** Vendor storefront session (migoo-user) — must match addresses page so default shipping loads. */
   accountUser?: { id?: string; userId?: string; email?: string; name?: string; phone?: string } | null;
+  /** After a successful order — e.g. invalidate cached order history for instant refresh on profile. */
+  onOrderPlacedSuccess?: (ctx: { userId: string }) => void;
 }
 
-export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser = null }: CheckoutProps) {
+export function Checkout({
+  onBack,
+  storeName,
+  vendorId,
+  vendorName,
+  accountUser = null,
+  onOrderPlacedSuccess,
+}: CheckoutProps) {
   const { items, totalPrice, clearCart } = useCart();
   const { user: authUser } = useAuth();
   const migoo = getMigooCustomerFromStorage();
@@ -613,6 +622,11 @@ export function Checkout({ onBack, storeName, vendorId, vendorName, accountUser 
         duration: 5000,
       });
       return; // Stop order process
+    }
+
+    const placedUserId = resolveUserIdFromRecord(effectiveUser);
+    if (placedUserId) {
+      onOrderPlacedSuccess?.({ userId: placedUserId });
     }
 
     // Simulate payment processing

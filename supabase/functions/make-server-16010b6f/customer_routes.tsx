@@ -2,6 +2,7 @@ import { Hono } from "npm:hono@4";
 import * as kv from "./kv_store.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
+import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
 
 const customerApp = new Hono();
 
@@ -414,6 +415,15 @@ customerApp.delete("/customers/:customerId", async (c) => {
     
     // 🔥 STEP 3: DELETE CUSTOMER FROM KV STORE
     await withTimeout(kv.del(`customer:${customerId}`), 5000);
+
+    const custImg =
+      customer &&
+      typeof (customer as { profileImage?: string }).profileImage === "string"
+        ? (customer as { profileImage: string }).profileImage.trim()
+        : "";
+    if (custImg) {
+      await deleteOwnedStorageRefs(supabase, [custImg]);
+    }
     
     console.log(`✅ Customer deleted completely: ${customerId}`);
     
@@ -447,6 +457,17 @@ customerApp.post("/customers/bulk-delete", async (c) => {
       withTimeout(kv.get(`customer:${id}`), 5000).catch(() => null)
     );
     const customers = await Promise.all(customerPromises);
+
+    const bulkImageRefs: unknown[] = [];
+    for (const c of customers) {
+      if (
+        c &&
+        typeof (c as { profileImage?: string }).profileImage === "string" &&
+        (c as { profileImage: string }).profileImage.trim()
+      ) {
+        bulkImageRefs.push((c as { profileImage: string }).profileImage);
+      }
+    }
     
     // 🔥 DELETE ASSOCIATED AUTH USERS AND KV USERS (if they exist)
     const userIds = customers
@@ -488,6 +509,8 @@ customerApp.post("/customers/bulk-delete", async (c) => {
     );
     
     await Promise.all(deletePromises);
+
+    await deleteOwnedStorageRefs(supabase, bulkImageRefs);
     
     console.log(`✅ Bulk deleted ${customerIds.length} customers`);
     

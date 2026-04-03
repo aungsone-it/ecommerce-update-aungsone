@@ -44,6 +44,8 @@ import {
   subscribeConversationBroadcast,
 } from "../utils/chatRealtime";
 import { useDocumentVisible } from "../hooks/useDocumentVisible";
+import { getCachedAdminVendorsForProductList } from "../utils/module-cache";
+import { buildVendorDisplayLookup, resolveChatVendorLabel } from "../utils/vendorDisplay";
 
 import { toast } from "sonner";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
@@ -139,6 +141,30 @@ export function Chat({
   const inboxDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const docVisible = useDocumentVisible();
+  const [vendorLookup, setVendorLookup] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const list = await getCachedAdminVendorsForProductList(false);
+        if (!cancelled && Array.isArray(list)) {
+          setVendorLookup(buildVendorDisplayLookup(list));
+        }
+      } catch {
+        if (!cancelled) setVendorLookup({});
+      }
+    };
+    void load();
+    const onVendorUpdate = () => {
+      void load();
+    };
+    window.addEventListener("vendorDataUpdated", onVendorUpdate as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("vendorDataUpdated", onVendorUpdate as EventListener);
+    };
+  }, []);
 
   const loadConversations = async () => {
     try {
@@ -575,6 +601,9 @@ export function Chat({
   });
 
   const selectedConv = conversations.find((c) => c.id === selectedConversation);
+  const selectedVendorHeaderBadge = selectedConv
+    ? resolveChatVendorLabel(selectedConv.vendorSource, selectedConv.vendorId, vendorLookup)
+    : null;
   const totalUnread = conversations.reduce((sum, conv) => sum + conv.unread, 0);
 
   const handleEmojiClick = (emoji: EmojiClickData) => {
@@ -703,6 +732,11 @@ export function Chat({
                 const avatar =
                   conv.customerProfileImage ||
                   `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(conv.customerName)}&backgroundColor=3b82f6`;
+                const vendorBadgeLabel = resolveChatVendorLabel(
+                  conv.vendorSource,
+                  conv.vendorId,
+                  vendorLookup
+                );
 
                 return (
                   <button
@@ -735,9 +769,9 @@ export function Chat({
                       <p className="text-xs text-slate-500 truncate mb-1">
                         {conv.customerEmail}
                       </p>
-                      {conv.vendorSource && (
+                      {vendorBadgeLabel && (
                         <Badge variant="outline" className="text-xs mb-1 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700">
-                          🏪 From: {conv.vendorSource}
+                          🏪 From: {vendorBadgeLabel}
                         </Badge>
                       )}
                       <p className="text-sm text-slate-600 truncate">
@@ -789,9 +823,9 @@ export function Chat({
                     <p className="text-xs text-slate-500">
                       {selectedConv.customerEmail}
                     </p>
-                    {selectedConv.vendorSource && (
+                    {selectedVendorHeaderBadge && (
                       <Badge variant="outline" className="text-xs bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700">
-                        🏪 {selectedConv.vendorSource}
+                        🏪 {selectedVendorHeaderBadge}
                       </Badge>
                     )}
                   </div>

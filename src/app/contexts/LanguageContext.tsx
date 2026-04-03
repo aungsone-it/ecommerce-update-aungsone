@@ -63,7 +63,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.users.active.status': 'Active',
     'settings.users.inactive.status': 'Inactive',
     'settings.users.viewProfile': 'View profile',
-    'settings.users.editUser': 'Edit user',
+    'settings.users.editUser': 'Edit profile',
     'settings.users.deleteUser': 'Delete user',
     'settings.users.deleteConfirm': 'Are you sure you want to delete this user?',
     
@@ -88,7 +88,7 @@ const translations: Record<Language, Record<string, string>> = {
     'role.storeOwner.desc': 'Business owner with full store access and control',
     'role.storeOwner.full': 'Store Owner - Full access',
     'role.administrator': 'Administrator',
-    'role.administrator.desc': 'Manage products, orders, and users (except owner settings)',
+    'role.administrator.desc': 'Full operations except Finances and Settings; can invite Data entry & Warehouse only',
     'role.administrator.full': 'Administrator - Manage operations',
     'role.dataEntry': 'Data Entry',
     'role.dataEntry.desc': 'Add and edit products, manage inventory only',
@@ -179,7 +179,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.products': 'Products',
     'dashboard.fromLastMonth': 'from last month',
     'dashboard.salesOverview': 'Sales Overview',
-    'dashboard.salesOverviewDesc': 'Monthly sales and orders trend',
+    'dashboard.salesOverviewDesc': 'Monthly sales and orders for the global date range (header). Last 7 months when global is All time.',
     'dashboard.topProducts': 'Top Products',
     'dashboard.topProductsDesc': 'Best performing products this month',
     'dashboard.recentOrders': 'Recent Orders',
@@ -192,6 +192,10 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.product': 'Product',
     'dashboard.amount': 'Amount',
     'dashboard.status': 'Status',
+    'dashboard.analyticsKpiDateHint': 'Choose start and end date. Only this summary card changes — not the rest of the page.',
+    'dashboard.globalDateFilterTitle': 'Filter page sections by date',
+    'dashboard.globalDateFilterHint': 'Applies to sales overview, top products, and recent orders. KPI cards use their own filters.',
+    'dashboard.topProductsDescGlobal': 'Best sellers in the selected global date range (header filter).',
     
     // Products
     'products.title': 'Products',
@@ -886,6 +890,10 @@ const translations: Record<Language, Record<string, string>> = {
     'role.vendorAdmin.desc': 'Manage their own store, products, and orders',
     'role.collaborator': 'Collaborator',
     'role.collaborator.desc': 'Limited access to help manage a vendor store',
+    'role.platformAdmin': 'Admin',
+    'role.platformAdmin.desc': 'Runs the store: no Finances or Settings / Users',
+    'role.warehouse': 'Warehouse',
+    'role.warehouse.desc': 'Orders, inventory, and logistics only',
     
     // Inventory Adjust Dialog
     'inventory.dialog.adjust.title': 'Adjust Inventory',
@@ -972,7 +980,7 @@ const translations: Record<Language, Record<string, string>> = {
     'settings.users.active.status': '活跃',
     'settings.users.inactive.status': '未活跃',
     'settings.users.viewProfile': '查看资料',
-    'settings.users.editUser': '编辑用户',
+    'settings.users.editUser': '编辑资料',
     'settings.users.deleteUser': '删除用户',
     'settings.users.deleteConfirm': '您确定要删除此用户吗？',
     
@@ -997,7 +1005,7 @@ const translations: Record<Language, Record<string, string>> = {
     'role.storeOwner.desc': '拥有完全商店访问权限和控制权的企业主',
     'role.storeOwner.full': '店主 - 完全访问权限',
     'role.administrator': '管理员',
-    'role.administrator.desc': '管理产品、订单和用户（店主设置除外）',
+    'role.administrator.desc': '除财务与设置外的运营；仅可邀请数据录入与仓库账号',
     'role.administrator.full': '管理员 - 管理运营',
     'role.dataEntry': '数据录入员',
     'role.dataEntry.desc': '仅添加和编辑产品、管理库存',
@@ -1088,7 +1096,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.products': '产品',
     'dashboard.fromLastMonth': '上个月',
     'dashboard.salesOverview': '销售概览',
-    'dashboard.salesOverviewDesc': '月度销售和订单趋势',
+    'dashboard.salesOverviewDesc': '全局日期范围（顶部筛选）内的月度销售与订单。全局为「全部时间」时显示最近 7 个月。',
     'dashboard.topProducts': '热门产品',
     'dashboard.topProductsDesc': '本月表现最好的产品',
     'dashboard.recentOrders': '最近订单',
@@ -1101,6 +1109,10 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.product': '产品',
     'dashboard.amount': '金额',
     'dashboard.status': '状态',
+    'dashboard.analyticsKpiDateHint': '请选择开始与结束日期，仅影响本张摘要卡片，不影响页面其他区域。',
+    'dashboard.globalDateFilterTitle': '按日期筛选页面区块',
+    'dashboard.globalDateFilterHint': '作用于销售概览、热门产品与最近订单。上方 KPI 卡片各有独立筛选。',
+    'dashboard.topProductsDescGlobal': '当前全局日期范围内（顶部筛选）销量最佳的产品。',
     
     // Products
     'products.title': '产品',
@@ -1794,6 +1806,10 @@ const translations: Record<Language, Record<string, string>> = {
     'role.vendorAdmin.desc': '管理自己的商店、产品和订单',
     'role.collaborator': '协作者',
     'role.collaborator.desc': '有限访问权限以帮助管理供应商商店',
+    'role.platformAdmin': '管理员',
+    'role.platformAdmin.desc': '日常运营：无财务与设置/用户',
+    'role.warehouse': '仓库',
+    'role.warehouse.desc': '仅订单、库存与物流',
     
     // Inventory Adjust Dialog
     'inventory.dialog.adjust.title': '调整库存',
