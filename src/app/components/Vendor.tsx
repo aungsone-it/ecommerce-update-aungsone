@@ -28,7 +28,6 @@ import {
   AlertTriangle,
   Ban,
   FileText,
-  Store,
   Loader2,
   ChevronLeft,
   ChevronRight,
@@ -295,6 +294,9 @@ export function Vendor({
   }, [initialListSearchQuery, listSearchApplyToken]);
 
   const [statusFilter, setStatusFilter] = useState<VendorStatus | "all">("all");
+  useEffect(() => {
+    if (statusFilter === "inactive") setStatusFilter("all");
+  }, [statusFilter]);
   const [vendorListPage, setVendorListPage] = useState(1);
   const [vendorListPageSize, setVendorListPageSize] = useState(20);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
@@ -1036,23 +1038,6 @@ export function Vendor({
         </div>
       </div>
 
-      {/* Storefront Feature Highlight */}
-      <Card className="p-4 border border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50">
-        <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Store className="w-5 h-5 text-purple-600" />
-          </div>
-          <div className="flex-1">
-            <h3 className="font-semibold text-slate-900 mb-1">
-              🎉 New: Independent Vendor Storefronts
-            </h3>
-            <p className="text-sm text-slate-600">
-              Each vendor now has their own separate, fully-branded storefront! Click on any vendor and select "Manage Storefront" to configure their unique online store. Migoo handles all ERP operations while vendors maintain their brand identity.
-            </p>
-          </div>
-        </div>
-      </Card>
-
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         <Card className="p-4 border border-slate-200">
@@ -1151,7 +1136,6 @@ export function Vendor({
             <SelectContent>
               <SelectItem value="all">{t('vendor.allStatus')}</SelectItem>
               <SelectItem value="active">{t('vendor.active')}</SelectItem>
-              <SelectItem value="inactive">{t('vendor.inactive')}</SelectItem>
               <SelectItem value="pending">{t('vendor.pending')}</SelectItem>
               <SelectItem value="suspended">{t('vendor.suspended')}</SelectItem>
               <SelectItem value="banned">{t('vendor.banned')}</SelectItem>
