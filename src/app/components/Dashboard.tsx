@@ -7,6 +7,17 @@ import { Badge } from "./ui/badge";
 import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useState, useEffect, useMemo } from "react";
+import {
+  ComposedChart,
+  Area,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
 import {
@@ -16,20 +27,6 @@ import {
   encodeAdminDashboardDateFilter,
   type AdminDashboardFilters,
 } from "../utils/module-cache";
-// TEMPORARY: Recharts disabled for production build fix
-// import {
-//   AreaChart,
-//   Area,
-//   BarChart,
-//   Bar,
-//   XAxis,
-//   YAxis,
-//   CartesianGrid,
-//   Tooltip,
-//   ResponsiveContainer,
-//   Legend,
-// } from "recharts";
-
 const defaultStats = {
   totalRevenue: 0,
   totalOrders: 0,
@@ -188,7 +185,20 @@ export function Dashboard() {
     const sign = change >= 0 ? "+" : "";
     return `${sign}${change.toFixed(1)}% ${t('dashboard.fromLastMonth')}`;
   };
-  
+
+  const salesChartData = useMemo(() => {
+    const rows = stats.salesTrend as { name: string; sales: number; orders: number }[];
+    if (!Array.isArray(rows)) return [];
+    return rows.map((row) => ({
+      month: row.name,
+      revenue: Math.round(Number(row.sales) || 0),
+      orders: Math.round(Number(row.orders) || 0),
+    }));
+  }, [stats.salesTrend]);
+
+  const salesChartHasPoints = salesChartData.length > 0;
+  const salesChartHasActivity = salesChartData.some((d) => d.revenue > 0 || d.orders > 0);
+
   return (
     <div className="p-4 md:p-6 lg:p-8 space-y-6 md:space-y-8">
       {/* Header */}
@@ -275,19 +285,112 @@ export function Dashboard() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Sales Chart - TEMPORARILY DISABLED FOR PRODUCTION BUILD */}
         <Card className="p-6">
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-slate-900">{t('dashboard.salesOverview')}</h3>
             <p className="text-sm text-slate-500">{t('dashboard.salesOverviewDesc')}</p>
           </div>
-          <div className="h-[300px] flex items-center justify-center bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
-            <div className="text-center">
-              <TrendingUp className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-sm text-slate-400">Chart temporarily unavailable</p>
-              <p className="text-xs text-slate-300 mt-1">Will be restored soon</p>
+          {loading && !salesChartHasPoints ? (
+            <div className="h-[300px] flex items-center justify-center bg-slate-50 rounded-lg border border-slate-100">
+              <p className="text-sm text-slate-400">{t("dashboard.loadingChart")}</p>
             </div>
-          </div>
+          ) : !salesChartHasPoints ? (
+            <div className="h-[300px] flex items-center justify-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              <div className="text-center px-4">
+                <TrendingUp className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">{t("dashboard.noSalesChartData")}</p>
+              </div>
+            </div>
+          ) : (
+            <div className="h-[300px] w-full min-h-[280px]">
+              {!salesChartHasActivity && (
+                <p className="text-xs text-slate-400 mb-2">{t("dashboard.salesChartFlatHint")}</p>
+              )}
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={salesChartData} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="dashRevenueFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.35} />
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                  <XAxis
+                    dataKey="month"
+                    stroke="#64748b"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
+                  <YAxis
+                    yAxisId="rev"
+                    stroke="#64748b"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                    tickFormatter={(v) => {
+                      const n = Number(v);
+                      if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+                      if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
+                      return String(Math.round(n));
+                    }}
+                  />
+                  <YAxis
+                    yAxisId="ord"
+                    orientation="right"
+                    stroke="#64748b"
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                    allowDecimals={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "white",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                    }}
+                    formatter={(value: number | string, _name: string, item: { dataKey?: string }) => {
+                      if (item?.dataKey === "revenue") {
+                        return [
+                          `${Math.round(Number(value)).toLocaleString()} MMK`,
+                          t("dashboard.chartRevenueSeries"),
+                        ];
+                      }
+                      if (item?.dataKey === "orders") {
+                        return [Math.round(Number(value)), t("dashboard.chartOrdersSeries")];
+                      }
+                      return [String(value), _name];
+                    }}
+                    labelFormatter={(label) => String(label)}
+                  />
+                  <Legend wrapperStyle={{ fontSize: "12px" }} />
+                  <Area
+                    yAxisId="rev"
+                    type="monotone"
+                    dataKey="revenue"
+                    name={t("dashboard.chartRevenueSeries")}
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    fill="url(#dashRevenueFill)"
+                    dot={{ fill: "#2563eb", r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                  <Line
+                    yAxisId="ord"
+                    type="monotone"
+                    dataKey="orders"
+                    name={t("dashboard.chartOrdersSeries")}
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    dot={{ fill: "#16a34a", r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </Card>
 
         {/* Top Products */}

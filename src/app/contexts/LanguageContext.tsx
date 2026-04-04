@@ -196,6 +196,11 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.globalDateFilterTitle': 'Filter page sections by date',
     'dashboard.globalDateFilterHint': 'Applies to sales overview, top products, and recent orders. KPI cards use their own filters.',
     'dashboard.topProductsDescGlobal': 'Best sellers in the selected global date range (header filter).',
+    'dashboard.loadingChart': 'Loading chart…',
+    'dashboard.noSalesChartData': 'No data for this date range yet.',
+    'dashboard.salesChartFlatHint': 'No revenue in this window — axis shows months for reference.',
+    'dashboard.chartRevenueSeries': 'Revenue (MMK)',
+    'dashboard.chartOrdersSeries': 'Orders',
     
     // Products
     'products.title': 'Products',
@@ -1113,6 +1118,11 @@ const translations: Record<Language, Record<string, string>> = {
     'dashboard.globalDateFilterTitle': '按日期筛选页面区块',
     'dashboard.globalDateFilterHint': '作用于销售概览、热门产品与最近订单。上方 KPI 卡片各有独立筛选。',
     'dashboard.topProductsDescGlobal': '当前全局日期范围内（顶部筛选）销量最佳的产品。',
+    'dashboard.loadingChart': '加载图表中…',
+    'dashboard.noSalesChartData': '该日期范围内暂无数据。',
+    'dashboard.salesChartFlatHint': '此时间段内暂无收入 — 横轴仍显示月份供参考。',
+    'dashboard.chartRevenueSeries': '收入（MMK）',
+    'dashboard.chartOrdersSeries': '订单数',
     
     // Products
     'products.title': '产品',
