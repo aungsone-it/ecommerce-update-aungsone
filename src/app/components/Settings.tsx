@@ -1528,6 +1528,71 @@ export function Settings() {
 
                 <div className="space-y-4 py-4">
                   <div>
+                    <Label htmlFor="userAvatar" className="text-sm font-medium text-slate-900 mb-2 block">
+                      Profile image
+                    </Label>
+                    <input
+                      id="userAvatar"
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      onChange={handleImageUpload}
+                    />
+                    <div className="flex flex-col gap-1.5">
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => document.getElementById("userAvatar")?.click()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            document.getElementById("userAvatar")?.click();
+                          }
+                        }}
+                        className="relative size-[100px] shrink-0 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50/80 hover:border-slate-400 hover:bg-slate-50 transition-colors cursor-pointer overflow-hidden group outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+                      >
+                        {avatarPreview || userAvatar ? (
+                          <>
+                            <img
+                              src={avatarPreview || userAvatar}
+                              alt=""
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-0.5 pointer-events-none">
+                              <Upload className="w-5 h-5 text-white" />
+                              <span className="text-[10px] font-medium text-white leading-none">
+                                Change
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="absolute top-1 right-1 h-6 w-6 rounded-full bg-white/90 text-slate-700 shadow flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white z-10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setUserAvatar("");
+                                setAvatarPreview("");
+                              }}
+                              aria-label="Remove image"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <div className="flex h-full flex-col items-center justify-center gap-0.5 px-1.5 text-center">
+                            <Upload className="w-5 h-5 text-slate-400 shrink-0" />
+                            <span className="text-[10px] font-semibold text-slate-800 leading-tight">
+                              Upload image
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 max-w-[220px] leading-snug">
+                        Image will be compressed to max 500KB
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
                     <Label htmlFor="userName" className="text-sm font-medium text-slate-900 mb-2 block">
                       Full name
                     </Label>
@@ -1590,28 +1655,6 @@ export function Settings() {
                     <p className="text-xs text-slate-500 mt-1">
                       {getRoleInfo(userRole).description}
                     </p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="userAvatar" className="text-sm font-medium text-slate-900 mb-2 block">
-                      Avatar
-                    </Label>
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-                        <img
-                          src={avatarPreview || userAvatar || "https://api.dicebear.com/7.x/pixel-art/svg?seed=default"}
-                          alt="User Avatar"
-                          className="w-10 h-10 rounded-full"
-                        />
-                      </div>
-                      <Input
-                        id="userAvatar"
-                        type="file"
-                        accept="image/*"
-                        onChange={handleImageUpload}
-                        className="h-10"
-                      />
-                    </div>
                   </div>
                 </div>
 
