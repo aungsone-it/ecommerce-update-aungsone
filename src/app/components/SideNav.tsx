@@ -206,7 +206,8 @@ export function SideNav({
     { icon: MessageSquare, label: "Chat", badge: badgeCounts?.chat || 0 },
     { icon: Users, label: "Customers" },
     { icon: DollarSign, label: "Finances" },
-    { icon: Truck, label: "Logistics" },
+    // HIDDEN from sidebar only — `/admin/logistics` + Logistics.tsx remain; uncomment next line to show.
+    // { icon: Truck, label: "Logistics" },
     // HIDDEN: Blog post section (can be restored later)
     // { 
     //   icon: FileText, 
