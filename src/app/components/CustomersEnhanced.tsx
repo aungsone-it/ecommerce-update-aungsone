@@ -3,7 +3,6 @@ import {
   Search,
   Filter,
   Download,
-  RefreshCw,
   MoreVertical,
   Mail,
   Phone,
@@ -23,13 +22,11 @@ import {
   Send,
   Edit,
   BarChart3,
-  PieChart,
   Activity,
   Target,
   Award,
   Clock,
   ArrowUpRight,
-  ArrowDownRight,
   Zap,
   Heart,
   Package,
@@ -89,6 +86,7 @@ import {
   type AdminCustomersPagePayload,
 } from "../utils/module-cache";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
+import { toast } from "sonner";
 
 interface Customer {
   id: string;
@@ -118,6 +116,16 @@ interface Customer {
 
 type ChatHandoffCustomer = { name: string; email: string; avatar?: string };
 
+function MmkInline({ value, className }: { value: number; className?: string }) {
+  const n = Math.round(Number(value) || 0);
+  return (
+    <span className={`tabular-nums inline-flex items-baseline gap-0.5 flex-wrap ${className ?? ""}`}>
+      <span>{n.toLocaleString()}</span>
+      <span className="text-[9px] font-medium text-slate-500 leading-none">MMK</span>
+    </span>
+  );
+}
+
 export function CustomersEnhanced({
   onOpenChatWithCustomer,
 }: {
@@ -141,7 +149,6 @@ export function CustomersEnhanced({
   const [customersHasMore, setCustomersHasMore] = useState(false);
   const [serverListStats, setServerListStats] = useState<AdminCustomersPagePayload["stats"]>(undefined);
   const [isLoading, setIsLoading] = useState(true);
-  const [listRefreshing, setListRefreshing] = useState(false);
 
   // 🎯 Alert Modal State
   const [alertOpen, setAlertOpen] = useState(false);
@@ -182,7 +189,6 @@ export function CustomersEnhanced({
     async (forceRefresh = false) => {
       let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
       showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
-      setListRefreshing(forceRefresh);
       try {
         const data = await getCachedAdminCustomersPage(
           {
@@ -216,7 +222,6 @@ export function CustomersEnhanced({
       } finally {
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
         setIsLoading(false);
-        setListRefreshing(false);
       }
     },
     [
@@ -293,24 +298,6 @@ export function CustomersEnhanced({
     );
   }, [customersList, searchQuery]);
 
-  const segmentDisplayCount = (tag: string): number => {
-    const seg = serverListStats?.segments;
-    if (seg) {
-      const map: Record<string, number> = {
-        champions: seg.champions,
-        loyal: seg.loyal,
-        "potential-loyalist": seg.potentialLoyalist,
-        "at-risk": seg.atRisk,
-        "cant-lose": seg.cantLose,
-        hibernating: seg.hibernating,
-        "need-attention": seg.needAttention,
-        unknown: seg.unknown,
-      };
-      if (map[tag] !== undefined) return map[tag];
-    }
-    return customersList.filter((c) => getCustomerSegment(c) === tag).length;
-  };
-
   const toggleSelectCustomer = (customerId: string) => {
     setSelectedCustomers((prev) =>
       prev.includes(customerId)
@@ -325,6 +312,59 @@ export function CustomersEnhanced({
     } else {
       setSelectedCustomers(visibleCustomers.map((c) => c.id));
     }
+  };
+
+  const escapeCsvField = (v: unknown) => {
+    const s = String(v ?? "");
+    if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+
+  const downloadCustomerCsv = (rows: Customer[], suffix: string) => {
+    if (!rows.length) {
+      toast.error("No customers to export");
+      return;
+    }
+    const header = [
+      "Name",
+      "Email",
+      "Phone",
+      "Segment",
+      "Orders",
+      "Avg Order (MMK)",
+      "Lifetime Value (MMK)",
+      "Tags",
+      "Status",
+      "Tier",
+      "Join Date",
+    ];
+    const lines = rows.map((c) =>
+      [
+        escapeCsvField(c.name),
+        escapeCsvField(c.email),
+        escapeCsvField(c.phone),
+        escapeCsvField(getCustomerSegment(c)),
+        String(c.totalOrders ?? 0),
+        String(Math.round(Number(c.avgOrderValue) || 0)),
+        String(Math.round(Number(c.lifetimeValue ?? c.totalSpent) || 0)),
+        escapeCsvField((c.tags || []).join("; ")),
+        escapeCsvField(c.status),
+        escapeCsvField(c.tier),
+        escapeCsvField(c.joinDate),
+      ].join(",")
+    );
+    const csv = `\uFEFF${[header.join(","), ...lines].join("\n")}`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `secure-customers-${suffix}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${rows.length} customer${rows.length === 1 ? "" : "s"}`);
   };
 
   const getTierBadge = (tier: string) => {
@@ -676,104 +716,6 @@ export function CustomersEnhanced({
     }
   };
 
-  // 🔥 DEDUPLICATE CUSTOMERS - Merge duplicate email accounts
-  const handleDeduplicateCustomers = async () => {
-    try {
-      console.log("🧹 Starting deduplication...");
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/deduplicate`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to deduplicate customers");
-      }
-
-      console.log(`✅ Deduplication complete:`, data);
-      
-      await fetchCustomers(true);
-
-      if (data.duplicatesRemoved > 0) {
-        showAlert(
-          "Duplicates Merged!",
-          `${data.duplicatesRemoved} duplicate customer record(s) have been merged. Each email now has only one account.`,
-          "success"
-        );
-      } else {
-        showAlert(
-          "No Duplicates Found",
-          "All customer emails are unique - no duplicates to merge!",
-          "info"
-        );
-      }
-    } catch (error: any) {
-      console.error("❌ Error deduplicating customers:", error);
-      showAlert(
-        "Failed to Deduplicate Customers",
-        error.message || "An unexpected error occurred",
-        "error"
-      );
-    }
-  };
-
-  // 🔥 CLEANUP CORRUPTED DATA - Remove string values from customer: keys
-  const handleCleanupCorruptedData = async () => {
-    try {
-      console.log("🧹 Starting corrupted data cleanup...");
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/cleanup-corrupted`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to cleanup corrupted data");
-      }
-
-      console.log(`✅ Cleanup complete:`, data);
-      
-      await fetchCustomers(true);
-
-      if (data.cleanedCount > 0) {
-        showAlert(
-          "Corrupted Data Cleaned!",
-          `${data.cleanedCount} corrupted database entries have been removed. Your customer data is now clean.`,
-          "success"
-        );
-      } else {
-        showAlert(
-          "No Corrupted Data Found",
-          "All customer database entries are valid - nothing to clean!",
-          "info"
-        );
-      }
-    } catch (error: any) {
-      console.error("❌ Error cleaning corrupted data:", error);
-      showAlert(
-        "Failed to Clean Corrupted Data",
-        error.message || "An unexpected error occurred",
-        "error"
-      );
-    }
-  };
-
   // Show customer profile if viewing
   if (viewingCustomer) {
     return (
@@ -818,25 +760,20 @@ export function CustomersEnhanced({
                   {selectedCustomers.length} selected
                 </Badge>
               )}
-              <Button 
+              <Button
                 onClick={() => navigate("/admin/customers/add")}
-                className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                className="bg-slate-900 hover:bg-slate-800 text-white gap-2"
               >
                 <UserPlus className="w-4 h-4" />
                 Add New Customer
               </Button>
-              <Button variant="outline" className="gap-2">
+              <Button
+                type="button"
+                className="bg-slate-900 hover:bg-slate-800 text-white gap-2"
+                onClick={() => downloadCustomerCsv(visibleCustomers, "list")}
+              >
                 <Download className="w-4 h-4" />
                 Export
-              </Button>
-              <Button
-                variant="outline"
-                className="gap-2 border-slate-300"
-                disabled={listRefreshing || isLoading}
-                onClick={() => fetchCustomers(true)}
-              >
-                <RefreshCw className={`w-4 h-4 ${listRefreshing ? "animate-spin" : ""}`} />
-                Refresh
               </Button>
               {/* 🐛 Clean up ghost customers button */}
               {customersList.some((c) => !c.name || !c.email) && (
@@ -853,36 +790,10 @@ export function CustomersEnhanced({
                   Clean Ghost Data
                 </Button>
               )}
-              {/* 🔥 Deduplicate customers button */}
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  if (confirm("This will merge all duplicate customer accounts with the same email. The most complete record will be kept. Continue?")) {
-                    handleDeduplicateCustomers();
-                  }
-                }}
-                className="gap-2 border-orange-300 text-orange-600 hover:bg-orange-50"
-              >
-                <AlertCircle className="w-4 h-4" />
-                Merge Duplicates
-              </Button>
-              {/* 🔥 Cleanup corrupted data button */}
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  if (confirm("This will remove all corrupted database entries (e.g. product IDs stored in customer keys). This is safe and only removes invalid data. Continue?")) {
-                    handleCleanupCorruptedData();
-                  }
-                }}
-                className="gap-2 border-purple-300 text-purple-600 hover:bg-purple-50"
-              >
-                <XCircle className="w-4 h-4" />
-                Fix Database
-              </Button>
               {selectedCustomers.length > 0 && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button className="bg-blue-600 hover:bg-blue-700 text-white gap-2">
+                    <Button className="bg-slate-900 hover:bg-slate-800 text-white gap-2">
                       <Zap className="w-4 h-4" />
                       Bulk Actions
                     </Button>
@@ -901,7 +812,12 @@ export function CustomersEnhanced({
                       Update Status
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const rows = customersList.filter((c) => selectedCustomers.includes(c.id));
+                        downloadCustomerCsv(rows, "selected");
+                      }}
+                    >
                       <Download className="w-4 h-4 mr-2" />
                       Export Selected
                     </DropdownMenuItem>
@@ -923,9 +839,9 @@ export function CustomersEnhanced({
             </div>
           </div>
 
-          {/* Enhanced Stats Grid */}
-          <div className="grid grid-cols-6 gap-4">
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200">
+          {/* Enhanced Stats Grid — same cell width as original 6-card row (1 column each in a 6-col grid) */}
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-4">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200 min-w-0">
               <div className="flex items-center justify-between mb-2">
                 <UsersIcon className="w-8 h-8 text-blue-600" />
                 <ArrowUpRight className="w-5 h-5 text-blue-600" />
@@ -936,7 +852,7 @@ export function CustomersEnhanced({
               <p className="text-xs text-slate-600 mt-1">Total Customers</p>
             </div>
 
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200">
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200 min-w-0">
               <div className="flex items-center justify-between mb-2">
                 <CheckCircle className="w-8 h-8 text-green-600" />
                 <span className="text-xs font-semibold text-green-600">
@@ -949,48 +865,18 @@ export function CustomersEnhanced({
               <p className="text-xs text-slate-600 mt-1">Active</p>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
-              <div className="flex items-center justify-between mb-2">
-                <Star className="w-8 h-8 text-purple-600" />
-                <Award className="w-5 h-5 text-purple-600" />
-              </div>
-              <p className="text-2xl font-semibold text-slate-900">
-                {stats.champions}
-              </p>
-              <p className="text-xs text-slate-600 mt-1">Champions</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
-              <div className="flex items-center justify-between mb-2">
-                <Clock className="w-8 h-8 text-orange-600" />
-                <ArrowDownRight className="w-5 h-5 text-orange-600" />
-              </div>
-              <p className="text-2xl font-semibold text-slate-900">
-                {stats.atRisk}
-              </p>
-              <p className="text-xs text-slate-600 mt-1">At Risk</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200">
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200 min-w-0">
               <div className="flex items-center justify-between mb-2">
                 <DollarSign className="w-8 h-8 text-emerald-600" />
                 <TrendingUp className="w-5 h-5 text-emerald-600" />
               </div>
-              <p className="text-2xl font-semibold text-slate-900">
-                {Math.round(stats.totalRevenue)} MMK
+              <p className="text-2xl font-semibold text-slate-900 tabular-nums flex items-baseline gap-1 flex-wrap">
+                <span>{Math.round(stats.totalRevenue).toLocaleString()}</span>
+                <span className="text-[9px] font-medium text-slate-500 leading-none align-baseline">
+                  MMK
+                </span>
               </p>
               <p className="text-xs text-slate-600 mt-1">Total Revenue</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-lg p-4 border border-indigo-200">
-              <div className="flex items-center justify-between mb-2">
-                <Activity className="w-8 h-8 text-indigo-600" />
-                <BarChart3 className="w-5 h-5 text-indigo-600" />
-              </div>
-              <p className="text-2xl font-semibold text-slate-900">
-                {Math.round(stats.avgLTV)} MMK
-              </p>
-              <p className="text-xs text-slate-600 mt-1">Avg LTV</p>
             </div>
           </div>
         </div>
@@ -1003,10 +889,6 @@ export function CustomersEnhanced({
             <TabsTrigger value="list" className="data-[state=active]:bg-slate-100">
               <UsersIcon className="w-4 h-4 mr-2" />
               Customer List
-            </TabsTrigger>
-            <TabsTrigger value="segments" className="data-[state=active]:bg-slate-100">
-              <PieChart className="w-4 h-4 mr-2" />
-              Segments
             </TabsTrigger>
             <TabsTrigger value="analytics" className="data-[state=active]:bg-slate-100">
               <BarChart3 className="w-4 h-4 mr-2" />
@@ -1220,7 +1102,7 @@ export function CustomersEnhanced({
                       </TableCell>
                       <TableCell>
                         <span className="text-sm text-slate-600">
-                          ${(customer.avgOrderValue || 0).toFixed(2)}
+                          <MmkInline value={customer.avgOrderValue || 0} />
                         </span>
                       </TableCell>
                       <TableCell>
@@ -1345,201 +1227,6 @@ export function CustomersEnhanced({
           </div>
         </TabsContent>
 
-        <TabsContent value="segments" className="flex-1 overflow-auto p-6 m-0">
-          <div className="max-w-6xl mx-auto">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">
-              Customer Segmentation (RFM Analysis)
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
-              {/* Champions */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                    <Award className="w-6 h-6 text-yellow-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-900">Champions</h4>
-                    <p className="text-xs text-slate-500">Best customers</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Count</span>
-                    <span className="font-semibold text-slate-900">
-                      {segmentDisplayCount("champions")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Revenue</span>
-                    <span className="font-semibold text-green-700">
-                      $
-                      {customersList
-                        .filter((c) => getCustomerSegment(c) === "champions")
-                        .reduce((sum, c) => sum + (c.totalSpent || 0), 0)
-                        .toFixed(0)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-3">
-                    High recency, frequency, and monetary value. Reward them!
-                  </p>
-                </div>
-              </div>
-
-              {/* Loyal Customers */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Heart className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-900">Loyal</h4>
-                    <p className="text-xs text-slate-500">Repeat buyers</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Count</span>
-                    <span className="font-semibold text-slate-900">
-                      {segmentDisplayCount("loyal")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Revenue</span>
-                    <span className="font-semibold text-green-700">
-                      $
-                      {customersList
-                        .filter((c) => getCustomerSegment(c) === "loyal")
-                        .reduce((sum, c) => sum + (c.totalSpent || 0), 0)
-                        .toFixed(0)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-3">
-                    Regular buyers with good engagement. Upsell opportunities.
-                  </p>
-                </div>
-              </div>
-
-              {/* At Risk */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-orange-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-900">At Risk</h4>
-                    <p className="text-xs text-slate-500">Need attention</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Count</span>
-                    <span className="font-semibold text-slate-900">
-                      {segmentDisplayCount("at-risk")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Value</span>
-                    <span className="font-semibold text-orange-700">
-                      $
-                      {customersList
-                        .filter((c) => getCustomerSegment(c) === "at-risk")
-                        .reduce((sum, c) => sum + (c.lifetimeValue || 0), 0)
-                        .toFixed(0)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-3">
-                    Haven't purchased recently. Send win-back campaigns.
-                  </p>
-                </div>
-              </div>
-
-              {/* Potential Loyalists */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
-                    <Target className="w-6 h-6 text-teal-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-900">Potential Loyalists</h4>
-                    <p className="text-xs text-slate-500">Growing customers</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Count</span>
-                    <span className="font-semibold text-slate-900">
-                      {segmentDisplayCount("potential-loyalist")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Potential</span>
-                    <span className="font-semibold text-teal-700">High</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-3">
-                    Recent buyers with potential. Nurture them with offers.
-                  </p>
-                </div>
-              </div>
-
-              {/* Can't Lose */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
-                    <Zap className="w-6 h-6 text-red-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-900">Can't Lose</h4>
-                    <p className="text-xs text-slate-500">Critical</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Count</span>
-                    <span className="font-semibold text-slate-900">
-                      {segmentDisplayCount("cant-lose")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Priority</span>
-                    <span className="font-semibold text-red-700">Urgent</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-3">
-                    High-value customers going dormant. Act immediately!
-                  </p>
-                </div>
-              </div>
-
-              {/* Hibernating */}
-              <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-slate-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold text-slate-900">Hibernating</h4>
-                    <p className="text-xs text-slate-500">Dormant</p>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Count</span>
-                    <span className="font-semibold text-slate-900">
-                      {segmentDisplayCount("hibernating")}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-slate-600">Action</span>
-                    <span className="font-semibold text-slate-700">Re-engage</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-3">
-                    Long inactive. Try reactivation campaigns or special offers.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </TabsContent>
-
         <TabsContent value="analytics" className="flex-1 overflow-auto p-6 m-0">
           <div className="max-w-6xl mx-auto">
             <h3 className="text-lg font-semibold text-slate-900 mb-6">
@@ -1605,8 +1292,8 @@ export function CustomersEnhanced({
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="text-sm font-semibold text-green-700">
-                            ${(customer.lifetimeValue || 0).toFixed(0)}
+                          <p className="text-sm font-semibold text-green-700 flex justify-end">
+                            <MmkInline value={customer.lifetimeValue || 0} />
                           </p>
                           <p className="text-xs text-slate-500">LTV</p>
                         </div>

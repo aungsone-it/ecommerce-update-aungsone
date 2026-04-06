@@ -64,6 +64,90 @@ async function findCustomerByUserId(userId: string): Promise<any> {
 // CUSTOMER MANAGEMENT ENDPOINTS
 // ============================================
 
+/** Email on order payload (multiple shapes used across checkout flows). */
+function orderCustomerEmail(order: any): string {
+  const raw =
+    order?.email ||
+    order?.customerEmail ||
+    (typeof order?.customer === "object" && order?.customer?.email) ||
+    "";
+  return String(raw).trim().toLowerCase();
+}
+
+function orderTotalAmount(order: any): number {
+  const t = order?.total;
+  if (typeof t === "number" && !Number.isNaN(t)) return t;
+  const p = parseFloat(String(t ?? "0").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(p) ? p : 0;
+}
+
+/** Sum order totals by email and by userId (excludes cancelled). Checkout often sets both. */
+function aggregateCustomerSpendFromOrders(orders: unknown): {
+  spendByEmail: Map<string, number>;
+  countByEmail: Map<string, number>;
+  spendByUserId: Map<string, number>;
+  countByUserId: Map<string, number>;
+} {
+  const spendByEmail = new Map<string, number>();
+  const countByEmail = new Map<string, number>();
+  const spendByUserId = new Map<string, number>();
+  const countByUserId = new Map<string, number>();
+  if (!Array.isArray(orders)) {
+    return { spendByEmail, countByEmail, spendByUserId, countByUserId };
+  }
+  for (const order of orders) {
+    if (!order || typeof order !== "object") continue;
+    const st = String((order as any).status || "").toLowerCase();
+    if (st === "cancelled" || st === "canceled") continue;
+    const tot = orderTotalAmount(order);
+    const em = orderCustomerEmail(order);
+    if (em) {
+      spendByEmail.set(em, (spendByEmail.get(em) || 0) + tot);
+      countByEmail.set(em, (countByEmail.get(em) || 0) + 1);
+    }
+    const uid = String((order as any).userId || "").trim();
+    if (uid) {
+      spendByUserId.set(uid, (spendByUserId.get(uid) || 0) + tot);
+      countByUserId.set(uid, (countByUserId.get(uid) || 0) + 1);
+    }
+  }
+  return { spendByEmail, countByEmail, spendByUserId, countByUserId };
+}
+
+function mergeOrderMetricsIntoCustomer(
+  cust: any,
+  spendByEmail: Map<string, number>,
+  countByEmail: Map<string, number>,
+  spendByUserId: Map<string, number>,
+  countByUserId: Map<string, number>
+) {
+  const em = String(cust?.email || "").trim().toLowerCase();
+  const uid = String(cust?.userId || cust?.id || "").trim();
+
+  let s: number | undefined;
+  let n: number | undefined;
+
+  if (em && spendByEmail.has(em)) {
+    s = spendByEmail.get(em);
+    n = countByEmail.get(em);
+  } else if (uid && spendByUserId.has(uid)) {
+    s = spendByUserId.get(uid);
+    n = countByUserId.get(uid);
+  }
+
+  if (s == null && n == null) return cust;
+
+  const sFinal = s ?? (Number(cust.totalSpent) || 0);
+  const nFinal = n ?? (Number(cust.totalOrders) || 0);
+  return {
+    ...cust,
+    totalSpent: sFinal,
+    lifetimeValue: sFinal,
+    totalOrders: nFinal,
+    avgOrderValue: nFinal > 0 ? sFinal / nFinal : Number(cust.avgOrderValue) || 0,
+  };
+}
+
 function customerSegmentFromRfm(cust: any): string {
   const rfm = cust?.rfmScore;
   if (!rfm || typeof rfm !== "object") return "unknown";
@@ -109,6 +193,11 @@ customerApp.get("/customers", async (c) => {
     
     console.log(`✅ Found ${validCustomers.length} valid customers (filtered from ${customers?.length || 0} total)`);
 
+    const allOrdersRaw = await withTimeout(kv.getByPrefix("order:"), 45000).catch(() => []);
+    const { spendByEmail, countByEmail, spendByUserId, countByUserId } = aggregateCustomerSpendFromOrders(
+      Array.isArray(allOrdersRaw) ? allOrdersRaw : []
+    );
+
     const pageQ = c.req.query("page");
     if (pageQ !== undefined && pageQ !== "") {
       const page = Math.max(1, parseInt(String(pageQ), 10) || 1);
@@ -137,6 +226,10 @@ customerApp.get("/customers", async (c) => {
 
       rows.sort((a: any, b: any) =>
         String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""))
+      );
+
+      rows = rows.map((cust: any) =>
+        mergeOrderMetricsIntoCustomer(cust, spendByEmail, countByEmail, spendByUserId, countByUserId)
       );
 
       const now = new Date();
@@ -184,10 +277,14 @@ customerApp.get("/customers", async (c) => {
       });
     }
     
+    const enrichedAll = validCustomers.map((cust: any) =>
+      mergeOrderMetricsIntoCustomer(cust, spendByEmail, countByEmail, spendByUserId, countByUserId)
+    );
+
     return c.json({
       success: true,
-      customers: validCustomers,
-      total: validCustomers.length,
+      customers: enrichedAll,
+      total: enrichedAll.length,
     });
   } catch (error: any) {
     console.error("❌ Error fetching customers:", error);

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SECURE — Simple UI Instructions</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --muted: #444;
+      --border: #ccc;
+      --bg: #fff;
+      --accent: #1e3a5f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+      font-size: 14pt;
+      line-height: 1.55;
+      color: var(--ink);
+      background: var(--bg);
+      max-width: 48rem;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+    }
+    h1 {
+      font-size: 1.75rem;
+      color: var(--accent);
+      border-bottom: 3px solid var(--accent);
+      padding-bottom: 0.5rem;
+      margin-top: 0;
+    }
+    h2 {
+      font-size: 1.35rem;
+      margin-top: 1.75rem;
+      page-break-after: avoid;
+      color: var(--accent);
+    }
+    h3 {
+      font-size: 1.15rem;
+      margin-top: 1.25rem;
+      page-break-after: avoid;
+    }
+    p, li { color: var(--muted); }
+    strong { color: var(--ink); }
+    .box {
+      background: #f5f7fa;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+    }
+    .box h2:first-child, .box h3:first-child { margin-top: 0; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5pt;
+      margin: 0.75rem 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.5rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #eef2f7; color: var(--ink); }
+    ol, ul { padding-left: 1.35rem; }
+    li { margin: 0.35rem 0; }
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.5rem 0;
+    }
+    .cover-note {
+      font-size: 13pt;
+      background: #fff9e6;
+      border: 1px solid #e6c200;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.5rem;
+    }
+    @media print {
+      body { font-size: 11pt; padding: 0.75in; max-width: none; }
+      .cover-note { break-inside: avoid; }
+      h2 { break-before: page; }
+      h2:first-of-type { break-before: auto; }
+      a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 0.85em; color: #666; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>SECURE — Simple UI instructions</h1>
+  <p><strong>For:</strong> anyone using the admin or vendor screens — step by step, plain words.</p>
+
+  <div class="cover-note">
+    <strong>How to save this as a PDF</strong><br />
+    1) Open this file in <strong>Chrome</strong> or <strong>Edge</strong>.<br />
+    2) Press <strong>Ctrl+P</strong> (Windows) or <strong>Cmd+P</strong> (Mac).<br />
+    3) Choose <strong>Save as PDF</strong> / <strong>Microsoft Print to PDF</strong>.<br />
+    4) Click <strong>Save</strong> and pick a folder. You can email or print the PDF like any document.
+  </div>
+
+  <h2>Words you will see</h2>
+  <table>
+    <thead>
+      <tr><th>Word</th><th>What it means</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Super Admin / Admin</strong></td><td>The main control room for the <strong>whole</strong> shopping site.</td></tr>
+      <tr><td><strong>Vendor</strong></td><td>A <strong>seller</strong> who has their own mini-shop.</td></tr>
+      <tr><td><strong>Storefront</strong></td><td>The <strong>public</strong> website where customers browse and buy.</td></tr>
+      <tr><td><strong>Vendor admin</strong></td><td>The <strong>private</strong> dashboard for one vendor.</td></tr>
+    </tbody>
+  </table>
+
+  <hr />
+
+  <h2>Part A — Super Admin (whole platform)</h2>
+
+  <h3>A1. Open admin</h3>
+  <ol>
+    <li>Open your web browser.</li>
+    <li>Go to your SECURE site and add <strong>/admin</strong> at the end of the address.<br />
+      Example: <code>https://yoursite.com/admin</code></li>
+    <li>Sign in with the email and password your owner gave you.</li>
+  </ol>
+
+  <h3>A2. What is on the screen</h3>
+  <ul>
+    <li><strong>Left:</strong> the main <strong>menu</strong> (list of sections).</li>
+    <li><strong>Top:</strong> search, notifications, your <strong>name / profile</strong>.</li>
+    <li><strong>Middle:</strong> the work area — it changes when you click the menu.</li>
+  </ul>
+
+  <h3>A3. Menu — what to click</h3>
+  <table>
+    <thead>
+      <tr><th>Menu</th><th>What it is for</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Home</td><td>Summary / dashboard.</td></tr>
+      <tr><td>Product</td><td>Submenu: <strong>Product</strong>, <strong>Categories</strong>, <strong>Inventory</strong> — what is sold and stock.</td></tr>
+      <tr><td>Orders</td><td>All orders.</td></tr>
+      <tr><td>Vendor</td><td>Seller partners; <strong>Review applications</strong> for new sellers.</td></tr>
+      <tr><td>Promo Setting</td><td>Discounts / promotions.</td></tr>
+      <tr><td>Chat</td><td>Customer messages.</td></tr>
+      <tr><td>Customers</td><td>Customer list.</td></tr>
+      <tr><td>Finances</td><td>Money / reports (if your login allows).</td></tr>
+      <tr><td>Logistics</td><td>Delivery <strong>partners</strong> (shipping companies).</td></tr>
+      <tr><td>Settings</td><td>Store name, logo, team users (if allowed).</td></tr>
+    </tbody>
+  </table>
+  <p>If you do <strong>not</strong> see Finances or Settings, your account is limited on purpose.</p>
+
+  <h3>A4. Vendors (short steps)</h3>
+  <ol>
+    <li>Click <strong>Vendor</strong> on the left.</li>
+    <li>Use the <strong>search box</strong> to find a vendor.</li>
+    <li>Use the <strong>filter</strong> if you need only certain statuses.</li>
+    <li>Use <strong>Review applications</strong> for new signup requests.</li>
+    <li>Use <strong>Add vendor</strong> if your team adds sellers manually.</li>
+    <li>On a row, the <strong>⋮</strong> (three dots) menu may open profile or storefront preview.</li>
+  </ol>
+
+  <h3>A5. Settings &amp; team (owners)</h3>
+  <ol>
+    <li>Click <strong>Settings</strong>.</li>
+    <li>Use tabs for <strong>General</strong> (name, logo) and <strong>Users</strong> (staff).</li>
+    <li>To add staff: <strong>Users</strong> → <strong>Add user</strong> → fill form → save.</li>
+  </ol>
+
+  <hr />
+
+  <h2>Part B — Vendors (sellers)</h2>
+
+  <h3>B1. Login</h3>
+  <ol>
+    <li>Open: <strong>yoursite.com/vendor/login</strong> (use your real site name).</li>
+    <li>Enter email and password for the <strong>vendor</strong> account.</li>
+  </ol>
+
+  <h3>B2. Vendor admin link (bookmark this)</h3>
+  <p>Examples:</p>
+  <ul>
+    <li><code>yoursite.com/vendor/YOUR-STORE-SLUG/admin</code></li>
+    <li><code>yoursite.com/store/YOUR-STORE-SLUG/admin</code></li>
+  </ul>
+  <p><strong>YOUR-STORE-SLUG</strong> is your shop short name. Ask Super Admin if unsure.</p>
+
+  <h3>B3. Vendor menu</h3>
+  <table>
+    <thead>
+      <tr><th>Menu</th><th>Use it to…</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Analytics / Dashboard</td><td>See overview.</td></tr>
+      <tr><td>Products → All products</td><td>Add or edit products.</td></tr>
+      <tr><td>Products → Categories</td><td>Organize categories.</td></tr>
+      <tr><td>Orders</td><td>See your store’s orders.</td></tr>
+      <tr><td>Customers</td><td>See buyers (as the system shows).</td></tr>
+      <tr><td>Finances</td><td>Earnings / money views.</td></tr>
+      <tr><td>Settings</td><td>Store name, logo, link, storefront look.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>B4. Preview the public shop</h3>
+  <ol>
+    <li>In vendor admin, find <strong>Preview</strong> / <strong>View storefront</strong> (or similar).</li>
+    <li>Click — a new tab shows what <strong>customers</strong> see.</li>
+  </ol>
+
+  <h3>B5. Link for customers</h3>
+  <p>Share the link your team confirms, often like:</p>
+  <ul>
+    <li><code>yoursite.com/vendor/YOUR-SLUG</code> or</li>
+    <li><code>yoursite.com/store/YOUR-SLUG</code></li>
+  </ul>
+
+  <hr />
+
+  <h2>Quick help</h2>
+  <table>
+    <thead>
+      <tr><th>Problem</th><th>Try this</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Blank page / error</td><td>Refresh (F5). Try another browser.</td></tr>
+      <tr><td>Missing menu items</td><td>Your role may not allow it — ask Super Admin.</td></tr>
+      <tr><td>Forgot password</td><td>Use “Forgot password” on login, or ask support.</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top: 2rem; font-size: 12pt; color: #666;">
+    SECURE — simple UI instructions. Technical detail: see <code>SECURE_ADMIN_AND_VENDOR_GUIDE.md</code> in the project <code>docs</code> folder.
+  </p>
+
+</body>
+</html>
