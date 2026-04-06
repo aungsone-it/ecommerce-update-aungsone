@@ -57,6 +57,7 @@ import {
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
 import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
+import { normalizeProductForAdminDetailView } from "../utils/adminProductDetailNormalize";
 import { buildVendorDisplayLookup, resolveVendorDisplayLabel } from "../utils/vendorDisplay";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -543,9 +544,14 @@ export function ProductList({
   const handleEditProduct = async (productId: string) => {
     try {
       const response = await getCachedProductById(productId);
-      if (response.product) {
-        setSelectedProduct(response.product);
+      const raw = (response as { product?: Record<string, unknown> })?.product ?? (response as Record<string, unknown>);
+      if (raw && typeof raw === "object" && raw.id) {
+        setSelectedProduct(
+          normalizeProductForAdminDetailView(raw as Record<string, unknown>, vendorsMap) as Product
+        );
         setCurrentView("edit");
+      } else {
+        toast.error("Failed to load product details");
       }
     } catch (error) {
       console.error("Failed to load product details:", error);
@@ -553,13 +559,18 @@ export function ProductList({
     }
   };
 
-  // Load full product details when viewing
+  // Load full product details when viewing (GET /products/:id — same source as storefront cache)
   const handleViewProduct = async (productId: string) => {
     try {
       const response = await getCachedProductById(productId);
-      if (response.product) {
-        setSelectedProduct(response.product);
+      const raw = (response as { product?: Record<string, unknown> })?.product ?? (response as Record<string, unknown>);
+      if (raw && typeof raw === "object" && raw.id) {
+        setSelectedProduct(
+          normalizeProductForAdminDetailView(raw as Record<string, unknown>, vendorsMap) as Product
+        );
         setCurrentView("storefront");
+      } else {
+        toast.error("Failed to load product details");
       }
     } catch (error) {
       console.error("Failed to load product details:", error);

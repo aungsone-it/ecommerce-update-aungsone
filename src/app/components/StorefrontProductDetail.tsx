@@ -1,8 +1,8 @@
-import { ArrowLeft, ShoppingCart, Heart, Share2, Star, Truck, Shield, RefreshCw } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Heart, Share2, Truck, Shield, RefreshCw } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { RichTextEditor } from "./RichTextEditor";
 
 interface Product {
@@ -29,6 +29,16 @@ interface StorefrontProductDetailProps {
   onBack: () => void;
 }
 
+function parsePriceToNumber(s: string): number {
+  const t = String(s)
+    .replace(/MMK/gi, "")
+    .replace(/,/g, "")
+    .replace(/\$/g, "")
+    .trim();
+  const n = parseFloat(t);
+  return Number.isNaN(n) ? 0 : n;
+}
+
 export function StorefrontProductDetail({ product, onBack }: StorefrontProductDetailProps) {
   const [quantity, setQuantity] = useState(1);
   
@@ -36,17 +46,16 @@ export function StorefrontProductDetail({ product, onBack }: StorefrontProductDe
   const productData = product as any;
   const variantOptions = productData.variantOptions || [];
   const variants = productData.variants || [];
-  const hasVariants = productData.hasVariants && variants.length > 0;
-  
-  // 🔍 DEBUG: Log product data structure
-  console.log('🔍 Selected Product Data:', {
-    hasVariants: productData.hasVariants,
-    variantOptionsCount: variantOptions.length,
-    variantsCount: variants.length,
-    variantOptions,
-    variants,
-    fullProduct: productData
-  });
+  const hasVariants =
+    !!productData.hasVariants && variantOptions.length > 0 && variants.length > 0;
+
+  const galleryImages = useMemo(() => {
+    const imgs = productData.images;
+    if (Array.isArray(imgs) && imgs.length > 0) {
+      return imgs.filter((u: unknown) => typeof u === "string" && String(u).trim());
+    }
+    return product.image ? [product.image] : [];
+  }, [productData.images, product.image]);
   
   // Initialize selected options based on first variant value
   const initialOptions: Record<string, string> = {};
@@ -78,6 +87,15 @@ export function StorefrontProductDetail({ product, onBack }: StorefrontProductDe
   const displayPrice = currentVariant ? currentVariant.price : product.price;
   const displayInventory = currentVariant ? currentVariant.inventory : product.inventory;
   const displaySku = currentVariant ? currentVariant.sku : product.sku;
+
+  const compareAtRaw = productData.compareAtPriceDisplay as string | undefined;
+  const saleNum = parsePriceToNumber(String(displayPrice));
+  const compareNum = compareAtRaw ? parsePriceToNumber(String(compareAtRaw)) : 0;
+  const showCompareAt = !!compareAtRaw && compareNum > saleNum && compareNum > 0;
+  const discountPct =
+    showCompareAt && compareNum > 0
+      ? Math.round(((compareNum - saleNum) / compareNum) * 100)
+      : 0;
   
   // Fallback sizes for demo (if no variants)
   const [selectedSize, setSelectedSize] = useState("M");
@@ -116,25 +134,27 @@ export function StorefrontProductDetail({ product, onBack }: StorefrontProductDe
           <div className="space-y-3 sm:space-y-4">
             <div className="aspect-square rounded-xl sm:rounded-2xl overflow-hidden bg-slate-100 border border-slate-200">
               <img
-                src={product.image}
+                src={galleryImages[0] || product.image}
                 alt={product.name}
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="grid grid-cols-4 gap-2 sm:gap-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div
-                  key={i}
-                  className="aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer hover:border-slate-400 transition-colors"
-                >
-                  <img
-                    src={product.image}
-                    alt={`${product.name} ${i}`}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              ))}
-            </div>
+            {galleryImages.length > 1 && (
+              <div className="grid grid-cols-4 gap-2 sm:gap-4">
+                {galleryImages.slice(0, 8).map((src: string, i: number) => (
+                  <div
+                    key={`${src}-${i}`}
+                    className="aspect-square rounded-lg overflow-hidden bg-slate-100 border border-slate-200 cursor-pointer hover:border-slate-400 transition-colors"
+                  >
+                    <img
+                      src={src}
+                      alt={`${product.name} ${i + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right - Product Info */}
@@ -146,19 +166,9 @@ export function StorefrontProductDetail({ product, onBack }: StorefrontProductDe
                   <h1 className="text-xl sm:text-2xl font-semibold text-slate-900 mb-2">
                     {product.name}
                   </h1>
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="flex items-center gap-1">
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Star
-                          key={star}
-                          className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-yellow-400 text-yellow-400"
-                        />
-                      ))}
-                    </div>
-                    <span className="text-xs sm:text-sm text-slate-600">
-                      (128 reviews)
-                    </span>
-                  </div>
+                  {product.category ? (
+                    <p className="text-xs sm:text-sm text-slate-500 mb-1">{product.category}</p>
+                  ) : null}
                 </div>
                 <Badge
                   variant={product.status === "active" ? "default" : "secondary"}
@@ -171,16 +181,22 @@ export function StorefrontProductDetail({ product, onBack }: StorefrontProductDe
                   {product.status === "active" ? "In Stock" : "Out of Stock"}
                 </Badge>
               </div>
-              <div className="flex items-baseline gap-2 sm:gap-3">
+              <div className="flex items-baseline gap-2 sm:gap-3 flex-wrap">
                 <span className="text-xl sm:text-2xl font-bold text-slate-900">
                   {displayPrice}
                 </span>
-                <span className="text-xs sm:text-sm text-slate-500 line-through">
-                  ${(parseFloat(displayPrice.replace('$', '')) * 1.3).toFixed(2)}
-                </span>
-                <Badge variant="destructive" className="bg-red-500 text-xs">
-                  30% OFF
-                </Badge>
+                {showCompareAt && (
+                  <>
+                    <span className="text-xs sm:text-sm text-slate-500 line-through">
+                      {compareAtRaw}
+                    </span>
+                    {discountPct > 0 && (
+                      <Badge variant="destructive" className="bg-red-500 text-xs">
+                        {discountPct}% OFF
+                      </Badge>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
