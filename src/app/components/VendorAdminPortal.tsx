@@ -40,6 +40,7 @@ import { VendorAdminSettings } from "./vendor-admin/VendorAdminSettings";
 import { VendorAdminFinances } from "./vendor-admin/VendorAdminFinances";
 import { VendorAdminUsers } from "./vendor-admin/VendorAdminUsers";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
 
 interface Vendor {
   id: string;
@@ -128,6 +129,20 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   useEffect(() => {
     void loadStorefrontSnapshot();
   }, [loadStorefrontSnapshot]);
+
+  useEffect(() => {
+    if (vendorLogo.trim()) {
+      applyDocumentFavicon(vendorLogo);
+    } else {
+      resetDocumentFavicon();
+    }
+  }, [vendorLogo]);
+
+  useEffect(() => {
+    return () => {
+      resetDocumentFavicon();
+    };
+  }, []);
 
   useEffect(() => {
     const onSettingsUpdated = (e: Event) => {
