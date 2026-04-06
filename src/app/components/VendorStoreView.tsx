@@ -31,6 +31,7 @@ import {
   useRef,
   useCallback,
   useMemo,
+  startTransition,
   type ChangeEvent,
 } from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
@@ -504,6 +505,8 @@ export function VendorStoreView({
   const [vendorNavbarSticky, setVendorNavbarSticky] = useState(false);
   const vendorScrollRootRef = useRef<HTMLDivElement>(null);
   const lastVendorScrollTopRef = useRef(0);
+  /** Last `/product/:slug` segment — used to scroll-reset only when entering/changing product, not when leaving to home. */
+  const lastVendorProductSlugForScrollRef = useRef<string | undefined>(undefined);
   const [quantity, setQuantity] = useState(1);
   /** Option name → value; mirrors main marketplace variant picker */
   const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
@@ -2762,17 +2765,17 @@ export function VendorStoreView({
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
     if (!stillOnProduct) {
-      setSelectedProduct(null);
+      startTransition(() => setSelectedProduct(null));
       return;
     }
     const slug = productSlugFromPath ?? initialProductSlug;
     if (!slug) {
-      setSelectedProduct(null);
+      startTransition(() => setSelectedProduct(null));
       return;
     }
     const decoded = safeDecodePathSegment(slug);
     if (!decoded) {
-      setSelectedProduct(null);
+      startTransition(() => setSelectedProduct(null));
       return;
     }
     const fromCatalog = resolveVendorProductFromSlug(products, decoded);
@@ -2782,11 +2785,25 @@ export function VendorStoreView({
     }
     const navState = location.state as { vendorProduct?: Product } | null | undefined;
     const fromNav = navState?.vendorProduct;
-    if (fromNav?.id && resolveVendorProductFromSlug([fromNav], decoded)) {
-      setSelectedProduct(fromNav);
-      return;
+    if (fromNav?.id) {
+      // Prefer strict match; fall back to segment/sku/id equality (encoding & case differ on some hosts).
+      if (resolveVendorProductFromSlug([fromNav], decoded)) {
+        setSelectedProduct(fromNav);
+        return;
+      }
+      const seg = buildVendorProductUrlSegment(fromNav);
+      const dec = decoded.trim();
+      if (
+        seg === dec ||
+        seg.toLowerCase() === dec.toLowerCase() ||
+        (fromNav.sku && String(fromNav.sku).trim().toLowerCase() === dec.toLowerCase()) ||
+        fromNav.id === dec
+      ) {
+        setSelectedProduct(fromNav);
+        return;
+      }
     }
-    setSelectedProduct(null);
+    startTransition(() => setSelectedProduct(null));
   }, [
     productSlugFromPath,
     initialProductSlug,
@@ -2795,17 +2812,23 @@ export function VendorStoreView({
     location.state,
   ]);
 
-  // Shop grid and /product/* share this scroll root; opening a product after scrolling the home page
-  // otherwise keeps scrollTop — user lands mid-page (description) instead of hero + breadcrumbs.
+  // Shop grid and /product/* share this scroll root. Only snap to top when opening or switching
+  // product URLs — not when leaving /product → home (avoids a white flash / jump on slow networks).
   useLayoutEffect(() => {
     if (savedPage) return;
     const st = location.state as { vendorVariantNav?: boolean } | null | undefined;
     if (st?.vendorVariantNav) return;
+    const slugRaw = productSlugFromPath ?? initialProductSlug ?? "";
+    const slug = String(slugRaw).trim();
+    const prev = lastVendorProductSlugForScrollRef.current;
+    lastVendorProductSlugForScrollRef.current = slug || undefined;
+    if (!slug) return;
+    if (prev === slug) return;
     const el = vendorScrollRootRef.current;
     if (el) el.scrollTop = 0;
     lastVendorScrollTopRef.current = 0;
     setVendorNavbarSticky(false);
-  }, [productSlugFromPath, savedPage, location.key, location.pathname]);
+  }, [productSlugFromPath, initialProductSlug, savedPage, location.pathname]);
 
   useEffect(() => {
     if (savedPage) return;
