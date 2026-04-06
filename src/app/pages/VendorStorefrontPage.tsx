@@ -95,7 +95,8 @@ export function VendorStorefrontPage() {
   return (
     <AuthProvider>
       <CartProvider>
-        <VendorStoreView 
+        <VendorStoreView
+          key={storeName}
           vendorId={storeName}
           storeSlug={storeName}
           onBack={handleBack}

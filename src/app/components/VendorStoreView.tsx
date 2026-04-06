@@ -395,6 +395,98 @@ const VENDOR_SEARCH_MIN_SERVER_CHARS = 3;
 /** Ms after last keystroke before server catalog fetch (with `q`); category changes refetch immediately. */
 const VENDOR_SEARCH_DEBOUNCE_MS = 450;
 
+/**
+ * First paint for vendor home: read the same LS keys as `refetchVendorCatalogPage1` + categories
+ * so production (slow edge) does not flash a full-page skeleton while waiting for sequential fetches.
+ * Primes moduleCache so background refresh does not duplicate network.
+ */
+function getVendorHomepageInitialState(
+  vendorId: string,
+  savedPage: boolean,
+  initialProductSlug: string | undefined
+): {
+  products: Product[];
+  vendorCategories: any[];
+  serverStatus: "checking" | "healthy";
+  vendorCatalogTotal: number;
+  vendorCatalogPage: number;
+  vendorCatalogHasMore: boolean;
+  storeName: string;
+  storeLogo: string;
+  canonicalVendorId: string | null;
+} {
+  if (savedPage) {
+    return {
+      products: [],
+      vendorCategories: [],
+      serverStatus: "healthy",
+      vendorCatalogTotal: 0,
+      vendorCatalogPage: 1,
+      vendorCatalogHasMore: false,
+      storeName: "Vendor Store",
+      storeLogo: "",
+      canonicalVendorId: null,
+    };
+  }
+
+  let vendorCategories: any[] = [];
+  try {
+    const catLsKey = lsVendorCategoriesKey(vendorId);
+    const fromCatLs = readPersistedJson<any[]>(catLsKey, PERSISTED_CATALOG_TTL_MS);
+    if (fromCatLs !== null && Array.isArray(fromCatLs)) {
+      moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), fromCatLs);
+      vendorCategories = fromCatLs;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const lsKey = lsVendorCatalogPage1Key(vendorId, "", "all", VENDOR_BROWSE_PAGE_SIZE);
+    const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
+    if (fromLs && typeof fromLs === "object") {
+      const products = Array.isArray(fromLs.products) ? (fromLs.products as Product[]) : [];
+      const qk = "";
+      const cat = "all";
+      const pageSize = VENDOR_BROWSE_PAGE_SIZE;
+      const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
+      moduleCache.prime(cacheKey, fromLs);
+      const rid =
+        typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
+          ? fromLs.resolvedVendorId.trim()
+          : null;
+      return {
+        products,
+        vendorCategories,
+        serverStatus: "healthy",
+        vendorCatalogTotal: typeof fromLs.total === "number" ? fromLs.total : 0,
+        vendorCatalogPage: typeof fromLs.page === "number" ? fromLs.page : 1,
+        vendorCatalogHasMore: !!fromLs.hasMore,
+        storeName:
+          typeof fromLs.storeName === "string" && fromLs.storeName.trim()
+            ? fromLs.storeName.trim()
+            : "Vendor Store",
+        storeLogo: typeof fromLs.logo === "string" ? fromLs.logo : "",
+        canonicalVendorId: rid ?? vendorId,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return {
+    products: [],
+    vendorCategories,
+    serverStatus: initialProductSlug ? "healthy" : "checking",
+    vendorCatalogTotal: 0,
+    vendorCatalogPage: 1,
+    vendorCatalogHasMore: false,
+    storeName: "Vendor Store",
+    storeLogo: "",
+    canonicalVendorId: null,
+  };
+}
+
 export function VendorStoreView({
   vendorId,
   storeSlug,
@@ -454,20 +546,21 @@ export function VendorStoreView({
     };
   }, [stopFaviconLoading]);
   
-  // If we have an initialProductSlug, we're navigating from product grid, so skip loading overlay
-  const [serverStatus, setServerStatus] = useState<'checking' | 'healthy' | 'unhealthy'>(() =>
-    savedPage ? 'healthy' : 'checking'
+  // Single LS read for first paint — avoids skeleton + empty grid on slow networks (see getVendorHomepageInitialState).
+  const [vendorHomeSnapshot] = useState(() =>
+    getVendorHomepageInitialState(vendorId, savedPage, initialProductSlug)
   );
-  const [products, setProducts] = useState<Product[]>([]);
-  const [vendorCategories, setVendorCategories] = useState<any[]>([]);
+  const [serverStatus, setServerStatus] = useState<'checking' | 'healthy' | 'unhealthy'>(vendorHomeSnapshot.serverStatus);
+  const [products, setProducts] = useState<Product[]>(vendorHomeSnapshot.products);
+  const [vendorCategories, setVendorCategories] = useState<any[]>(vendorHomeSnapshot.vendorCategories);
   const [searchQuery, setSearchQuery] = useState("");
   /** Passed to API as `q` only after debounce + min length; `searchQuery` still drives instant client filter. */
   const [debouncedVendorServerQ, setDebouncedVendorServerQ] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [vendorCatalogTotal, setVendorCatalogTotal] = useState(0);
-  const [vendorCatalogPage, setVendorCatalogPage] = useState(1);
-  const [vendorCatalogHasMore, setVendorCatalogHasMore] = useState(false);
+  const [vendorCatalogTotal, setVendorCatalogTotal] = useState(vendorHomeSnapshot.vendorCatalogTotal);
+  const [vendorCatalogPage, setVendorCatalogPage] = useState(vendorHomeSnapshot.vendorCatalogPage);
+  const [vendorCatalogHasMore, setVendorCatalogHasMore] = useState(vendorHomeSnapshot.vendorCatalogHasMore);
   const [vendorCatalogLoadingMore, setVendorCatalogLoadingMore] = useState(false);
   const [savedDisplayProducts, setSavedDisplayProducts] = useState<Product[]>([]);
   /** Server total of wishlist products belonging to this storefront (all pages). */
@@ -476,7 +569,7 @@ export function VendorStoreView({
   const [savedWishlistHasMore, setSavedWishlistHasMore] = useState(false);
   const [savedWishlistLoadingMore, setSavedWishlistLoadingMore] = useState(false);
   /** KV vendor id after slug resolution — matches wishlist rows where URL segment is `vendor-vendor_…`. */
-  const [canonicalVendorId, setCanonicalVendorId] = useState<string | null>(null);
+  const [canonicalVendorId, setCanonicalVendorId] = useState<string | null>(vendorHomeSnapshot.canonicalVendorId);
   const isFirstSearchCategoryEffect = useRef(true);
   /** Latest catalog for merging into saved list without re-subscribing the wishlist hydration effect to `products`. */
   const productsRef = useRef<Product[]>([]);
@@ -495,8 +588,8 @@ export function VendorStoreView({
 
   const [cartOpen, setCartOpen] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [storeName, setStoreName] = useState("Vendor Store");
-  const [storeLogo, setStoreLogo] = useState<string>("");
+  const [storeName, setStoreName] = useState(vendorHomeSnapshot.storeName);
+  const [storeLogo, setStoreLogo] = useState<string>(vendorHomeSnapshot.storeLogo);
   /** Slide-out nav on small screens (account, browse, wishlist — hamburger on the right like /store). */
   const [vendorMobileNavOpen, setVendorMobileNavOpen] = useState(false);
   /** Full-screen search on mobile — matches main marketplace header search icon. */
@@ -580,18 +673,26 @@ export function VendorStoreView({
     lastVendorScrollTopRef.current = el.scrollTop;
     setVendorNavbarSticky(false);
 
+    let raf = 0;
     const onScroll = () => {
-      const st = el.scrollTop;
-      if (st < lastVendorScrollTopRef.current) {
-        setVendorNavbarSticky(true);
-      } else if (st > lastVendorScrollTopRef.current) {
-        setVendorNavbarSticky(false);
-      }
-      lastVendorScrollTopRef.current = st;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const st = el.scrollTop;
+        if (st < lastVendorScrollTopRef.current) {
+          setVendorNavbarSticky(true);
+        } else if (st > lastVendorScrollTopRef.current) {
+          setVendorNavbarSticky(false);
+        }
+        lastVendorScrollTopRef.current = st;
+      });
     };
 
     el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [selectedProduct?.id, vendorViewMode, savedPage]);
 
   const vendorScrollRebindKey = useMemo(
@@ -2623,45 +2724,47 @@ export function VendorStoreView({
   ]);
 
   // 🚀 Categories + server-paginated product grid (module cache per page / filters).
+  // Categories and page-1 catalog run in parallel — sequential awaits were doubling time-to-interactive on Vercel.
   const loadVendorData = async (forceRefresh: boolean = false) => {
     console.log(`🚀 [VENDOR STORE] Loading data for vendorId: ${vendorId}`);
 
-    if (!forceRefresh && products.length === 0 && !initialProductSlug && !savedPage) {
-      setServerStatus("checking");
-    }
-
     try {
-      let categoriesData: any[] = [];
-      try {
-        const catLsKey = lsVendorCategoriesKey(vendorId);
-        let categoriesFromLs = false;
-        if (!forceRefresh) {
-          const fromLs = readPersistedJson<any[]>(catLsKey, PERSISTED_CATALOG_TTL_MS);
-          if (fromLs !== null && Array.isArray(fromLs)) {
-            moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), fromLs);
-            categoriesData = fromLs;
-            categoriesFromLs = true;
+      const loadCategories = async (): Promise<any[]> => {
+        let categoriesData: any[] = [];
+        try {
+          const catLsKey = lsVendorCategoriesKey(vendorId);
+          let categoriesFromLs = false;
+          if (!forceRefresh) {
+            const fromLs = readPersistedJson<any[]>(catLsKey, PERSISTED_CATALOG_TTL_MS);
+            if (fromLs !== null && Array.isArray(fromLs)) {
+              moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), fromLs);
+              categoriesData = fromLs;
+              categoriesFromLs = true;
+            }
           }
-        }
-        if (forceRefresh || !categoriesFromLs) {
-          categoriesData = await moduleCache.get(
-            CACHE_KEYS.vendorCategories(vendorId),
-            () => fetchVendorCategories(vendorId),
-            forceRefresh
-          );
-          if (!forceRefresh && Array.isArray(categoriesData)) {
-            writePersistedJson(catLsKey, categoriesData);
+          if (forceRefresh || !categoriesFromLs) {
+            categoriesData = await moduleCache.get(
+              CACHE_KEYS.vendorCategories(vendorId),
+              () => fetchVendorCategories(vendorId),
+              forceRefresh
+            );
+            if (!forceRefresh && Array.isArray(categoriesData)) {
+              writePersistedJson(catLsKey, categoriesData);
+            }
           }
+        } catch (catErr) {
+          console.warn("⚠️ [VENDOR STORE] Categories fetch failed (non-fatal):", catErr);
+          categoriesData = [];
         }
-      } catch (catErr) {
-        console.warn("⚠️ [VENDOR STORE] Categories fetch failed (non-fatal):", catErr);
-        categoriesData = [];
-      }
-      setVendorCategories(categoriesData || []);
+        return categoriesData || [];
+      };
 
-      if (!savedPage) {
-        await refetchVendorCatalogPage1(forceRefresh);
-      }
+      const [categoriesData] = await Promise.all([
+        loadCategories(),
+        savedPage ? Promise.resolve() : refetchVendorCatalogPage1(forceRefresh),
+      ]);
+
+      setVendorCategories(categoriesData);
       setServerStatus("healthy");
       console.log(`✅ [VENDOR STORE] Loaded ${categoriesData?.length || 0} categories`);
     } catch (error) {
