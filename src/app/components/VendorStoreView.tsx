@@ -2742,7 +2742,12 @@ export function VendorStoreView({
     }
     void (async () => {
       try {
-        setServerStatus("checking");
+        // Only block the UI with "checking" on first load. Refetching filters/search with
+        // catalog already in memory should not swap the whole page for a skeleton (blink when
+        // returning from product detail or changing category after browse).
+        if (productsRef.current.length === 0) {
+          setServerStatus("checking");
+        }
         await refetchVendorCatalogPage1(false);
         setServerStatus("healthy");
       } catch {
@@ -2833,20 +2838,6 @@ export function VendorStoreView({
       cancelled = true;
     };
   }, [savedPage, productSlugFromPath, initialProductSlug, products, vendorId, location.pathname]);
-
-  // Handle browser back button - detect when URL changes back to storefront home
-  useEffect(() => {
-    // Check if current URL is the storefront home (no /product/ in path)
-    const isStorefrontHome = !location.pathname.includes('/product/');
-    
-    // If we're on storefront home but have a selected product, clear it
-    if (isStorefrontHome && selectedProduct) {
-      console.log('🔙 Browser back detected - returning to storefront home');
-      setSelectedProduct(null);
-      setSearchQuery("");
-      setSelectedCategory("all");
-    }
-  }, [location.pathname, selectedProduct]);
 
   const handleAddToCart = (product: Product, overrides?: VendorAddToCartOverrides): boolean => {
     try {
@@ -4181,7 +4172,8 @@ export function VendorStoreView({
     serverStatus === "checking" &&
     vendorViewMode === "storefront" &&
     !savedPage &&
-    !isVendorProductDetailPath;
+    !isVendorProductDetailPath &&
+    products.length === 0;
   const showVendorPageFullSkeleton =
     vendorViewMode === "storefront" &&
     (showVendorStorefrontFullSkeleton || (savedPage && showSavedPageSkeleton));
