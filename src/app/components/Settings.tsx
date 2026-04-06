@@ -1,6 +1,6 @@
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { compressImage } from '../../utils/imageCompression';
-import { useState, useEffect, useLayoutEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { 
   Store, 
@@ -54,11 +54,22 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import {
   assignableRolesForCreator,
-  canManageStaffAccounts,
   canonicalizeStaffRoleForSave,
+  isOwnerRole,
 } from "../utils/superAdminRolePermissions";
 import { toast } from 'sonner';
 import { VendorDomainsList } from "./VendorDomainsList";
+import {
+  moduleCache,
+  CACHE_KEYS,
+  getCachedAdminAuthUsers,
+  invalidateAdminAuthUsersCache,
+} from "../utils/module-cache";
+import {
+  readPersistedJson,
+  PERSISTED_CATALOG_TTL_MS,
+  LS_ADMIN_AUTH_USERS,
+} from "../utils/persistedLocalCache";
 
 interface SettingsTab {
   id: string;
@@ -80,13 +91,16 @@ export function Settings() {
   ];
 
   const visibleSettingsTabs = settingsTabs.filter(
-    (tab) => tab.id !== "users" || canManageStaffAccounts(user?.role)
+    (tab) => tab.id !== "users" || isOwnerRole(user?.role)
   );
 
   const [showUserDialog, setShowUserDialog] = useState(false);
   const [viewingUserProfile, setViewingUserProfile] = useState<any>(null);
   const [userProfileInitialEdit, setUserProfileInitialEdit] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(
+    () => !moduleCache.peek(CACHE_KEYS.ADMIN_AUTH_USERS)
+  );
+  const [usersListRefreshing, setUsersListRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -161,23 +175,16 @@ export function Settings() {
   const [tempPassword, setTempPassword] = useState("");
   const [showTempPassword, setShowTempPassword] = useState(false);
 
-  // Load users from backend on mount
   useEffect(() => {
-    if (activeTab === 'users') {
-      fetchUsers();
-    }
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab === "users" && !canManageStaffAccounts(user?.role)) {
+    if (activeTab === "users" && !isOwnerRole(user?.role)) {
       setActiveTab("general");
     }
   }, [activeTab, user?.role]);
 
-  /** Super-admin / administrators default to Users; data-entry stays on General. */
+  /** Store owners default to Users; everyone else (e.g. administrator, data-entry) stays on General. */
   useLayoutEffect(() => {
     if (!user?.role || didApplyDefaultUsersTab.current) return;
-    if (canManageStaffAccounts(user.role)) {
+    if (isOwnerRole(user.role)) {
       didApplyDefaultUsersTab.current = true;
       setActiveTab("users");
     }
@@ -401,128 +408,162 @@ export function Settings() {
     }
   };
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    setError('');
-    
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/users`,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-      
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch users');
+  const syncUsersFromApi = async () => {
+    console.log("🔄 Syncing users from Supabase Auth...");
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/sync-users`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+        },
       }
-
-      const data = await response.json();
-      console.log(`📋 Fetched ${data ? data.length : 0} users from backend:`, data);
-      console.log(`📋 Backend data detail:`, JSON.stringify(data, null, 2));
-      console.log(`👤 Current user:`, { role: user?.role, storeId: user?.storeId, email: user?.email });
-      
-      // If no users found, try to sync from Supabase Auth
-      if (!data || data.length === 0) {
-        console.log('⚠️ No users found, attempting sync...');
-        await syncUsers();
-        return; // fetchUsers will be called again after sync
-      }
-      
-      // Transform backend data to match UI expectations
-      const transformedUsers = data.map((u: any) => {
-        const fallback = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(u.email || "user")}`;
-        return {
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          phone: u.phone || '',
-          role: u.role,
-          storeId: u.storeId || '',
-          status: u.status || "active",
-          profileImageUrl: u.profileImageUrl,
-          avatar: u.profileImageUrl || fallback,
-          lastActive: u.createdAt ? new Date(u.createdAt).toLocaleDateString() : new Date().toLocaleDateString(),
-        };
-      });
-
-      // Filter users based on logged-in user's role and storeId
-      let filteredUsers = transformedUsers;
-      if (user?.role === 'store-owner') {
-        // Store owners only see users from their own store
-        // If storeId is empty, show all users with empty storeId (backward compatibility)
-        const userStoreId = user.storeId || "";
-        filteredUsers = transformedUsers.filter((u: any) => (u.storeId || "") === userStoreId);
-        console.log(`🔒 Store owner filter: Showing ${filteredUsers.length} users from store "${user.storeId || '(empty)'}"`);
-      } else if (canManageStaffAccounts(user?.role)) {
-        console.log(`👑 Staff manager (${user?.role}): Showing all ${filteredUsers.length} users`);
-      } else {
-        console.log(`ℹ️ Role ${user?.role}: Showing all ${filteredUsers.length} users`);
-      }
-
-      setUsers(filteredUsers);
-      
-      // Add super admin to list
-      const ownerRow = transformedUsers.find(
-        (u: any) => u.role === "super-admin" || u.role === "store-owner"
-      );
-      if (ownerRow) {
-        console.log("✅ Store owner row loaded:", ownerRow.email);
-      }
-    } catch (err: any) {
-      console.error('Error fetching users:', err);
-      // Handle timeout gracefully
-      if (err.name === 'AbortError') {
-        setError('Request timed out. The server might be starting up. Please try again in a moment.');
-        toast.error('Request timed out. Please try again.');
-      } else {
-        setError(err.message || 'Failed to load users');
-        toast.error('Failed to load users');
-      }
-      // 🔥 FIX: Don't clear users on error - keep the existing list
-      // This prevents users from disappearing when window focus triggers refresh and blocked requests occur
-      // setUsers([]); // Commented out - preserve existing user list
-    } finally {
-      setLoading(false);
+    );
+    if (!response.ok) {
+      throw new Error("Failed to sync users");
     }
+    const data = await response.json();
+    console.log("✅ Sync complete:", data);
+    invalidateAdminAuthUsersCache();
   };
 
-  const syncUsers = async () => {
-    try {
-      console.log('🔄 Syncing users from Supabase Auth...');
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/sync-users`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
+  const loadUsers = useCallback(
+    async (forceRefresh = false) => {
+      if (!isOwnerRole(user?.role)) return;
 
-      if (!response.ok) {
-        throw new Error('Failed to sync users');
+      const applyAuthUsersTransform = (data: any[]) => {
+        const transformedUsers = data.map((u: any) => {
+          const fallback = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(u.email || "user")}`;
+          return {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            phone: u.phone || "",
+            role: u.role,
+            storeId: u.storeId || "",
+            status: u.status || "active",
+            profileImageUrl: u.profileImageUrl,
+            avatar: u.profileImageUrl || fallback,
+            lastActive: u.createdAt
+              ? new Date(u.createdAt).toLocaleDateString()
+              : new Date().toLocaleDateString(),
+          };
+        });
+        let filteredUsers = transformedUsers;
+        if (user?.role === "store-owner") {
+          const userStoreId = user.storeId || "";
+          filteredUsers = transformedUsers.filter(
+            (u: any) => (u.storeId || "") === userStoreId
+          );
+          console.log(
+            `🔒 Store owner filter: Showing ${filteredUsers.length} users from store "${user.storeId || "(empty)"}"`
+          );
+        } else if (isOwnerRole(user?.role)) {
+          console.log(`👑 Store owner (${user?.role}): Showing all ${filteredUsers.length} users`);
+        }
+        return filteredUsers;
+      };
+
+      const handleFetchError = (err: any) => {
+        console.error("Error fetching users:", err);
+        if (err.name === "AbortError") {
+          setError(
+            "Request timed out. The server might be starting up. Please try again in a moment."
+          );
+          toast.error("Request timed out. Please try again.");
+        } else {
+          setError(err.message || "Failed to load users");
+          toast.error("Failed to load users");
+        }
+      };
+
+      if (!moduleCache.peek(CACHE_KEYS.ADMIN_AUTH_USERS)) {
+        const fromLs = readPersistedJson<any[]>(LS_ADMIN_AUTH_USERS, PERSISTED_CATALOG_TTL_MS);
+        if (fromLs && Array.isArray(fromLs) && fromLs.length > 0) {
+          moduleCache.prime(CACHE_KEYS.ADMIN_AUTH_USERS, fromLs);
+        }
       }
 
-      const data = await response.json();
-      console.log('✅ Sync complete:', data);
-      
-      // Reload users after sync
-      await fetchUsers();
-    } catch (err: any) {
-      console.error('Error syncing users:', err);
-      setError(err.message || 'Failed to sync users');
+      if (!forceRefresh) {
+        const peeked = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_AUTH_USERS);
+        if (peeked != null && Array.isArray(peeked)) {
+          setUsers(applyAuthUsersTransform(peeked));
+          setUsersLoading(false);
+          setError("");
+          setUsersListRefreshing(true);
+          try {
+            const raw = await getCachedAdminAuthUsers(true);
+            if (!raw || raw.length === 0) {
+              console.log("⚠️ No users found after revalidate, attempting sync...");
+              await syncUsersFromApi();
+              const rawAfter = await getCachedAdminAuthUsers(true);
+              if (!rawAfter || rawAfter.length === 0) {
+                setUsers([]);
+                return;
+              }
+              setUsers(applyAuthUsersTransform(rawAfter));
+              return;
+            }
+            setUsers(applyAuthUsersTransform(raw));
+            const ownerRow = raw.find(
+              (u: any) => u.role === "super-admin" || u.role === "store-owner"
+            );
+            if (ownerRow) {
+              console.log("✅ Store owner row loaded:", ownerRow.email);
+            }
+          } catch (err: any) {
+            handleFetchError(err);
+          } finally {
+            setUsersListRefreshing(false);
+          }
+          return;
+        }
+      }
+
+      let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
+      if (!forceRefresh) {
+        showLoadingTimer = setTimeout(() => setUsersLoading(true), 300);
+      } else {
+        setUsersLoading(true);
+      }
+      setUsersListRefreshing(forceRefresh);
+      setError("");
+      try {
+        const raw = await getCachedAdminAuthUsers(forceRefresh);
+        if (!raw || raw.length === 0) {
+          console.log("⚠️ No users found, attempting sync...");
+          await syncUsersFromApi();
+          const rawAfter = await getCachedAdminAuthUsers(true);
+          if (!rawAfter || rawAfter.length === 0) {
+            setUsers([]);
+            return;
+          }
+          setUsers(applyAuthUsersTransform(rawAfter));
+          return;
+        }
+        setUsers(applyAuthUsersTransform(raw));
+        const ownerRow = raw.find(
+          (u: any) => u.role === "super-admin" || u.role === "store-owner"
+        );
+        if (ownerRow) {
+          console.log("✅ Store owner row loaded:", ownerRow.email);
+        }
+      } catch (err: any) {
+        handleFetchError(err);
+      } finally {
+        if (showLoadingTimer) clearTimeout(showLoadingTimer);
+        setUsersLoading(false);
+        setUsersListRefreshing(false);
+      }
+    },
+    [user?.role, user?.storeId]
+  );
+
+  useEffect(() => {
+    if (activeTab === "users" && isOwnerRole(user?.role)) {
+      loadUsers(false);
     }
-  };
+  }, [activeTab, user?.role, loadUsers]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -672,8 +713,9 @@ export function Settings() {
       // Refresh users list from backend to ensure sync (with delay to allow DB commit)
       console.log('⏳ Waiting 1.2s for backend to commit...');
       await new Promise(resolve => setTimeout(resolve, 1200));
-      console.log('🔄 Refreshing user list...');
-      await fetchUsers();
+      console.log("🔄 Refreshing user list...");
+      invalidateAdminAuthUsersCache();
+      await loadUsers(true);
     } catch (err: any) {
       console.error('❌ Error saving user:', err);
       setError(err.message || 'Failed to save user');
@@ -754,10 +796,10 @@ export function Settings() {
       }
 
       console.log(`✅ User deleted successfully:`, data);
-      
-      // Remove from local state
-      setUsers(users.filter(u => u.id !== userId));
-      
+
+      setUsers(users.filter((u) => u.id !== userId));
+      invalidateAdminAuthUsersCache();
+
       toast.success("User deleted successfully from database!");
     } catch (error: any) {
       console.error("❌ Error deleting user:", error);
@@ -1280,11 +1322,11 @@ export function Settings() {
               <div className="flex items-center gap-2">
                 <Button 
                   variant="outline" 
-                  onClick={fetchUsers}
-                  disabled={loading}
+                  onClick={() => loadUsers(true)}
+                  disabled={usersLoading || usersListRefreshing}
                   className="text-slate-700 hover:bg-slate-50"
                 >
-                  {loading ? (
+                  {usersListRefreshing ? (
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                   ) : (
                     <RefreshCw className="w-4 h-4 mr-2" />
@@ -1299,7 +1341,7 @@ export function Settings() {
 
             {/* User Table */}
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              {loading ? (
+              {usersLoading && users.length === 0 ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
                   <span className="ml-3 text-sm text-slate-600">Loading users...</span>
@@ -1465,7 +1507,7 @@ export function Settings() {
                       <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
                         <li>Manage products, categories, and inventory</li>
                         <li>Process and manage orders, vendors, customers, chat, marketing</li>
-                        <li>Cannot access Finances or Settings (including Users)</li>
+                        <li>Cannot access Finances or the Users area in Settings; can use General and Appearance</li>
                         <li>Can invite only Data entry and Warehouse accounts</li>
                       </ul>
                     </div>

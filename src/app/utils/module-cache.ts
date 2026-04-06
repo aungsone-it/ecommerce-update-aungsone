@@ -24,6 +24,7 @@ import {
   lsAdminOrdersPage1Key,
   lsAdminCustomersPage1Key,
   LS_ADMIN_FINANCES_ANALYTICS,
+  LS_ADMIN_AUTH_USERS,
   removePersistedKeysPrefix,
   removePersistedKey,
 } from './persistedLocalCache';
@@ -1152,6 +1153,8 @@ export const CACHE_KEYS = {
   ADMIN_ALL_CATEGORIES: 'admin-all-categories-v1',
   /** Super Admin /customers list */
   ADMIN_CUSTOMERS: 'admin-customers-v1',
+  /** Settings → Users: raw GET `/auth/users` JSON array (filtered client-side by viewer) */
+  ADMIN_AUTH_USERS: 'admin-auth-users-v1',
   /** Super Admin GET /finances/analytics — invalidated with orders (revenue source). */
   ADMIN_FINANCES_ANALYTICS: 'admin-finances-analytics-v1',
   
@@ -1550,6 +1553,56 @@ export function invalidateAdminCustomersCache(): void {
   moduleCache.invalidatePrefix(ADMIN_CUSTOMERS_PAGE_CACHE_PREFIX);
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix("migoo-ls-admin-customers-p1-");
+  }
+}
+
+async function fetchAuthUsersRaw(): Promise<any[]> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/users`,
+      {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+        signal: controller.signal,
+      }
+    );
+    if (!response.ok) {
+      throw new Error("Failed to fetch users");
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** Settings → Users: session + localStorage; `forceRefresh` bypasses cache for SWR revalidation. */
+export async function getCachedAdminAuthUsers(forceRefresh = false): Promise<any[]> {
+  return moduleCache.get(
+    CACHE_KEYS.ADMIN_AUTH_USERS,
+    async () => {
+      const data = await fetchAuthUsersRaw();
+      if (typeof window !== "undefined") {
+        writePersistedJson(LS_ADMIN_AUTH_USERS, data);
+      }
+      return data;
+    },
+    forceRefresh
+  );
+}
+
+export function invalidateAdminAuthUsersCache(): void {
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_AUTH_USERS);
+  if (typeof window !== "undefined") {
+    removePersistedKey(LS_ADMIN_AUTH_USERS);
+  }
+}
+
+export function primeAdminAuthUsersCache(raw: unknown[]): void {
+  moduleCache.prime(CACHE_KEYS.ADMIN_AUTH_USERS, raw);
+  if (typeof window !== "undefined") {
+    writePersistedJson(LS_ADMIN_AUTH_USERS, raw);
   }
 }
 

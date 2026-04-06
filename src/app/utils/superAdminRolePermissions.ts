@@ -48,7 +48,7 @@ export const CANONICAL_STAFF_ROLES = [
   "warehouse",
 ] as const;
 
-/** Day-to-day ops; no Finances or Settings (Users). */
+/** Day-to-day ops; no Finances; Settings includes General and Appearance (Users tab is store-owner only). */
 const ADMINISTRATOR_ROLES = new Set(["administrator"]);
 
 /** Legacy roles → same access as Administrator until edited and saved. */
@@ -93,9 +93,7 @@ export function getAllowedSuperAdminPages(role: string | undefined): Set<SuperAd
   }
 
   if (tier === "administrator") {
-    return new Set(
-      ALL_PAGES.filter((p) => p !== "Finances" && p !== "Settings")
-    );
+    return new Set(ALL_PAGES.filter((p) => p !== "Finances"));
   }
 
   if (tier === "data-entry") {

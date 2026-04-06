@@ -149,6 +149,9 @@ export function lsAdminOrdersPage1Key(opts: {
 /** Super Admin finances analytics (`GET finances/analytics`) — instant paint after reload; always revalidated in background. */
 export const LS_ADMIN_FINANCES_ANALYTICS = "migoo-ls-admin-finances-analytics-v1";
 
+/** Settings → Users tab: raw `GET auth/users` array — instant paint; revalidated in background. */
+export const LS_ADMIN_AUTH_USERS = "migoo-ls-admin-auth-users-v1";
+
 /** Super Admin customers table — page 1 (`GET customers?page=1`). */
 export function lsAdminCustomersPage1Key(opts: {
   pageSize: number;
