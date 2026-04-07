@@ -13,6 +13,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { resolveVendorSubdomainStoreSlug } from "./utils/vendorSubdomainHooks";
+import { useResolvedVendorHostSlug } from "./utils/vendorHostResolution";
 import { AdminEntryLayout, AdminSubdomainLeaf } from "./components/AdminSubdomainOrSuper";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
@@ -53,7 +54,12 @@ const VendorAuthPage = lazy(() =>
 );
 
 function VendorSubdomainIndexOrLanding() {
-  if (resolveVendorSubdomainStoreSlug()) {
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
+  if (loading && !sub) {
+    return <RouteLoadingFallback />;
+  }
+  if (sub || customSlug) {
     return <VendorStorefrontPage />;
   }
   return <LandingPage />;

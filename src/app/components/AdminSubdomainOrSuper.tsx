@@ -8,6 +8,7 @@ import {
   resolveVendorSubdomainStoreSlug,
   parseVendorSubdomainAdminPath,
 } from "../utils/vendorSubdomainHooks";
+import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 
 const AdminPage = lazy(() =>
   import("../pages/AdminPage").then((m) => ({ default: m.AdminPage }))
@@ -29,7 +30,12 @@ const VendorAdminProductViewPage = lazy(() =>
  * Apex → super-admin ProtectedLayout + same path.
  */
 export function AdminEntryLayout() {
-  const slug = resolveVendorSubdomainStoreSlug();
+  const subSlug = resolveVendorSubdomainStoreSlug();
+  const { slug: hostSlug, loading } = useResolvedVendorHostSlug();
+  const slug = subSlug ?? hostSlug;
+  if (loading && !subSlug) {
+    return <RouteLoadingFallback />;
+  }
   if (slug) {
     return (
       <VendorProtectedLayout>
@@ -48,8 +54,14 @@ export function AdminEntryLayout() {
  * Leaf routes under `/admin`: super-admin pages on apex, vendor admin on vendor host.
  */
 export function AdminSubdomainLeaf() {
-  const slug = resolveVendorSubdomainStoreSlug();
+  const subSlug = resolveVendorSubdomainStoreSlug();
+  const { slug: hostSlug, loading } = useResolvedVendorHostSlug();
+  const slug = subSlug ?? hostSlug;
   const location = useLocation();
+
+  if (loading && !subSlug) {
+    return <RouteLoadingFallback />;
+  }
 
   if (!slug) {
     const path = location.pathname;

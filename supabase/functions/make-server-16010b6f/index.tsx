@@ -8078,10 +8078,16 @@ app.delete("/make-server-16010b6f/chat/conversations/all", async (c) => {
 app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
   try {
     const body = await c.req.json();
-    const { settings } = body;
+    let { settings } = body;
 
     if (!settings || !settings.vendorId) {
       return c.json({ error: "Vendor ID is required" }, 400);
+    }
+
+    // Strip read-only fields from GET response
+    if (settings && typeof settings === "object" && "domainVerification" in settings) {
+      const { domainVerification: _dv, ...rest } = settings as Record<string, unknown>;
+      settings = rest as typeof settings;
     }
 
     // Store settings in KV store with vendor ID as key
@@ -8239,9 +8245,32 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
       address: settings.address || vendor?.location || "",
     };
 
+    const pending = await kv.get(`vendor_domain_pending:${vendorId}`);
+    let domainVerification:
+      | { txtName: string; txtValue: string; cnameTarget: string }
+      | undefined;
+    if (
+      pending &&
+      typeof pending === "object" &&
+      (pending as { hostname?: string; token?: string }).hostname &&
+      (pending as { hostname?: string; token?: string }).token
+    ) {
+      const ph = pending as { hostname: string; token: string };
+      const ct =
+        String(Deno.env.get("CUSTOM_DOMAIN_CNAME_TARGET") || "").trim() ||
+        "cname.vercel-dns.com";
+      domainVerification = {
+        txtName: `_migoo-verify.${ph.hostname}`,
+        txtValue: `migoo-verify=${ph.token}`,
+        cnameTarget: ct,
+      };
+    }
+
     console.log(`✅ Loaded settings for vendor ${vendorId}, isActive: ${populatedSettings.isActive}`);
 
-    return c.json({ settings: populatedSettings });
+    return c.json({
+      settings: { ...populatedSettings, domainVerification },
+    });
 
   } catch (error: any) {
     console.error("❌ Failed to load vendor storefront settings:", error);
@@ -8249,66 +8278,232 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
   }
 });
 
-// Verify vendor custom domain
+// --- Custom domain: DNS TXT (Cloudflare DoH) + KV custom_domain_host:* ---
+
+function normalizeVendorHostnameInput(input: string): string | null {
+  if (!input || typeof input !== "string") return null;
+  let s = input
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "");
+  if (!s) return null;
+  const domainRegex = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
+  if (!domainRegex.test(s)) return null;
+  return s;
+}
+
+function customDomainCnameTarget(): string {
+  const t = String(Deno.env.get("CUSTOM_DOMAIN_CNAME_TARGET") || "").trim();
+  return t || "cname.vercel-dns.com";
+}
+
+async function fetchDnsTxtRecords(fqdn: string): Promise<string[]> {
+  const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(
+    fqdn
+  )}&type=TXT`;
+  const res = await fetch(url, { headers: { Accept: "application/dns-json" } });
+  if (!res.ok) return [];
+  const j = (await res.json()) as {
+    Answer?: Array<{ type?: number; data?: string }>;
+  };
+  const out: string[] = [];
+  if (!j.Answer || !Array.isArray(j.Answer)) return out;
+  for (const a of j.Answer) {
+    if (a.type === 16 && typeof a.data === "string") {
+      const raw = a.data.replace(/^"(.*)"$/, "$1").replace(/\\"/g, '"');
+      out.push(raw);
+    }
+  }
+  return out;
+}
+
+async function findOtherVendorWithHostname(
+  hostname: string,
+  excludeVendorId: string
+): Promise<boolean> {
+  const direct = await kv.get(`custom_domain_host:${hostname}`);
+  if (direct?.vendorId && direct.vendorId !== excludeVendorId) return true;
+  const all = await kv.getByPrefix("vendor_storefront_");
+  const list = Array.isArray(all) ? all : [];
+  for (const s of list) {
+    if (!s || typeof s !== "object") continue;
+    const v = s as { vendorId?: string; customDomain?: string; domainStatus?: string };
+    if (!v.vendorId || v.vendorId === excludeVendorId) continue;
+    if (
+      String(v.customDomain || "").toLowerCase() === hostname &&
+      v.domainStatus === "verified"
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+app.post("/make-server-16010b6f/vendor/custom-domain/prepare", async (c) => {
+  try {
+    const body = await c.req.json();
+    const vendorId = String(body?.vendorId || "").trim();
+    const hostnameRaw = String(body?.hostname || body?.domain || "").trim();
+    const normalized = normalizeVendorHostnameInput(hostnameRaw);
+    if (!vendorId || !normalized) {
+      return c.json({ error: "vendorId and a valid hostname are required" }, 400);
+    }
+    if (/(^|\.)walwal\.online$/i.test(normalized) || normalized.endsWith(".vercel.app")) {
+      return c.json({ error: "This hostname cannot be used as a custom domain" }, 400);
+    }
+    if (await findOtherVendorWithHostname(normalized, vendorId)) {
+      return c.json({ error: "This domain is already connected to another store" }, 409);
+    }
+
+    const token = crypto.randomUUID();
+    const txtName = `_migoo-verify.${normalized}`;
+    const txtValue = `migoo-verify=${token}`;
+    await kv.set(`vendor_domain_pending:${vendorId}`, {
+      hostname: normalized,
+      token,
+      createdAt: new Date().toISOString(),
+    });
+
+    const sfKey = `vendor_storefront_${vendorId}`;
+    const prev = (await kv.get(sfKey)) || {};
+    await kv.set(sfKey, {
+      ...(typeof prev === "object" && prev ? prev : {}),
+      vendorId,
+      customDomain: normalized,
+      domainStatus: "pending",
+      dnsVerified: false,
+    });
+
+    return c.json({
+      hostname: normalized,
+      txtName,
+      txtValue,
+      cnameTarget: customDomainCnameTarget(),
+    });
+  } catch (error: any) {
+    console.error("❌ custom-domain/prepare:", error);
+    return c.json({ error: error.message || "Failed to prepare domain" }, 500);
+  }
+});
+
 app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
   try {
     const body = await c.req.json();
-    const { vendorId, domain } = body;
+    const vendorId = String(body?.vendorId || "").trim();
+    const domainInput = String(body?.domain || body?.hostname || "").trim();
+    const normalized = normalizeVendorHostnameInput(domainInput);
 
-    if (!vendorId || !domain) {
-      return c.json({ error: "Vendor ID and domain are required" }, 400);
+    if (!vendorId || !normalized) {
+      return c.json({ verified: false, error: "Vendor ID and domain are required" }, 400);
     }
 
-    console.log(`🔍 Verifying domain ${domain} for vendor ${vendorId}`);
-
-    // Simple domain validation (check format)
-    const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-    const cleanDomain = domain.replace(/^https?:\/\//, '').replace(/^www\./, '');
-    
-    if (!domainRegex.test(cleanDomain)) {
-      console.log(`❌ Invalid domain format: ${domain}`);
-      return c.json({ verified: false, error: "Invalid domain format" }, 400);
+    const pending = await kv.get(`vendor_domain_pending:${vendorId}`);
+    const p = pending && typeof pending === "object" ? (pending as { hostname?: string; token?: string }) : null;
+    if (!p?.token || p.hostname !== normalized) {
+      return c.json({
+        verified: false,
+        error: "No pending verification for this domain. Use “Save instructions” first.",
+      }, 400);
     }
 
-    // In a real production environment, you would:
-    // 1. Query DNS records to check CNAME/A records
-    // 2. Verify SSL certificate
-    // 3. Check domain ownership via DNS TXT record
-    //
-    // For this prototype, we'll simulate verification:
-    // - If domain contains certain keywords, auto-verify for demo purposes
-    // - Otherwise, return pending status
-    
-    let verified = false;
-    let message = "DNS records not detected. Please ensure you've added the required DNS records.";
-    
-    // Demo: Auto-verify domains containing "test" or "demo" for prototyping
-    if (cleanDomain.includes('test') || cleanDomain.includes('demo') || cleanDomain.includes('localhost')) {
-      verified = true;
-      message = "Domain verified successfully!";
-      console.log(`✅ Auto-verified demo domain: ${cleanDomain}`);
-    } else {
-      console.log(`⏳ Domain pending verification: ${cleanDomain}`);
+    const fqdn = `_migoo-verify.${normalized}`;
+    const txtRecords = await fetchDnsTxtRecords(fqdn);
+    const needle = `migoo-verify=${p.token}`;
+    const verified = txtRecords.some((r) => r.includes(needle));
+
+    if (!verified) {
+      return c.json({
+        verified: false,
+        message: `TXT record not found yet. Add a TXT record at ${fqdn} with value ${needle}`,
+        domain: normalized,
+      });
     }
 
-    // Store domain verification status
-    const key = `vendor_domain_${vendorId}`;
-    await kv.set(key, {
-      domain: cleanDomain,
-      verified,
-      verifiedAt: verified ? new Date().toISOString() : null,
-      lastChecked: new Date().toISOString()
+    if (await findOtherVendorWithHostname(normalized, vendorId)) {
+      return c.json({ verified: false, error: "This domain is already in use" }, 409);
+    }
+
+    const sfKey = `vendor_storefront_${vendorId}`;
+    const settings = (await kv.get(sfKey)) || {};
+    const merged =
+      typeof settings === "object" && settings
+        ? settings
+        : { vendorId, storeName: "Store", storeSlug: `vendor-${vendorId}` };
+    const storeSlug = String((merged as { storeSlug?: string }).storeSlug || "").trim() || `vendor-${vendorId}`;
+    const storeName = String((merged as { storeName?: string }).storeName || "").trim() || "Store";
+
+    const prevHostEntry = await kv.get(`custom_domain_host:${normalized}`);
+    if (prevHostEntry?.vendorId && prevHostEntry.vendorId !== vendorId) {
+      return c.json({ verified: false, error: "Domain conflict" }, 409);
+    }
+
+    const oldSettings = await kv.get(sfKey);
+    const oldDomain =
+      oldSettings && typeof oldSettings === "object"
+        ? String((oldSettings as { customDomain?: string }).customDomain || "").toLowerCase()
+        : "";
+    if (oldDomain && oldDomain !== normalized) {
+      await kv.del(`custom_domain_host:${oldDomain}`);
+    }
+
+    await kv.set(sfKey, {
+      ...(merged as object),
+      vendorId,
+      customDomain: normalized,
+      domainStatus: "verified",
+      dnsVerified: true,
     });
-
-    return c.json({ 
-      verified, 
-      message,
-      domain: cleanDomain 
+    await kv.set(`custom_domain_host:${normalized}`, {
+      vendorId,
+      storeSlug,
+      storeName,
     });
+    await kv.del(`vendor_domain_pending:${vendorId}`);
 
+    console.log(`✅ Custom domain verified: ${normalized} → vendor ${vendorId}`);
+
+    return c.json({
+      verified: true,
+      message:
+        "Domain verified. Add this hostname to your Vercel project (Domains) and point DNS (CNAME) to your deployment if you have not already.",
+      domain: normalized,
+      storeSlug,
+    });
   } catch (error: any) {
     console.error("❌ Failed to verify domain:", error);
     return c.json({ error: error.message || "Failed to verify domain" }, 500);
+  }
+});
+
+app.delete("/make-server-16010b6f/vendor/custom-domain", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const vendorId = String(body?.vendorId || "").trim();
+    if (!vendorId) return c.json({ error: "vendorId required" }, 400);
+
+    const sfKey = `vendor_storefront_${vendorId}`;
+    const settings = await kv.get(sfKey);
+    const dom =
+      settings && typeof settings === "object"
+        ? String((settings as { customDomain?: string }).customDomain || "").toLowerCase()
+        : "";
+    if (dom) await kv.del(`custom_domain_host:${dom}`);
+    await kv.del(`vendor_domain_pending:${vendorId}`);
+
+    if (settings && typeof settings === "object") {
+      await kv.set(sfKey, {
+        ...(settings as object),
+        customDomain: "",
+        domainStatus: "none",
+        dnsVerified: false,
+      });
+    }
+
+    return c.json({ success: true });
+  } catch (error: any) {
+    console.error("❌ custom-domain delete:", error);
+    return c.json({ error: error.message || "Failed to remove domain" }, 500);
   }
 });
 
@@ -8350,45 +8545,51 @@ app.get("/make-server-16010b6f/admin/vendor-domains", async (c) => {
   }
 });
 
-// 🔥 Get vendor by custom domain (public access for Cloudflare Worker routing)
+// 🔥 Get vendor by custom domain (public — SPA + workers)
 app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
   try {
-    const domain = c.req.query("domain");
-    
-    if (!domain) {
+    const raw = c.req.query("domain");
+    if (!raw) {
       return c.json({ error: "Domain parameter required" }, 400);
     }
+    const normalized = normalizeVendorHostnameInput(raw) || raw.trim().toLowerCase();
+    console.log(`🔍 Looking up vendor for domain: ${normalized}`);
 
-    console.log(`🔍 Looking up vendor for domain: ${domain}`);
+    const fast = await kv.get(`custom_domain_host:${normalized}`);
+    if (fast?.vendorId && fast?.storeSlug) {
+      const vendor = await kv.get(`vendor:${fast.vendorId}`);
+      return c.json({
+        vendorId: fast.vendorId,
+        storeSlug: fast.storeSlug,
+        storeName: fast.storeName || vendor?.name,
+        businessName: vendor?.businessName || vendor?.name,
+      });
+    }
 
-    // Get all vendor storefront settings
     const allSettings = await kv.getByPrefix("vendor_storefront_");
-    const validSettings = Array.isArray(allSettings) ? allSettings.filter(s => s != null) : [];
+    const validSettings = Array.isArray(allSettings) ? allSettings.filter((s) => s != null) : [];
 
-    // Find vendor with matching custom domain
-    const vendorSettings = validSettings.find((s: any) => 
-      s.customDomain === domain && 
-      s.domainStatus === 'verified' &&
-      s.isActive === true
+    const vendorSettings = validSettings.find(
+      (s: any) =>
+        String(s.customDomain || "").toLowerCase() === normalized &&
+        s.domainStatus === "verified" &&
+        s.dnsVerified === true &&
+        (s.isActive !== false)
     );
 
     if (!vendorSettings) {
-      console.log(`❌ No verified vendor found for domain: ${domain}`);
+      console.log(`❌ No verified vendor found for domain: ${normalized}`);
       return c.json({ error: "Vendor not found for this domain" }, 404);
     }
 
-    // Get vendor info
     const vendor = await kv.get(`vendor:${vendorSettings.vendorId}`);
-
-    console.log(`✅ Found vendor ${vendorSettings.vendorId} for domain ${domain}`);
 
     return c.json({
       vendorId: vendorSettings.vendorId,
       storeSlug: vendorSettings.storeSlug,
       storeName: vendorSettings.storeName,
-      businessName: vendor?.businessName || vendor?.name
+      businessName: vendor?.businessName || vendor?.name,
     });
-
   } catch (error: any) {
     console.error("❌ Error looking up vendor by domain:", error);
     return c.json({ error: error.message || "Failed to lookup vendor" }, 500);

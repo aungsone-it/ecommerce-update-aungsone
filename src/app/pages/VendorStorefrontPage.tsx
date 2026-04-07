@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
@@ -39,7 +40,8 @@ function vendorProfileSegmentFromPathname(
 export function VendorStorefrontPage() {
   const params = useParams();
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
-  const storeName = params.storeName ?? subdomainSlug ?? undefined;
+  const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
+  const storeName = params.storeName ?? subdomainSlug ?? customHostSlug ?? undefined;
   const productSlug = params.productSlug;
   const location = useLocation();
   const navigate = useNavigate();
@@ -62,6 +64,14 @@ export function VendorStorefrontPage() {
       matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null
     );
   }, [storeName, location.pathname]);
+
+  if (customHostLoading && !params.storeName && !subdomainSlug) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="w-10 h-10 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (!storeName) {
     return (
@@ -87,7 +97,8 @@ export function VendorStorefrontPage() {
   }
 
   const handleBack = () => {
-    const vendorAdminPath = subdomainSlug ? "/admin" : `/store/${storeName}/admin`;
+    const vendorAdminPath =
+      subdomainSlug || customHostSlug ? "/admin" : `/store/${storeName}/admin`;
     console.log("Back button clicked - navigating to:", vendorAdminPath);
     navigate(vendorAdminPath);
   };

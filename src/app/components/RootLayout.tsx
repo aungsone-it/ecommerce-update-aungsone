@@ -6,6 +6,7 @@ import {
   resolveVendorSubdomainStoreSlug,
   isAdminPortalRoute,
 } from "../utils/vendorSubdomainHooks";
+import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { FloatingChat } from "./FloatingChat";
 import { BackToTop } from "./BackToTop";
 import { useState } from "react";
@@ -34,18 +35,24 @@ function RootLayoutContent() {
   const { isLoading } = useLoading();
 
   const subdomainStoreSlug = resolveVendorSubdomainStoreSlug();
+  const { slug: customHostSlug } = useResolvedVendorHostSlug();
   const isPathVendorStorefront =
     (location.pathname.startsWith("/store/") || location.pathname.startsWith("/vendor/")) &&
     !location.pathname.includes("/admin");
   const isSubdomainStorefrontHome = subdomainStoreSlug != null && location.pathname === "/";
-  const isVendorStorefront = isPathVendorStorefront || isSubdomainStorefrontHome;
+  const isCustomDomainStorefrontHome =
+    customHostSlug != null && subdomainStoreSlug == null && location.pathname === "/";
+  const isVendorStorefront =
+    isPathVendorStorefront || isSubdomainStorefrontHome || isCustomDomainStorefrontHome;
   const vendorId =
     subdomainStoreSlug ??
+    customHostSlug ??
     (isPathVendorStorefront ? location.pathname.split("/")[2] : undefined);
 
   // Hide chat button and back to top on vendor application page, landing page, and reset password page
   const isVendorApplicationPage = location.pathname === '/vendor/application';
-  const isLandingPage = location.pathname === '/' && subdomainStoreSlug == null;
+  const isLandingPage =
+    location.pathname === "/" && subdomainStoreSlug == null && customHostSlug == null;
   const isResetPasswordPage = location.pathname === '/store/reset-password';
   const isAdminPortal = isAdminPortalRoute(location.pathname);
 

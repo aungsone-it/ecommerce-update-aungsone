@@ -2,7 +2,11 @@ import { useState, useEffect } from "react";
 import { 
   Save,
   Eye,
-  Upload
+  Upload,
+  Globe,
+  Copy,
+  Trash2,
+  RefreshCw,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -18,6 +22,7 @@ import {
   setVendorAuthSessionCookie,
   readVendorAuthSessionCookie,
 } from "../../utils/vendorAuthCookie";
+import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
 
 interface StoreSettings {
   vendorId: string;
@@ -37,6 +42,8 @@ interface StoreSettings {
   domainStatus: 'none' | 'pending' | 'verified' | 'active';
   dnsVerified: boolean;
   isActive: boolean;
+  /** Read-only: from GET when TXT verification is pending */
+  domainVerification?: { txtName: string; txtValue: string; cnameTarget: string };
 }
 
 interface VendorAdminSettingsProps {
@@ -67,6 +74,14 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [domainBusy, setDomainBusy] = useState<"prepare" | "verify" | "remove" | null>(null);
+  const [domainDraft, setDomainDraft] = useState("");
+  const [domainHints, setDomainHints] = useState<{
+    hostname: string;
+    txtName: string;
+    txtValue: string;
+    cnameTarget: string;
+  } | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -88,6 +103,18 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
         const data = await response.json();
         if (data.settings) {
           setSettings(data.settings);
+          setDomainDraft(
+            String(data.settings.customDomain || "").trim() || ""
+          );
+          const dv = data.settings.domainVerification;
+          if (dv?.txtName && dv?.txtValue) {
+            setDomainHints({
+              hostname: String(data.settings.customDomain || "").trim(),
+              txtName: dv.txtName,
+              txtValue: dv.txtValue,
+              cnameTarget: dv.cnameTarget || "cname.vercel-dns.com",
+            });
+          }
         }
       }
     } catch (error) {
@@ -100,7 +127,7 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Save vendor storefront settings
+      const { domainVerification: _dv, ...settingsForSave } = settings;
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront`,
         {
@@ -109,7 +136,7 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
             "Content-Type": "application/json",
             Authorization: `Bearer ${publicAnonKey}`,
           },
-          body: JSON.stringify({ settings }),
+          body: JSON.stringify({ settings: settingsForSave }),
         }
       );
 
@@ -195,6 +222,145 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
       toast.error("Failed to save settings");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const copyToClipboard = async (label: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied`);
+    } catch {
+      toast.error("Could not copy");
+    }
+  };
+
+  const handlePrepareDomain = async () => {
+    const hostname = domainDraft.trim();
+    if (!hostname) {
+      toast.error("Enter your domain (e.g. shop.example.com)");
+      return;
+    }
+    setDomainBusy("prepare");
+    try {
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/custom-domain/prepare`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({ vendorId, hostname }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(typeof data.error === "string" ? data.error : "Could not save domain instructions");
+        return;
+      }
+      setDomainHints({
+        hostname: data.hostname,
+        txtName: data.txtName,
+        txtValue: data.txtValue,
+        cnameTarget: data.cnameTarget,
+      });
+      setSettings((prev) => ({
+        ...prev,
+        customDomain: data.hostname,
+        domainStatus: "pending",
+        dnsVerified: false,
+      }));
+      toast.success("DNS instructions ready — add them at your DNS host, then verify.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Network error");
+    } finally {
+      setDomainBusy(null);
+    }
+  };
+
+  const handleVerifyDomain = async () => {
+    const domain = settings.customDomain?.trim() || domainDraft.trim();
+    if (!domain) {
+      toast.error("No domain to verify");
+      return;
+    }
+    setDomainBusy("verify");
+    try {
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/verify-domain`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({ vendorId, domain }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(typeof data.error === "string" ? data.error : "Verification failed");
+        return;
+      }
+      if (data.verified) {
+        setSettings((prev) => ({
+          ...prev,
+          customDomain: data.domain || domain,
+          domainStatus: "verified",
+          dnsVerified: true,
+        }));
+        clearCachedVendorHostSlug();
+        toast.success(data.message || "Domain verified");
+      } else {
+        toast.info(data.message || "Verification pending — check DNS propagation");
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Network error");
+    } finally {
+      setDomainBusy(null);
+    }
+  };
+
+  const handleRemoveDomain = async () => {
+    const ok = window.confirm(
+      "Remove this custom domain? Customers will use your default marketplace URL until you connect a domain again."
+    );
+    if (!ok) return;
+    setDomainBusy("remove");
+    try {
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/custom-domain`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({ vendorId }),
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast.error(typeof data.error === "string" ? data.error : "Could not remove");
+        return;
+      }
+      setSettings((prev) => ({
+        ...prev,
+        customDomain: "",
+        domainStatus: "none",
+        dnsVerified: false,
+      }));
+      setDomainDraft("");
+      setDomainHints(null);
+      clearCachedVendorHostSlug();
+      toast.success("Custom domain removed");
+    } catch (e) {
+      console.error(e);
+      toast.error("Network error");
+    } finally {
+      setDomainBusy(null);
     }
   };
 
@@ -349,6 +515,146 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
               className="bg-white border-slate-200 resize-none"
             />
           </div>
+        </div>
+      </div>
+
+      {/* Custom domain (M2) — TXT DNS verification + Vercel hostname */}
+      <div className="max-w-2xl border border-slate-200 rounded-xl p-6 bg-slate-50/50">
+        <div className="flex items-start gap-3 mb-4">
+          <Globe className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Custom domain</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              Use your own hostname (e.g. <span className="font-mono">shop.yourbrand.com</span>) after DNS
+              verification. Add the same hostname to your Vercel project under <strong>Domains</strong> so
+              HTTPS works.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">Hostname</Label>
+            <Input
+              value={domainDraft}
+              onChange={(e) => setDomainDraft(e.target.value)}
+              placeholder="shop.example.com"
+              disabled={settings.domainStatus === "verified"}
+              className="bg-white border-slate-200 font-mono text-sm"
+            />
+            {settings.domainStatus === "verified" && settings.customDomain && (
+              <p className="text-xs text-emerald-700 mt-2">
+                <strong>Verified</strong> — store is served at{" "}
+                <span className="font-mono">https://{settings.customDomain}</span> once DNS and Vercel
+                include this host.
+              </p>
+            )}
+            {settings.domainStatus === "pending" && (
+              <p className="text-xs text-amber-700 mt-2">
+                Pending — add the TXT record below, then click Verify.
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={domainBusy !== null || settings.domainStatus === "verified"}
+              onClick={handlePrepareDomain}
+            >
+              {domainBusy === "prepare" ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Copy className="w-4 h-4 mr-2" />
+              )}
+              Save instructions
+            </Button>
+            <Button
+              type="button"
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={
+                domainBusy !== null ||
+                (!String(settings.customDomain || "").trim() && !domainDraft.trim())
+              }
+              onClick={handleVerifyDomain}
+            >
+              {domainBusy === "verify" ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Verify
+            </Button>
+            {(settings.customDomain || settings.domainStatus !== "none") && (
+              <Button
+                type="button"
+                variant="outline"
+                className="text-red-700 border-red-200 hover:bg-red-50"
+                disabled={domainBusy !== null}
+                onClick={handleRemoveDomain}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Remove domain
+              </Button>
+            )}
+          </div>
+
+          {(domainHints || settings.domainStatus === "pending" || settings.domainStatus === "verified") && (
+            <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 text-sm">
+              <p className="font-medium text-slate-800">DNS records</p>
+              <p className="text-slate-600">At your DNS provider (cPanel, Cloudflare, etc.):</p>
+              <ol className="list-decimal list-inside space-y-1 text-slate-700">
+                <li>
+                  <strong>TXT</strong> for ownership — name{" "}
+                  <code className="text-xs bg-slate-100 px-1 rounded">
+                    {domainHints?.txtName || `_migoo-verify.${settings.customDomain || domainDraft || "…"}`}
+                  </code>
+                  <button
+                    type="button"
+                    className="ml-2 text-blue-600 hover:underline text-xs"
+                    onClick={() =>
+                      copyToClipboard(
+                        "TXT name",
+                        domainHints?.txtName ||
+                          `_migoo-verify.${(settings.customDomain || domainDraft || "").trim()}`
+                      )
+                    }
+                  >
+                    Copy
+                  </button>
+                </li>
+                <li>
+                  Value:{" "}
+                  <code className="text-xs bg-slate-100 px-1 rounded break-all">
+                    {domainHints?.txtValue || "(Save instructions to generate a token)"}
+                  </code>
+                  {domainHints?.txtValue && (
+                    <button
+                      type="button"
+                      className="ml-2 text-blue-600 hover:underline text-xs"
+                      onClick={() => copyToClipboard("TXT value", domainHints.txtValue)}
+                    >
+                      Copy
+                    </button>
+                  )}
+                </li>
+                <li>
+                  <strong>CNAME</strong> (traffic) — point the hostname to{" "}
+                  <code className="text-xs bg-slate-100 px-1 rounded">
+                    {domainHints?.cnameTarget || "cname.vercel-dns.com"}
+                  </code>
+                  {domainHints?.cnameTarget && (
+                    <button
+                      type="button"
+                      className="ml-2 text-blue-600 hover:underline text-xs"
+                      onClick={() => copyToClipboard("CNAME target", domainHints.cnameTarget)}
+                    >
+                      Copy
+                    </button>
+                  )}
+                </li>
+              </ol>
+            </div>
+          )}
         </div>
       </div>
     </div>
