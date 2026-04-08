@@ -8386,14 +8386,16 @@ async function verifyViaWellKnownHttps(
       const r = await fetch(url, {
         redirect: "follow",
         headers: {
-          "User-Agent": "MigooDomainVerify/1",
-          Accept: "text/plain,*/*",
+          "User-Agent":
+            "Mozilla/5.0 (compatible; MigooDomainVerify/1; +https://walwal.online)",
+          Accept: "text/plain,text/html;q=0.9,*/*;q=0.8",
         },
         signal: controller.signal,
       });
       if (!r.ok) continue;
       const text = await r.text();
-      if (txtRecordMatchesToken(text, needleLower)) return true;
+      const probe = text.length > 8192 ? text.slice(0, 8192) : text;
+      if (txtRecordMatchesToken(probe, needleLower)) return true;
     } catch {
       continue;
     } finally {

@@ -594,6 +594,22 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
               ) : null}
               Verify
             </Button>
+            {(String(settings.customDomain || "").trim() || domainDraft.trim()) && (
+              <Button
+                type="button"
+                variant="outline"
+                className="text-slate-700"
+                disabled={domainBusy !== null}
+                onClick={() => {
+                  const h = String(settings.customDomain || domainDraft || "").trim();
+                  if (!h) return;
+                  const u = `https://${h}/.well-known/migoo-verify.txt`;
+                  window.open(u, "_blank", "noopener,noreferrer");
+                }}
+              >
+                Test URL
+              </Button>
+            )}
             {(settings.customDomain || settings.domainStatus !== "none") && (
               <Button
                 type="button"
