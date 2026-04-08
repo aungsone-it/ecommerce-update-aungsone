@@ -8363,11 +8363,21 @@ function txtRecordMatchesToken(record: string, needleLower: string): boolean {
   return r.includes(needleLower);
 }
 
+/** HTML parking / default pages at the registrar — traffic never reaches Vercel. */
+function looksLikeRegistrarParkingPage(html: string): boolean {
+  const s = html.slice(0, 10000).toLowerCase();
+  if (!s.includes("<html") && !s.includes("<!doctype")) return false;
+  if (s.includes("parked domain") && s.includes("hostinger")) return true;
+  if (s.includes("registered at hostinger")) return true;
+  if (s.includes("domain parking") && s.includes("hostinger")) return true;
+  return false;
+}
+
 /** HTTPS proof: token is served at /.well-known/migoo-verify.txt on this Vercel deployment (custom domain Host). */
 async function verifyViaWellKnownHttps(
   normalized: string,
   needleLower: string
-): Promise<boolean> {
+): Promise<{ matched: boolean; sawParkingHtml: boolean }> {
   const path = "/.well-known/migoo-verify.txt";
   const hosts = new Set<string>();
   hosts.add(normalized);
@@ -8377,6 +8387,8 @@ async function verifyViaWellKnownHttps(
     const apex = normalized.replace(/^www\./, "");
     if (apex) hosts.add(apex);
   }
+
+  let sawParkingHtml = false;
 
   for (const h of hosts) {
     const url = `https://${h}${path}`;
@@ -8395,14 +8407,19 @@ async function verifyViaWellKnownHttps(
       if (!r.ok) continue;
       const text = await r.text();
       const probe = text.length > 8192 ? text.slice(0, 8192) : text;
-      if (txtRecordMatchesToken(probe, needleLower)) return true;
+      if (probe.trimStart().startsWith("<") && looksLikeRegistrarParkingPage(text)) {
+        sawParkingHtml = true;
+      }
+      if (txtRecordMatchesToken(probe, needleLower)) {
+        return { matched: true, sawParkingHtml: false };
+      }
     } catch {
       continue;
     } finally {
       clearTimeout(t);
     }
   }
-  return false;
+  return { matched: false, sawParkingHtml };
 }
 
 /** KV keys for pending HTTPS check — both apex and www so Host header matches after redirects. */
@@ -8562,7 +8579,8 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
     const needle = `migoo-verify=${p.token}`;
     const needleLower = needle.toLowerCase();
 
-    let verified = await verifyViaWellKnownHttps(normalized, needleLower);
+    const httpCheck = await verifyViaWellKnownHttps(normalized, needleLower);
+    let verified = httpCheck.matched;
     if (!verified) {
       const txtRecords = await fetchDnsTxtRecords(fqdn);
       verified = txtRecords.some((r) => txtRecordMatchesToken(r, needleLower));
@@ -8570,10 +8588,13 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
 
     if (!verified) {
       const checker = `https://dnschecker.org/#TXT/${encodeURIComponent(fqdn)}`;
+      const parkingMsg = httpCheck.sawParkingHtml
+        ? ` Right now https://${normalized} still shows your registrar's parking page (e.g. Hostinger), so traffic never reaches this Vercel app. In Hostinger → Domains → DNS, replace parking/default A records with the exact A/CNAME values from Vercel → Project → Domains for ${normalized}, then wait for DNS to update.`
+        : "";
       return c.json({
         verified: false,
         message:
-          `Could not confirm your domain yet. Prefer: add this hostname to your Vercel project and point DNS so https://${normalized} opens this store — then Verify checks https://${normalized}/.well-known/migoo-verify.txt automatically. Optional DNS fallback: TXT at "${fqdn}" = ${needle} (see ${checker}).`,
+          `Could not confirm your domain yet.${parkingMsg} When https://${normalized} loads this store (not a parking page), Verify will read https://${normalized}/.well-known/migoo-verify.txt automatically. Optional: TXT at "${fqdn}" = ${needle} (see ${checker}).`,
         domain: normalized,
       });
     }

@@ -632,9 +632,14 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
                   Same hostname added in <strong>Vercel → Domains</strong> with valid HTTPS.
                 </li>
                 <li>
-                  <strong>Save instructions</strong>, then <strong>Verify</strong> — we fetch your token from
-                  this deployment at{" "}
-                  <code className="text-xs bg-slate-100 px-1 rounded">/.well-known/migoo-verify.txt</code>.
+                  <strong>DNS must send this hostname to Vercel</strong> (A/CNAME from Vercel’s Domains
+                  screen). If <strong>Test URL</strong> opens a Hostinger “parked domain” page, HTTPS verify
+                  cannot work until you change those DNS records away from Hostinger parking.
+                </li>
+                <li>
+                  <strong>Save instructions</strong>, then <strong>Verify</strong> — we read{" "}
+                  <code className="text-xs bg-slate-100 px-1 rounded">/.well-known/migoo-verify.txt</code> on
+                  this deployment.
                 </li>
               </ol>
               <p className="text-xs text-slate-500 border-t border-slate-100 pt-3">
