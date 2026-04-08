@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Client checklist — Logistics &amp; MMQR payment</title>
+  <style>
+    :root {
+      --ink: #1a1a1a;
+      --muted: #444;
+      --border: #ccc;
+      --bg: #fff;
+      --accent: #1e3a5f;
+      --done: #0d6e3f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+      font-size: 13pt;
+      line-height: 1.55;
+      color: var(--ink);
+      background: var(--bg);
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+    }
+    h1 {
+      font-size: 1.65rem;
+      color: var(--accent);
+      border-bottom: 3px solid var(--accent);
+      padding-bottom: 0.5rem;
+      margin-top: 0;
+    }
+    .subtitle { color: var(--muted); font-size: 1rem; margin-top: 0.35rem; }
+    h2 {
+      font-size: 1.3rem;
+      margin-top: 2rem;
+      page-break-after: avoid;
+      color: var(--accent);
+    }
+    h3 {
+      font-size: 1.1rem;
+      margin-top: 1.35rem;
+      page-break-after: avoid;
+    }
+    p, li { color: var(--muted); }
+    strong { color: var(--ink); }
+    .box {
+      background: #f5f7fa;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin: 1rem 0;
+    }
+    ul.tasks {
+      list-style: none;
+      padding-left: 0;
+      margin: 0.5rem 0 0;
+    }
+    ul.tasks li {
+      position: relative;
+      padding-left: 1.75rem;
+      margin: 0.65rem 0;
+    }
+    ul.tasks li::before {
+      content: "☐";
+      position: absolute;
+      left: 0;
+      color: var(--accent);
+      font-size: 1.1em;
+    }
+    .note {
+      font-size: 0.95rem;
+      border-left: 4px solid var(--accent);
+      padding: 0.5rem 0 0.5rem 1rem;
+      margin: 1rem 0;
+      background: #eef2f7;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12pt;
+      margin: 0.75rem 0;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #e8ecf2; color: var(--ink); }
+    footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+    @media print {
+      ul.tasks li::before { content: "☐ "; }
+      .box { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Client checklist: Logistics &amp; MMQR payment</h1>
+  <p class="subtitle">
+    Tasks and decisions <strong>you</strong> should complete for
+    <strong>automatic logistics assignment by delivery area</strong> and <strong>MMQR payment integration</strong>.
+    Open this file in any browser; print or save as PDF if you need a signed copy.
+  </p>
+
+  <div class="note">
+    <strong>Purpose.</strong> Courier rules, pricing, and payment partnerships require your business inputs. This
+    checklist lists only what <em>you</em> need to prepare or decide.
+  </div>
+
+  <!-- ========== LOGISTICS ========== -->
+  <h2>Part A — Logistics (delivery range &amp; auto-assign carrier)</h2>
+  <p>
+    Goal: use <strong>customer address</strong> (and optionally map coordinates) to determine
+    <strong>which logistics company</strong> should ship the order, based on rules you define (zones, cities,
+    townships, postal areas, etc.).
+  </p>
+
+  <h3>A1. Business decisions (you choose)</h3>
+  <ul class="tasks">
+    <li><strong>Carriers:</strong> List every logistics company you will use (exact legal/trading names). Mark which are active on day one.</li>
+    <li><strong>Assignment strategy:</strong> Decide the rule type: e.g. by <em>city/township</em>, by <em>postal code</em>, by <em>distance from warehouse</em>, or a <em>priority list</em> (fallback if the first carrier does not serve that area).</li>
+    <li><strong>Who pays shipping:</strong> Customer only / seller absorbs / mixed (e.g. free above a cart total). Any cap or flat rates per zone.</li>
+    <li><strong>Fallback:</strong> What should happen if no carrier matches the address (block checkout vs. “manual quote” vs. default carrier).</li>
+  </ul>
+
+  <h3>A2. Data &amp; documents you must deliver</h3>
+  <ul class="tasks">
+    <li><strong>Zone matrix:</strong> Spreadsheet (CSV/Excel), e.g. Region → City/Township → Assigned carrier code → Notes. Include all exceptions (remote areas, islands, etc.).</li>
+    <li><strong>Address model:</strong> Confirm which fields customers must fill (Myanmar: region/state, city, township, address line, phone). If you use a standard list (e.g. fixed township dropdowns), provide the master list or approve using a public reference dataset.</li>
+    <li><strong>Carrier APIs or process:</strong> For each carrier, either official <strong>API documentation</strong> (sandbox + production), <strong>partner portal</strong> login instructions, or a clear statement that assignment is <strong>rule-only</strong> (no live API) and staff will book shipments outside the app.</li>
+    <li><strong>Credentials / test access:</strong> Sandbox keys, merchant IDs, webhook URLs (if carriers push status updates). Share through a secure channel (avoid plain email when possible).</li>
+    <li><strong>Labels &amp; compliance:</strong> Any export, restricted goods, or COD rules that change carrier choice.</li>
+  </ul>
+
+  <h3>A3. Approvals</h3>
+  <ul class="tasks">
+    <li>Sign off on a <strong>single source of truth</strong> for the zone table (who may edit it later: admin UI vs. only your team).</li>
+    <li>Approve <strong>test scenarios</strong> (sample addresses that must map to carrier A vs. B) before go-live.</li>
+  </ul>
+
+  <div class="box">
+    <h3>Optional — extra detail (if you have it)</h3>
+    <ul class="tasks">
+      <li>Sample <strong>5–10 real-looking addresses</strong> (anonymized) and the carrier you expect for each.</li>
+      <li>Whether you want <strong>map / geocoding</strong> (e.g. Google Maps, Mapbox) — note any budget for map API usage.</li>
+    </ul>
+  </div>
+
+  <!-- ========== MMQR PAYMENT ========== -->
+  <h2>Part B — MMQR payment integration</h2>
+  <p>
+    “MMQR” usually refers to <strong>Myanmar QR</strong> payment rails used by banks and mobile wallets. The exact
+    integration depends on <strong>which institution or aggregator</strong> you contract with. The product must
+    match their specification (QR payload, merchant ID, callback, settlement).
+  </p>
+
+  <h3>B1. Business decisions (you choose)</h3>
+  <ul class="tasks">
+    <li><strong>Provider:</strong> Name the bank, wallet, or <strong>payment aggregator</strong> (PSP) that will issue your MMQR and settle funds (e.g. specific Myanmar bank PSP, or a licensed aggregator — use the exact entity name).</li>
+    <li><strong>Channels:</strong> Confirm whether customers pay only via QR scan in-app / at checkout, or also in-store / manual upload of slip.</li>
+    <li><strong>Currency &amp; settlement:</strong> MMK only? Settlement cycle (T+1, etc.) and which business bank account receives payouts.</li>
+    <li><strong>Refunds &amp; disputes:</strong> Who approves refunds, and whether the PSP supports API refunds or manual process.</li>
+  </ul>
+
+  <h3>B2. What you must obtain from the PSP / bank</h3>
+  <ul class="tasks">
+    <li><strong>Written integration pack:</strong> API spec, QR generation rules (EMV / MMQR field layout), sample payloads, error codes.</li>
+    <li><strong>Sandbox / UAT environment</strong> with test merchant credentials and test customer wallets if applicable.</li>
+    <li><strong>Production onboarding checklist</strong> from them: KYC, merchant ID, terminal ID (if any), IP allowlisting, webhook/callback URLs you must register.</li>
+    <li><strong>Contact:</strong> Technical support contact for integration issues (name, email, phone, hours).</li>
+  </ul>
+
+  <h3>B3. Your deliverables (documents &amp; access)</h3>
+  <ul class="tasks">
+    <li><strong>Decision record:</strong> Chosen PSP name + product name (e.g. specific MMQR product) + link to official docs if public.</li>
+    <li><strong>Credentials:</strong> Sandbox keys first; production keys later via a secure handoff (avoid sharing secrets in open chat).</li>
+    <li><strong>Website domains:</strong> Confirm base domain(s) for production and staging (e.g. <code>https://yourdomain.com</code>) for registering callbacks with the PSP.</li>
+    <li><strong>Payment rules you want:</strong> When an order counts as “paid” (e.g. instant confirmation vs. manual check). What happens if the customer abandons the QR flow.</li>
+    <li><strong>Legal:</strong> Confirmation that your business is authorized to accept payments through that PSP under your license / registration.</li>
+  </ul>
+
+  <div class="box">
+    <h3>If MMQR technical documents are not ready yet</h3>
+    <p style="margin: 0.5rem 0 0;">
+      Please let me know whether the MMQR technical documents are ready or not.
+    </p>
+  </div>
+
+  <!-- ========== SUMMARY TABLE ========== -->
+  <h2>Summary Checklist</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Topic</th>
+        <th>What you prepare</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Logistics rules</td>
+        <td>Carriers, zone table, pricing policy, test addresses, and any carrier API or portal access from partners.</td>
+      </tr>
+      <tr>
+        <td>MMQR</td>
+        <td>Chosen PSP, integration pack from the bank/PSP, merchant onboarding, credentials, legal readiness, and your payment rules.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    Client checklist — logistics &amp; MMQR. Update after your carriers and PSP are confirmed.
+  </footer>
+
+</body>
+</html>
