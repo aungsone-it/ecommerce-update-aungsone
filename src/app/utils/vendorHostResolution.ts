@@ -4,7 +4,6 @@
  */
 import { useState, useEffect } from "react";
 import { resolveVendorSubdomainStoreSlug } from "./vendorSubdomainHooks";
-import { getVendorSubdomainBase } from "./vendorSubdomainBase";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 
 const CACHE_PREFIX = "migoo-vendor-slug:";
@@ -19,7 +18,12 @@ export function shouldResolveCustomDomainHost(host: string): boolean {
   if (!h || h === "localhost" || h.startsWith("127.")) return false;
   if (h.endsWith(".vercel.app")) return false;
 
-  const base = getVendorSubdomainBase();
+  // Important: only use explicit env-configured platform apex for exclusion.
+  // Using runtime-derived apex here can misclassify a true custom domain
+  // (e.g. "migoo.store") as the platform host and skip by-domain resolution.
+  const base = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
+    .trim()
+    .toLowerCase();
   if (base) {
     if (h === base || h === `www.${base}`) return false;
     if (h.endsWith(`.${base}`)) return false;
