@@ -8298,24 +8298,123 @@ function customDomainCnameTarget(): string {
   return t || "cname.vercel-dns.com";
 }
 
+/** One TXT RDATA presentation: one or more quoted strings in one field. */
+function parseDnsTxtData(data: string): string[] {
+  const raw = data.trim();
+  const parts: string[] = [];
+  const re = /"((?:[^"\\]|\\.)*)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    parts.push(m[1].replace(/\\"/g, '"'));
+  }
+  if (parts.length > 0) {
+    return parts;
+  }
+  let s = raw;
+  if (s.startsWith('"') && s.endsWith('"')) {
+    s = s.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return [s];
+}
+
+/**
+ * Resolve TXT at fqdn via several DoH providers and merge answers (avoids one resolver
+ * returning empty while another already sees the record). Includes joined form for split TXT.
+ */
 async function fetchDnsTxtRecords(fqdn: string): Promise<string[]> {
-  const url = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(
-    fqdn
-  )}&type=TXT`;
-  const res = await fetch(url, { headers: { Accept: "application/dns-json" } });
-  if (!res.ok) return [];
-  const j = (await res.json()) as {
-    Answer?: Array<{ type?: number; data?: string }>;
-  };
-  const out: string[] = [];
-  if (!j.Answer || !Array.isArray(j.Answer)) return out;
-  for (const a of j.Answer) {
-    if (a.type === 16 && typeof a.data === "string") {
-      const raw = a.data.replace(/^"(.*)"$/, "$1").replace(/\\"/g, '"');
-      out.push(raw);
+  const endpoints = [
+    `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(fqdn)}&type=TXT`,
+    `https://dns.google/resolve?name=${encodeURIComponent(fqdn)}&type=TXT`,
+    `https://dns.quad9.net/dns-query?name=${encodeURIComponent(fqdn)}&type=TXT`,
+  ];
+  const segments: string[] = [];
+
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: "application/dns-json" },
+      });
+      if (!res.ok) continue;
+      const j = (await res.json()) as {
+        Status?: number;
+        Answer?: Array<{ type?: number; data?: string }>;
+      };
+      if (typeof j.Status === "number" && j.Status !== 0) continue;
+      if (!j.Answer || !Array.isArray(j.Answer)) continue;
+      for (const a of j.Answer) {
+        if (a.type === 16 && typeof a.data === "string") {
+          for (const piece of parseDnsTxtData(a.data)) {
+            segments.push(piece.trim());
+          }
+        }
+      }
+    } catch {
+      continue;
     }
   }
-  return out;
+
+  if (segments.length === 0) return [];
+  const joined = segments.join("");
+  return [...new Set([...segments, joined])];
+}
+
+function txtRecordMatchesToken(record: string, needleLower: string): boolean {
+  const r = record.trim().replace(/^"+|"+$/g, "").toLowerCase();
+  return r.includes(needleLower);
+}
+
+/** HTTPS proof: token is served at /.well-known/migoo-verify.txt on this Vercel deployment (custom domain Host). */
+async function verifyViaWellKnownHttps(
+  normalized: string,
+  needleLower: string
+): Promise<boolean> {
+  const path = "/.well-known/migoo-verify.txt";
+  const hosts = new Set<string>();
+  hosts.add(normalized);
+  if (!normalized.startsWith("www.")) {
+    hosts.add(`www.${normalized}`);
+  } else {
+    const apex = normalized.replace(/^www\./, "");
+    if (apex) hosts.add(apex);
+  }
+
+  for (const h of hosts) {
+    const url = `https://${h}${path}`;
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const r = await fetch(url, {
+        redirect: "follow",
+        headers: {
+          "User-Agent": "MigooDomainVerify/1",
+          Accept: "text/plain,*/*",
+        },
+        signal: controller.signal,
+      });
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (txtRecordMatchesToken(text, needleLower)) return true;
+    } catch {
+      continue;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  return false;
+}
+
+/** KV keys for pending HTTPS check — both apex and www so Host header matches after redirects. */
+function vendorPendingHostKvKeys(hostname: string): string[] {
+  const n = hostname.toLowerCase().trim();
+  const keys = new Set<string>();
+  keys.add(`vendor_domain_pending_host:${n}`);
+  if (!n.startsWith("www.")) {
+    keys.add(`vendor_domain_pending_host:www.${n}`);
+  } else {
+    const apex = n.replace(/^www\./, "");
+    if (apex) keys.add(`vendor_domain_pending_host:${apex}`);
+  }
+  return [...keys];
 }
 
 async function findOtherVendorWithHostname(
@@ -8359,14 +8458,33 @@ app.post("/make-server-16010b6f/vendor/custom-domain/prepare", async (c) => {
     const token = crypto.randomUUID();
     const txtName = `_migoo-verify.${normalized}`;
     const txtValue = `migoo-verify=${token}`;
+
+    const sfKey = `vendor_storefront_${vendorId}`;
+    const prev = (await kv.get(sfKey)) || {};
+    const prevHost =
+      prev && typeof prev === "object"
+        ? String((prev as { customDomain?: string }).customDomain || "").toLowerCase().trim()
+        : "";
+    if (prevHost && prevHost !== normalized) {
+      for (const k of vendorPendingHostKvKeys(prevHost)) {
+        await kv.del(k);
+      }
+    }
+
     await kv.set(`vendor_domain_pending:${vendorId}`, {
       hostname: normalized,
       token,
       createdAt: new Date().toISOString(),
     });
+    const hostPayload = {
+      vendorId,
+      token,
+      createdAt: new Date().toISOString(),
+    };
+    for (const k of vendorPendingHostKvKeys(normalized)) {
+      await kv.set(k, hostPayload);
+    }
 
-    const sfKey = `vendor_storefront_${vendorId}`;
-    const prev = (await kv.get(sfKey)) || {};
     await kv.set(sfKey, {
       ...(typeof prev === "object" && prev ? prev : {}),
       vendorId,
@@ -8384,6 +8502,37 @@ app.post("/make-server-16010b6f/vendor/custom-domain/prepare", async (c) => {
   } catch (error: any) {
     console.error("❌ custom-domain/prepare:", error);
     return c.json({ error: error.message || "Failed to prepare domain" }, 500);
+  }
+});
+
+/** Public: token text for HTTPS verification (Host must match a pending domain). */
+app.get("/make-server-16010b6f/vendor/custom-domain/challenge-text", async (c) => {
+  try {
+    const raw = c.req.query("hostname") || c.req.query("host") || "";
+    const normalized = normalizeVendorHostnameInput(String(raw));
+    if (!normalized) {
+      return c.text("Bad request", 400);
+    }
+    let r: { token?: string } | null = null;
+    for (const k of vendorPendingHostKvKeys(normalized)) {
+      const row = await kv.get(k);
+      const cand =
+        row && typeof row === "object" ? (row as { token?: string }) : null;
+      if (cand?.token) {
+        r = cand;
+        break;
+      }
+    }
+    if (!r?.token) {
+      return c.text("Not found", 404);
+    }
+    return c.text(`migoo-verify=${r.token}`, 200, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+    });
+  } catch (error: any) {
+    console.error("❌ challenge-text:", error);
+    return c.text("Error", 500);
   }
 });
 
@@ -8408,14 +8557,21 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
     }
 
     const fqdn = `_migoo-verify.${normalized}`;
-    const txtRecords = await fetchDnsTxtRecords(fqdn);
     const needle = `migoo-verify=${p.token}`;
-    const verified = txtRecords.some((r) => r.includes(needle));
+    const needleLower = needle.toLowerCase();
+
+    let verified = await verifyViaWellKnownHttps(normalized, needleLower);
+    if (!verified) {
+      const txtRecords = await fetchDnsTxtRecords(fqdn);
+      verified = txtRecords.some((r) => txtRecordMatchesToken(r, needleLower));
+    }
 
     if (!verified) {
+      const checker = `https://dnschecker.org/#TXT/${encodeURIComponent(fqdn)}`;
       return c.json({
         verified: false,
-        message: `TXT record not found yet. Add a TXT record at ${fqdn} with value ${needle}`,
+        message:
+          `Could not confirm your domain yet. Prefer: add this hostname to your Vercel project and point DNS so https://${normalized} opens this store — then Verify checks https://${normalized}/.well-known/migoo-verify.txt automatically. Optional DNS fallback: TXT at "${fqdn}" = ${needle} (see ${checker}).`,
         domain: normalized,
       });
     }
@@ -8460,13 +8616,16 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
       storeName,
     });
     await kv.del(`vendor_domain_pending:${vendorId}`);
+    for (const k of vendorPendingHostKvKeys(normalized)) {
+      await kv.del(k);
+    }
 
     console.log(`✅ Custom domain verified: ${normalized} → vendor ${vendorId}`);
 
     return c.json({
       verified: true,
       message:
-        "Domain verified. Add this hostname to your Vercel project (Domains) and point DNS (CNAME) to your deployment if you have not already.",
+        "Domain verified. Your storefront can use this hostname once DNS and Vercel are aligned.",
       domain: normalized,
       storeSlug,
     });
@@ -8489,6 +8648,11 @@ app.delete("/make-server-16010b6f/vendor/custom-domain", async (c) => {
         ? String((settings as { customDomain?: string }).customDomain || "").toLowerCase()
         : "";
     if (dom) await kv.del(`custom_domain_host:${dom}`);
+    if (dom) {
+      for (const k of vendorPendingHostKvKeys(dom)) {
+        await kv.del(k);
+      }
+    }
     await kv.del(`vendor_domain_pending:${vendorId}`);
 
     if (settings && typeof settings === "object") {

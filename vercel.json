@@ -5,6 +5,10 @@
   "installCommand": "npm install",
   "rewrites": [
     {
+      "source": "/.well-known/migoo-verify.txt",
+      "destination": "/api/migoo-challenge"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

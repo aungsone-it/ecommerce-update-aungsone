@@ -255,6 +255,12 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 404 || data.error === "Not found") {
+          toast.error(
+            "Save instructions is not available on the deployed API yet. Deploy the latest Supabase Edge Function make-server-16010b6f, then try again."
+          );
+          return;
+        }
         toast.error(typeof data.error === "string" ? data.error : "Could not save domain instructions");
         return;
       }
@@ -270,7 +276,7 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
         domainStatus: "pending",
         dnsVerified: false,
       }));
-      toast.success("DNS instructions ready — add them at your DNS host, then verify.");
+      toast.success("Saved — open your domain on Vercel, then click Verify (HTTPS check).");
     } catch (e) {
       console.error(e);
       toast.error("Network error");
@@ -518,16 +524,19 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
         </div>
       </div>
 
-      {/* Custom domain (M2) — TXT DNS verification + Vercel hostname */}
+      {/* Custom domain — HTTPS well-known verification (+ optional TXT fallback) */}
       <div className="max-w-2xl border border-slate-200 rounded-xl p-6 bg-slate-50/50">
         <div className="flex items-start gap-3 mb-4">
           <Globe className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
           <div>
             <h2 className="text-lg font-semibold text-slate-900">Custom domain</h2>
             <p className="text-sm text-slate-600 mt-1">
-              Use your own hostname (e.g. <span className="font-mono">shop.yourbrand.com</span>) after DNS
-              verification. Add the same hostname to your Vercel project under <strong>Domains</strong> so
-              HTTPS works.
+              Add your hostname (e.g. <span className="font-mono">shop.example.com</span>) under this
+              project&apos;s <strong>Vercel → Domains</strong> and point DNS so traffic hits this deployment.
+              Then use <strong>Save instructions</strong> and <strong>Verify</strong> — we confirm ownership
+              over HTTPS at{" "}
+              <span className="font-mono text-xs">/.well-known/migoo-verify.txt</span> (no registrar TXT
+              needed in most cases).
             </p>
           </div>
         </div>
@@ -551,7 +560,8 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
             )}
             {settings.domainStatus === "pending" && (
               <p className="text-xs text-amber-700 mt-2">
-                Pending — add the TXT record below, then click Verify.
+                Pending — when <span className="font-mono">https://{settings.customDomain || domainDraft || "…"}</span>{" "}
+                loads this store, click Verify.
               </p>
             )}
           </div>
@@ -600,17 +610,31 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
 
           {(domainHints || settings.domainStatus === "pending" || settings.domainStatus === "verified") && (
             <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 text-sm">
-              <p className="font-medium text-slate-800">DNS records</p>
-              <p className="text-slate-600">At your DNS provider (cPanel, Cloudflare, etc.):</p>
+              <p className="font-medium text-slate-800">Verify in two clicks</p>
               <ol className="list-decimal list-inside space-y-1 text-slate-700">
                 <li>
-                  <strong>TXT</strong> for ownership — name{" "}
-                  <code className="text-xs bg-slate-100 px-1 rounded">
+                  Same hostname added in <strong>Vercel → Domains</strong> with valid HTTPS.
+                </li>
+                <li>
+                  <strong>Save instructions</strong>, then <strong>Verify</strong> — we fetch your token from
+                  this deployment at{" "}
+                  <code className="text-xs bg-slate-100 px-1 rounded">/.well-known/migoo-verify.txt</code>.
+                </li>
+              </ol>
+              <p className="text-xs text-slate-500 border-t border-slate-100 pt-3">
+                Optional — only if HTTPS verify fails: add a <strong>TXT</strong> at your DNS for ownership,
+                or use CNAME for traffic. At Hostinger, TXT <strong>Name</strong> is often just{" "}
+                <code className="text-xs">_migoo-verify</code> (not the full FQDN).
+              </p>
+              <div className="space-y-2 text-slate-700 text-xs">
+                <div>
+                  <span className="text-slate-500">TXT name </span>
+                  <code className="bg-slate-100 px-1 rounded break-all">
                     {domainHints?.txtName || `_migoo-verify.${settings.customDomain || domainDraft || "…"}`}
                   </code>
                   <button
                     type="button"
-                    className="ml-2 text-blue-600 hover:underline text-xs"
+                    className="ml-2 text-blue-600 hover:underline"
                     onClick={() =>
                       copyToClipboard(
                         "TXT name",
@@ -621,38 +645,38 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
                   >
                     Copy
                   </button>
-                </li>
-                <li>
-                  Value:{" "}
-                  <code className="text-xs bg-slate-100 px-1 rounded break-all">
-                    {domainHints?.txtValue || "(Save instructions to generate a token)"}
+                </div>
+                <div>
+                  <span className="text-slate-500">TXT value </span>
+                  <code className="bg-slate-100 px-1 rounded break-all">
+                    {domainHints?.txtValue || "(Save instructions to generate)"}
                   </code>
                   {domainHints?.txtValue && (
                     <button
                       type="button"
-                      className="ml-2 text-blue-600 hover:underline text-xs"
+                      className="ml-2 text-blue-600 hover:underline"
                       onClick={() => copyToClipboard("TXT value", domainHints.txtValue)}
                     >
                       Copy
                     </button>
                   )}
-                </li>
-                <li>
-                  <strong>CNAME</strong> (traffic) — point the hostname to{" "}
-                  <code className="text-xs bg-slate-100 px-1 rounded">
+                </div>
+                <div>
+                  <span className="text-slate-500">CNAME target </span>
+                  <code className="bg-slate-100 px-1 rounded">
                     {domainHints?.cnameTarget || "cname.vercel-dns.com"}
                   </code>
                   {domainHints?.cnameTarget && (
                     <button
                       type="button"
-                      className="ml-2 text-blue-600 hover:underline text-xs"
+                      className="ml-2 text-blue-600 hover:underline"
                       onClick={() => copyToClipboard("CNAME target", domainHints.cnameTarget)}
                     >
                       Copy
                     </button>
                   )}
-                </li>
-              </ol>
+                </div>
+              </div>
             </div>
           )}
         </div>
