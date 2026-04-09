@@ -65,6 +65,19 @@ function VendorSubdomainIndexOrLanding() {
   return <LandingPage />;
 }
 
+/** `/store` is the marketplace catalog — not valid on vendor-only hosts (subdomain / custom domain). */
+function MarketplaceStoreRoute() {
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
+  if (loading && !sub) {
+    return <RouteLoadingFallback />;
+  }
+  if (sub || customSlug) {
+    return <NotFound />;
+  }
+  return <StorefrontPage />;
+}
+
 function LazyBoundary({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
 }
@@ -111,7 +124,7 @@ export const router = createBrowserRouter([
           },
           {
             path: "store",
-            element: <StorefrontPage />,
+            element: <MarketplaceStoreRoute />,
           },
           {
             path: "store/reset-password",
