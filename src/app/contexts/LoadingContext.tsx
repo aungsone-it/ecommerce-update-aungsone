@@ -3,6 +3,9 @@ import { createContext, useContext, useState, ReactNode, useEffect } from 'react
 interface LoadingContextType {
   isLoading: boolean;
   setIsLoading: (loading: boolean) => void;
+  /** Hides FloatingChat only (e.g. vendor storefront skeleton) without body scroll-lock from `isLoading`. */
+  suppressFloatingChat: boolean;
+  setSuppressFloatingChat: (v: boolean) => void;
   isScrollLocked: boolean;
   setIsScrollLocked: (locked: boolean) => void;
 }
@@ -11,6 +14,7 @@ const LoadingContext = createContext<LoadingContextType | undefined>(undefined);
 
 export function LoadingProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
+  const [suppressFloatingChat, setSuppressFloatingChat] = useState(false);
   const [isScrollLocked, setIsScrollLocked] = useState(false);
 
   // 🚀 PREVENT SCROLLING when loading OR when explicitly locked - Works on ALL devices including iOS Safari
@@ -78,7 +82,16 @@ export function LoadingProvider({ children }: { children: ReactNode }) {
   }, [isLoading, isScrollLocked]);
 
   return (
-    <LoadingContext.Provider value={{ isLoading, setIsLoading, isScrollLocked, setIsScrollLocked }}>
+    <LoadingContext.Provider
+      value={{
+        isLoading,
+        setIsLoading,
+        suppressFloatingChat,
+        setSuppressFloatingChat,
+        isScrollLocked,
+        setIsScrollLocked,
+      }}
+    >
       {children}
     </LoadingContext.Provider>
   );
@@ -93,6 +106,8 @@ export function useLoading() {
       return {
         isLoading: false,
         setIsLoading: () => {},
+        suppressFloatingChat: false,
+        setSuppressFloatingChat: () => {},
         isScrollLocked: false,
         setIsScrollLocked: () => {},
       };

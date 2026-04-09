@@ -32,7 +32,7 @@ function RootLayoutContent() {
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [showFloatingChat, setShowFloatingChat] = useState(false);
   const { isCartOpen } = useCartVisibility();
-  const { isLoading } = useLoading();
+  const { isLoading, suppressFloatingChat } = useLoading();
 
   const subdomainStoreSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug } = useResolvedVendorHostSlug();
@@ -62,7 +62,13 @@ function RootLayoutContent() {
       <SubdomainVendorRedirect />
       <Outlet />
       {/* Global Floating Chat — storefront only; hidden on all admin panels (incl. /store|vendor/.../admin) */}
-      {!isCartOpen && !isLoading && !isVendorApplicationPage && !isLandingPage && !isResetPasswordPage && !isAdminPortal && (
+      {!isCartOpen &&
+        !isLoading &&
+        !suppressFloatingChat &&
+        !isVendorApplicationPage &&
+        !isLandingPage &&
+        !isResetPasswordPage &&
+        !isAdminPortal && (
         <FloatingChat 
           customerName={user?.fullName || user?.firstName || "Guest"}
           customerEmail={user?.email || ""}

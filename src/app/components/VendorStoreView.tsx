@@ -106,6 +106,7 @@ import {
 } from "../../constants";
 import { toast } from "sonner";
 import { getEffectiveVariantOptions } from "./ProductVariantChips";
+import { useLoading } from "../contexts/LoadingContext";
 
 interface Product {
   id: string;
@@ -3422,6 +3423,48 @@ export function VendorStoreView({
     ]
   );
 
+  const showVendorStorefrontFullSkeleton = useMemo(
+    () =>
+      serverStatus === "checking" &&
+      vendorViewMode === "storefront" &&
+      !savedPage &&
+      !isVendorProductDetailPath &&
+      products.length === 0,
+    [
+      serverStatus,
+      vendorViewMode,
+      savedPage,
+      isVendorProductDetailPath,
+      products.length,
+    ]
+  );
+
+  const showVendorPageFullSkeleton = useMemo(
+    () =>
+      vendorViewMode === "storefront" &&
+      (showVendorStorefrontFullSkeleton || (savedPage && showSavedPageSkeleton)),
+    [vendorViewMode, showVendorStorefrontFullSkeleton, savedPage, showSavedPageSkeleton]
+  );
+
+  const { setSuppressFloatingChat } = useLoading();
+
+  const suppressFloatingChatForVendorShell = useMemo(
+    () =>
+      showVendorPageFullSkeleton ||
+      (vendorViewMode === "storefront" && isVendorProductDetailPath && !selectedProduct),
+    [
+      showVendorPageFullSkeleton,
+      vendorViewMode,
+      isVendorProductDetailPath,
+      selectedProduct,
+    ]
+  );
+
+  useEffect(() => {
+    setSuppressFloatingChat(suppressFloatingChatForVendorShell);
+    return () => setSuppressFloatingChat(false);
+  }, [suppressFloatingChatForVendorShell, setSuppressFloatingChat]);
+
   const toggleWishlist = (productId: string, productName?: string, optimisticProduct?: Product | null) => {
     if (!user) {
       toast.error("Please sign in to add items to your wishlist");
@@ -4294,16 +4337,6 @@ export function VendorStoreView({
   }
 
   // Main Storefront — h-screen + overflow-y-auto so scrollbar-thin applies (not the default body bar)
-  const showVendorStorefrontFullSkeleton =
-    serverStatus === "checking" &&
-    vendorViewMode === "storefront" &&
-    !savedPage &&
-    !isVendorProductDetailPath &&
-    products.length === 0;
-  const showVendorPageFullSkeleton =
-    vendorViewMode === "storefront" &&
-    (showVendorStorefrontFullSkeleton || (savedPage && showSavedPageSkeleton));
-
   return (
     <>
     <div
