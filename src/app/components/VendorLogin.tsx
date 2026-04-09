@@ -17,6 +17,48 @@ interface VendorLoginProps {
   storeName?: string;
 }
 
+function humanizeStoreLabel(raw?: string): string {
+  const value = String(raw || "").trim();
+  if (!value) return "Vendor Store";
+
+  // Hide technical/internal-looking identifiers from UI.
+  const lower = value.toLowerCase();
+  const looksInternal =
+    lower.startsWith("vendor-") ||
+    lower.startsWith("vendor_") ||
+    /vendor[_-][a-z0-9]{8,}/i.test(value) ||
+    /^[a-f0-9]{12,}$/i.test(value);
+  if (looksInternal) return "Vendor Store";
+
+  // Convert slug-ish labels to readable title case.
+  const cleaned = value.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "Vendor Store";
+  return cleaned.replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function isInternalVendorLabel(raw?: string): boolean {
+  const value = String(raw || "").trim();
+  if (!value) return true;
+  const lower = value.toLowerCase();
+  return (
+    lower.startsWith("vendor-") ||
+    lower.startsWith("vendor_") ||
+    /vendor[_-][a-z0-9]{8,}/i.test(value) ||
+    /^[a-f0-9]{12,}$/i.test(value)
+  );
+}
+
+function pickDisplayVendorName(...candidates: Array<string | undefined>): string {
+  for (const c of candidates) {
+    const v = String(c || "").trim();
+    if (!v) continue;
+    if (!isInternalVendorLabel(v)) return humanizeStoreLabel(v);
+  }
+  // If all candidates are internal/empty, use a stable friendly fallback.
+  const firstNonEmpty = candidates.find((c) => String(c || "").trim());
+  return humanizeStoreLabel(firstNonEmpty);
+}
+
 export function VendorLogin({ storeName }: VendorLoginProps) {
   const { login, vendor } = useVendorAuth();
   const { t } = useLanguage();
@@ -29,7 +71,11 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [vendorName, setVendorName] = useState<string>('');
-  const [loadingVendor, setLoadingVendor] = useState(!!storeName);
+  const [loadingVendor, setLoadingVendor] = useState(
+    !!storeName ||
+      (typeof window !== 'undefined' &&
+        shouldResolveCustomDomainHost(window.location.hostname))
+  );
 
   // After login: prefer vendor subdomain /admin when slug/name maps; else /store/:slug/admin.
   // Re-fetch storefront so storeName/slug match KV before resolving gogo.* (branding-page login).
@@ -105,12 +151,52 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   useEffect(() => {
     const fetchVendorName = async () => {
       if (!storeName) {
-        setVendorName('SECURE');
-        return;
+        // On custom domains, resolve display name by host.
+        if (
+          typeof window === 'undefined' ||
+          !shouldResolveCustomDomainHost(window.location.hostname)
+        ) {
+          setVendorName('SECURE');
+          return;
+        }
       }
       
       setLoadingVendor(true);
       try {
+        // Prefer host-based resolution on custom domains (works for /admin on migoo.store).
+        if (
+          typeof window !== 'undefined' &&
+          shouldResolveCustomDomainHost(window.location.hostname)
+        ) {
+          const host = window.location.hostname;
+          const byDomainRes = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/by-domain?domain=${encodeURIComponent(host)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${publicAnonKey}`,
+              },
+            }
+          );
+          if (byDomainRes.ok) {
+            const byDomainData = (await byDomainRes.json()) as {
+              storeName?: string;
+              businessName?: string;
+            };
+            const resolved = pickDisplayVendorName(
+              byDomainData.businessName,
+              byDomainData.storeName,
+              storeName
+            );
+            setVendorName(resolved);
+            return;
+          }
+        }
+
+        if (!storeName) {
+          setVendorName('SECURE');
+          return;
+        }
+
         console.log('🔍 Fetching vendor data for:', storeName);
         const response = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/by-slug/${storeName}`,
@@ -128,10 +214,12 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
           console.log('✅ Vendor data received:', data);
           
           // Extract the business name from vendor data
-          const name = data.vendor?.businessName || 
-                      data.vendor?.name || 
-                      data.vendor?.storeName ||
-                      storeName;
+          const name = pickDisplayVendorName(
+            data.vendor?.businessName,
+            data.vendor?.name,
+            data.vendor?.storeName,
+            storeName
+          );
           
           console.log('📛 Setting vendor name to:', name);
           setVendorName(name);
@@ -139,7 +227,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
           console.error('❌ Failed to fetch vendor:', response.status, response.statusText);
           const errorText = await response.text();
           console.error('Error details:', errorText);
-          setVendorName(storeName);
+          setVendorName(pickDisplayVendorName(storeName));
         }
       } catch (error) {
         if (error.message === 'Failed to fetch') {
@@ -148,7 +236,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
         } else {
           console.error('❌ Error fetching vendor:', error);
         }
-        setVendorName(storeName);
+        setVendorName(pickDisplayVendorName(storeName));
       } finally {
         setLoadingVendor(false);
       }
@@ -206,7 +294,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
         {/* Logo Section */}
         <div className="flex flex-col items-center mb-6">
           <div className="text-4xl font-bold text-slate-900 dark:text-white drop-shadow-2xl mb-2">
-            {loadingVendor ? '...' : vendorName}
+            {loadingVendor ? humanizeStoreLabel(storeName) : vendorName}
           </div>
           <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
             <Store className="w-5 h-5" />
