@@ -1,6 +1,6 @@
 import { useVendorAuth } from '../contexts/VendorAuthContext';
 import { VendorLogin } from './VendorLogin';
-import { useVendorAdminRouteParams } from '../utils/vendorSubdomainHooks';
+import { useVendorAdminRouteParams } from '../utils/vendorAdminRouteParams';
 import { Loader2 } from 'lucide-react';
 
 export function VendorAuthGate({ children }: { children: React.ReactNode }) {

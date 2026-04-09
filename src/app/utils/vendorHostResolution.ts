@@ -47,6 +47,14 @@ function writeCachedSlug(host: string, slug: string) {
   }
 }
 
+/** Sync read (e.g. route guards) — only returns a slug if already cached for this host. */
+export function getCachedVendorHostSlug(hostname?: string): string | null {
+  if (typeof window === "undefined") return null;
+  const h = normalizeHostForLookup(hostname ?? window.location.hostname);
+  if (!shouldResolveCustomDomainHost(h)) return null;
+  return readCachedSlug(h);
+}
+
 export function clearCachedVendorHostSlug(host?: string): void {
   try {
     if (host) sessionStorage.removeItem(CACHE_PREFIX + normalizeHostForLookup(host));

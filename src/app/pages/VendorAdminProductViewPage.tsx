@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
+import { pathnameUnderAdmin } from "../utils/vendorSubdomainHooks";
 import {
-  pathnameUnderAdmin,
-  resolveVendorSubdomainStoreSlug,
   useVendorAdminRouteParams,
-} from "../utils/vendorSubdomainHooks";
+  useVendorHostCleanAdmin,
+} from "../utils/vendorAdminRouteParams";
 import { ArrowLeft, Package, Loader2 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -49,10 +49,10 @@ export function VendorAdminProductViewPage() {
   const { storeName, productId } = useVendorAdminRouteParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const vendorSubSlug = resolveVendorSubdomainStoreSlug();
-  const onVendorSubdomainAdmin =
-    !!vendorSubSlug && pathnameUnderAdmin(location.pathname);
-  const adminPrefix = onVendorSubdomainAdmin
+  const { clean: vendorHostCleanAdmin } = useVendorHostCleanAdmin();
+  const onVendorHostCleanAdmin =
+    vendorHostCleanAdmin && pathnameUnderAdmin(location.pathname);
+  const adminPrefix = onVendorHostCleanAdmin
     ? null
     : location.pathname.startsWith("/store/")
       ? "store"
@@ -85,7 +85,7 @@ export function VendorAdminProductViewPage() {
   };
 
   const handleBack = () => {
-    if (onVendorSubdomainAdmin) {
+    if (onVendorHostCleanAdmin) {
       navigate("/admin/products");
       return;
     }

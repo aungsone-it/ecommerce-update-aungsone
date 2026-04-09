@@ -3,6 +3,7 @@ import {
   pathnameUnderAdmin,
   resolveVendorSubdomainStoreSlug,
 } from "../utils/vendorSubdomainHooks";
+import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 
 /**
  * AnimatedOutlet - INSTANT TRANSITIONS (NO BLINKING)
@@ -11,6 +12,7 @@ import {
  */
 export function AnimatedOutlet() {
   const location = useLocation();
+  const { slug: resolvedVendorHostSlug } = useResolvedVendorHostSlug();
 
   // Group routes by component to prevent unnecessary re-renders
   // All storefront routes should be treated as one "page" for rendering purposes
@@ -19,6 +21,7 @@ export function AnimatedOutlet() {
     if (pathname === "/") {
       const subSlug = resolveVendorSubdomainStoreSlug();
       if (subSlug) return `vendor-subdomain-${subSlug}`;
+      if (resolvedVendorHostSlug) return `vendor-custom-home-${resolvedVendorHostSlug}`;
       return "landing";
     }
 
@@ -40,6 +43,7 @@ export function AnimatedOutlet() {
     if (pathnameUnderAdmin(pathname) && !pathname.startsWith("/vendor/")) {
       const subSlug = resolveVendorSubdomainStoreSlug();
       if (subSlug) return `vendor-admin-subdomain-${subSlug}`;
+      if (resolvedVendorHostSlug) return `vendor-admin-custom-${resolvedVendorHostSlug}`;
       return "admin";
     }
 

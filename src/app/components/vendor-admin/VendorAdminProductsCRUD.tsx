@@ -7,11 +7,11 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useNavigate, useLocation } from "react-router";
+import { pathnameUnderAdmin } from "../../utils/vendorSubdomainHooks";
 import {
-  pathnameUnderAdmin,
-  resolveVendorSubdomainStoreSlug,
   useVendorAdminRouteParams,
-} from "../../utils/vendorSubdomainHooks";
+  useVendorHostCleanAdmin,
+} from "../../utils/vendorAdminRouteParams";
 import { 
   Plus, 
   Search, 
@@ -132,10 +132,10 @@ export function VendorAdminProductsCRUD({
   const navigate = useNavigate();
   const location = useLocation();
   const { storeName: routeStoreName } = useVendorAdminRouteParams();
-  const vendorSubSlug = resolveVendorSubdomainStoreSlug();
-  const onVendorSubdomainAdmin =
-    !!vendorSubSlug && pathnameUnderAdmin(location.pathname);
-  const adminPrefix = onVendorSubdomainAdmin
+  const { clean: vendorHostCleanAdmin } = useVendorHostCleanAdmin();
+  const onVendorHostCleanAdmin =
+    vendorHostCleanAdmin && pathnameUnderAdmin(location.pathname);
+  const adminPrefix = onVendorHostCleanAdmin
     ? null
     : location.pathname.startsWith("/store/")
       ? "store"
@@ -891,7 +891,7 @@ export function VendorAdminProductsCRUD({
                         size="sm" 
                         className="h-8 w-8 p-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                         onClick={() => {
-                          if (onVendorSubdomainAdmin) {
+                          if (onVendorHostCleanAdmin) {
                             navigate(`/admin/products/${product.id}/view`);
                           } else if (adminPrefix && routeStoreName) {
                           navigate(

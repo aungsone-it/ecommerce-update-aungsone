@@ -4,6 +4,7 @@ import { useVendorAuth } from '../contexts/VendorAuthContext';
 import { ArrowLeft, Eye, EyeOff, Store } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { resolveVendorSubdomainStoreSlug } from '../utils/vendorSubdomainHooks';
+import { shouldResolveCustomDomainHost } from '../utils/vendorHostResolution';
 import { getEffectiveVendorSubdomainBase } from '../utils/vendorSubdomainBase';
 import { subdomainHostLabelForVendorProfile } from '../utils/subdomainSlugMap';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
@@ -35,7 +36,10 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   useEffect(() => {
     if (!vendor?.vendorId || !vendor.storeSlug) return;
 
-    const onVendorHost = !!resolveVendorSubdomainStoreSlug();
+    const onVendorHost =
+      !!resolveVendorSubdomainStoreSlug() ||
+      (typeof window !== 'undefined' &&
+        shouldResolveCustomDomainHost(window.location.hostname));
     if (onVendorHost) {
       console.log('✅ [VendorLogin] On vendor host → /admin');
       navigate('/admin', { replace: true });

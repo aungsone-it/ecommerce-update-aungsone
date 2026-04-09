@@ -7,6 +7,7 @@ import {
   pathnameUnderAdmin,
   resolveVendorSubdomainStoreSlug,
 } from "./vendorSubdomainHooks";
+import { getCachedVendorHostSlug } from "./vendorHostResolution";
 
 /**
  * Validates and sanitizes store name for URL usage
@@ -135,12 +136,9 @@ export function buildVendorStorefrontUrl(storeName: string, productSlug?: string
 export function isVendorAdminRoute(pathname: string): boolean {
   if (pathname.includes("/vendor/") && pathname.includes("/admin")) return true;
   if (pathname.startsWith("/store/") && pathname.includes("/admin")) return true;
-  if (
-    pathnameUnderAdmin(pathname) &&
-    typeof window !== "undefined" &&
-    resolveVendorSubdomainStoreSlug()
-  ) {
-    return true;
+  if (pathnameUnderAdmin(pathname) && typeof window !== "undefined") {
+    if (resolveVendorSubdomainStoreSlug()) return true;
+    if (getCachedVendorHostSlug()) return true;
   }
   return false;
 }
@@ -160,7 +158,10 @@ export function isVendorStorefrontRoute(pathname: string): boolean {
  */
 export function isSuperAdminRoute(pathname: string): boolean {
   if (!pathnameUnderAdmin(pathname) || pathname.includes("/vendor/")) return false;
-  if (typeof window !== "undefined" && resolveVendorSubdomainStoreSlug()) return false;
+  if (typeof window !== "undefined") {
+    if (resolveVendorSubdomainStoreSlug()) return false;
+    if (getCachedVendorHostSlug()) return false;
+  }
   return true;
 }
 

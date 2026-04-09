@@ -1,4 +1,3 @@
-import { useParams, useLocation } from "react-router";
 import { getVendorSubdomainBase } from "./vendorSubdomainBase";
 import { getStoreSlugFromSubdomainLabel } from "./subdomainSlugMap";
 
@@ -72,31 +71,3 @@ export function parseVendorSubdomainAdminPath(
   return null;
 }
 
-/**
- * Merges React Router params with vendor-subdomain `/admin/*` parsing so vendor admin works on both
- * `storeSlug.walwal.online/admin` and `/store/{slug}/admin`.
- */
-export function useVendorAdminRouteParams(): {
-  storeName?: string;
-  section?: string;
-  productId?: string;
-} {
-  const params = useParams();
-  const loc = useLocation();
-  const subSlug = resolveVendorSubdomainStoreSlug();
-  if (subSlug && pathnameUnderAdmin(loc.pathname)) {
-    const parsed = parseVendorSubdomainAdminPath(loc.pathname, subSlug);
-    if (parsed) {
-      return {
-        storeName: parsed.storeName,
-        section: parsed.section,
-        productId: parsed.productId,
-      };
-    }
-  }
-  return {
-    storeName: params.storeName,
-    section: params.section,
-    productId: params.productId,
-  };
-}

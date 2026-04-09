@@ -2,10 +2,13 @@ import { VendorAdminPortal } from "../components/VendorAdminPortal";
 import { useVendorAuth } from "../contexts/VendorAuthContext";
 import { useNavigate } from "react-router";
 import { Loader2 } from "lucide-react";
+import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 
 export function VendorAdminPage() {
   const { vendor, logout } = useVendorAuth();
   const navigate = useNavigate();
+  const { slug: customHostSlug } = useResolvedVendorHostSlug();
 
   // Safety check - this should never happen due to VendorAuthGate, but just in case
   if (!vendor) {
@@ -40,7 +43,11 @@ export function VendorAdminPage() {
         logout();
       }}
       onPreviewStore={(_vendorId, storeSlug) => {
-        navigate(`/store/${storeSlug}`);
+        if (resolveVendorSubdomainStoreSlug() || customHostSlug) {
+          navigate("/");
+        } else {
+          navigate(`/store/${storeSlug}`);
+        }
       }}
     />
   );

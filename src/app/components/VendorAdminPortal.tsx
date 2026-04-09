@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router";
+import { pathnameUnderAdmin, resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import {
-  pathnameUnderAdmin,
-  resolveVendorSubdomainStoreSlug,
   useVendorAdminRouteParams,
-} from "../utils/vendorSubdomainHooks";
+  useVendorHostCleanAdmin,
+} from "../utils/vendorAdminRouteParams";
 import { 
   LayoutDashboard, 
   Package, 
@@ -81,11 +81,18 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const routeParams = useVendorAdminRouteParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const {
+    clean: vendorHostCleanAdmin,
+    loading: vendorHostCleanAdminLoading,
+  } = useVendorHostCleanAdmin();
   const vendorSubdomainSlug = resolveVendorSubdomainStoreSlug();
-  const onVendorSubdomainAdmin =
-    !!vendorSubdomainSlug && pathnameUnderAdmin(location.pathname);
-  /** /store/<slug>/admin vs legacy /vendor/<slug>/admin (not used on vendor subdomain /admin) */
+  /** Subdomain or custom domain with `/admin/*` URLs (not `/vendor/.../admin`). */
+  const onVendorHostCleanAdmin =
+    vendorHostCleanAdmin && pathnameUnderAdmin(location.pathname);
+  /** /store/<slug>/admin vs legacy /vendor/<slug>/admin (not used on vendor host `/admin`) */
   const adminPathPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
+  const storefrontHomeHref =
+    vendorHostCleanAdmin || vendorSubdomainSlug ? "/" : "/store";
   const [currentPage, setCurrentPage] = useState<VendorPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
@@ -129,6 +136,24 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   useEffect(() => {
     void loadStorefrontSnapshot();
   }, [loadStorefrontSnapshot]);
+
+  useEffect(() => {
+    if (!vendorHostCleanAdmin || vendorHostCleanAdminLoading) return;
+    if (pathnameUnderAdmin(location.pathname)) return;
+    const m = location.pathname.match(/^\/(?:vendor|store)\/[^/]+\/admin(\/.*)?$/);
+    if (!m) return;
+    const tail = m[1] || "";
+    const target =
+      tail && tail !== "/" ? `/admin${tail.replace(/\/+$/, "")}` : "/admin";
+    if (target !== location.pathname) {
+      navigate(target, { replace: true });
+    }
+  }, [
+    vendorHostCleanAdmin,
+    vendorHostCleanAdminLoading,
+    location.pathname,
+    navigate,
+  ]);
 
   useEffect(() => {
     if (vendorLogo.trim()) {
@@ -188,7 +213,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     if (routeParams.section !== "marketing") return;
     const storeName = routeStoreSlug;
     if (!storeName) return;
-    const targetPath = onVendorSubdomainAdmin
+    const targetPath = onVendorHostCleanAdmin
       ? "/admin"
       : `/${adminPathPrefix}/${storeName}/admin`;
     navigate(targetPath, { replace: true });
@@ -196,13 +221,13 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     routeParams.section,
     routeStoreSlug,
     adminPathPrefix,
-    onVendorSubdomainAdmin,
+    onVendorHostCleanAdmin,
     navigate,
   ]);
 
   // If the URL still uses an old slug after a rename, normalize to the canonical slug from storefront settings
   useEffect(() => {
-    if (onVendorSubdomainAdmin) return;
+    if (onVendorHostCleanAdmin) return;
     const snap = storefrontSnapshot?.storeSlug;
     const urlSlug = routeParams.storeName;
     if (!snap || !urlSlug || snap === urlSlug) return;
@@ -214,7 +239,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       navigate(next, { replace: true });
     }
   }, [
-    onVendorSubdomainAdmin,
+    onVendorHostCleanAdmin,
     storefrontSnapshot?.storeSlug,
     routeParams.storeName,
     location.pathname,
@@ -236,7 +261,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       return;
     }
 
-    const targetPath = onVendorSubdomainAdmin
+    const targetPath = onVendorHostCleanAdmin
       ? currentPage === "dashboard"
         ? "/admin"
         : `/admin/${currentPage}`
@@ -248,7 +273,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       navigate(targetPath, { replace: false });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, adminPathPrefix, routeStoreSlug, onVendorSubdomainAdmin]);
+  }, [currentPage, adminPathPrefix, routeStoreSlug, onVendorHostCleanAdmin]);
 
   // Poll for notifications on a long interval (see POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS)
   useEffect(() => {
@@ -430,8 +455,11 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       `}>
         {/* Logo */}
         <div className="h-16 flex items-center px-6 border-b border-slate-200 relative">
-          <button 
-            onClick={() => window.location.href = '/store'}
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = storefrontHomeHref;
+            }}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
           >
             {vendorLogo ? (
