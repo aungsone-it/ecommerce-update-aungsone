@@ -8555,6 +8555,20 @@ app.get("/make-server-16010b6f/vendor/custom-domain/challenge-text", async (c) =
   }
 });
 
+/** Hostnames that should resolve to the same vendor (apex ↔ www). */
+function customDomainLookupVariants(hostname: string): string[] {
+  const h = hostname.toLowerCase().trim();
+  const out = new Set<string>();
+  out.add(h);
+  if (h.startsWith("www.")) {
+    const apex = h.slice(4);
+    if (apex) out.add(apex);
+  } else if (h && !h.startsWith("www.")) {
+    out.add(`www.${h}`);
+  }
+  return [...out];
+}
+
 app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
   try {
     const body = await c.req.json();
@@ -8623,7 +8637,9 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
         ? String((oldSettings as { customDomain?: string }).customDomain || "").toLowerCase()
         : "";
     if (oldDomain && oldDomain !== normalized) {
-      await kv.del(`custom_domain_host:${oldDomain}`);
+      for (const h of customDomainLookupVariants(oldDomain)) {
+        await kv.del(`custom_domain_host:${h}`);
+      }
     }
 
     await kv.set(sfKey, {
@@ -8633,11 +8649,10 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
       domainStatus: "verified",
       dnsVerified: true,
     });
-    await kv.set(`custom_domain_host:${normalized}`, {
-      vendorId,
-      storeSlug,
-      storeName,
-    });
+    const hostPayload = { vendorId, storeSlug, storeName };
+    for (const hostKey of customDomainLookupVariants(normalized)) {
+      await kv.set(`custom_domain_host:${hostKey}`, hostPayload);
+    }
     await kv.del(`vendor_domain_pending:${vendorId}`);
     for (const k of vendorPendingHostKvKeys(normalized)) {
       await kv.del(k);
@@ -8670,8 +8685,10 @@ app.delete("/make-server-16010b6f/vendor/custom-domain", async (c) => {
       settings && typeof settings === "object"
         ? String((settings as { customDomain?: string }).customDomain || "").toLowerCase()
         : "";
-    if (dom) await kv.del(`custom_domain_host:${dom}`);
     if (dom) {
+      for (const h of customDomainLookupVariants(dom)) {
+        await kv.del(`custom_domain_host:${h}`);
+      }
       for (const k of vendorPendingHostKvKeys(dom)) {
         await kv.del(k);
       }
@@ -8740,29 +8757,34 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
       return c.json({ error: "Domain parameter required" }, 400);
     }
     const normalized = normalizeVendorHostnameInput(raw) || raw.trim().toLowerCase();
-    console.log(`🔍 Looking up vendor for domain: ${normalized}`);
+    const variants = customDomainLookupVariants(normalized);
+    console.log(`🔍 Looking up vendor for domain: ${normalized} (variants: ${variants.join(", ")})`);
 
-    const fast = await kv.get(`custom_domain_host:${normalized}`);
-    if (fast?.vendorId && fast?.storeSlug) {
-      const vendor = await kv.get(`vendor:${fast.vendorId}`);
-      return c.json({
-        vendorId: fast.vendorId,
-        storeSlug: fast.storeSlug,
-        storeName: fast.storeName || vendor?.name,
-        businessName: vendor?.businessName || vendor?.name,
-      });
+    for (const hostKey of variants) {
+      const fast = await kv.get(`custom_domain_host:${hostKey}`);
+      if (fast?.vendorId && fast?.storeSlug) {
+        const vendor = await kv.get(`vendor:${fast.vendorId}`);
+        return c.json({
+          vendorId: fast.vendorId,
+          storeSlug: fast.storeSlug,
+          storeName: fast.storeName || vendor?.name,
+          businessName: vendor?.businessName || vendor?.name,
+        });
+      }
     }
 
     const allSettings = await kv.getByPrefix("vendor_storefront_");
     const validSettings = Array.isArray(allSettings) ? allSettings.filter((s) => s != null) : [];
 
-    const vendorSettings = validSettings.find(
-      (s: any) =>
-        String(s.customDomain || "").toLowerCase() === normalized &&
+    const vendorSettings = validSettings.find((s: any) => {
+      const cd = String(s.customDomain || "").toLowerCase();
+      if (!variants.includes(cd)) return false;
+      return (
         s.domainStatus === "verified" &&
         s.dnsVerified === true &&
         (s.isActive !== false)
-    );
+      );
+    });
 
     if (!vendorSettings) {
       console.log(`❌ No verified vendor found for domain: ${normalized}`);
