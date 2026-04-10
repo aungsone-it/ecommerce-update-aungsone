@@ -1,9 +1,9 @@
 # Deploying this app (any platform)
 
-The repo ships a **static SPA** (`npm run build` → `dist/`). Behavior stays stable if you:
+The repo ships a **static SPA** (`npm run build` -> `dist/`). Behavior stays stable if you:
 
 1. Serve `index.html` for all non-file routes (**SPA fallback**).
-2. Set **Supabase** (and optional **VITE_** vars) in your host’s environment.
+2. Set **Supabase** (and optional **VITE_** vars) before build, then publish fresh assets.
 
 ## Quick start: Railway (recommended if you already use it)
 
@@ -31,6 +31,41 @@ This project works on Railway as a single web service.
 - Add custom domain only after the Railway URL passes full smoke tests.
 - Keep old host active during DNS propagation for fast rollback.
 
+## Quick start: Tencent Cloud (COS + CDN)
+
+For this repo, the easiest Tencent setup is:
+
+- **COS** as static origin (host `dist/`)
+- **CDN** for domain + HTTPS + caching
+- **SPA fallback** to `index.html`
+
+1. Build locally:
+   ```bash
+   npm ci
+   npm run build
+   ```
+2. Tencent Cloud Console -> **COS** -> create bucket in your target region.
+3. In bucket settings, enable **Static Website** hosting.
+4. Upload all files inside `dist/` to COS.
+5. Configure CDN with COS bucket as origin.
+6. Add your custom domain to CDN and enable HTTPS certificate.
+7. Configure SPA fallback in COS website rules and/or CDN rewrite rules so unknown routes return `/index.html` with `200`.
+8. Verify core flows on CDN domain, then switch production DNS.
+
+### Tencent Cloud notes (important)
+
+- Build-time env: set your `VITE_*` values **before** `npm run build`, then upload fresh `dist/`.
+- Required keys usually include:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+- Optional keys (if used by your features):
+  - `VITE_STRIPE_PUBLISHABLE_KEY`
+  - `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN`
+  - `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`
+- Keep using the same Supabase project to avoid data or auth regressions.
+- If deep links like `/store/<slug>` return 404, your SPA fallback rule is missing or misconfigured.
+- During DNS cutover, keep your current host live until Tencent CDN is healthy globally.
+
 ## Build
 
 ```bash
@@ -49,6 +84,7 @@ The browser must receive `index.html` for paths like `/store/foo` or `/` on a su
 | **Vercel** | `vercel.json` in this repo already has a rewrite `/*` → `/index.html`. |
 | **Netlify** | Add `public/_redirects`: `/* /index.html 200` (or use `netlify.toml` `[[redirects]]`). |
 | **Cloudflare Pages** | `_redirects` or **Pages** → **Redirects** → SPA fallback. |
+| **Tencent Cloud (COS/CDN)** | Configure website/CDN rule so unknown paths rewrite/return to `/index.html`. |
 | **Nginx** | `try_files $uri $uri/ /index.html;` |
 | **Apache** | `FallbackResource /index.html` or equivalent `mod_rewrite`. |
 
