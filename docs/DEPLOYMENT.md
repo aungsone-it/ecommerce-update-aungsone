@@ -5,6 +5,32 @@ The repo ships a **static SPA** (`npm run build` → `dist/`). Behavior stays st
 1. Serve `index.html` for all non-file routes (**SPA fallback**).
 2. Set **Supabase** (and optional **VITE_** vars) in your host’s environment.
 
+## Quick start: Railway (recommended if you already use it)
+
+This project works on Railway as a single web service.
+
+1. Push the repo to GitHub.
+2. Railway dashboard -> **New** -> **Deploy from GitHub repo**.
+3. Select this repository.
+4. Configure the service:
+   - **Build Command**: `npm ci && npm run build`
+   - **Start Command**: `npx vite preview --host 0.0.0.0 --port $PORT`
+5. Add variables from `.env.example` (at minimum Supabase keys your app uses):
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - optional `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN`
+   - optional `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`
+   - optional `VITE_STRIPE_PUBLISHABLE_KEY`
+6. Deploy and test core flows before custom domain cutover.
+
+### Railway go-live checklist
+
+- Keep the same Supabase project to preserve current data/features.
+- Confirm SPA routes work directly (for example `/store/<slug>` opens without 404).
+- Verify auth, product list/detail, cart, checkout, and image loading.
+- Add custom domain only after the Railway URL passes full smoke tests.
+- Keep old host active during DNS propagation for fast rollback.
+
 ## Build
 
 ```bash
