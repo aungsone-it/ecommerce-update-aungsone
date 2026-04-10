@@ -20,6 +20,7 @@ const supabase = createClient(
 
 // Bucket name for customer profile images
 const BUCKET_NAME = "make-16010b6f-customer-images";
+const AUTH_PROFILE_IMAGES_BUCKET = "make-16010b6f-profile-images";
 
 // Timeout wrapper
 async function withTimeout<T>(promise: Promise<T>, timeoutMs = 60000): Promise<T> {
@@ -148,6 +149,32 @@ function mergeOrderMetricsIntoCustomer(
   };
 }
 
+async function attachFreshCustomerAvatar(cust: any): Promise<any> {
+  if (!cust || typeof cust !== "object") return cust;
+  const path = typeof cust.profileImage === "string" ? cust.profileImage.trim() : "";
+  if (!path) return cust;
+  try {
+    const bucketOrder = path.startsWith("profile-images/")
+      ? [AUTH_PROFILE_IMAGES_BUCKET, BUCKET_NAME]
+      : [BUCKET_NAME, AUTH_PROFILE_IMAGES_BUCKET];
+    for (const bucket of bucketOrder) {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 315360000); // 10 years
+      if (!error && data?.signedUrl) {
+        return {
+          ...cust,
+          avatar: data.signedUrl,
+          profileImageUrl: data.signedUrl,
+        };
+      }
+    }
+  } catch (e) {
+    console.warn("⚠️ Could not refresh customer avatar signed URL:", e);
+  }
+  return cust;
+}
+
 function customerSegmentFromRfm(cust: any): string {
   const rfm = cust?.rfmScore;
   if (!rfm || typeof rfm !== "object") return "unknown";
@@ -266,9 +293,10 @@ customerApp.get("/customers", async (c) => {
       };
 
       const slice = rows.slice((page - 1) * pageSize, page * pageSize);
+      const freshSlice = await Promise.all(slice.map((cust: any) => attachFreshCustomerAvatar(cust)));
       return c.json({
         success: true,
-        customers: slice,
+        customers: freshSlice,
         total: rows.length,
         page,
         pageSize,
@@ -280,11 +308,12 @@ customerApp.get("/customers", async (c) => {
     const enrichedAll = validCustomers.map((cust: any) =>
       mergeOrderMetricsIntoCustomer(cust, spendByEmail, countByEmail, spendByUserId, countByUserId)
     );
+    const freshAll = await Promise.all(enrichedAll.map((cust: any) => attachFreshCustomerAvatar(cust)));
 
     return c.json({
       success: true,
-      customers: enrichedAll,
-      total: enrichedAll.length,
+      customers: freshAll,
+      total: freshAll.length,
     });
   } catch (error: any) {
     console.error("❌ Error fetching customers:", error);
@@ -309,9 +338,10 @@ customerApp.get("/customers/:customerId", async (c) => {
       return c.json({ error: "Customer not found" }, 404);
     }
     
+    const freshCustomer = await attachFreshCustomerAvatar(customer);
     return c.json({
       success: true,
-      customer,
+      customer: freshCustomer,
     });
   } catch (error: any) {
     console.error("❌ Error fetching customer:", error);

@@ -20,7 +20,10 @@ import {
   ChevronDown,
   Bell,
   Search,
-  Users
+  Users,
+  Check,
+  Trash2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -30,8 +33,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import { ScrollArea } from "./ui/scroll-area";
 import { notificationsApi } from "../../utils/api";
-import { POLLING_INTERVALS_MS } from "../../constants";
+import { toast } from "sonner";
+import { POLLING_INTERVALS_MS, PENDING_ORDER_STATUSES } from "../../constants";
 import { VendorAdminDashboard } from "./vendor-admin/VendorAdminDashboard";
 import { VendorAdminProductsCRUD } from "./vendor-admin/VendorAdminProductsCRUD";
 import { VendorAdminCategories } from "./vendor-admin/VendorAdminCategories";
@@ -77,6 +83,16 @@ interface NavItem {
   subItems?: SubNavItem[];
 }
 
+interface Notification {
+  id: string;
+  type: "order" | "product" | "review" | "system";
+  title: string;
+  message: string;
+  timestamp: string;
+  createdAt?: string;
+  isRead: boolean;
+}
+
 export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAdminPortalProps) {
   const routeParams = useVendorAdminRouteParams();
   const navigate = useNavigate();
@@ -97,6 +113,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [vendorLogo, setVendorLogo] = useState<string>("");
   /** Canonical storefront label + slug from KV (drives sidebar + URLs after rename). */
   const [storefrontSnapshot, setStorefrontSnapshot] = useState<{
@@ -275,24 +292,94 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, adminPathPrefix, routeStoreSlug, onVendorHostCleanAdmin]);
 
-  // Poll for notifications on a long interval (see POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS)
+  // Poll vendor pending orders on a long interval (same badge behavior as super admin orders)
   useEffect(() => {
-    const fetchNotifications = async () => {
+    const fetchPendingOrders = async () => {
       try {
-        const response = await notificationsApi.getAll();
-        if (response.success) {
-          setUnreadNotifications(response.unreadCount || 0);
-        }
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/orders/${encodeURIComponent(vendor.id)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${publicAnonKey}`,
+            },
+          }
+        );
+        if (!response.ok) return;
+        const data = await response.json();
+        const orders = Array.isArray(data?.orders) ? data.orders : [];
+        const pendingCount = orders.filter((order: any) =>
+          PENDING_ORDER_STATUSES.includes(String(order?.status || "").trim().toLowerCase())
+        ).length;
+        setUnreadNotifications(pendingCount);
       } catch (error) {
-        console.error("Error fetching notifications:", error);
+        console.error("Error fetching vendor order badge count:", error);
       }
     };
 
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS);
+    fetchPendingOrders();
+    const interval = setInterval(fetchPendingOrders, POLLING_INTERVALS_MS.VENDOR_PORTAL_NOTIFICATIONS);
 
     return () => clearInterval(interval);
+  }, [vendor.id]);
+
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const response = await notificationsApi.getAll();
+        const raw = (response as { notifications?: Notification[]; data?: unknown }).notifications;
+        const fromData = Array.isArray((response as { data?: unknown }).data)
+          ? ((response as { data: Notification[] }).data)
+          : [];
+        const incoming = Array.isArray(raw) ? raw : fromData;
+        setNotifications(
+          incoming.map((n: any) => ({
+            ...n,
+            isRead: n.isRead ?? n.read ?? false,
+            timestamp: n.timestamp || n.createdAt || new Date().toISOString(),
+          }))
+        );
+      } catch {
+        setNotifications([]);
+      }
+    };
+
+    loadNotifications();
+    const interval = setInterval(loadNotifications, POLLING_INTERVALS_MS.TOP_NAV_NOTIFICATIONS);
+    return () => clearInterval(interval);
   }, []);
+
+  const unreadApiNotifications = notifications.filter((n) => !n.isRead).length;
+  const bellCount = unreadNotifications + unreadApiNotifications;
+
+  const markNotificationAsRead = async (id: string) => {
+    try {
+      await notificationsApi.markAsRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
+    } catch {
+      // Optional feature; ignore failures.
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await notificationsApi.markAllAsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      toast.success("All notifications marked as read");
+    } catch {
+      // Optional feature; ignore failures.
+    }
+  };
+
+  const deleteNotification = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await notificationsApi.delete(id);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      toast.success("Notification deleted");
+    } catch {
+      // Optional feature; ignore failures.
+    }
+  };
 
   // Update document title based on current page
   useEffect(() => {
@@ -592,14 +679,90 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
             {/* Right Actions - Notification & Profile */}
             <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
               {/* Notification Bell */}
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="w-5 h-5" />
-                {unreadNotifications > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center text-xs font-semibold bg-red-500 text-white border-2 border-white rounded-full">
-                    {unreadNotifications}
-                  </span>
-                )}
-              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="icon" className="relative">
+                    <Bell className="w-5 h-5" />
+                    {bellCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center text-xs font-semibold bg-red-500 text-white border-2 border-white rounded-full">
+                        {bellCount > 99 ? "99+" : bellCount}
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-[420px] p-0">
+                  <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-900">Notifications</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500">{bellCount} total</span>
+                      {unreadApiNotifications > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={markAllAsRead}>
+                          Mark all read
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <ScrollArea className="h-[360px]">
+                    <div className="p-2 space-y-2">
+                      {unreadNotifications > 0 && (
+                        <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
+                          <div className="flex items-start gap-2">
+                            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                              <ShoppingCart className="w-4 h-4 text-amber-700" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-slate-900">Pending orders need attention</p>
+                              <p className="text-xs text-slate-600 mt-0.5">
+                                You have {unreadNotifications} pending order{unreadNotifications > 1 ? "s" : ""}.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {notifications.length > 0 ? (
+                        notifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className={`p-3 rounded-lg border transition-colors ${
+                              notification.isRead ? "bg-white border-slate-100" : "bg-blue-50 border-blue-100"
+                            }`}
+                            onClick={() => !notification.isRead && markNotificationAsRead(notification.id)}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-start gap-2 min-w-0">
+                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
+                                  {notification.isRead ? (
+                                    <Check className="w-4 h-4 text-slate-500" />
+                                  ) : (
+                                    <AlertCircle className="w-4 h-4 text-blue-600" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-slate-900 truncate">{notification.title}</p>
+                                  <p className="text-xs text-slate-600 mt-0.5 line-clamp-2">{notification.message}</p>
+                                  <p className="text-[11px] text-slate-400 mt-1">
+                                    {new Date(notification.timestamp).toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-slate-400 hover:text-red-600"
+                                onClick={(e) => deleteNotification(notification.id, e)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))
+                      ) : unreadNotifications === 0 ? (
+                        <div className="p-10 text-center text-slate-500 text-sm">No notifications</div>
+                      ) : null}
+                    </div>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
 
               {/* User Profile Dropdown */}
               <DropdownMenu>

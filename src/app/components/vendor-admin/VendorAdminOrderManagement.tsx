@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import type { DateRange } from "react-day-picker";
 import type { LucideIcon } from "lucide-react";
 import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, BadgePercent, ChevronDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
@@ -69,6 +69,23 @@ import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
 
 function formatMmk(n: number): string {
   return `${Math.round(n).toLocaleString()} MMK`;
+}
+
+function MmkTiny({
+  value,
+  className = "",
+  unitClassName = "text-[8px] leading-none align-super text-slate-400",
+}: {
+  value: number;
+  className?: string;
+  unitClassName?: string;
+}) {
+  return (
+    <span className={`tabular-nums inline-flex items-baseline gap-0.5 ${className}`}>
+      <span>{Math.round(Number(value) || 0).toLocaleString()}</span>
+      <span className={unitClassName}>MMK</span>
+    </span>
+  );
 }
 
 async function fetchVendorContractCommissionPercent(slugOrId: string | undefined): Promise<number> {
@@ -1043,7 +1060,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     filterKey,
   }: {
     title: string;
-    value: string | number;
+    value: ReactNode;
     change: number;
     icon: LucideIcon;
     iconBg: string;
@@ -1149,7 +1166,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Total Revenue"
-          value={formatMmk(orderPageKpis.totalRevenueWindow)}
+          value={<MmkTiny value={orderPageKpis.totalRevenueWindow} unitClassName="text-[7px] leading-none align-super text-slate-400" />}
           change={orderPageKpis.revenueChange}
           icon={DollarSign}
           iconBg="bg-green-100"
@@ -1158,7 +1175,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
         />
         <StatCard
           title="Commission Earned"
-          value={formatMmk(orderPageKpis.commissionCurrent)}
+          value={<MmkTiny value={orderPageKpis.commissionCurrent} unitClassName="text-[7px] leading-none align-super text-slate-400" />}
           change={orderPageKpis.commissionChange}
           icon={BadgePercent}
           iconBg="bg-purple-100"
@@ -1380,8 +1397,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                           </div>
                         </td>
                         <td className="py-3 px-4 text-sm font-semibold text-slate-900 tabular-nums">
-                          {Math.round(order.total).toLocaleString()}{" "}
-                          <span className="text-xs font-normal text-slate-500">MMK</span>
+                          <MmkTiny value={order.total} unitClassName="text-[7px] leading-none align-super text-slate-400" />
                         </td>
                         <td className="py-3 px-4">{getStatusBadge(order.status)}</td>
                         <td className="py-3 px-4">{getPaymentBadge(order.paymentStatus)}</td>

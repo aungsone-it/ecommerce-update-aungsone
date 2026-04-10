@@ -47,6 +47,7 @@ import {
 } from "../ui/table";
 import { ADMIN_PRODUCTS_INITIAL_PAGE_SIZE } from "../../utils/module-cache";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
+import { CustomerProfile } from "../CustomerProfile";
 
 interface User {
   id: string;
@@ -116,6 +117,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const [currentTab, setCurrentTab] = useState<"list" | "segments" | "analytics">("list");
   const [listPage, setListPage] = useState(1);
   const [listPageSize, setListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const [viewingCustomer, setViewingCustomer] = useState<any | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -221,6 +223,10 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const totalRevenue = users.reduce((sum, u) => sum + (u.totalSpent || 0), 0);
   const avgLTV = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
   const activePercentage = totalCustomers > 0 ? Math.round((activeCustomers / totalCustomers) * 100) : 0;
+
+  if (viewingCustomer) {
+    return <CustomerProfile customer={viewingCustomer} onClose={() => setViewingCustomer(null)} />;
+  }
 
   return (
     <div className="p-6">
@@ -491,8 +497,23 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                             <DropdownMenuContent align="end" className="w-52">
                               <DropdownMenuItem
                                 onClick={() =>
-                                  toast.info("Profile view", {
-                                    description: `${user.name} — coming soon for ${vendorName}.`,
+                                  setViewingCustomer({
+                                    id: user.id,
+                                    name: user.name || user.email?.split("@")[0] || "Customer",
+                                    email: user.email || "",
+                                    avatar: user.avatar || "",
+                                    phone: user.phone || "",
+                                    location: user.location || "",
+                                    joinDate: user.joinedDate || new Date().toISOString(),
+                                    totalOrders: user.totalOrders || 0,
+                                    totalSpent: user.totalSpent || 0,
+                                    status: user.status || "active",
+                                    tier: deriveTier(user),
+                                    lastVisit: user.joinedDate || new Date().toISOString(),
+                                    avgOrderValue: user.avgOrder || 0,
+                                    tags: user.tags || [],
+                                    engagementScore: 0,
+                                    lifetimeValue: user.totalSpent || 0,
                                   })
                                 }
                               >
