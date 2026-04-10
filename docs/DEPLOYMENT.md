@@ -65,7 +65,7 @@ For this repo, the easiest Tencent setup is:
 - Keep using the same Supabase project to avoid data or auth regressions.
 - If deep links like `/store/<slug>` return 404, your SPA fallback rule is missing or misconfigured.
 - During DNS cutover, keep your current host live until Tencent CDN is healthy globally.
-
+    
 ## Build
 
 ```bash
@@ -91,6 +91,20 @@ The browser must receive `index.html` for paths like `/store/foo` or `/` on a su
 ## Environment variables
 
 See **`.env.example`**. At minimum your deployment needs the same Supabase connection your app uses (`utils/supabase/info.tsx` or `VITE_SUPABASE_*`).
+
+### Supabase Edge Function secrets (server-side)
+
+For password reset email via Resend, set these in Supabase project secrets:
+
+- `RESEND_API_KEY` (required)
+- `RESEND_FROM_EMAIL` (required, must be an allowed/verified sender in Resend)
+- `RESEND_FROM_NAME` (optional, default: `Migoo Marketplace`)
+- `ALLOW_DEBUG_OTP` (optional; keep `false`/unset in production)
+
+Quick check endpoint after deploy:
+
+- `https://<project-ref>.supabase.co/functions/v1/make-server-16010b6f/auth/email-health`
+- Expected production response: `ok: true` and `debugOtpEnabled: false`
 
 ### Vendor subdomains (`gogo.example.com` → storefront)
 
@@ -137,3 +151,29 @@ Supabase bills (plan-dependent) on things like **Edge Function invocations**, **
 
 - **Browser HTTP cache** for static `GET` images does not multiply Supabase **DB** queries; it mainly helps **bandwidth** and perceived speed.
 - **One** Edge Function call that returns **many** products is usually cheaper than **many** tiny calls — your cached list endpoints align with that.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Dear Dev/Engineers, I'm Aung Sone who working as a freelance dev, and I'm currently multi-tenant saas system ecommerce app with online prepaid purchase support and so I was make some research and I found your MMQR pay system is extremely great and suit with every single online payment across most popular epay app like Kpay and WavePay and others. Please guide me with some docs or instructions how can I implement your MMQR pay system in my App.
+
+Best Regard
+Aung Sone
+

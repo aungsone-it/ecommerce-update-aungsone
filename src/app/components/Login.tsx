@@ -6,13 +6,13 @@ import { Input } from './ui/input';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
-import { ForgotPassword } from './ForgotPassword';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 
 export function Login() {
   const { login } = useAuth();
   const { t, language, setLanguage } = useLanguage();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -20,11 +20,17 @@ export function Login() {
   const [rememberMe, setRememberMe] = useState(true); // Default to remember me
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
-  if (showForgotPassword) {
-    return <ForgotPassword onBack={() => setShowForgotPassword(false)} />;
-  }
+  const getResetPasswordPath = (): string => {
+    const parts = location.pathname.split('/').filter(Boolean);
+    const currentPath = `${location.pathname}${location.search}${location.hash}`;
+    const returnTo = `returnTo=${encodeURIComponent(currentPath)}`;
+
+    if ((parts[0] === 'store' || parts[0] === 'vendor') && parts[1] && parts[1] !== 'reset-password') {
+      return `/${parts[0]}/${parts[1]}/reset-password?${returnTo}`;
+    }
+    return `/store/reset-password?${returnTo}`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -160,8 +166,7 @@ export function Login() {
               <button
                 type="button"
                 onClick={() => {
-                  console.log('🔥 FORGOT PASSWORD CLICKED - Login.tsx');
-                  setShowForgotPassword(true);
+                  navigate(getResetPasswordPath());
                 }}
                 className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
               >

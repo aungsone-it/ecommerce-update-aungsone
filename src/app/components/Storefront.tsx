@@ -79,6 +79,7 @@ import {
   gridDisplayImageUrl,
   fetchCustomerOrdersList,
   invalidateCustomerOrdersCache,
+  invalidateAdminCustomersCache,
 } from "../utils/module-cache";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 import {
@@ -2707,6 +2708,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       if (data.success && data.user) {
         setUser(data.user);
         localStorage.setItem("migoo-user", JSON.stringify(data.user));
+        notifyMigooUserSessionChanged();
+        invalidateAdminCustomersCache();
         toast.success("Profile updated successfully!");
         setViewMode("view-profile");
       } else {

@@ -87,6 +87,7 @@ import {
 } from "../utils/module-cache";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import { toast } from "sonner";
+import { MIGOO_USER_SESSION_CHANGED_EVENT } from "../../constants";
 
 interface Customer {
   id: string;
@@ -236,6 +237,25 @@ export function CustomersEnhanced({
 
   useEffect(() => {
     void fetchCustomers(false);
+  }, [fetchCustomers]);
+
+  useEffect(() => {
+    const refreshCustomers = () => {
+      invalidateAdminCustomersCache();
+      void fetchCustomers(true);
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea !== localStorage || e.key !== "migoo-user") return;
+      refreshCustomers();
+    };
+
+    window.addEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, refreshCustomers);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, refreshCustomers);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [fetchCustomers]);
 
   // Customer Segmentation based on RFM

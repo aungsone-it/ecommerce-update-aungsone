@@ -53,7 +53,10 @@ function RootLayoutContent() {
   const isVendorApplicationPage = location.pathname === '/vendor/application';
   const isLandingPage =
     location.pathname === "/" && subdomainStoreSlug == null && customHostSlug == null;
-  const isResetPasswordPage = location.pathname === '/store/reset-password';
+  const isResetPasswordPage =
+    location.pathname === '/store/reset-password' ||
+    /^\/store\/[^/]+\/reset-password$/.test(location.pathname) ||
+    /^\/vendor\/[^/]+\/reset-password$/.test(location.pathname);
   const isAdminPortal = isAdminPortalRoute(location.pathname);
 
   return (

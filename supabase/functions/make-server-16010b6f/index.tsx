@@ -195,7 +195,7 @@ function invalidateDashboardCache(): void {
 app.use("*", cors({
   origin: "*",
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization"],
+  allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info"],
   exposeHeaders: ["Content-Length"],
   maxAge: 86400,
   credentials: false,

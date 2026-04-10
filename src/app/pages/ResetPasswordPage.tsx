@@ -1,14 +1,18 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
-import { Mail, Lock, ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { toast } from 'sonner';
+import { notifyMigooUserSessionChanged } from '../../constants';
 
 export function ResetPasswordPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { storeName } = useParams<{ storeName?: string }>();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState<'email' | 'verify'>('email');
   const [email, setEmail] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -16,12 +20,27 @@ export function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [debugOtp, setDebugOtp] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  const isVendorRoute = location.pathname.startsWith('/vendor/');
+  const storefrontBasePath = storeName
+    ? `${isVendorRoute ? '/vendor' : '/store'}/${storeName}`
+    : '/store';
+  const returnTo = searchParams.get('returnTo');
+  const goBackPath = returnTo || storefrontBasePath;
 
+  useEffect(() => {
+    const prefillEmail = (searchParams.get('email') || '').trim();
+    const requestedStep = searchParams.get('step');
+    if (prefillEmail) {
+      setEmail(prefillEmail);
+    }
+    if (prefillEmail && requestedStep === 'verify') {
+      setStep('verify');
+    }
+  }, [searchParams]);
+
+  const sendOtpRequest = async (targetEmail: string) => {
     try {
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/send-email-otp`,
@@ -29,41 +48,53 @@ export function ResetPasswordPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'apikey': publicAnonKey,
           },
-          body: JSON.stringify({ email: email.trim() })
+          body: JSON.stringify({ email: targetEmail.trim() })
         }
       );
 
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'Failed to send OTP');
-        setLoading(false);
-        toast.error(data.error || 'Failed to send OTP');
-        return;
+        const message = data.error || data.email_error || 'Failed to send OTP';
+        setError(message);
+        toast.error(message);
+        return false;
       }
 
-      // Only show debug OTP if email delivery failed (fallback)
+      setError('');
       if (data.debug_otp) {
         setDebugOtp(data.debug_otp);
-        console.warn('Email service not configured, using debug mode');
+      } else {
+        setDebugOtp('');
       }
 
-      setStep('verify');
-      setLoading(false);
-      
-      // Show appropriate message
       if (data.debug_otp) {
-        toast.success('OTP generated (email service not configured)');
+        toast.success('OTP generated (debug mode)');
       } else {
         toast.success('Password reset code sent to your email!');
       }
+      return true;
     } catch (err: any) {
       console.error('Send OTP error:', err);
-      setError('Failed to send OTP. Please try again.');
-      setLoading(false);
-      toast.error('Failed to send OTP. Please try again.');
+      const message = err?.message || 'Failed to send OTP. Please try again.';
+      setError(message);
+      toast.error(message);
+      return false;
+    }
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    const sent = await sendOtpRequest(email);
+    setLoading(false);
+    if (sent) {
+      setStep('verify');
     }
   };
 
@@ -79,7 +110,8 @@ export function ResetPasswordPage() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`,
+            'apikey': publicAnonKey,
           },
           body: JSON.stringify({ 
             email: email.trim(), 
@@ -98,11 +130,41 @@ export function ResetPasswordPage() {
         return;
       }
 
-      // Success!
-      toast.success('Password reset successful! Redirecting to login...');
+      // Auto-login after successful password reset for smoother storefront UX
+      try {
+        const loginResponse = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/login`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${publicAnonKey}`,
+              'apikey': publicAnonKey,
+            },
+            body: JSON.stringify({
+              email: email.trim(),
+              password: newPassword,
+            }),
+          }
+        );
+
+        const loginData = await loginResponse.json();
+        if (loginResponse.ok && loginData?.user) {
+          localStorage.setItem('migoo-user', JSON.stringify(loginData.user));
+          notifyMigooUserSessionChanged();
+          toast.success('Password reset successful! You are now signed in.');
+        } else {
+          toast.success('Password reset successful! Please sign in with your new password.');
+        }
+      } catch (autoLoginError) {
+        console.warn('Auto-login after reset failed:', autoLoginError);
+        toast.success('Password reset successful! Please sign in with your new password.');
+      }
+
+      setLoading(false);
       setTimeout(() => {
-        navigate('/store');
-      }, 1500);
+        navigate(goBackPath);
+      }, 800);
     } catch (err: any) {
       console.error('Verify OTP error:', err);
       setError('Failed to verify OTP. Please try again.');
@@ -119,7 +181,7 @@ export function ResetPasswordPage() {
           <>
             <div className="mb-6">
               <button
-                onClick={() => navigate('/store')}
+                onClick={() => navigate(goBackPath)}
                 className="flex items-center gap-2 text-sm text-slate-600 hover:text-slate-900 transition-colors mb-4"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -223,13 +285,21 @@ export function ResetPasswordPage() {
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <Input
                     id="new-password"
-                    type="password"
+                    type={showNewPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Enter new password"
                     required
-                    className="pl-10 h-12 bg-slate-50 border-slate-200 rounded-lg"
+                    className="pl-10 pr-10 h-12 bg-slate-50 border-slate-200 rounded-lg"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors"
+                    aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+                  >
+                    {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
                 </div>
               </div>
 
@@ -249,12 +319,11 @@ export function ResetPasswordPage() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setStep('email');
-                  setOtpCode('');
-                  setNewPassword('');
-                  setDebugOtp('');
+                onClick={async () => {
                   setError('');
+                  setLoading(true);
+                  await sendOtpRequest(email);
+                  setLoading(false);
                 }}
                 className="w-full text-sm text-slate-600 hover:text-slate-900 transition-colors"
               >

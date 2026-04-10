@@ -131,6 +131,14 @@ export const router = createBrowserRouter([
             element: <ResetPasswordPage />,
           },
           {
+            path: "store/:storeName/reset-password",
+            element: <ResetPasswordPage />,
+          },
+          {
+            path: "vendor/:storeName/reset-password",
+            element: <ResetPasswordPage />,
+          },
+          {
             path: "products",
             element: <StorefrontPage />,
           },

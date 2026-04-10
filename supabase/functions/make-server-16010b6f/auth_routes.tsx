@@ -206,6 +206,34 @@ authApp.get("/check-setup", async (c) => {
 });
 
 // ============================================
+// EMAIL DELIVERY HEALTH (Resend config quick check)
+// ============================================
+authApp.get("/email-health", async (c) => {
+  try {
+    const resendApiKey = String(Deno.env.get("RESEND_API_KEY") || "").trim();
+    const resendFromEmail = String(Deno.env.get("RESEND_FROM_EMAIL") || "").trim();
+    const resendFromName = String(Deno.env.get("RESEND_FROM_NAME") || "Migoo Marketplace").trim();
+    const allowDebugOtp = String(Deno.env.get("ALLOW_DEBUG_OTP") || "").toLowerCase() === "true";
+
+    const issues: string[] = [];
+    if (!resendApiKey) issues.push("Missing RESEND_API_KEY");
+    if (!resendFromEmail) issues.push("Missing RESEND_FROM_EMAIL");
+
+    return c.json({
+      ok: issues.length === 0,
+      provider: "resend",
+      debugOtpEnabled: allowDebugOtp,
+      fromEmailConfigured: !!resendFromEmail,
+      fromName: resendFromName,
+      issues,
+    }, issues.length === 0 ? 200 : 503);
+  } catch (error: any) {
+    console.error("Email health check error:", error);
+    return c.json({ ok: false, error: error.message || "Email health check failed" }, 500);
+  }
+});
+
+// ============================================
 // SETUP: Create super admin (one-time only)
 // ============================================
 authApp.post("/setup", async (c) => {
@@ -813,17 +841,39 @@ authApp.post("/send-email-otp", async (c) => {
 
     console.log(`📧 OTP CODE for ${email}: ${otp} (expires in 10 minutes)`);
 
-    // Send REAL email via Resend
+    // Send REAL email via Resend (debug OTP is opt-in via ALLOW_DEBUG_OTP=true)
     try {
-      const resendApiKey = Deno.env.get('RESEND_API_KEY');
-      
+      const resendApiKey = String(Deno.env.get("RESEND_API_KEY") || "").trim();
+      const resendFromEmail = String(Deno.env.get("RESEND_FROM_EMAIL") || "").trim();
+      const resendFromName = String(Deno.env.get("RESEND_FROM_NAME") || "Migoo Marketplace").trim();
+      const allowDebugOtp = String(Deno.env.get("ALLOW_DEBUG_OTP") || "").toLowerCase() === "true";
+
       if (!resendApiKey) {
-        console.warn('⚠️ RESEND_API_KEY not configured, showing debug OTP instead');
+        console.error("❌ RESEND_API_KEY not configured");
+        if (allowDebugOtp) {
+          return c.json({
+            success: true,
+            message: "OTP generated (debug mode enabled)",
+            debug_otp: otp,
+          });
+        }
         return c.json({
-          success: true,
-          message: "OTP generated (email service not configured)",
-          debug_otp: otp,
-        });
+          error: "Password reset email is not configured. Please contact support.",
+        }, 503);
+      }
+
+      if (!resendFromEmail) {
+        console.error("❌ RESEND_FROM_EMAIL not configured");
+        if (allowDebugOtp) {
+          return c.json({
+            success: true,
+            message: "OTP generated (debug mode enabled)",
+            debug_otp: otp,
+          });
+        }
+        return c.json({
+          error: "Password reset sender is not configured. Please contact support.",
+        }, 503);
       }
 
       const emailResponse = await fetch('https://api.resend.com/emails', {
@@ -833,7 +883,7 @@ authApp.post("/send-email-otp", async (c) => {
           'Authorization': `Bearer ${resendApiKey}`,
         },
         body: JSON.stringify({
-          from: 'Migoo Marketplace <onboarding@resend.dev>',
+          from: `${resendFromName} <${resendFromEmail}>`,
           to: [email],
           subject: 'Password Reset Code - Migoo',
           html: `
@@ -900,13 +950,22 @@ authApp.post("/send-email-otp", async (c) => {
       });
     } catch (emailError: any) {
       console.error('Email sending error:', emailError);
-      // Fallback: return debug OTP if email fails
+      const allowDebugOtp = String(Deno.env.get("ALLOW_DEBUG_OTP") || "").toLowerCase() === "true";
+      const exposeEmailErrors = String(Deno.env.get("EXPOSE_EMAIL_ERRORS") || "").toLowerCase() === "true";
+      if (allowDebugOtp) {
+        return c.json({
+          success: true,
+          message: "OTP generated (debug mode enabled)",
+          debug_otp: otp,
+          email_error: emailError?.message || "Unknown email error",
+        });
+      }
       return c.json({
-        success: true,
-        message: "OTP generated (email delivery failed)",
-        debug_otp: otp,
-        email_error: emailError.message,
-      });
+        error: exposeEmailErrors
+          ? (emailError?.message || "Failed to send password reset email")
+          : "Failed to send password reset email. Please try again later.",
+        email_error: emailError?.message || "Unknown email error",
+      }, 502);
     }
   } catch (error: any) {
     console.error("Send email OTP error:", error);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
@@ -16,6 +16,7 @@ interface StorefrontAuthProps {
 
 export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -27,6 +28,17 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const isMountedRef = useRef(true);
+
+  const getResetPasswordPath = (): string => {
+    const parts = location.pathname.split('/').filter(Boolean);
+    const currentPath = `${location.pathname}${location.search}${location.hash}`;
+    const returnTo = `returnTo=${encodeURIComponent(currentPath)}`;
+
+    if ((parts[0] === 'store' || parts[0] === 'vendor') && parts[1] && parts[1] !== 'reset-password') {
+      return `/${parts[0]}/${parts[1]}/reset-password?${returnTo}`;
+    }
+    return `/store/reset-password?${returnTo}`;
+  };
   
   // 🔥 Real-time validation states
   const [emailValidation, setEmailValidation] = useState<{ checking: boolean; error: string; valid: boolean }>({
@@ -492,7 +504,7 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
                         console.log('🔥🔥🔥 FORGOT PASSWORD CLICKED - CLOSING MODAL AND NAVIGATING');
                         onBack(); // CLOSE THE MODAL FIRST
                         setTimeout(() => {
-                          navigate('/store/reset-password');
+                          navigate(getResetPasswordPath());
                         }, 100); // Small delay to let modal close animation complete
                       }}
                       style={{ fontSize: '0.75rem', color: '#334155' }}

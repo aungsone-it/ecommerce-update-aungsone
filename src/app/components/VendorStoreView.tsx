@@ -8,6 +8,7 @@ import {
   wishlistSigFromProductIds,
   invalidateVendorSavedWishlistCaches,
   invalidateCustomerOrdersCache,
+  invalidateAdminCustomersCache,
   fetchCustomerOrdersList,
   VENDOR_CATALOG_MUTATION_EVENT,
   type VendorWishlistVendorPageResult,
@@ -1294,6 +1295,7 @@ export function VendorStoreView({
         setUser(data.user);
         localStorage.setItem("migoo-user", JSON.stringify(data.user));
         notifyMigooUserSessionChanged();
+        invalidateAdminCustomersCache();
         toast.success("Profile updated successfully!");
         goToProfileMode("view-profile");
       } else {

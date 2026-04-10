@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { X, Upload, User, Phone, Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -39,11 +39,23 @@ export function AuthModal({
 }: AuthModalProps) {
   // 🔥 MUST call all hooks BEFORE any conditional returns (React Rules of Hooks)
   const navigate = useNavigate();
+  const location = useLocation();
   const { t } = useLanguage();
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const getResetPasswordPath = (): string => {
+    const parts = location.pathname.split("/").filter(Boolean);
+    const currentPath = `${location.pathname}${location.search}${location.hash}`;
+    const returnTo = `returnTo=${encodeURIComponent(currentPath)}`;
+
+    if ((parts[0] === "store" || parts[0] === "vendor") && parts[1] && parts[1] !== "reset-password") {
+      return `/${parts[0]}/${parts[1]}/reset-password?${returnTo}`;
+    }
+    return `/store/reset-password?${returnTo}`;
+  };
 
   // Lock scroll when modal is open
   useEffect(() => {
@@ -269,7 +281,7 @@ export function AuthModal({
                     onClose(); // Close modal first
                     setTimeout(() => {
                       console.log('🔥🔥🔥 NAVIGATING TO RESET PASSWORD');
-                      navigate('/store/reset-password');
+                      navigate(getResetPasswordPath());
                     }, 100);
                   }}
                   className="text-xs text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
