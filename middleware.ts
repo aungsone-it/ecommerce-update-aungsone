@@ -15,12 +15,25 @@
 import { next } from "@vercel/edge";
 
 /** Same heuristic as `src/app/utils/deriveVendorApex.ts` (edge bundle cannot import app tree). */
+const MULTI_TENANT_PLATFORM_APEX = new Set([
+  "amplifyapp.com",
+  "cloudflarepages.dev",
+  "firebaseapp.com",
+  "github.io",
+  "netlify.app",
+  "pages.dev",
+  "vercel.app",
+  "web.app",
+]);
+
 function deriveNaiveVendorApexFromHost(host: string): string | null {
   const h = host.split(":")[0].toLowerCase();
   if (h === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
   const parts = h.split(".").filter(Boolean);
   if (parts.length < 3) return null;
-  return parts.slice(-2).join(".");
+  const naive = parts.slice(-2).join(".");
+  if (MULTI_TENANT_PLATFORM_APEX.has(naive)) return null;
+  return naive;
 }
 
 /** Same as src/app/utils/subdomainSlugMap.ts BUILT_IN — edge bundle cannot rely on env alone. */

@@ -21,4 +21,12 @@ describe("deriveNaiveVendorApexFromHost", () => {
   it("strips port from host", () => {
     expect(deriveNaiveVendorApexFromHost("shop.example.com:5173")).toBe("example.com");
   });
+
+  it("returns null for Netlify deploy hostnames (not a real vendor apex)", () => {
+    expect(deriveNaiveVendorApexFromHost("ecommerce-aungsone.netlify.app")).toBeNull();
+  });
+
+  it("returns null for Vercel deploy hostnames", () => {
+    expect(deriveNaiveVendorApexFromHost("my-app.vercel.app")).toBeNull();
+  });
 });
