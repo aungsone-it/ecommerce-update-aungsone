@@ -29,4 +29,10 @@ describe("deriveNaiveVendorApexFromHost", () => {
   it("returns null for Vercel deploy hostnames", () => {
     expect(deriveNaiveVendorApexFromHost("my-app.vercel.app")).toBeNull();
   });
+
+  it("returns null for Railway deploy hostnames (*.up.railway.app)", () => {
+    expect(
+      deriveNaiveVendorApexFromHost("ecommerce-update-aungsone-production-0d2f.up.railway.app")
+    ).toBeNull();
+  });
 });

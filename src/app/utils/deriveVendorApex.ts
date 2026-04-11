@@ -3,9 +3,9 @@
  * Set `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN` (or Vercel `VENDOR_SUBDOMAIN_BASE_DOMAIN`) when this
  * heuristic is wrong (e.g. `example.co.uk` — use env instead).
  *
- * Hosts like `*.netlify.app` / `*.vercel.app` must **not** yield `netlify.app` / `vercel.app` here —
- * that would make every deploy URL look like a vendor subdomain of a shared platform apex and
- * break catalog (wrong store slug from the deploy name).
+ * Hosts like `*.netlify.app` / `*.vercel.app` / `*.up.railway.app` must **not** yield those shared
+ * platform apexes here — that would make every deploy URL look like a vendor subdomain and break
+ * catalog (wrong store slug from the deploy name).
  */
 const MULTI_TENANT_PLATFORM_APEX = new Set([
   "amplifyapp.com",
@@ -14,6 +14,7 @@ const MULTI_TENANT_PLATFORM_APEX = new Set([
   "github.io",
   "netlify.app",
   "pages.dev",
+  "railway.app",
   "vercel.app",
   "web.app",
 ]);

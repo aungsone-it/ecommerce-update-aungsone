@@ -22,6 +22,7 @@ const MULTI_TENANT_PLATFORM_APEX = new Set([
   "github.io",
   "netlify.app",
   "pages.dev",
+  "railway.app",
   "vercel.app",
   "web.app",
 ]);

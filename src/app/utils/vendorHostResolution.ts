@@ -16,7 +16,9 @@ function normalizeHostForLookup(host: string): string {
 export function shouldResolveCustomDomainHost(host: string): boolean {
   const h = normalizeHostForLookup(host);
   if (!h || h === "localhost" || h.startsWith("127.")) return false;
-  if (h.endsWith(".vercel.app") || h.endsWith(".netlify.app")) return false;
+  if (h.endsWith(".vercel.app") || h.endsWith(".netlify.app") || h.endsWith(".railway.app")) {
+    return false;
+  }
 
   // Important: only use explicit env-configured platform apex for exclusion.
   // Using runtime-derived apex here can misclassify a true custom domain

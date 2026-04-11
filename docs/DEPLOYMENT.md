@@ -167,13 +167,3 @@ Supabase bills (plan-dependent) on things like **Edge Function invocations**, **
 
 
 
-
-
-
-
-
-Dear Dev/Engineers, I'm Aung Sone who working as a freelance dev, and I'm currently multi-tenant saas system ecommerce app with online prepaid purchase support and so I was make some research and I found your MMQR pay system is extremely great and suit with every single online payment across most popular epay app like Kpay and WavePay and others. Please guide me with some docs or instructions how can I implement your MMQR pay system in my App.
-
-Best Regard
-Aung Sone
-
