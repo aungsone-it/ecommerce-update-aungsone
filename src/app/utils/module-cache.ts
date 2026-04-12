@@ -965,6 +965,8 @@ export type VendorStorefrontProductsResult = {
   products: any[];
   storeName: string;
   logo: string;
+  /** Public contact from vendor storefront settings (matches marketplace header). */
+  storePhone?: string;
   /** KV vendor id after slug resolution — use for matching wishlist rows to this storefront. */
   resolvedVendorId?: string;
   total: number;
@@ -1010,6 +1012,10 @@ export async function fetchVendorProducts(
     products: list,
     storeName: data.storeName || "Vendor Store",
     logo: data.logo || "",
+    storePhone:
+      typeof data.storePhone === "string" && data.storePhone.trim()
+        ? data.storePhone.trim()
+        : undefined,
     resolvedVendorId:
       typeof data.resolvedVendorId === "string" && data.resolvedVendorId.trim()
         ? data.resolvedVendorId.trim()

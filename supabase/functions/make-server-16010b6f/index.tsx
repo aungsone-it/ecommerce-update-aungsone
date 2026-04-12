@@ -8102,6 +8102,10 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     // Keep `vendor_settings:*` in sync — public catalog and auth still read storeName from there first in some paths
     const vsKey = `vendor_settings:${settings.vendorId}`;
     const existingVs = await kv.get(vsKey);
+    const contactPhone =
+      typeof (mergedSettings as Record<string, unknown>).contactPhone === "string"
+        ? String((mergedSettings as Record<string, unknown>).contactPhone).trim()
+        : "";
     if (existingVs && typeof existingVs === "object") {
       await kv.set(vsKey, {
         ...existingVs,
@@ -8109,6 +8113,7 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
         storeSlug: mergedSettings.storeSlug ?? existingVs.storeSlug,
         logo: settings.logo ?? existingVs.logo,
         banner: settings.banner ?? existingVs.banner,
+        ...(contactPhone ? { storePhone: contactPhone } : {}),
         updatedAt: new Date().toISOString(),
       });
     } else if (mergedSettings.storeName || mergedSettings.storeSlug) {
@@ -8120,6 +8125,7 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
         storeTagline: mergedSettings.storeTagline || "",
         logo: mergedSettings.logo || "",
         banner: mergedSettings.banner || "",
+        ...(contactPhone ? { storePhone: contactPhone } : {}),
         isActive: mergedSettings.isActive !== false,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -8904,6 +8910,16 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
     });
 
     const logo = storefrontSettings?.logo || vendorData?.avatar || "";
+    const pickPhone = (v: unknown) =>
+      typeof v === "string" && v.trim().length > 0 ? v.trim() : "";
+    // Vendor admin saves `contactPhone` on `vendor_storefront_*`; legacy may use `storePhone`.
+    const storePhoneRaw =
+      pickPhone(storefrontSettings?.storePhone) ||
+      pickPhone((storefrontSettings as Record<string, unknown>)?.contactPhone) ||
+      pickPhone(vendorSettings?.storePhone) ||
+      pickPhone((vendorSettings as Record<string, unknown>)?.contactPhone) ||
+      pickPhone(vendorData?.phone);
+    const storePhone = storePhoneRaw || "+95 9 XXX XXX XXX";
 
     if (rpcData && Array.isArray(rpcData.products)) {
       const vendorProducts = (rpcData.products as any[]).map(mapVendorStorefrontProductRow);
@@ -8911,6 +8927,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
         products: vendorProducts,
         storeName,
         logo,
+        storePhone,
         resolvedVendorId: actualVendorId,
         total: Number(rpcData.total ?? vendorProducts.length),
         page: Number(rpcData.page ?? page),
@@ -8968,6 +8985,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
         products: vendorProducts,
         storeName,
         logo,
+        storePhone,
         resolvedVendorId: actualVendorId,
         total: vendorProducts.length,
         page: 1,
@@ -9002,6 +9020,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
       products: vendorProducts,
       storeName,
       logo,
+      storePhone,
       resolvedVendorId: actualVendorId,
       total: totalLegacy,
       page,
@@ -9640,13 +9659,28 @@ app.get("/make-server-16010b6f/vendor/categories/:vendorId", async (c) => {
 // Get category details with product count
 app.get("/make-server-16010b6f/vendor/categories-details/:vendorId", async (c) => {
   try {
-    const vendorId = c.req.param("vendorId");
-    console.log(`📁 Getting category details for vendor: ${vendorId}`);
-    
-    // Get all categories and products with retry logic
+    const vendorIdOrSlug = c.req.param("vendorId");
+    console.log(`📁 Getting category details for vendor identifier: ${vendorIdOrSlug}`);
+
+    let slugData = await kv.get(`vendor_slug_${vendorIdOrSlug}`);
+    let actualVendorId = slugData?.vendorId as string | undefined;
+    if (!actualVendorId) {
+      const vd = await kv.get(`vendor:${vendorIdOrSlug}`);
+      if (vd?.id) {
+        actualVendorId = vd.id;
+        console.log(`🔍 categories-details: resolved vendor by id key: ${actualVendorId}`);
+      } else {
+        console.log(`⚠️ categories-details: no slug map for ${vendorIdOrSlug}, using param as id`);
+        actualVendorId = vendorIdOrSlug;
+      }
+    }
+
+    const vendorData = await kv.get(`vendor:${actualVendorId}`);
+    const vendorBusinessName = vendorData?.businessName || vendorData?.name;
+
     const [allCategories, allProducts] = await Promise.all([
       withRetry(
-        () => withTimeout(kv.getByPrefix(`category:${vendorId}:`), 30000),
+        () => withTimeout(kv.getByPrefix(`category:${actualVendorId}:`), 30000),
         5,
         1500
       ),
@@ -9654,25 +9688,62 @@ app.get("/make-server-16010b6f/vendor/categories-details/:vendorId", async (c) =
         () => withTimeout(kv.getByPrefix("product:"), 30000),
         5,
         1500
-      )
+      ),
     ]);
-    
-    // Filter products by vendor (support both vendor name and vendorId for compatibility)
-    const vendorProducts = allProducts.filter((p: any) => {
+
+    const vendorMatches = (p: any) => {
       if (!p) return false;
-      return p.vendor === vendorId || p.vendorId === vendorId;
-    });
-    
-    // Count products per category and include product details
-    const categoriesWithCount = allCategories.map((cat: any) => {
-      const productsInCategory = vendorProducts.filter((p: any) => p.category === cat.name);
-      // Extract product IDs from products in category
+      let vendorMatch = false;
+      if (Array.isArray(p.selectedVendors)) {
+        vendorMatch = p.selectedVendors.some(
+          (v: string) => v === actualVendorId || (vendorBusinessName && v === vendorBusinessName)
+        );
+      } else {
+        vendorMatch =
+          p.vendorId === actualVendorId ||
+          p.vendor === actualVendorId ||
+          (vendorBusinessName && p.vendor === vendorBusinessName);
+      }
+      const statusMatch = p.status && String(p.status).toLowerCase() === "active";
+      return vendorMatch && statusMatch;
+    };
+
+    const productRows = Array.isArray(allProducts) ? allProducts : [];
+    const vendorProducts = productRows.filter(vendorMatches);
+
+    const kvList: any[] = Array.isArray(allCategories) ? [...allCategories] : [];
+    const namesFromKv = new Set(
+      kvList.map((cat: any) => String(cat?.name || "").trim().toLowerCase()).filter(Boolean)
+    );
+
+    for (const p of vendorProducts) {
+      const raw = String(p?.category || "").trim();
+      if (!raw) continue;
+      const lk = raw.toLowerCase();
+      if (namesFromKv.has(lk)) continue;
+      namesFromKv.add(lk);
+      const slugPart = lk.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cat";
+      kvList.push({
+        id: `derived-category:${actualVendorId}:${slugPart}`,
+        name: raw,
+        description: "",
+        coverPhoto: "",
+        status: "active",
+        vendorId: actualVendorId,
+      });
+    }
+
+    const categoriesWithCount = kvList.map((cat: any) => {
+      const catName = String(cat?.name || "").trim();
+      const productsInCategory = vendorProducts.filter(
+        (p: any) => String(p?.category || "").trim().toLowerCase() === catName.toLowerCase()
+      );
       const productIds = productsInCategory.map((p: any) => p.id);
-      
+
       return {
         ...cat,
         productCount: productsInCategory.length,
-        productIds: cat.productIds || productIds, // Use stored IDs or compute from products
+        productIds: cat.productIds || productIds,
         products: productsInCategory.map((p: any) => ({
           id: p.id,
           name: p.name,
@@ -9680,16 +9751,15 @@ app.get("/make-server-16010b6f/vendor/categories-details/:vendorId", async (c) =
           price: p.price,
           image: p.image,
           status: p.status,
-          inventory: p.inventory
-        }))
+          inventory: p.inventory,
+        })),
       };
     });
-    
-    console.log(`✅ Found ${categoriesWithCount.length} categories with product counts`);
-    console.log(`📊 Total products for vendor ${vendorId}: ${vendorProducts.length}`);
-    console.log(`📦 Category breakdown:`, categoriesWithCount.map(c => ({ name: c.name, count: c.productCount })));
-    return c.json({ categories: categoriesWithCount });
 
+    console.log(
+      `✅ categories-details: ${categoriesWithCount.length} categories, ${vendorProducts.length} active products (vendor ${actualVendorId})`
+    );
+    return c.json({ categories: categoriesWithCount });
   } catch (error: any) {
     console.error("❌ Failed to load category details:", error);
     return c.json({ error: error.message || "Failed to load category details", categories: [] }, 500);

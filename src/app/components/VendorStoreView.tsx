@@ -269,6 +269,13 @@ function safeDecodePathSegment(slug: string): string {
   }
 }
 
+const VENDOR_DEFAULT_STORE_PHONE = "+95 9 XXX XXX XXX";
+
+function telHrefFromDisplay(phone: string): string {
+  const digits = String(phone || "").replace(/[^\d+]/g, "");
+  return digits.length > 0 ? `tel:${digits}` : "#";
+}
+
 function defaultVariantSelections(product: Product): Record<string, string> {
   const out: Record<string, string> = {};
   getEffectiveVariantOptions(product as any).forEach((opt: { name: string; values?: string[] }) => {
@@ -415,6 +422,7 @@ function getVendorHomepageInitialState(
   vendorCatalogHasMore: boolean;
   storeName: string;
   storeLogo: string;
+  storePhone: string;
   canonicalVendorId: string | null;
 } {
   if (savedPage) {
@@ -427,6 +435,7 @@ function getVendorHomepageInitialState(
       vendorCatalogHasMore: false,
       storeName: "Vendor Store",
       storeLogo: "",
+      storePhone: VENDOR_DEFAULT_STORE_PHONE,
       canonicalVendorId: null,
     };
   }
@@ -457,6 +466,10 @@ function getVendorHomepageInitialState(
         typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
           ? fromLs.resolvedVendorId.trim()
           : null;
+      const sp =
+        typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()
+          ? fromLs.storePhone.trim()
+          : VENDOR_DEFAULT_STORE_PHONE;
       return {
         products,
         vendorCategories,
@@ -469,6 +482,7 @@ function getVendorHomepageInitialState(
             ? fromLs.storeName.trim()
             : "Vendor Store",
         storeLogo: typeof fromLs.logo === "string" ? fromLs.logo : "",
+        storePhone: sp,
         canonicalVendorId: rid ?? vendorId,
       };
     }
@@ -485,6 +499,7 @@ function getVendorHomepageInitialState(
     vendorCatalogHasMore: false,
     storeName: "Vendor Store",
     storeLogo: "",
+    storePhone: VENDOR_DEFAULT_STORE_PHONE,
     canonicalVendorId: null,
   };
 }
@@ -582,6 +597,43 @@ export function VendorStoreView({
     [selectedProduct]
   );
 
+  /**
+   * Subnav: union of (1) active vendor KV categories from `categories-details` and (2) distinct
+   * `product.category` on loaded rows. If we returned API-only whenever `vendorCategories.length > 0`,
+   * a stale/partial KV list (e.g. only "Fashion") would hide real catalog categories from super-admin
+   * assignments — always merge product categories in.
+   */
+  const subnavCategoryItems = useMemo(() => {
+    const byLower = new Map<string, { id: string; name: string; status?: string }>();
+
+    const add = (row: { id?: string; name?: string; status?: string }) => {
+      const name = String(row?.name || "").trim();
+      if (!name) return;
+      const st = String(row?.status ?? "active").toLowerCase();
+      if (st === "inactive" || st === "off" || st === "off-shelf") return;
+      const k = name.toLowerCase();
+      if (byLower.has(k)) return;
+      byLower.set(k, {
+        id: String(row.id && String(row.id).trim() ? row.id : `catalog-cat:${k}`),
+        name,
+        status: row.status,
+      });
+    };
+
+    for (const c of vendorCategories || []) {
+      add(c as { id?: string; name?: string; status?: string });
+    }
+    for (const p of products) {
+      const raw = String(p.category || "").trim();
+      if (!raw) continue;
+      add({ name: raw, id: `catalog-cat:${raw.toLowerCase()}`, status: "active" });
+    }
+
+    return [...byLower.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+    );
+  }, [vendorCategories, products]);
+
   useEffect(() => {
     if (savedPage) {
       setSelectedProduct(null);
@@ -592,6 +644,7 @@ export function VendorStoreView({
   const [showCheckout, setShowCheckout] = useState(false);
   const [storeName, setStoreName] = useState(vendorHomeSnapshot.storeName);
   const [storeLogo, setStoreLogo] = useState<string>(vendorHomeSnapshot.storeLogo);
+  const [storePhone, setStorePhone] = useState<string>(vendorHomeSnapshot.storePhone);
   /** Slide-out nav on small screens (account, browse, wishlist — hamburger on the right like /store). */
   const [vendorMobileNavOpen, setVendorMobileNavOpen] = useState(false);
   /** Full-screen search on mobile — matches main marketplace header search icon. */
@@ -756,6 +809,74 @@ export function VendorStoreView({
     }
     navigate(`${storeBase}/saved`);
   }, [user, navigate, storeBase]);
+
+  /** Desktop secondary row — matches `/store` marketplace: category links + phone (Saved stays in header). */
+  const renderVendorStorefrontDesktopSubnav = useCallback(() => {
+    if (vendorViewMode !== "storefront" || savedPage) return null;
+    const telHref = telHrefFromDisplay(storePhone);
+    return (
+      <div className="hidden md:block bg-white border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+          <div className="flex items-center justify-between gap-4 py-3 min-w-0">
+            <div className="flex items-center gap-x-6 overflow-x-auto scrollbar-hide min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProduct(null);
+                  setSearchQuery("");
+                  setSelectedCategory("all");
+                  navigate(storeBase, { replace: false });
+                }}
+                className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  selectedCategory === "all"
+                    ? "text-amber-700 font-semibold"
+                    : "text-slate-700 hover:text-amber-700"
+                }`}
+              >
+                All Products
+              </button>
+              {subnavCategoryItems.map((category: { id: string; name: string }) => (
+                <button
+                  type="button"
+                  key={category.id}
+                  onClick={() => {
+                    setSelectedProduct(null);
+                    setSearchQuery("");
+                    setSelectedCategory(category.name);
+                    navigate(storeBase, { replace: false });
+                  }}
+                  className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                    selectedCategory === category.name
+                      ? "text-amber-700 font-semibold"
+                      : "text-slate-700 hover:text-amber-700"
+                  }`}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-4 shrink-0">
+              <a
+                href={telHref}
+                className="flex items-center gap-2 text-slate-700 hover:text-orange-600 transition-colors cursor-pointer whitespace-nowrap"
+              >
+                <Phone className="w-4 h-4 shrink-0" />
+                <span className="text-sm font-medium">{storePhone}</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }, [
+    vendorViewMode,
+    savedPage,
+    subnavCategoryItems,
+    selectedCategory,
+    storePhone,
+    storeBase,
+    navigate,
+  ]);
 
   /** Pass 'register' from handleRegister before setUser; cleared after track. */
   const lastAuthEventRef = useRef<"login" | "register" | null>(null);
@@ -1373,8 +1494,7 @@ export function VendorStoreView({
 
   const renderVendorMobileNavDrawer = () => {
     if (!vendorMobileNavOpen) return null;
-    const showCategoryNav =
-      vendorViewMode === "storefront" && !savedPage && vendorCategories.length > 0;
+    const showCategoryNav = vendorViewMode === "storefront" && !savedPage;
     return (
       <>
         <div
@@ -1449,6 +1569,15 @@ export function VendorStoreView({
                 <Badge className="ml-2 bg-amber-600">{savedVendorWishlistTotal}</Badge>
               ) : null}
             </Button>
+
+            <a
+              href={telHrefFromDisplay(storePhone)}
+              className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              onClick={closeVendorMobileNav}
+            >
+              <Phone className="w-4 h-4 shrink-0 text-amber-600" />
+              <span className="truncate">{storePhone}</span>
+            </a>
 
             <Button
               variant="outline"
@@ -1565,7 +1694,7 @@ export function VendorStoreView({
                 >
                   All products
                 </Button>
-                {vendorCategories.map((category) => (
+                {subnavCategoryItems.map((category) => (
                   <Button
                     key={category.id}
                     variant="ghost"
@@ -2578,19 +2707,28 @@ export function VendorStoreView({
       if (!forceRefresh && persistEligible) {
         const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
         if (fromLs && typeof fromLs === "object") {
-          moduleCache.prime(cacheKey, fromLs);
-          setProducts(fromLs.products || []);
-          setVendorCatalogTotal(fromLs.total);
-          setVendorCatalogPage(fromLs.page);
-          setVendorCatalogHasMore(fromLs.hasMore);
-          setStoreName(fromLs.storeName || "Vendor Store");
-          setStoreLogo(fromLs.logo || "");
-          const rid =
-            typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
-              ? fromLs.resolvedVendorId.trim()
-              : undefined;
-          setCanonicalVendorId(rid ?? vendorId);
-          return;
+          // Old persisted catalog omitted `storePhone` — bypass LS once so we pick up `contactPhone` from the API.
+          const lsHasStorePhoneField = Object.prototype.hasOwnProperty.call(fromLs, "storePhone");
+          if (lsHasStorePhoneField) {
+            moduleCache.prime(cacheKey, fromLs);
+            setProducts(fromLs.products || []);
+            setVendorCatalogTotal(fromLs.total);
+            setVendorCatalogPage(fromLs.page);
+            setVendorCatalogHasMore(fromLs.hasMore);
+            setStoreName(fromLs.storeName || "Vendor Store");
+            setStoreLogo(fromLs.logo || "");
+            if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
+              setStorePhone(fromLs.storePhone.trim());
+            } else {
+              setStorePhone(VENDOR_DEFAULT_STORE_PHONE);
+            }
+            const rid =
+              typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
+                ? fromLs.resolvedVendorId.trim()
+                : undefined;
+            setCanonicalVendorId(rid ?? vendorId);
+            return;
+          }
         }
       }
 
@@ -2611,6 +2749,7 @@ export function VendorStoreView({
       setVendorCatalogHasMore(productsData.hasMore);
       setStoreName(productsData.storeName || "Vendor Store");
       setStoreLogo(productsData.logo || "");
+      setStorePhone(productsData.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
       setCanonicalVendorId(productsData.resolvedVendorId ?? vendorId);
 
       if (persistEligible && productsData && typeof productsData === "object") {
@@ -2811,6 +2950,9 @@ export function VendorStoreView({
       if (typeof fromLs.logo === "string" && fromLs.logo.trim()) {
         setStoreLogo(fromLs.logo.trim());
       }
+      if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
+        setStorePhone(fromLs.storePhone.trim());
+      }
     }
   }, [savedPage, vendorId]);
 
@@ -2824,6 +2966,7 @@ export function VendorStoreView({
         setCanonicalVendorId(data.resolvedVendorId ?? vendorId);
         setStoreName(data.storeName || "Vendor Store");
         setStoreLogo(data.logo || "");
+        setStorePhone(data.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
       } catch {
         if (!cancelled) setCanonicalVendorId(vendorId);
       }
@@ -3635,9 +3778,10 @@ export function VendorStoreView({
 
         {/* Header - Same as main storefront */}
         <header
-          className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
+          className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
         >
-          <div className="max-w-7xl mx-auto w-full px-4">
+          <div className="border-b border-[rgba(15,23,42,0.08)]">
+            <div className="max-w-7xl mx-auto w-full px-4">
             {/* Top Bar — mobile: icons absolutely at content right edge (aligns with product grid); md+: flex row */}
             <div className="relative flex h-16 items-center md:justify-between md:gap-3">
               <button
@@ -3824,44 +3968,9 @@ export function VendorStoreView({
                 </Button>
               </div>
             </div>
-
-            {/* Categories */}
-            {vendorCategories.length > 0 && (
-              <div className="flex items-center gap-2 py-3 overflow-x-auto scrollbar-hide">
-                <button
-                  onClick={() => {
-                    setSelectedProduct(null);
-                    setSelectedCategory("all");
-                    navigate(storeBase, { replace: false });
-                  }}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                    selectedCategory === "all"
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  }`}
-                >
-                  All Products
-                </button>
-                {vendorCategories.map((category) => (
-                  <button
-                    key={category.id}
-                    onClick={() => {
-                      setSelectedProduct(null);
-                      setSelectedCategory(category.name);
-                      navigate(storeBase, { replace: false });
-                    }}
-                    className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                      selectedCategory === category.name
-                        ? "bg-slate-900 text-white"
-                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                    }`}
-                  >
-                    {category.name}
-                  </button>
-                ))}
-              </div>
-            )}
+            </div>
           </div>
+          {renderVendorStorefrontDesktopSubnav()}
         </header>
 
         {renderVendorMobileNavDrawer()}
@@ -4399,9 +4508,10 @@ export function VendorStoreView({
         <>
       {/* Header */}
       <header
-        className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white border-b border-[rgba(15,23,42,0.08)] shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
+        className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
       >
-        <div className="max-w-7xl mx-auto w-full px-4">
+        <div className="border-b border-[rgba(15,23,42,0.08)]">
+          <div className="max-w-7xl mx-auto w-full px-4">
           {/* Top Bar — mobile: icons flush to content right (matches product grid); md+: flex */}
           <div className="relative flex h-16 items-center md:justify-between md:gap-3">
             <button
@@ -4587,36 +4697,9 @@ export function VendorStoreView({
               </Button>
             </div>
           </div>
-
-          {/* Categories — hide on account + saved pages */}
-          {vendorViewMode === "storefront" && !savedPage && vendorCategories.length > 0 && (
-            <div className="flex items-center gap-2 py-3 overflow-x-auto scrollbar-hide">
-              <button
-                onClick={() => setSelectedCategory("all")}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                  selectedCategory === "all"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
-              >
-                All Products
-              </button>
-              {vendorCategories.map((category) => (
-                <button
-                  key={category.id}
-                  onClick={() => setSelectedCategory(category.name)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
-                    selectedCategory === category.name
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                  }`}
-                >
-                  {category.name}
-                </button>
-              ))}
-            </div>
-          )}
+          </div>
         </div>
+        {renderVendorStorefrontDesktopSubnav()}
       </header>
 
       {renderVendorMobileNavDrawer()}
