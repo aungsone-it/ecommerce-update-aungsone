@@ -9,6 +9,11 @@ import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 
 function vendorProfileOrderIdFromPathname(pathname: string, storeName: string): string | null {
+  const mRoot = matchPath({ path: "/profile/orders/:orderId", end: true }, pathname);
+  if (mRoot?.params?.orderId) {
+    const id = mRoot.params.orderId;
+    return typeof id === "string" && id.trim() ? decodeURIComponent(id) : null;
+  }
   const m =
     matchPath({ path: "/store/:storeName/profile/orders/:orderId", end: true }, pathname) ??
     matchPath({ path: "/vendor/:storeName/profile/orders/:orderId", end: true }, pathname);
@@ -21,6 +26,17 @@ function vendorProfileSegmentFromPathname(
   pathname: string,
   storeName: string
 ): string | null {
+  if (matchPath({ path: "/profile/orders/:orderId", end: true }, pathname)) return "orders";
+  const rootPatterns = [
+    ["/profile/edit", "edit"],
+    ["/profile/orders", "orders"],
+    ["/profile/addresses", "addresses"],
+    ["/profile/security", "security"],
+    ["/profile", "view"],
+  ] as const;
+  for (const [path, seg] of rootPatterns) {
+    if (matchPath({ path, end: true }, pathname)) return seg;
+  }
   const patterns = [
     "/store/:storeName/profile/:profileSection",
     "/vendor/:storeName/profile/:profileSection",
@@ -42,7 +58,10 @@ export function VendorStorefrontPage() {
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
   const storeName = params.storeName ?? subdomainSlug ?? customHostSlug ?? undefined;
-  const productSlug = params.productSlug;
+  const productSlug =
+    (typeof params.productSlug === "string" && params.productSlug) ||
+    (typeof (params as { sku?: string }).sku === "string" && (params as { sku?: string }).sku) ||
+    undefined;
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -59,11 +78,12 @@ export function VendorStorefrontPage() {
 
   const savedPage = useMemo(() => {
     if (!storeName) return false;
+    if ((subdomainSlug || customHostSlug) && location.pathname === "/saved") return true;
     return (
       matchPath({ path: "/store/:storeName/saved", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null
     );
-  }, [storeName, location.pathname]);
+  }, [storeName, location.pathname, subdomainSlug, customHostSlug]);
 
   if (customHostLoading && !params.storeName && !subdomainSlug) {
     return (
@@ -110,6 +130,7 @@ export function VendorStorefrontPage() {
           key={storeName}
           vendorId={storeName}
           storeSlug={storeName}
+          hostRootStorePaths={!!(subdomainSlug || customHostSlug)}
           onBack={handleBack}
           initialProductSlug={productSlug}
           profileSegment={profileSegment}

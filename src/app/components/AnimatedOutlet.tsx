@@ -17,12 +17,28 @@ export function AnimatedOutlet() {
   // Group routes by component to prevent unnecessary re-renders
   // All storefront routes should be treated as one "page" for rendering purposes
   const getRouteGroup = (pathname: string): string => {
-    // Vendor subdomain home is / but must not share the "landing" group (avoids remount/state bugs).
+    const subSlug = resolveVendorSubdomainStoreSlug();
+    const vendorOnlyStoreGroup = subSlug
+      ? `vendor-subdomain-${subSlug}`
+      : resolvedVendorHostSlug
+        ? `vendor-custom-home-${resolvedVendorHostSlug}`
+        : null;
+
+    // Vendor-only host home must not share the "landing" group (avoids remount/state bugs).
     if (pathname === "/") {
-      const subSlug = resolveVendorSubdomainStoreSlug();
-      if (subSlug) return `vendor-subdomain-${subSlug}`;
-      if (resolvedVendorHostSlug) return `vendor-custom-home-${resolvedVendorHostSlug}`;
+      if (vendorOnlyStoreGroup) return vendorOnlyStoreGroup;
       return "landing";
+    }
+
+    // Same host: product/saved/profile are still VendorStorefrontPage — must share the home group
+    // so AnimatedOutlet's key does not remount and reset subnav/catalog state.
+    if (
+      vendorOnlyStoreGroup &&
+      (pathname.startsWith("/product/") ||
+        pathname === "/saved" ||
+        pathname.startsWith("/profile"))
+    ) {
+      return vendorOnlyStoreGroup;
     }
 
     // Storefront routes (all use StorefrontPage component)

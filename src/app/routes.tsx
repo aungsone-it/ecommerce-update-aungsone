@@ -15,6 +15,11 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { resolveVendorSubdomainStoreSlug } from "./utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "./utils/vendorHostResolution";
 import { AdminEntryLayout, AdminSubdomainLeaf } from "./components/AdminSubdomainOrSuper";
+import {
+  VendorHostOrMarketplaceSaved,
+  VendorHostOrMarketplaceProduct,
+  VendorHostOrMarketplaceProfile,
+} from "./components/VendorHostOrMarketplaceRoutes";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
@@ -143,8 +148,8 @@ export const router = createBrowserRouter([
             element: <StorefrontPage />,
           },
           {
-            path: "product/:sku",
-            element: <StorefrontPage />,
+            path: "product/:productSlug",
+            element: <VendorHostOrMarketplaceProduct />,
           },
           {
             path: "checkout",
@@ -155,32 +160,12 @@ export const router = createBrowserRouter([
             element: <StorefrontPage />,
           },
           {
-            path: "profile",
-            element: <StorefrontPage />,
-          },
-          {
-            path: "profile/edit",
-            element: <StorefrontPage />,
-          },
-          {
-            path: "profile/orders",
-            element: <StorefrontPage />,
-          },
-          {
-            path: "profile/orders/:orderId",
-            element: <StorefrontPage />,
-          },
-          {
-            path: "profile/addresses",
-            element: <StorefrontPage />,
-          },
-          {
-            path: "profile/security",
-            element: <StorefrontPage />,
+            path: "profile/*",
+            element: <VendorHostOrMarketplaceProfile />,
           },
           {
             path: "saved",
-            element: <StorefrontPage />,
+            element: <VendorHostOrMarketplaceSaved />,
           },
           {
             path: "blog",

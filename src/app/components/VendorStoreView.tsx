@@ -131,6 +131,8 @@ interface Product {
 interface VendorStoreViewProps {
   vendorId: string;
   storeSlug?: string;
+  /** Vendor subdomain or custom domain: paths are `/`, `/product/…`, `/saved` (no `/store/:slug`). */
+  hostRootStorePaths?: boolean;
   onBack?: () => void;
   initialProductSlug?: string;
   /** From URL `/store/:slug/profile/...` — drives account view mode */
@@ -515,6 +517,7 @@ function getVendorHomepageInitialState(
 export function VendorStoreView({
   vendorId,
   storeSlug,
+  hostRootStorePaths = false,
   onBack,
   initialProductSlug,
   profileSegment = null,
@@ -525,41 +528,50 @@ export function VendorStoreView({
   const location = useLocation();
 
   const storeBase = useMemo(() => {
+    if (hostRootStorePaths) return "";
     const slug = encodeURIComponent(storeSlug || vendorId);
-    return location.pathname.startsWith("/vendor/") ? `/vendor/${slug}` : `/store/${slug}`;
-  }, [location.pathname, storeSlug, vendorId]);
+    if (location.pathname.startsWith("/vendor/")) return `/vendor/${slug}`;
+    return `/store/${slug}`;
+  }, [hostRootStorePaths, location.pathname, storeSlug, vendorId]);
+
+  const navigateStoreHome = useCallback(() => {
+    navigate(storeBase || "/");
+  }, [navigate, storeBase]);
 
   /** Prefer pathname over useParams so async product load cannot reopen detail after user navigated away. */
   const productSlugFromPath = useMemo(() => {
     const m =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
-      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     return typeof m?.params?.productSlug === "string" ? m.params.productSlug : undefined;
   }, [location.pathname]);
 
   const isVendorProductDetailPath = useMemo(
     () =>
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) != null,
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
+      matchPath({ path: "/product/:productSlug", end: true }, location.pathname) != null,
     [location.pathname]
   );
 
   const goToProfileMode = useCallback(
     (mode: VendorAccountViewMode) => {
       if (mode === "storefront") {
-        navigate(storeBase);
+        navigateStoreHome();
         return;
       }
+      const root = storeBase || "";
       const pathMap: Record<Exclude<VendorAccountViewMode, "storefront">, string> = {
-        "view-profile": `${storeBase}/profile`,
-        "edit-profile": `${storeBase}/profile/edit`,
-        "order-history": `${storeBase}/profile/orders`,
-        "shipping-addresses": `${storeBase}/profile/addresses`,
-        "security-settings": `${storeBase}/profile/security`,
+        "view-profile": `${root}/profile`,
+        "edit-profile": `${root}/profile/edit`,
+        "order-history": `${root}/profile/orders`,
+        "shipping-addresses": `${root}/profile/addresses`,
+        "security-settings": `${root}/profile/security`,
       };
       navigate(pathMap[mode]);
     },
-    [navigate, storeBase]
+    [navigate, navigateStoreHome, storeBase]
   );
 
   const { startLoading: startFaviconLoading, stopLoading: stopFaviconLoading } = useFaviconLoader();
@@ -847,7 +859,7 @@ export function VendorStoreView({
                   setSelectedProduct(null);
                   setSearchQuery("");
                   setSelectedCategory("all");
-                  navigate(storeBase, { replace: false });
+                  navigate(storeBase || "/", { replace: false });
                 }}
                 className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                   selectedCategory === "all"
@@ -865,7 +877,7 @@ export function VendorStoreView({
                     setSelectedProduct(null);
                     setSearchQuery("");
                     setSelectedCategory(category.name);
-                    navigate(storeBase, { replace: false });
+                    navigate(storeBase || "/", { replace: false });
                   }}
                   className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                     String(selectedCategory).trim().toLowerCase() === category.name.toLowerCase()
@@ -1272,7 +1284,7 @@ export function VendorStoreView({
     setUser(null);
     localStorage.removeItem('migoo-user');
     notifyMigooUserSessionChanged();
-    navigate(storeBase);
+    navigateStoreHome();
     toast.success("You have been logged out");
   };
 
@@ -1502,18 +1514,18 @@ export function VendorStoreView({
     setSearchQuery("");
     setSelectedCategory("all");
     setSelectedProduct(null);
-    navigate(storeBase);
+    navigateStoreHome();
     closeVendorMobileNav();
-  }, [navigate, storeBase, closeVendorMobileNav]);
+  }, [navigateStoreHome, closeVendorMobileNav]);
 
   const selectVendorCategoryNav = useCallback(
     (categoryName: string) => {
       setSelectedProduct(null);
       setSelectedCategory(categoryName);
-      navigate(storeBase);
+      navigateStoreHome();
       closeVendorMobileNav();
     },
-    [navigate, storeBase, closeVendorMobileNav]
+    [navigateStoreHome, closeVendorMobileNav]
   );
 
   const renderVendorMobileNavDrawer = () => {
@@ -3038,7 +3050,8 @@ export function VendorStoreView({
   useLayoutEffect(() => {
     const stillOnProduct =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
-      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     if (!stillOnProduct) {
       startTransition(() => setSelectedProduct(null));
       return;
@@ -3113,7 +3126,8 @@ export function VendorStoreView({
     if (!decoded) return;
     const stillOnProduct =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
-      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname);
+      matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     if (!stillOnProduct) return;
     if (resolveVendorProductFromSlug(products, decoded)) return;
 
@@ -3819,7 +3833,7 @@ export function VendorStoreView({
                   setSelectedProduct(null);
                   setSearchQuery("");
                   setSelectedCategory("all");
-                  navigate(storeBase, { replace: false });
+                  navigate(storeBase || "/", { replace: false });
                 }}
                 className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden pr-[9.25rem] text-left group md:max-w-xs md:flex-initial md:pr-0"
                 aria-label={`${storeName} — home`}
@@ -4011,7 +4025,7 @@ export function VendorStoreView({
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
             <button onClick={() => {
               setSelectedProduct(null);
-              navigate(storeBase, { replace: false });
+              navigate(storeBase || "/", { replace: false });
             }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
               Home
             </button>
@@ -4021,7 +4035,7 @@ export function VendorStoreView({
                 <button onClick={() => {
                   setSelectedProduct(null);
                   setSelectedCategory(selectedProduct.category);
-                  navigate(storeBase, { replace: false });
+                  navigate(storeBase || "/", { replace: false });
                 }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
                   {selectedProduct.category}
                 </button>
@@ -4548,7 +4562,7 @@ export function VendorStoreView({
               onClick={() => {
                 setSearchQuery("");
                 setSelectedCategory("all");
-                navigate(storeBase);
+                navigateStoreHome();
               }}
               className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden pr-[9.25rem] text-left group md:max-w-xs md:flex-initial md:pr-0"
               aria-label={`${storeName} — home`}
@@ -4775,7 +4789,7 @@ export function VendorStoreView({
                           ? "Your wishlist has items from other areas — browse this shop and tap the heart on products you like."
                           : "Start adding products to your wishlist!"}
                       </p>
-                      <Button onClick={() => navigate(storeBase)} className="bg-amber-600 hover:bg-amber-700">
+                      <Button onClick={() => navigateStoreHome()} className="bg-amber-600 hover:bg-amber-700">
                         Browse products
                       </Button>
                     </Card>
