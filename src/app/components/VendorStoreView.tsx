@@ -276,6 +276,14 @@ function telHrefFromDisplay(phone: string): string {
   return digits.length > 0 ? `tel:${digits}` : "#";
 }
 
+function isPlaceholderVendorPhone(phone: string): boolean {
+  const t = String(phone || "").trim();
+  if (!t) return true;
+  if (t === VENDOR_DEFAULT_STORE_PHONE) return true;
+  if (/XXX/i.test(t)) return true;
+  return false;
+}
+
 function defaultVariantSelections(product: Product): Record<string, string> {
   const out: Record<string, string> = {};
   getEffectiveVariantOptions(product as any).forEach((opt: { name: string; values?: string[] }) => {
@@ -592,18 +600,27 @@ export function VendorStoreView({
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products;
 
+  /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
+  const catalogCategoryHintsRef = useRef<Map<string, string>>(new Map());
+  const catalogCategoryHintsVendorRef = useRef<string>(vendorId);
+
   const vendorEffectiveVariantOptions = useMemo(
     () => (selectedProduct ? getEffectiveVariantOptions(selectedProduct as any) : []),
     [selectedProduct]
   );
 
   /**
-   * Subnav: union of (1) active vendor KV categories from `categories-details` and (2) distinct
-   * `product.category` on loaded rows. If we returned API-only whenever `vendorCategories.length > 0`,
-   * a stale/partial KV list (e.g. only "Fashion") would hide real catalog categories from super-admin
-   * assignments — always merge product categories in.
+   * Subnav: union of (1) active vendor KV categories from `categories-details` and (2) every distinct
+   * `product.category` ever seen for this storefront (accumulated). Without accumulation, choosing a
+   * category refetches a single slice and the subnav would drop other tabs. Product-derived names still
+   * merge with KV so super-admin assignments stay visible.
    */
   const subnavCategoryItems = useMemo(() => {
+    if (catalogCategoryHintsVendorRef.current !== vendorId) {
+      catalogCategoryHintsRef.current = new Map();
+      catalogCategoryHintsVendorRef.current = vendorId;
+    }
+
     const byLower = new Map<string, { id: string; name: string; status?: string }>();
 
     const add = (row: { id?: string; name?: string; status?: string }) => {
@@ -613,8 +630,9 @@ export function VendorStoreView({
       if (st === "inactive" || st === "off" || st === "off-shelf") return;
       const k = name.toLowerCase();
       if (byLower.has(k)) return;
+      const rid = row.id != null && String(row.id).trim() ? String(row.id).trim() : "";
       byLower.set(k, {
-        id: String(row.id && String(row.id).trim() ? row.id : `catalog-cat:${k}`),
+        id: rid || `catalog-cat:${k}`,
         name,
         status: row.status,
       });
@@ -626,13 +644,17 @@ export function VendorStoreView({
     for (const p of products) {
       const raw = String(p.category || "").trim();
       if (!raw) continue;
-      add({ name: raw, id: `catalog-cat:${raw.toLowerCase()}`, status: "active" });
+      const lk = raw.toLowerCase();
+      catalogCategoryHintsRef.current.set(lk, raw);
+    }
+    for (const [lk, displayName] of catalogCategoryHintsRef.current.entries()) {
+      add({ name: displayName, id: `catalog-cat:${lk}`, status: "active" });
     }
 
     return [...byLower.values()].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     );
-  }, [vendorCategories, products]);
+  }, [vendorId, vendorCategories, products]);
 
   useEffect(() => {
     if (savedPage) {
@@ -829,7 +851,7 @@ export function VendorStoreView({
                 }}
                 className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                   selectedCategory === "all"
-                    ? "text-amber-700 font-semibold"
+                    ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
                     : "text-slate-700 hover:text-amber-700"
                 }`}
               >
@@ -846,8 +868,8 @@ export function VendorStoreView({
                     navigate(storeBase, { replace: false });
                   }}
                   className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                    selectedCategory === category.name
-                      ? "text-amber-700 font-semibold"
+                    String(selectedCategory).trim().toLowerCase() === category.name.toLowerCase()
+                      ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
                       : "text-slate-700 hover:text-amber-700"
                   }`}
                 >
@@ -855,6 +877,7 @@ export function VendorStoreView({
                 </button>
               ))}
             </div>
+            {!isPlaceholderVendorPhone(storePhone) ? (
             <div className="flex items-center gap-4 shrink-0">
               <a
                 href={telHref}
@@ -864,6 +887,7 @@ export function VendorStoreView({
                 <span className="text-sm font-medium">{storePhone}</span>
               </a>
             </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1570,14 +1594,16 @@ export function VendorStoreView({
               ) : null}
             </Button>
 
-            <a
-              href={telHrefFromDisplay(storePhone)}
-              className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              onClick={closeVendorMobileNav}
-            >
-              <Phone className="w-4 h-4 shrink-0 text-amber-600" />
-              <span className="truncate">{storePhone}</span>
-            </a>
+            {!isPlaceholderVendorPhone(storePhone) ? (
+              <a
+                href={telHrefFromDisplay(storePhone)}
+                className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                onClick={closeVendorMobileNav}
+              >
+                <Phone className="w-4 h-4 shrink-0 text-amber-600" />
+                <span className="truncate">{storePhone}</span>
+              </a>
+            ) : null}
 
             <Button
               variant="outline"
@@ -1699,7 +1725,7 @@ export function VendorStoreView({
                     key={category.id}
                     variant="ghost"
                     className={`w-full justify-start hover:bg-slate-50 ${
-                      selectedCategory === category.name
+                      String(selectedCategory).trim().toLowerCase() === category.name.toLowerCase()
                         ? "bg-slate-100 font-semibold text-slate-900"
                         : ""
                     }`}
@@ -3545,7 +3571,10 @@ export function VendorStoreView({
         String(product.sku || "")
           .toLowerCase()
           .includes(searchQuery.toLowerCase());
-      const matchesCategory = selectedCategory === "all" || product.category === selectedCategory;
+      const matchesCategory =
+        selectedCategory === "all" ||
+        String(product.category || "").trim().toLowerCase() ===
+          String(selectedCategory).trim().toLowerCase();
       return matchesSearch && matchesCategory;
     });
   }, [products, searchQuery, selectedCategory]);
