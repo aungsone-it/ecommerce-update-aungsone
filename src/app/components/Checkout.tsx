@@ -219,13 +219,22 @@ export function Checkout({
   // Order Note
   const [orderNote, setOrderNote] = useState("");
 
-  /** Vendor checkout: card only; KPay / bank are coming soon in the Payment section below. */
+  const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "BankTransfer">("Card");
   const [paymentInfo, setPaymentInfo] = useState({
     cardNumber: "",
     cardName: "",
     expiryDate: "",
     cvv: ""
   });
+  const [kpaySession, setKpaySession] = useState<{
+    merchantOrderId: string;
+    status: "pending" | "paid" | "failed";
+    providerStatus?: string;
+    qrContent?: string;
+    qrImageUrl?: string;
+    payUrl?: string;
+  } | null>(null);
+  const [kpayLoading, setKpayLoading] = useState(false);
 
   // Coupon State with localStorage persistence
   const [couponCode, setCouponCode] = useState("");
@@ -324,6 +333,74 @@ export function Checkout({
   const resolveOrderEmail = () =>
     (shippingInfo.email?.trim() || effectiveUser?.email?.trim() || "");
 
+  const handleGenerateKPayQr = async () => {
+    try {
+      if (finalTotal <= 0) {
+        toast.error("Invalid amount for KPay payment");
+        return;
+      }
+      setKpayLoading(true);
+      const merchantOrderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/create-qr`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({
+            merchantOrderId,
+            amount: finalTotal,
+            currency: "MMK",
+            title: `Order ${merchantOrderId}`,
+          }),
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || "Failed to generate KPay QR");
+      setKpaySession({
+        merchantOrderId,
+        status: data.status || "pending",
+        providerStatus: data.providerStatus || "",
+        qrContent: data.qrContent || "",
+        qrImageUrl: data.qrImageUrl || "",
+        payUrl: data.payUrl || "",
+      });
+      toast.success("KPay QR generated");
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to generate KPay QR");
+    } finally {
+      setKpayLoading(false);
+    }
+  };
+
+  const refreshKPayStatus = async () => {
+    if (!kpaySession?.merchantOrderId) return;
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/status/${encodeURIComponent(kpaySession.merchantOrderId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+        },
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return;
+    setKpaySession((prev) =>
+      prev
+        ? {
+            ...prev,
+            status: data.status || prev.status,
+            providerStatus: data.providerStatus || prev.providerStatus,
+            qrContent: data.qrContent || prev.qrContent,
+            qrImageUrl: data.qrImageUrl || prev.qrImageUrl,
+            payUrl: data.payUrl || prev.payUrl,
+          }
+        : prev
+    );
+  };
+
   const handlePlaceOrder = async (e?: React.FormEvent | React.MouseEvent) => {
     e?.preventDefault();
 
@@ -343,66 +420,45 @@ export function Checkout({
 
     setLoading(true);
 
-    // 💳 TEST CARD PAYMENT PROCESSING (Stripe-style) — only supported method on vendor checkout
-    if (!paymentInfo.cardNumber || !paymentInfo.cardName || !paymentInfo.expiryDate || !paymentInfo.cvv) {
-      toast.error("Please fill in all card details");
+    if (paymentMethod === "Card") {
+      if (!paymentInfo.cardNumber || !paymentInfo.cardName || !paymentInfo.expiryDate || !paymentInfo.cvv) {
+        toast.error("Please fill in all card details");
+        setLoading(false);
+        return;
+      }
+
+      const cardNumberClean = paymentInfo.cardNumber.replace(/\s/g, "");
+      if (cardNumberClean.length < 13 || cardNumberClean.length > 19) {
+        toast.error("Invalid card number");
+        setLoading(false);
+        return;
+      }
+      if (!/^\d{2}\/\d{2}$/.test(paymentInfo.expiryDate)) {
+        toast.error("Invalid expiry date format (MM/YY)");
+        setLoading(false);
+        return;
+      }
+      if (paymentInfo.cvv.length < 3 || paymentInfo.cvv.length > 4) {
+        toast.error("Invalid CVV");
+        setLoading(false);
+        return;
+      }
+
+      toast.info("Processing payment...", { duration: 2000 });
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      toast.success("💳 Payment Successful!", { duration: 3000 });
+    } else if (paymentMethod === "KPay") {
+      if (!kpaySession?.merchantOrderId) {
+        toast.error("Please generate KPay QR first");
+        setLoading(false);
+        return;
+      }
+      await refreshKPayStatus();
+    } else {
+      toast.info("🚀 Coming Soon! This payment method will be available soon.", { duration: 3000 });
       setLoading(false);
       return;
     }
-
-    const cardNumberClean = paymentInfo.cardNumber.replace(/\s/g, "");
-
-    if (cardNumberClean.length < 13 || cardNumberClean.length > 19) {
-      toast.error("Invalid card number");
-      setLoading(false);
-      return;
-    }
-
-    if (!/^\d{2}\/\d{2}$/.test(paymentInfo.expiryDate)) {
-      toast.error("Invalid expiry date format (MM/YY)");
-      setLoading(false);
-      return;
-    }
-
-    if (paymentInfo.cvv.length < 3 || paymentInfo.cvv.length > 4) {
-      toast.error("Invalid CVV");
-      setLoading(false);
-      return;
-    }
-
-    toast.info("Processing payment...", { duration: 2000 });
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    const testCards = {
-      success: ["4242424242424242", "4242 4242 4242 4242"],
-      declined: ["4000000000000002", "4000 0000 0000 0002"],
-      insufficient: ["4000000000009995", "4000 0000 0000 9995"],
-      expired: ["4000000000000069", "4000 0000 0000 0069"],
-    };
-
-    if (testCards.declined.includes(cardNumberClean) || testCards.declined.includes(paymentInfo.cardNumber)) {
-      setLoading(false);
-      toast.error("💳 Card Declined - Your card was declined. Please try another card.", { duration: 5000 });
-      return;
-    }
-
-    if (testCards.insufficient.includes(cardNumberClean) || testCards.insufficient.includes(paymentInfo.cardNumber)) {
-      setLoading(false);
-      toast.error("💳 Insufficient Funds - Your card has insufficient funds.", { duration: 5000 });
-      return;
-    }
-
-    if (testCards.expired.includes(cardNumberClean) || testCards.expired.includes(paymentInfo.cardNumber)) {
-      setLoading(false);
-      toast.error("💳 Card Expired - Your card has expired. Please use a different card.", { duration: 5000 });
-      return;
-    }
-
-    if (!testCards.success.includes(cardNumberClean) && !testCards.success.includes(paymentInfo.cardNumber)) {
-      console.log("⚠️ Using non-test card number - accepting for demo");
-    }
-
-    toast.success("💳 Payment Successful!", { duration: 3000 });
 
     // 🔥 SAVE items and total BEFORE clearing cart
     setConfirmedItems(items);
@@ -412,21 +468,32 @@ export function Checkout({
     setConfirmedDiscount(discountAmount);
 
     // Generate order number
-    const orderNum = `ORD-${Date.now().toString(36).toUpperCase()}`;
+    const orderNum =
+      paymentMethod === "KPay" && kpaySession?.merchantOrderId
+        ? kpaySession.merchantOrderId
+        : `ORD-${Date.now().toString(36).toUpperCase()}`;
     setOrderNumber(orderNum);
 
     try {
       // 🔥 Save order to backend with vendor information
-      const orderData = {
+      const orderData: any = {
         orderNumber: orderNum,
         userId: effectiveUser?.id ?? null,
         customer: shippingInfo.fullName,
         customerName: shippingInfo.fullName,
         email: orderEmail,
         phone: shippingInfo.phone,
-        status: "pending",
-        paymentStatus: "paid", // All prepaid orders have "paid" status
-        paymentMethod: "Credit/Debit Card",
+        status: paymentMethod === "KPay" ? "pending_payment" : "pending",
+        paymentStatus:
+          paymentMethod === "KPay"
+            ? (kpaySession?.status === "paid" ? "paid" : "pending")
+            : "paid",
+        paymentMethod:
+          paymentMethod === "Card"
+            ? "Credit/Debit Card"
+            : paymentMethod === "KPay"
+            ? "KPay"
+            : "Bank Transfer",
         total: finalTotal,
         subtotal: totalPrice,
         discount: discountAmount,
@@ -460,6 +527,17 @@ export function Checkout({
           .join(", "),
         notes: orderNote,
       };
+
+      if (paymentMethod === "KPay") {
+        orderData.kpay = {
+          merchantOrderId: kpaySession?.merchantOrderId || orderNum,
+          status: kpaySession?.status || "pending",
+          providerStatus: kpaySession?.providerStatus || "",
+          qrContent: kpaySession?.qrContent || "",
+          qrImageUrl: kpaySession?.qrImageUrl || "",
+          payUrl: kpaySession?.payUrl || "",
+        };
+      }
 
       // Save to backend
       const response = await fetch(
@@ -973,31 +1051,46 @@ export function Checkout({
                 </div>
 
                 <div className="space-y-3">
-                  <div className="w-full rounded-lg border border-slate-900 bg-slate-50 p-4 text-left">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("Card")}
+                    className={`w-full rounded-lg border p-4 text-left ${
+                      paymentMethod === "Card"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-200 bg-white hover:bg-slate-50"
+                    }`}
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-900">
-                        <div className="h-2 w-2 rounded-full bg-slate-900" />
+                      <div
+                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
+                          paymentMethod === "Card" ? "border-slate-900" : "border-slate-300"
+                        }`}
+                      >
+                        {paymentMethod === "Card" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
                       </div>
                       <span className="text-sm font-medium text-slate-900">Credit / Debit Card</span>
                     </div>
-                  </div>
+                  </button>
                   <button
                     type="button"
-                    onClick={() =>
-                      toast.info("🚀 Coming Soon! This payment method will be available soon.", {
-                        duration: 4000,
-                      })
-                    }
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:bg-slate-100"
+                    onClick={() => setPaymentMethod("KPay")}
+                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                      paymentMethod === "KPay"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                    }`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-200 bg-white" />
-                        <span className="text-sm font-medium text-slate-600">KPay</span>
+                        <div
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border-2 bg-white ${
+                            paymentMethod === "KPay" ? "border-slate-900" : "border-slate-200"
+                          }`}
+                        >
+                          {paymentMethod === "KPay" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                        </div>
+                        <span className="text-sm font-medium text-slate-700">KPay</span>
                       </div>
-                      <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                        Coming soon
-                      </span>
                     </div>
                   </button>
                   <button
@@ -1021,6 +1114,7 @@ export function Checkout({
                   </button>
                 </div>
 
+                {paymentMethod === "Card" && (
                 <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
                     <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
                       <p className="text-sm font-semibold text-blue-900">💳 Credit / Debit Card Payment</p>
@@ -1108,6 +1202,54 @@ export function Checkout({
                       <p className="text-sm text-blue-900">🔒 Your payment information is encrypted and secure</p>
                     </div>
                   </div>
+                )}
+
+                {paymentMethod === "KPay" && (
+                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
+                    <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-sm font-semibold text-emerald-900">💳 KPay Payment</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" onClick={handleGenerateKPayQr} disabled={kpayLoading}>
+                        {kpayLoading ? "Generating..." : kpaySession?.merchantOrderId ? "Regenerate KPay QR" : "Generate KPay QR"}
+                      </Button>
+                      {kpaySession?.merchantOrderId && (
+                        <Button type="button" variant="outline" onClick={refreshKPayStatus}>
+                          Check Payment Status
+                        </Button>
+                      )}
+                    </div>
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      <div className="mb-4 flex justify-center">
+                        <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
+                          {kpaySession?.qrImageUrl ? (
+                            <img src={kpaySession.qrImageUrl} alt="KPay QR Code" className="h-full w-full object-contain" />
+                          ) : (
+                            <div className="px-4 text-center text-sm text-slate-500">Generate KPay QR to scan and pay</div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        {kpaySession?.merchantOrderId && (
+                          <div className="flex justify-between border-b border-slate-200 py-1">
+                            <span className="text-slate-600">Merchant Order ID:</span>
+                            <span className="font-mono font-semibold text-slate-900">{kpaySession.merchantOrderId}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between border-b border-slate-200 py-1">
+                          <span className="text-slate-600">Amount to Pay:</span>
+                          <span className="font-semibold text-emerald-700">{finalTotal.toFixed(0)} MMK</span>
+                        </div>
+                        {kpaySession?.status && (
+                          <div className="flex justify-between py-1">
+                            <span className="text-slate-600">Payment Status:</span>
+                            <span className="font-semibold uppercase text-slate-900">{kpaySession.status}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1262,7 +1404,7 @@ export function Checkout({
                     Processing...
                   </>
                 ) : (
-                  `Pay ${finalTotal.toFixed(0)} MMK`
+                  paymentMethod === "KPay" ? "I've Completed Payment" : `Pay ${finalTotal.toFixed(0)} MMK`
                 )}
               </Button>
             </div>
