@@ -3900,7 +3900,22 @@ export function VendorStoreView({
                   )}
                 </Button>
 
-                <div className="shrink-0 flex [&_button]:h-9 [&_button]:w-9 [&_button]:p-0 md:[&_button]:h-10 md:[&_button]:w-10 [&_svg]:size-[1.15rem] md:[&_svg]:size-5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative hover:bg-slate-100 md:hidden h-9 w-9 shrink-0 p-0"
+                  onClick={goToSavedProducts}
+                  aria-label="Saved products"
+                >
+                  <Heart className="w-[1.15rem] h-[1.15rem] text-slate-700" />
+                  {savedVendorWishlistTotal > 0 && (
+                    <Badge className="absolute -top-0.5 -right-0.5 min-h-[1.125rem] min-w-[1.125rem] flex items-center justify-center p-0 text-[10px] bg-amber-600 text-white border border-white">
+                      {savedVendorWishlistTotal}
+                    </Badge>
+                  )}
+                </Button>
+
+                <div className="hidden md:flex shrink-0 [&_button]:h-10 [&_button]:w-10 [&_button]:p-0 [&_svg]:size-5">
                   <NotificationCenter chatUnreadCount={0} onChatClick={() => {}} />
                 </div>
 
