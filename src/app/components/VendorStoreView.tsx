@@ -436,6 +436,45 @@ function getVendorHomepageInitialState(
   canonicalVendorId: string | null;
 } {
   if (savedPage) {
+    // Keep header branding stable on first paint of `/saved` by reusing cached page-1 catalog metadata.
+    // Without this, production latency can briefly show fallback "Vendor Store" + empty logo.
+    try {
+      const lsKey = lsVendorCatalogPage1Key(vendorId, "", "all", VENDOR_BROWSE_PAGE_SIZE);
+      const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
+      if (fromLs && typeof fromLs === "object") {
+        const cachedStoreName =
+          typeof fromLs.storeName === "string" && fromLs.storeName.trim()
+            ? fromLs.storeName.trim()
+            : "Vendor Store";
+        const cachedStoreLogo =
+          typeof fromLs.logo === "string" && fromLs.logo.trim()
+            ? fromLs.logo.trim()
+            : "";
+        const cachedStorePhone =
+          typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()
+            ? fromLs.storePhone.trim()
+            : VENDOR_DEFAULT_STORE_PHONE;
+        const rid =
+          typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
+            ? fromLs.resolvedVendorId.trim()
+            : null;
+        return {
+          products: [],
+          vendorCategories: [],
+          serverStatus: "healthy",
+          vendorCatalogTotal: 0,
+          vendorCatalogPage: 1,
+          vendorCatalogHasMore: false,
+          storeName: cachedStoreName,
+          storeLogo: cachedStoreLogo,
+          storePhone: cachedStorePhone,
+          canonicalVendorId: rid ?? vendorId,
+        };
+      }
+    } catch {
+      /* ignore cache read errors and fall back */
+    }
+
     return {
       products: [],
       vendorCategories: [],
