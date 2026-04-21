@@ -1025,7 +1025,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       };
     }
   }, [showMobileMenu]);
-  
+
   // User authentication — hydrate from migoo-user immediately so /profile/orders can fetch on first paint
   const [user, setUser] = useState<User | null>(() => readMigooUserFromStorage());
   const [profileImageLoadFailed, setProfileImageLoadFailed] = useState(false);

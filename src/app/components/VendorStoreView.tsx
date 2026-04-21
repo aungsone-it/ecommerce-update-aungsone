@@ -1543,15 +1543,15 @@ export function VendorStoreView({
           aria-hidden
         />
         <div
-          className="fixed left-0 top-0 h-full w-80 max-w-[min(20rem,100vw)] bg-white shadow-2xl md:hidden overflow-y-auto"
+          className="fixed left-0 top-0 h-full w-80 max-w-[min(20rem,100vw)] bg-white shadow-2xl md:hidden flex flex-col overflow-hidden"
           style={{ zIndex: 60 }}
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
           aria-label="Store menu"
         >
-          <div className="flex items-start justify-between gap-3 p-4 border-b border-slate-200">
-            <div className="min-w-0 flex-1 flex items-start gap-3">
+          <div className="flex items-center justify-between gap-3 p-4 border-b border-slate-200">
+            <div className="min-w-0 flex-1 flex items-center gap-3">
               {storeLogo ? (
                 <CacheFriendlyImg
                   src={storeLogo}
@@ -1563,7 +1563,7 @@ export function VendorStoreView({
                   <Store className="w-5 h-5 text-white" />
                 </div>
               )}
-              <p className="text-base font-bold text-slate-900 break-words leading-snug pt-0.5">
+              <p className="text-base font-bold text-slate-900 break-words leading-snug">
                 {storeName}
               </p>
             </div>
@@ -1578,59 +1578,21 @@ export function VendorStoreView({
             </Button>
           </div>
 
+          <div className="flex-1 overflow-y-auto [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full">
           <div className="p-4 space-y-3">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+              <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 shadow-sm ring-1 ring-slate-200/70">
+                <Search className="w-4 h-4 text-slate-400" />
+              </div>
               <Input
                 placeholder="Search products..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-10 rounded-lg bg-slate-50 border-slate-200"
+                className="pl-4 pr-12 h-11 rounded-full border-slate-200/90 bg-gradient-to-r from-slate-50 to-white shadow-sm transition-all focus-visible:border-violet-300 focus-visible:ring-violet-200/70"
               />
             </div>
 
             <Separator />
-
-            <Button
-              variant="outline"
-              className="w-full justify-start hover:bg-slate-50"
-              onClick={() => {
-                closeVendorMobileNav();
-                goToSavedProducts();
-              }}
-            >
-              <Heart className="w-4 h-4 mr-2 shrink-0" />
-              Saved products
-              {savedVendorWishlistTotal > 0 ? (
-                <Badge className="ml-2 bg-amber-600">{savedVendorWishlistTotal}</Badge>
-              ) : null}
-            </Button>
-
-            {!isPlaceholderVendorPhone(storePhone) ? (
-              <a
-                href={telHrefFromDisplay(storePhone)}
-                className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={closeVendorMobileNav}
-              >
-                <Phone className="w-4 h-4 shrink-0 text-amber-600" />
-                <span className="truncate">{storePhone}</span>
-              </a>
-            ) : null}
-
-            <Button
-              variant="outline"
-              className="w-full justify-start hover:bg-slate-50"
-              onClick={() => {
-                closeVendorMobileNav();
-                setCartOpen(true);
-              }}
-            >
-              <ShoppingCart className="w-4 h-4 mr-2 shrink-0" />
-              Shopping cart
-              {totalItems > 0 ? (
-                <Badge className="ml-2 bg-slate-900">{totalItems}</Badge>
-              ) : null}
-            </Button>
 
             {!user ? (
               <Button
@@ -1673,49 +1635,6 @@ export function VendorStoreView({
                   <Eye className="w-4 h-4 mr-2" />
                   View Profile
                 </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start hover:bg-slate-50"
-                  onClick={() => handleProfileAction("edit-profile")}
-                >
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Edit Profile
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start hover:bg-slate-50"
-                  onClick={() => handleProfileAction("order-history")}
-                >
-                  <Package className="w-4 h-4 mr-2" />
-                  Order History
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start hover:bg-slate-50"
-                  onClick={() => handleProfileAction("shipping-addresses")}
-                >
-                  <MapPin className="w-4 h-4 mr-2" />
-                  Shipping Addresses
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start hover:bg-slate-50"
-                  onClick={() => handleProfileAction("security-settings")}
-                >
-                  <Shield className="w-4 h-4 mr-2" />
-                  Security Settings
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50"
-                  onClick={() => {
-                    closeVendorMobileNav();
-                    handleLogout();
-                  }}
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Logout
-                </Button>
               </div>
             )}
 
@@ -1756,6 +1675,32 @@ export function VendorStoreView({
               </>
             ) : null}
           </div>
+          </div>
+          <div className="mt-auto border-t border-slate-200 p-4 space-y-2 bg-white">
+            {!isPlaceholderVendorPhone(storePhone) ? (
+              <a
+                href={telHrefFromDisplay(storePhone)}
+                className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                onClick={closeVendorMobileNav}
+              >
+                <Phone className="w-4 h-4 shrink-0 text-amber-600" />
+                <span className="truncate">{storePhone}</span>
+              </a>
+            ) : null}
+            {user ? (
+              <Button
+                variant="outline"
+                className="w-full justify-start text-red-600 border-red-200 hover:bg-red-50"
+                onClick={() => {
+                  closeVendorMobileNav();
+                  handleLogout();
+                }}
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
+              </Button>
+            ) : null}
+          </div>
         </div>
       </>
     );
@@ -1781,12 +1726,14 @@ export function VendorStoreView({
             <X className="w-5 h-5" />
           </Button>
           <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+            <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-200/80">
+              <Search className="w-4 h-4 text-slate-400" />
+            </div>
             <Input
               placeholder="Search products..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-11 rounded-lg border-slate-300 w-full"
+              className="pl-4 pr-12 h-11 rounded-full border-slate-200 bg-gradient-to-r from-slate-50 to-white shadow-sm w-full transition-all focus-visible:border-violet-300 focus-visible:ring-violet-200/70"
               autoFocus
             />
           </div>
@@ -4643,7 +4590,22 @@ export function VendorStoreView({
                 )}
               </Button>
 
-              <div className="flex shrink-0 [&_button]:h-9 [&_button]:w-9 [&_button]:p-0 md:[&_button]:h-10 md:[&_button]:w-10 [&_svg]:size-[1.15rem] md:[&_svg]:size-5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative hover:bg-slate-100 md:hidden h-9 w-9 shrink-0 p-0"
+                onClick={goToSavedProducts}
+                aria-label="Saved products"
+              >
+                <Heart className="w-[1.15rem] h-[1.15rem] text-slate-700" />
+                {savedVendorWishlistTotal > 0 && (
+                  <Badge className="absolute -top-0.5 -right-0.5 min-h-[1.125rem] min-w-[1.125rem] flex items-center justify-center p-0 text-[10px] bg-amber-600 text-white border border-white">
+                    {savedVendorWishlistTotal}
+                  </Badge>
+                )}
+              </Button>
+
+              <div className="hidden md:flex shrink-0 [&_button]:h-10 [&_button]:w-10 [&_button]:p-0 [&_svg]:size-5">
                 <NotificationCenter chatUnreadCount={0} onChatClick={() => {}} />
               </div>
 
