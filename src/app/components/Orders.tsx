@@ -31,6 +31,7 @@ import {
 import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { Label } from "./ui/label";
 import { Separator } from "./ui/separator";
+import { Skeleton } from "./ui/skeleton";
 import { format } from "date-fns";
 import { PrintInvoice } from "./PrintInvoice";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -916,9 +917,9 @@ export function Orders({
         <div className="flex items-center gap-3">
           <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('orders.title')}</h1>
           {isLoading && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
-              <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse"></div>
-              <span className="text-xs font-medium text-blue-700">{t('orders.loading')}</span>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full border border-slate-200 bg-slate-50">
+              <Skeleton className="h-2 w-2 rounded-full" />
+              <Skeleton className="h-3 w-20" />
             </div>
           )}
         </div>

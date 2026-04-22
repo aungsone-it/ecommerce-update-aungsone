@@ -45,9 +45,10 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import { ADMIN_PRODUCTS_INITIAL_PAGE_SIZE } from "../../utils/module-cache";
+import { ADMIN_PRODUCTS_INITIAL_PAGE_SIZE, moduleCache } from "../../utils/module-cache";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import { CustomerProfile } from "../CustomerProfile";
+import { Skeleton } from "../ui/skeleton";
 
 interface User {
   id: string;
@@ -107,8 +108,15 @@ function SegmentCell({ segment }: { segment: string }) {
 }
 
 export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps) {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const audienceCacheKey = useMemo(
+    () => `vendor-admin-audience-${encodeURIComponent(vendorId)}`,
+    [vendorId]
+  );
+  const [users, setUsers] = useState<User[]>(() => {
+    const cached = moduleCache.peek<User[]>(`vendor-admin-audience-${encodeURIComponent(vendorId)}`);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [loading, setLoading] = useState(() => !moduleCache.has(`vendor-admin-audience-${encodeURIComponent(vendorId)}`));
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterTier, setFilterTier] = useState("all");
@@ -119,54 +127,70 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const [listPageSize, setListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [viewingCustomer, setViewingCustomer] = useState<any | null>(null);
 
-  useEffect(() => {
-    fetchUsers();
-  }, [vendorId]);
+  const mapAudienceUsers = (list: any[]): User[] =>
+    list.map((c: any) => ({
+      id: c.id,
+      name: c.name || c.email?.split("@")[0] || "Customer",
+      email: c.email,
+      phone: c.phone || "",
+      role: "customer" as const,
+      status: (c.status as "active" | "inactive") || "active",
+      location: c.location,
+      avatar: c.avatar,
+      joinedDate: c.joinedDate || new Date().toISOString(),
+      totalOrders: c.totalOrders ?? 0,
+      totalSpent: c.totalSpent ?? 0,
+      segment: c.segment,
+      avgOrder: c.avgOrder ?? 0,
+      tags: c.tags || [],
+      isNew: c.isNew,
+    }));
 
-  const fetchUsers = async () => {
-    setLoading(true);
+  const fetchUsers = async (forceRefresh = false) => {
+    let loadingTimer: ReturnType<typeof setTimeout> | null = null;
+    if (forceRefresh) {
+      setLoading(true);
+    } else if (!moduleCache.has(audienceCacheKey)) {
+      loadingTimer = setTimeout(() => setLoading(true), 250);
+    }
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/audience/${vendorId}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
+      const mappedUsers = await moduleCache.get(
+        audienceCacheKey,
+        async () => {
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/audience/${vendorId}`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${publicAnonKey}`,
+              },
+            }
+          );
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch customers");
+          }
+          const list = Array.isArray(data.customers) ? data.customers : [];
+          return mapAudienceUsers(list);
+        },
+        forceRefresh
       );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch customers");
-      }
-      const list = Array.isArray(data.customers) ? data.customers : [];
-      setUsers(
-        list.map((c: any) => ({
-          id: c.id,
-          name: c.name || c.email?.split("@")[0] || "Customer",
-          email: c.email,
-          phone: c.phone || "",
-          role: "customer" as const,
-          status: (c.status as "active" | "inactive") || "active",
-          location: c.location,
-          avatar: c.avatar,
-          joinedDate: c.joinedDate || new Date().toISOString(),
-          totalOrders: c.totalOrders ?? 0,
-          totalSpent: c.totalSpent ?? 0,
-          segment: c.segment,
-          avgOrder: c.avgOrder ?? 0,
-          tags: c.tags || [],
-          isNew: c.isNew,
-        }))
-      );
+      setUsers(mappedUsers);
     } catch (error) {
       console.error("Error fetching users:", error);
       toast.error("Failed to load customers");
-      setUsers([]);
+      if (!moduleCache.has(audienceCacheKey)) {
+        setUsers([]);
+      }
     } finally {
+      if (loadingTimer) clearTimeout(loadingTimer);
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void fetchUsers(false);
+  }, [vendorId]);
 
   const filteredUsers = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
@@ -370,9 +394,62 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
 
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
             {loading ? (
-              <div className="p-12 text-center">
-                <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                <p className="mt-3 text-slate-600 text-sm">Loading customers...</p>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50 hover:bg-slate-50 border-b border-slate-200">
+                      <TableHead className="w-12">
+                        <Skeleton className="h-4 w-4" />
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-600 uppercase">Customer</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-600 uppercase">Segment</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-600 uppercase">Orders</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-600 uppercase">Avg Order</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-600 uppercase">Tags</TableHead>
+                      <TableHead className="text-xs font-semibold text-slate-600 uppercase">Status</TableHead>
+                      <TableHead className="w-12 text-right text-xs font-semibold text-slate-600 uppercase" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <TableRow key={`vendor-users-skeleton-${index}`} className="animate-pulse">
+                        <TableCell>
+                          <Skeleton className="h-4 w-4" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Skeleton className="h-10 w-10 rounded-full" />
+                            <div className="space-y-2">
+                              <Skeleton className="h-4 w-28" />
+                              <Skeleton className="h-3 w-36" />
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-6 w-24 rounded-full" />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <Skeleton className="h-4 w-4 rounded" />
+                            <Skeleton className="h-4 w-8" />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-4 w-20" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-6 w-20 rounded-full" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-6 w-16 rounded-full" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-8 w-8 rounded" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             ) : filteredUsers.length === 0 ? (
               <div className="p-12 text-center">

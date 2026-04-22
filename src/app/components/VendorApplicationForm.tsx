@@ -19,6 +19,7 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
+import { notifyAdminVendorApplicationsUpdated } from "../utils/module-cache";
 
 interface VendorApplicationFormProps {
   onBack?: () => void;
@@ -448,6 +449,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
       const result = await response.json();
       console.log("✅ Application submitted:", result);
+      notifyAdminVendorApplicationsUpdated("submitted");
 
       setIsSubmitted(true);
       toast.success("Application Submitted!", {

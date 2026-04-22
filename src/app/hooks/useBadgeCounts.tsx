@@ -4,11 +4,18 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { chatApi, vendorApplicationsApi } from '../../utils/api';
-import { getCachedAdminOrdersPayload, moduleCache, CACHE_KEYS } from '../utils/module-cache';
+import {
+  getCachedAdminOrdersPayload,
+  moduleCache,
+  CACHE_KEYS,
+  ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT,
+  ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY,
+} from '../utils/module-cache';
 import { PENDING_ORDER_STATUSES, POLLING_INTERVALS_MS } from '../../constants';
 import { SmartCache } from '../../utils/cache';
 import { badgeCircuitBreaker } from '../../utils/circuit-breaker';
 import type { BadgeCounts } from '../../types';
+import { useCrossTabSignal } from './useCrossTabSignal';
 
 const INITIAL_BADGE_COUNTS: BadgeCounts = {
   orders: 0,
@@ -216,6 +223,16 @@ export function useBadgeCounts() {
 
     return () => clearInterval(interval);
   }, [loadBadgeCounts]);
+
+  /** Instant vendor badge refresh after a new application is submitted (same tab + cross-tab). */
+  useCrossTabSignal({
+    eventName: ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT,
+    storageKey: ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY,
+    onSignal: () => {
+      SmartCache.delete('badge_counts');
+      void loadBadgeCounts(true);
+    },
+  });
 
   /** Chat-only polling removed: loadBadgeCounts already loads chat; use `admin-chat-unread-updated` for instant UI. */
 

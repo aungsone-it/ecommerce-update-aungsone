@@ -259,7 +259,7 @@ export function VendorSetup() {
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg shadow-blue-600/30 transition-all duration-200 hover:shadow-xl hover:shadow-blue-600/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full h-11 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-medium rounded-lg shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Verifying...' : 'Verify Email'}
                 </Button>
@@ -393,7 +393,7 @@ export function VendorSetup() {
               <div className="space-y-3">
                 <Button
                   onClick={() => navigate('/vendor/login')}
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg shadow-blue-600/30 transition-all duration-200"
+                  className="w-full h-11 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-medium rounded-lg shadow-lg transition-all duration-200"
                 >
                   Go to Vendor Login
                 </Button>
@@ -423,7 +423,7 @@ export function VendorSetup() {
               <div className="space-y-3">
                 <Button
                   onClick={() => navigate('/vendor/login')}
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg shadow-blue-600/30 transition-all duration-200"
+                  className="w-full h-11 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-medium rounded-lg shadow-lg transition-all duration-200"
                 >
                   Go to Login
                 </Button>

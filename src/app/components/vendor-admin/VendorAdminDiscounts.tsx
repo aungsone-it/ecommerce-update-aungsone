@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
   Plus,
   Search,
@@ -34,6 +34,8 @@ import {
 } from "../ui/select";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import { moduleCache } from "../../utils/module-cache";
+import { Skeleton } from "../ui/skeleton";
 
 interface DiscountCode {
   id: string;
@@ -60,8 +62,17 @@ interface VendorAdminDiscountsProps {
 }
 
 export function VendorAdminDiscounts({ vendorId, vendorName }: VendorAdminDiscountsProps) {
-  const [discounts, setDiscounts] = useState<DiscountCode[]>([]);
-  const [loading, setLoading] = useState(true);
+  const discountsCacheKey = useMemo(
+    () => `vendor-admin-discounts-${encodeURIComponent(vendorId)}`,
+    [vendorId]
+  );
+  const [discounts, setDiscounts] = useState<DiscountCode[]>(() => {
+    const cached = moduleCache.peek<DiscountCode[]>(`vendor-admin-discounts-${encodeURIComponent(vendorId)}`);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [loading, setLoading] = useState(
+    () => !moduleCache.has(`vendor-admin-discounts-${encodeURIComponent(vendorId)}`)
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -86,29 +97,42 @@ export function VendorAdminDiscounts({ vendorId, vendorName }: VendorAdminDiscou
   });
 
   useEffect(() => {
-    loadDiscounts();
+    void loadDiscounts(false);
   }, [vendorId]);
 
-  const loadDiscounts = async () => {
-    setLoading(true);
+  const loadDiscounts = async (forceRefresh = false) => {
+    let loadingTimer: ReturnType<typeof setTimeout> | null = null;
+    if (forceRefresh) {
+      setLoading(true);
+    } else if (!moduleCache.has(discountsCacheKey)) {
+      loadingTimer = setTimeout(() => setLoading(true), 250);
+    }
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/discounts/${vendorId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
+      const next = await moduleCache.get(
+        discountsCacheKey,
+        async () => {
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/discounts/${vendorId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${publicAnonKey}`,
+              },
+            }
+          );
+          if (!response.ok) {
+            throw new Error("Failed to load discounts");
+          }
+          const data = await response.json();
+          return Array.isArray(data.discounts) ? data.discounts : [];
+        },
+        forceRefresh
       );
-
-      if (response.ok) {
-        const data = await response.json();
-        setDiscounts(data.discounts || []);
-      }
+      setDiscounts(next);
     } catch (error) {
       console.error("Failed to load discounts:", error);
       toast.error("Failed to load discount codes");
     } finally {
+      if (loadingTimer) clearTimeout(loadingTimer);
       setLoading(false);
     }
   };
@@ -212,7 +236,7 @@ export function VendorAdminDiscounts({ vendorId, vendorName }: VendorAdminDiscou
           toast.success("Discount code updated successfully!");
           setIsEditDialogOpen(false);
           setEditingDiscount(null);
-          loadDiscounts();
+          void loadDiscounts(true);
         } else {
           toast.error("Failed to update discount code");
         }
@@ -233,7 +257,7 @@ export function VendorAdminDiscounts({ vendorId, vendorName }: VendorAdminDiscou
         if (response.ok) {
           toast.success("Discount code created successfully!");
           setIsCreateDialogOpen(false);
-          loadDiscounts();
+          void loadDiscounts(true);
         } else {
           const errorData = await response.json();
           toast.error(errorData.message || "Failed to create discount code");
@@ -265,7 +289,7 @@ export function VendorAdminDiscounts({ vendorId, vendorName }: VendorAdminDiscou
 
       if (response.ok) {
         toast.success("Discount code deleted successfully!");
-        loadDiscounts();
+        void loadDiscounts(true);
       } else {
         toast.error("Failed to delete discount code");
       }
@@ -327,7 +351,7 @@ export function VendorAdminDiscounts({ vendorId, vendorName }: VendorAdminDiscou
 
       if (response.ok) {
         toast.success(`Discount ${newStatus === "active" ? "activated" : "deactivated"}!`);
-        loadDiscounts();
+        void loadDiscounts(true);
       }
     } catch (error) {
       console.error("Failed to toggle status:", error);
@@ -579,8 +603,44 @@ export function VendorAdminDiscounts({ vendorId, vendorName }: VendorAdminDiscou
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin"></div>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-10 w-40" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="p-4 border-slate-200">
+              <div className="space-y-3">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-8 w-16" />
+              </div>
+            </Card>
+          ))}
+        </div>
+        <Card className="p-4 border-slate-200">
+          <div className="flex gap-4">
+            <Skeleton className="h-10 flex-1" />
+            <Skeleton className="h-10 w-[180px]" />
+          </div>
+        </Card>
+        <div className="space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="p-4 border-slate-200">
+              <div className="flex items-start gap-4">
+                <Skeleton className="h-12 w-12 rounded-lg" />
+                <div className="flex-1 space-y-3">
+                  <Skeleton className="h-5 w-44" />
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-4 w-56" />
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }

@@ -5750,8 +5750,31 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
       return c.json({ error: "Vendor not found" }, 404);
     }
     
-    // Delete vendor settings
     const vendorSettings = await withTimeout(kv.get(`vendor_settings:${vendorId}`), 5000);
+    const vendorStorefront = await withTimeout(kv.get(`vendor_storefront_${vendorId}`), 5000);
+
+    // Hard-delete owned storage files tied to this vendor profile/settings/storefront.
+    const vendorStorageRefs: unknown[] = [];
+    if (vendor && typeof vendor === "object") {
+      vendorStorageRefs.push((vendor as any).logo, (vendor as any).avatar, (vendor as any).banner);
+    }
+    if (vendorSettings && typeof vendorSettings === "object") {
+      vendorStorageRefs.push(
+        (vendorSettings as any).logo,
+        (vendorSettings as any).avatar,
+        (vendorSettings as any).banner
+      );
+    }
+    if (vendorStorefront && typeof vendorStorefront === "object") {
+      vendorStorageRefs.push(
+        (vendorStorefront as any).logo,
+        (vendorStorefront as any).avatar,
+        (vendorStorefront as any).banner
+      );
+    }
+    await deleteOwnedStorageRefs(supabase, vendorStorageRefs);
+
+    // Delete vendor settings
     if (vendorSettings) {
       await withTimeout(kv.del(`vendor_settings:${vendorId}`), 5000);
       console.log(`✅ Deleted vendor settings: ${vendorId}`);
@@ -5761,6 +5784,64 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
         await withTimeout(kv.del(`vendor_slug_${vendorSettings.storeSlug}`), 5000);
         console.log(`✅ Deleted slug mapping: ${vendorSettings.storeSlug}`);
       }
+    }
+
+    // Delete storefront profile/settings cache row for this vendor
+    await withTimeout(kv.del(`vendor_storefront_${vendorId}`), 5000);
+    if (vendorStorefront && typeof vendorStorefront === "object" && (vendorStorefront as any).storeSlug) {
+      await withTimeout(kv.del(`vendor_slug_${(vendorStorefront as any).storeSlug}`), 5000);
+      console.log(`✅ Deleted storefront slug mapping: ${(vendorStorefront as any).storeSlug}`);
+    }
+
+    // Remove verified/pending custom-domain host mappings for this vendor.
+    const customDomain =
+      vendorStorefront && typeof vendorStorefront === "object"
+        ? String((vendorStorefront as any).customDomain || "").toLowerCase().trim()
+        : "";
+    if (customDomain) {
+      for (const h of customDomainLookupVariants(customDomain)) {
+        await withTimeout(kv.del(`custom_domain_host:${h}`), 5000);
+      }
+      for (const k of vendorPendingHostKvKeys(customDomain)) {
+        await withTimeout(kv.del(k), 5000);
+      }
+    }
+    await withTimeout(kv.del(`vendor_domain_pending:${vendorId}`), 5000);
+
+    // Remove this vendor from product assignments so deleted vendors cannot appear in listings.
+    const allProducts = await withTimeout(kv.getByPrefix("product:"), 10000);
+    const validProducts = Array.isArray(allProducts) ? allProducts.filter((p) => p && typeof p === "object") : [];
+    let detachedCount = 0;
+    for (const product of validProducts) {
+      const productId = (product as any).id;
+      if (!productId) continue;
+      const selected = Array.isArray((product as any).selectedVendors)
+        ? (product as any).selectedVendors.map((x: any) => String(x))
+        : [];
+      const nextSelected = selected.filter((x: string) => x !== String(vendorId));
+      const hadSelectedVendor = nextSelected.length !== selected.length;
+      const hadVendorId = String((product as any).vendorId || "") === String(vendorId);
+      const hadVendorField = String((product as any).vendor || "") === String(vendorId);
+      if (!hadSelectedVendor && !hadVendorId && !hadVendorField) continue;
+
+      const nextPrimary = nextSelected[0] || "";
+      const nextProduct = {
+        ...(product as any),
+        selectedVendors: nextSelected,
+        vendorId: hadVendorId ? nextPrimary : (product as any).vendorId,
+        vendor: hadVendorField ? nextPrimary : (product as any).vendor,
+        updatedAt: new Date().toISOString(),
+      };
+      if (!nextPrimary && String(nextProduct.status || "").toLowerCase() === "active") {
+        nextProduct.status = "off_shelf";
+      }
+      await withTimeout(kv.set(`product:${productId}`, nextProduct), 5000);
+      detachedCount += 1;
+    }
+    if (detachedCount > 0) {
+      console.log(`✅ Detached deleted vendor ${vendorId} from ${detachedCount} products`);
+      clearCache("products");
+      serverCache.delete("all_products");
     }
     
     // Delete vendor data
@@ -6030,6 +6111,13 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
       updatedAt: new Date().toISOString(),
     };
 
+    const prevLogoRef =
+      typeof (existingVendor as any)?.logo === "string" && (existingVendor as any).logo.trim()
+        ? (existingVendor as any).logo
+        : typeof (existingVendor as any)?.avatar === "string" && (existingVendor as any).avatar.trim()
+          ? (existingVendor as any).avatar
+          : "";
+
     /** Keep storefront + admin list in sync: public catalog prefers `vendor_storefront_*.logo`, then `vendor.avatar`. */
     const logoTouched =
       Object.prototype.hasOwnProperty.call(body, "logo") ||
@@ -6059,6 +6147,11 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
           : typeof updatedVendor.avatar === "string"
             ? updatedVendor.avatar
             : "";
+      const normalizedPrev = String(prevLogoRef || "").trim();
+      const normalizedNext = String(nextLogo || "").trim();
+      if (normalizedPrev && normalizedPrev !== normalizedNext) {
+        await deleteOwnedStorageRefs(supabase, [normalizedPrev]);
+      }
       try {
         const vsKey = `vendor_settings:${id}`;
         const existingVs = await withTimeout(kv.get(vsKey), 5000);
@@ -8778,6 +8871,13 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
       const fast = await kv.get(`custom_domain_host:${hostKey}`);
       if (fast?.vendorId && fast?.storeSlug) {
         const vendor = await kv.get(`vendor:${fast.vendorId}`);
+        if (!vendor) {
+          // Self-heal stale host mapping when vendor was deleted.
+          for (const h of customDomainLookupVariants(hostKey)) {
+            await kv.del(`custom_domain_host:${h}`);
+          }
+          continue;
+        }
         return c.json({
           vendorId: fast.vendorId,
           storeSlug: fast.storeSlug,

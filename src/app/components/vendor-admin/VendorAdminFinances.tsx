@@ -36,6 +36,7 @@ import {
   getCachedVendorOrders,
   getCachedVendorProductsAdmin,
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+  moduleCache,
 } from "../../utils/module-cache";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import {
@@ -125,11 +126,28 @@ export function VendorAdminFinances({
   vendorName,
   vendorStoreSlug,
 }: VendorAdminFinancesProps) {
-  const [loading, setLoading] = useState(true);
+  const ordersCacheKey = `vendor-orders-${vendorId}`;
+  const productsCacheKey = `vendor-products-admin-${vendorId}`;
+  const slugKey = (vendorStoreSlug && vendorStoreSlug.trim()) || vendorId;
+  const contractPctCacheKey = `vendor-contract-commission-${slugKey}`;
+
+  const cachedOrders = moduleCache.peek<any[]>(ordersCacheKey) ?? [];
+  const cachedProductsPayload =
+    moduleCache.peek<{ products?: any[] }>(productsCacheKey) ?? null;
+  const cachedProducts = cachedProductsPayload?.products ?? [];
+  const cachedContractPct = moduleCache.peek<number>(contractPctCacheKey);
+  const hasWarmCache =
+    moduleCache.has(ordersCacheKey) ||
+    moduleCache.has(productsCacheKey) ||
+    moduleCache.has(contractPctCacheKey);
+
+  const [loading, setLoading] = useState(!hasWarmCache);
   const [timeFilter, setTimeFilter] = useState<"3months" | "6months" | "12months">("6months");
-  const [rawOrders, setRawOrders] = useState<any[]>([]);
-  const [rawProducts, setRawProducts] = useState<any[]>([]);
-  const [vendorContractCommissionPct, setVendorContractCommissionPct] = useState(15);
+  const [rawOrders, setRawOrders] = useState<any[]>(cachedOrders);
+  const [rawProducts, setRawProducts] = useState<any[]>(cachedProducts);
+  const [vendorContractCommissionPct, setVendorContractCommissionPct] = useState(
+    typeof cachedContractPct === "number" ? cachedContractPct : 15
+  );
   const [txPage, setTxPage] = useState(1);
   const [txPageSize, setTxPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [dateFilter, setDateFilter] = useState({
@@ -140,7 +158,7 @@ export function VendorAdminFinances({
   });
 
   useEffect(() => {
-    void loadFinancialData(true);
+    void loadFinancialData(false);
   }, [vendorId, vendorStoreSlug]);
 
   useEffect(() => {
@@ -155,11 +173,14 @@ export function VendorAdminFinances({
     const hasWarmData = rawOrders.length > 0 || rawProducts.length > 0;
     if (!hasWarmData) setLoading(true);
     try {
-      const slugKey = (vendorStoreSlug && vendorStoreSlug.trim()) || vendorId;
       const [vendorOrders, productsPayload, contractPct] = await Promise.all([
         getCachedVendorOrders(vendorId, forceRefresh).catch(() => [] as any[]),
         getCachedVendorProductsAdmin(vendorId, forceRefresh).catch(() => ({ products: [] as any[] })),
-        fetchVendorContractCommissionPercent(slugKey),
+        moduleCache.get(
+          contractPctCacheKey,
+          () => fetchVendorContractCommissionPercent(slugKey),
+          forceRefresh
+        ),
       ]);
       setRawOrders(Array.isArray(vendorOrders) ? vendorOrders : []);
       setRawProducts(productsPayload.products || []);

@@ -3,14 +3,24 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
 import { cacheManager } from "../utils/cacheManager";
+import { SmartCache } from "../utils/cache";
 import {
   moduleCache,
   CACHE_KEYS,
   fetchAllVendors,
   getCachedAdminVendorApplications,
   invalidateAdminVendorApplicationsCache,
+  invalidateVendorProductsAdminCache,
+  invalidateVendorOrdersCache,
+  invalidateVendorStorefrontCatalogCache,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
 } from "../utils/module-cache";
+import {
+  LS_LANDING_CATEGORIES,
+  LS_LANDING_STATS,
+  LS_LANDING_VENDORS,
+  removePersistedKey,
+} from "../utils/persistedLocalCache";
 import { formatNumber } from "../../utils/formatNumber";
 import {
   Search,
@@ -70,6 +80,18 @@ type VendorStatus = "active" | "inactive" | "pending" | "suspended" | "banned";
 
 // 🚀 MODULE-LEVEL CACHE: Persists across component unmount/remount
 let cachedVendors: any[] = [];
+
+function invalidateVendorDeletionCaches(vendorId: string): void {
+  // Clear all known vendor-scoped caches so deleted vendors disappear immediately across tabs/views.
+  invalidateVendorProductsAdminCache(vendorId);
+  invalidateVendorOrdersCache(vendorId);
+  invalidateVendorStorefrontCatalogCache(vendorId);
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+  SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+  removePersistedKey(LS_LANDING_VENDORS);
+  removePersistedKey(LS_LANDING_STATS);
+  removePersistedKey(LS_LANDING_CATEGORIES);
+}
 
 interface Vendor {
   id: string;
@@ -486,7 +508,7 @@ export function Vendor({
 
       // Invalidate cache and reload fresh data
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
-      await loadVendors();
+      await loadVendors(true);
       
       // Close dialog and reset form
       setShowAddForm(false);
@@ -582,9 +604,10 @@ export function Vendor({
         throw new Error(`Failed to delete vendor: ${response.statusText}`);
       }
 
-      // Invalidate cache and reload fresh data
-      moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
-      await loadVendors();
+      invalidateVendorDeletionCaches(vendorId);
+      cachedVendors = cachedVendors.filter((v: any) => String(v?.id) !== String(vendorId));
+      window.dispatchEvent(new CustomEvent("vendorDataUpdated", { detail: { vendorId } }));
+      await loadVendors(true);
       
       // Remove from selection if selected
       setSelectedVendors(selectedVendors.filter(id => id !== vendorId));
@@ -627,8 +650,11 @@ export function Vendor({
         throw new Error(`Failed to delete ${failedDeletions.length} vendor(s)`);
       }
 
-      // Invalidate cache and reload fresh data
-      moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+      selectedVendors.forEach((vendorId) => invalidateVendorDeletionCaches(vendorId));
+      cachedVendors = cachedVendors.filter(
+        (v: any) => !selectedVendors.includes(String(v?.id))
+      );
+      window.dispatchEvent(new CustomEvent("vendorDataUpdated", { detail: { vendorIds: selectedVendors } }));
       await loadVendors();
       
       // Clear selection

@@ -129,6 +129,7 @@ class ModuleCache {
   invalidate(key: string): void {
     console.log(`🗑️ [MODULE CACHE] Invalidated ${key}`);
     this.cache.delete(key);
+    this.loading.delete(key);
   }
 
   invalidatePrefix(prefix: string): void {
@@ -522,6 +523,38 @@ export async function getCachedAdminVendorApplications(
 
 export function invalidateAdminVendorApplicationsCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS);
+}
+
+/**
+ * Vendor application lifecycle signal (submit/approve/reject) so admin SPA refreshes instantly
+ * without waiting for polling intervals or full page reload.
+ */
+export const ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT = "adminVendorApplicationsUpdated";
+export const ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY =
+  "migoo-admin-vendor-applications-updated-v1";
+
+export function notifyAdminVendorApplicationsUpdated(reason?: string): void {
+  if (typeof window === "undefined") return;
+  const payload = { at: Date.now(), reason: reason || "mutation" };
+  try {
+    window.dispatchEvent(
+      new CustomEvent(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT, { detail: payload })
+    );
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    /* ignore */
+  }
+  try {
+    const bc = new BroadcastChannel(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT);
+    bc.postMessage(payload);
+    bc.close();
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Super Admin orders API — full payload (supports warning + order shape for Vendor Profile). */
