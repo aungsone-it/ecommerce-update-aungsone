@@ -136,10 +136,10 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
       }
 
       console.log(
-        '✅ [VendorLogin] No subdomain map for slug; using path admin:',
+        '✅ [VendorLogin] No subdomain map for slug; using vendor path admin:',
         merged.storeSlug
       );
-      navigate(`/store/${encodeURIComponent(merged.storeSlug)}/admin`, { replace: true });
+      navigate(`/vendor/${encodeURIComponent(merged.storeSlug)}/admin`, { replace: true });
     })();
 
     return () => {
