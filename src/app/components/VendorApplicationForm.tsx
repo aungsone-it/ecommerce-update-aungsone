@@ -28,6 +28,7 @@ interface VendorApplicationFormProps {
 export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplicationFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [formData, setFormData] = useState({
     // Business Information
     companyName: "",
@@ -95,6 +96,89 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     "Other"
   ];
 
+  const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const PHONE_REGEX = /^\+?[0-9\s\-()]{7,20}$/;
+
+  const getFieldError = (name: string, value: string | number | boolean) => {
+    const stringValue = typeof value === "string" ? value.trim() : value;
+
+    switch (name) {
+      case "companyName":
+      case "contactName":
+      case "storeName":
+        if (!stringValue) return "This field is required.";
+        if (typeof stringValue === "string" && stringValue.length < 2) {
+          return "Must be at least 2 characters.";
+        }
+        return "";
+      case "businessType":
+        if (!stringValue) return "Please select a business type.";
+        return "";
+      case "email":
+        if (!stringValue) return "Email is required.";
+        if (typeof stringValue === "string" && !EMAIL_REGEX.test(stringValue)) {
+          return "Enter a valid email address.";
+        }
+        return "";
+      case "phone":
+        if (!stringValue) return "Phone number is required.";
+        if (typeof stringValue === "string" && !PHONE_REGEX.test(stringValue)) {
+          return "Enter a valid phone number.";
+        }
+        return "";
+      case "storeDescription":
+        if (!stringValue) return "Store description is required.";
+        if (typeof stringValue === "string" && stringValue.length < 20) {
+          return "Description must be at least 20 characters.";
+        }
+        return "";
+      case "estimatedProducts":
+        if (stringValue === "") return "";
+        if (Number.isNaN(Number(stringValue)) || Number(stringValue) < 0) {
+          return "Estimated products must be 0 or greater.";
+        }
+        return "";
+      default:
+        return "";
+    }
+  };
+
+  const validateForm = () => {
+    const nextErrors: Record<string, string> = {};
+    const requiredFields = [
+      "companyName",
+      "contactName",
+      "email",
+      "phone",
+      "businessType",
+      "storeName",
+      "storeDescription",
+      "estimatedProducts",
+    ];
+
+    requiredFields.forEach((fieldName) => {
+      const fieldError = getFieldError(fieldName, formData[fieldName as keyof typeof formData]);
+      if (fieldError) {
+        nextErrors[fieldName] = fieldError;
+      }
+    });
+
+    if (formData.categories.length === 0) {
+      nextErrors.categories = "Please select at least one product category.";
+    }
+
+    if (!files.businessLicense || !files.idDocument) {
+      nextErrors.documents = "Please upload both business license and ID document.";
+    }
+
+    if (!formData.agreeToTerms || !formData.acceptPrivacy) {
+      nextErrors.terms = "You must accept terms and privacy policy before submitting.";
+    }
+
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     
@@ -104,10 +188,24 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
         [name]: (e.target as HTMLInputElement).checked
       }));
     } else {
+      const normalizedValue = name === "estimatedProducts"
+        ? (value === "" ? 0 : Number(value))
+        : value;
       setFormData(prev => ({
         ...prev,
-        [name]: value
+        [name]: normalizedValue
       }));
+    }
+
+    if (errors[name]) {
+      const fieldError = getFieldError(name, value);
+      setErrors(prev => {
+        if (!fieldError) {
+          const { [name]: _, ...rest } = prev;
+          return rest;
+        }
+        return { ...prev, [name]: fieldError };
+      });
     }
   };
 
@@ -118,6 +216,10 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
         ? prev.categories.filter(c => c !== category)
         : [...prev.categories, category]
     }));
+    setErrors(prev => {
+      const { categories: _, ...rest } = prev;
+      return rest;
+    });
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, fileType: keyof typeof files) => {
@@ -133,6 +235,10 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
       
       // Compress the file before storing
       compressFile(file, fileType);
+      setErrors(prev => {
+        const { documents: _, ...rest } = prev;
+        return rest;
+      });
     }
   };
 
@@ -278,53 +384,23 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     }));
   };
 
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    const fieldError = getFieldError(name, value);
+    setErrors(prev => {
+      if (!fieldError) {
+        const { [name]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [name]: fieldError };
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Validate required text fields
-    if (!formData.companyName || !formData.contactName || !formData.email || !formData.phone) {
-      toast.error("Missing Required Fields", {
-        description: "Please fill in all required fields"
-      });
-      return;
-    }
-
-    // Validate store details
-    if (!formData.storeName || !formData.storeDescription) {
-      toast.error("Missing Store Details", {
-        description: "Please provide store name and description"
-      });
-      return;
-    }
-
-    // Validate business type
-    if (!formData.businessType) {
-      toast.error("Missing Business Type", {
-        description: "Please select your business type"
-      });
-      return;
-    }
-
-    // Validate terms and privacy
-    if (!formData.agreeToTerms || !formData.acceptPrivacy) {
-      toast.error("Terms Required", {
-        description: "You must agree to the terms and conditions and privacy policy"
-      });
-      return;
-    }
-
-    // Validate file uploads
-    if (!files.businessLicense || !files.idDocument) {
-      toast.error("Documents Required", {
-        description: "Please upload both business license and ID document"
-      });
-      return;
-    }
-
-    // Validate categories
-    if (formData.categories.length === 0) {
-      toast.error("Categories Required", {
-        description: "Please select at least one product category"
+    if (!validateForm()) {
+      toast.error("Please fix form errors", {
+        description: "Some required fields are missing or invalid."
       });
       return;
     }
@@ -500,10 +576,14 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   name="companyName"
                   value={formData.companyName}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
                   required
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                   placeholder="ABC Trading Co."
                 />
+                {errors.companyName && (
+                  <p className="mt-1 text-xs text-red-600">{errors.companyName}</p>
+                )}
               </div>
 
               <div>
@@ -514,6 +594,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   name="businessType"
                   value={formData.businessType}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
                   required
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                 >
@@ -522,6 +603,9 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                     <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
+                {errors.businessType && (
+                  <p className="mt-1 text-xs text-red-600">{errors.businessType}</p>
+                )}
               </div>
 
               <div className="md:col-span-2">
@@ -562,10 +646,14 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   name="contactName"
                   value={formData.contactName}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
                   required
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                   placeholder="John Doe"
                 />
+                {errors.contactName && (
+                  <p className="mt-1 text-xs text-red-600">{errors.contactName}</p>
+                )}
               </div>
 
               <div>
@@ -577,10 +665,14 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
                   required
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                   placeholder="john@example.com"
                 />
+                {errors.email && (
+                  <p className="mt-1 text-xs text-red-600">{errors.email}</p>
+                )}
               </div>
 
               <div className="md:col-span-2">
@@ -588,14 +680,19 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   Phone Number *
                 </label>
                 <input
-                  type="number"
+                  type="tel"
                   name="phone"
                   value={formData.phone}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
+                  inputMode="tel"
                   required
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                   placeholder="+95 9 XXX XXX XXX"
                 />
+                {errors.phone && (
+                  <p className="mt-1 text-xs text-red-600">{errors.phone}</p>
+                )}
               </div>
             </div>
           </div>
@@ -622,10 +719,14 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   name="storeName"
                   value={formData.storeName}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
                   required
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                   placeholder="My Awesome Store"
                 />
+                {errors.storeName && (
+                  <p className="mt-1 text-xs text-red-600">{errors.storeName}</p>
+                )}
               </div>
 
               <div>
@@ -636,11 +737,15 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   name="storeDescription"
                   value={formData.storeDescription}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
                   required
                   rows={4}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all resize-none"
                   placeholder="Describe what your store sells and what makes it unique..."
                 />
+                {errors.storeDescription && (
+                  <p className="mt-1 text-xs text-red-600">{errors.storeDescription}</p>
+                )}
               </div>
 
               <div>
@@ -665,6 +770,9 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                     </label>
                   ))}
                 </div>
+                {errors.categories && (
+                  <p className="mt-1 text-xs text-red-600">{errors.categories}</p>
+                )}
               </div>
 
               <div>
@@ -676,9 +784,14 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   name="estimatedProducts"
                   value={formData.estimatedProducts}
                   onChange={handleInputChange}
+                  onBlur={handleBlur}
+                  min={0}
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all md:max-w-md"
                   placeholder="100"
                 />
+                {errors.estimatedProducts && (
+                  <p className="mt-1 text-xs text-red-600">{errors.estimatedProducts}</p>
+                )}
               </div>
             </div>
           </div>
@@ -886,6 +999,9 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                 )}
               </div>
             </div>
+            {errors.documents && (
+              <p className="mt-3 text-xs text-red-600">{errors.documents}</p>
+            )}
           </div>
 
           {/* Terms and Conditions */}
@@ -894,7 +1010,13 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
               <Checkbox
                 id="agreeToTerms"
                 checked={formData.agreeToTerms}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, agreeToTerms: checked as boolean }))}
+                onCheckedChange={(checked) => {
+                  setFormData(prev => ({ ...prev, agreeToTerms: checked as boolean }));
+                  setErrors(prev => {
+                    const { terms: _, ...rest } = prev;
+                    return rest;
+                  });
+                }}
                 className="mt-0.5"
               />
               <Label htmlFor="agreeToTerms" className="text-sm text-slate-700 cursor-pointer font-normal">
@@ -906,7 +1028,13 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
               <Checkbox
                 id="acceptPrivacy"
                 checked={formData.acceptPrivacy}
-                onCheckedChange={(checked) => setFormData(prev => ({ ...prev, acceptPrivacy: checked as boolean }))}
+                onCheckedChange={(checked) => {
+                  setFormData(prev => ({ ...prev, acceptPrivacy: checked as boolean }));
+                  setErrors(prev => {
+                    const { terms: _, ...rest } = prev;
+                    return rest;
+                  });
+                }}
                 className="mt-0.5"
               />
               <Label htmlFor="acceptPrivacy" className="text-sm text-slate-700 cursor-pointer font-normal">
@@ -914,6 +1042,9 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
               </Label>
             </div>
           </div>
+          {errors.terms && (
+            <p className="text-xs text-red-600">{errors.terms}</p>
+          )}
 
           {/* Submit Button */}
           <div className="flex flex-col sm:flex-row gap-4">
