@@ -74,7 +74,7 @@ export function VendorSetup() {
           setError('');
           toast.info('Your account is already set up. Redirecting to login...');
           setTimeout(() => {
-            navigate('/vendor/:vendorId/admin');
+            navigate('/vendor/login');
           }, 1500);
           setLoading(false);
           return;
@@ -142,7 +142,7 @@ export function VendorSetup() {
         
         // Redirect to vendor login after 2 seconds
         setTimeout(() => {
-          navigate('/vendor/:vendorId/admin');
+          navigate('/vendor/login');
         }, 2000);
       } else {
         setError('Failed to set up credentials. Please try again.');
@@ -392,7 +392,7 @@ export function VendorSetup() {
               </p>
               <div className="space-y-3">
                 <Button
-                  onClick={() => navigate('/vendor/:vendorId/admin')}
+                  onClick={() => navigate('/vendor/login')}
                   className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg shadow-blue-600/30 transition-all duration-200"
                 >
                   Go to Vendor Login
@@ -422,7 +422,7 @@ export function VendorSetup() {
               </p>
               <div className="space-y-3">
                 <Button
-                  onClick={() => navigate('/vendor/:vendorId/admin')}
+                  onClick={() => navigate('/vendor/login')}
                   className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg shadow-blue-600/30 transition-all duration-200"
                 >
                   Go to Login
@@ -446,7 +446,7 @@ export function VendorSetup() {
               Already set up your account?{' '}
               <button
                 type="button"
-                onClick={() => navigate('/vendor/:vendorId/admin')}
+                onClick={() => navigate('/vendor/login')}
                 className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
               >
                 Login here

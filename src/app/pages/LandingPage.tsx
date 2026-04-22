@@ -411,8 +411,24 @@ export function LandingPage() {
             <div>
               <h4 className="text-white font-semibold mb-4">Vendor</h4>
               <ul className="space-y-2 text-sm">
-                <li><a href="/vendor/application" className="hover:text-white">Apply Now</a></li>
-                <li><a href="/vendor/login" className="hover:text-white">Vendor Login</a></li>
+                <li>
+                  <button
+                    type="button"
+                    className="hover:text-white transition-colors"
+                    onClick={() => navigate("/vendor/application")}
+                  >
+                    Apply Now
+                  </button>
+                </li>
+                <li>
+                  <button
+                    type="button"
+                    className="hover:text-white transition-colors"
+                    onClick={() => navigate("/vendor/login")}
+                  >
+                    Vendor Login
+                  </button>
+                </li>
               </ul>
             </div>
             <div>
