@@ -57,6 +57,7 @@ function RootLayoutContent() {
     location.pathname === '/store/reset-password' ||
     /^\/store\/[^/]+\/reset-password$/.test(location.pathname) ||
     /^\/vendor\/[^/]+\/reset-password$/.test(location.pathname);
+  const isVendorLoginPage = location.pathname === '/vendor/login';
   const isAdminPortal = isAdminPortalRoute(location.pathname);
 
   return (
@@ -71,6 +72,7 @@ function RootLayoutContent() {
         !isVendorApplicationPage &&
         !isLandingPage &&
         !isResetPasswordPage &&
+        !isVendorLoginPage &&
         !isAdminPortal && (
         <FloatingChat 
           customerName={user?.fullName || user?.firstName || "Guest"}

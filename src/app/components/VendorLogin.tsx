@@ -5,6 +5,7 @@ import { ArrowLeft, Eye, EyeOff, Store } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { resolveVendorSubdomainStoreSlug } from '../utils/vendorSubdomainHooks';
 import { shouldResolveCustomDomainHost } from '../utils/vendorHostResolution';
+import { useResolvedVendorHostSlug } from '../utils/vendorHostResolution';
 import { getEffectiveVendorSubdomainBase } from '../utils/vendorSubdomainBase';
 import { subdomainHostLabelForVendorProfile } from '../utils/subdomainSlugMap';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
@@ -63,6 +64,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   const { login, vendor } = useVendorAuth();
   const { t } = useLanguage();
   const navigate = useNavigate();
+  const { slug: resolvedHostSlug, loading: hostSlugLoading } = useResolvedVendorHostSlug();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -80,12 +82,10 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   // After login: prefer vendor subdomain /admin when slug/name maps; else /store/:slug/admin.
   // Re-fetch storefront so storeName/slug match KV before resolving gogo.* (branding-page login).
   useEffect(() => {
+    if (hostSlugLoading) return;
     if (!vendor?.vendorId || !vendor.storeSlug) return;
 
-    const onVendorHost =
-      !!resolveVendorSubdomainStoreSlug() ||
-      (typeof window !== 'undefined' &&
-        shouldResolveCustomDomainHost(window.location.hostname));
+    const onVendorHost = !!resolveVendorSubdomainStoreSlug() || !!resolvedHostSlug;
     if (onVendorHost) {
       console.log('✅ [VendorLogin] On vendor host → /admin');
       navigate('/admin', { replace: true });
@@ -145,7 +145,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
     return () => {
       cancelled = true;
     };
-  }, [vendor, navigate]);
+  }, [vendor, navigate, resolvedHostSlug, hostSlugLoading]);
 
   // Fetch vendor data to get the actual name
   useEffect(() => {
