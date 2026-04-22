@@ -14,7 +14,10 @@ import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { resolveVendorSubdomainStoreSlug } from "./utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "./utils/vendorHostResolution";
-import { AdminEntryLayout, AdminSubdomainLeaf } from "./components/AdminSubdomainOrSuper";
+import {
+  AdminEntryLayout,
+  AdminSubdomainLeaf,
+} from "./components/AdminSubdomainOrSuper";
 import {
   VendorHostOrMarketplaceSaved,
   VendorHostOrMarketplaceProduct,
@@ -23,39 +26,51 @@ import {
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
-  import("./pages/LandingPage").then((m) => ({ default: m.LandingPage }))
+  import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })),
 );
 const StorefrontPage = lazy(() =>
-  import("./pages/StorefrontPage").then((m) => ({ default: m.StorefrontPage }))
+  import("./pages/StorefrontPage").then((m) => ({ default: m.StorefrontPage })),
 );
 const VendorApplicationPage = lazy(() =>
-  import("./pages/VendorApplicationPage").then((m) => ({ default: m.VendorApplicationPage }))
+  import("./pages/VendorApplicationPage").then((m) => ({
+    default: m.VendorApplicationPage,
+  })),
 );
 const VendorSetupPage = lazy(() =>
-  import("./pages/VendorSetupPage").then((m) => ({ default: m.VendorSetupPage }))
+  import("./pages/VendorSetupPage").then((m) => ({
+    default: m.VendorSetupPage,
+  })),
 );
 const VendorStorefrontPage = lazy(() =>
-  import("./pages/VendorStorefrontPage").then((m) => ({ default: m.VendorStorefrontPage }))
+  import("./pages/VendorStorefrontPage").then((m) => ({
+    default: m.VendorStorefrontPage,
+  })),
 );
 const VendorAdminPage = lazy(() =>
-  import("./pages/VendorAdminPage").then((m) => ({ default: m.VendorAdminPage }))
+  import("./pages/VendorAdminPage").then((m) => ({
+    default: m.VendorAdminPage,
+  })),
 );
 const VendorAdminProductViewPage = lazy(() =>
   import("./pages/VendorAdminProductViewPage").then((m) => ({
     default: m.VendorAdminProductViewPage,
-  }))
+  })),
 );
 const AdminSlugFixer = lazy(() =>
-  import("./components/AdminSlugFixer").then((m) => ({ default: m.AdminSlugFixer }))
+  import("./components/AdminSlugFixer").then((m) => ({
+    default: m.AdminSlugFixer,
+  })),
 );
 const ResetPasswordPage = lazy(() =>
-  import("./pages/ResetPasswordPage").then((m) => ({ default: m.ResetPasswordPage }))
+  import("./pages/ResetPasswordPage").then((m) => ({
+    default: m.ResetPasswordPage,
+  })),
 );
 const SetupPage = lazy(() =>
-  import("./pages/SetupPage").then((m) => ({ default: m.SetupPage }))
+  import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })),
 );
 const VendorAuthPage = lazy(() =>
-  import("./pages/VendorAuthPage").then((m) => ({ default: m.VendorAuthPage }))
+  import("./pages/VendorAuthPage").then((m) => ({ default: m.VendorAuthPage })),
 );
 
 function VendorSubdomainIndexOrLanding() {

@@ -59,7 +59,8 @@ export function removePersistedKey(key: string): void {
 }
 
 /** Marketplace first-page catalog (raw API body from GET products?bootstrap=1). */
-export const LS_STOREFRONT_CATALOG_BOOTSTRAP = "migoo-ls-storefront-catalog-bootstrap-v2";
+export const LS_STOREFRONT_CATALOG_BOOTSTRAP =
+  "migoo-ls-storefront-catalog-bootstrap-v2";
 
 /** Full categories array as returned by fetchAllCategories (before active filter). */
 export const LS_STOREFRONT_CATEGORIES = "migoo-ls-storefront-categories-v2";
@@ -71,7 +72,7 @@ export function lsVendorCatalogPage1Key(
   vendorId: string,
   qNorm: string,
   category: string,
-  pageSize: number
+  pageSize: number,
 ): string {
   const safeVendor = encodeURIComponent(String(vendorId));
   const safeQ = encodeURIComponent(qNorm || "_");
@@ -90,7 +91,7 @@ export function lsVendorSavedWishlistPageKey(
   vendorId: string,
   wishlistSig: string,
   page: number,
-  pageSize: number
+  pageSize: number,
 ): string {
   const p = Math.max(1, page);
   const ps = Math.min(100, Math.max(1, pageSize));
@@ -103,7 +104,8 @@ export function lsWishlistProductIdsKey(userId: string): string {
 }
 
 /** `/` landing — GET platform-settings JSON body */
-export const LS_LANDING_PLATFORM_SETTINGS = "migoo-ls-landing-platform-settings-v1";
+export const LS_LANDING_PLATFORM_SETTINGS =
+  "migoo-ls-landing-platform-settings-v1";
 
 /** `/` landing — GET vendors list JSON body (`{ vendors, total }`) */
 export const LS_LANDING_VENDORS = "migoo-ls-landing-vendors-v1";
@@ -147,7 +149,8 @@ export function lsAdminOrdersPage1Key(opts: {
 }
 
 /** Super Admin finances analytics (`GET finances/analytics`) — instant paint after reload; always revalidated in background. */
-export const LS_ADMIN_FINANCES_ANALYTICS = "migoo-ls-admin-finances-analytics-v1";
+export const LS_ADMIN_FINANCES_ANALYTICS =
+  "migoo-ls-admin-finances-analytics-v1";
 
 /** Settings → Users tab: raw `GET auth/users` array — instant paint; revalidated in background. */
 export const LS_ADMIN_AUTH_USERS = "migoo-ls-admin-auth-users-v1";
