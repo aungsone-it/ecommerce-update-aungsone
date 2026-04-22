@@ -8,6 +8,7 @@ import { shouldResolveCustomDomainHost } from '../utils/vendorHostResolution';
 import { useResolvedVendorHostSlug } from '../utils/vendorHostResolution';
 import { getEffectiveVendorSubdomainBase } from '../utils/vendorSubdomainBase';
 import { subdomainHostLabelForVendorProfile } from '../utils/subdomainSlugMap';
+import { storeSlugFromBusinessName } from '../../utils/storeSlug';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -60,6 +61,24 @@ function pickDisplayVendorName(...candidates: Array<string | undefined>): string
   return humanizeStoreLabel(firstNonEmpty);
 }
 
+function fallbackHostLabelFromVendorProfile(input: {
+  storeName?: string;
+  businessName?: string;
+  name?: string;
+  email?: string;
+}): string | null {
+  const emailLocal =
+    input.email && input.email.includes("@")
+      ? input.email.split("@")[0]?.replace(/[^a-z0-9]+/gi, "") || ""
+      : "";
+  const candidates = [input.storeName, input.businessName, input.name, emailLocal];
+  for (const candidate of candidates) {
+    const slug = storeSlugFromBusinessName(String(candidate || "").trim());
+    if (slug && slug !== "store") return slug;
+  }
+  return null;
+}
+
 export function VendorLogin({ storeName }: VendorLoginProps) {
   const { login, vendor } = useVendorAuth();
   const { t } = useLanguage();
@@ -95,6 +114,8 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
     let cancelled = false;
     (async () => {
       let merged = { ...vendor };
+      let storefrontCustomDomain = "";
+      let storefrontDomainStatus = "";
       try {
         const res = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${encodeURIComponent(vendor.vendorId)}`,
@@ -102,7 +123,12 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
         );
         if (res.ok) {
           const data = (await res.json()) as {
-            settings?: { storeSlug?: string; storeName?: string };
+            settings?: {
+              storeSlug?: string;
+              storeName?: string;
+              customDomain?: string;
+              domainStatus?: string;
+            };
           };
           const s = data.settings;
           if (s) {
@@ -111,6 +137,8 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
               storeSlug: s.storeSlug?.trim() || merged.storeSlug,
               storeName: s.storeName?.trim() || merged.storeName,
             };
+            storefrontCustomDomain = String(s.customDomain || "").trim().toLowerCase();
+            storefrontDomainStatus = String(s.domainStatus || "").trim().toLowerCase();
           }
         }
       } catch {
@@ -118,15 +146,33 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
       }
       if (cancelled) return;
 
+      if (
+        typeof window !== 'undefined' &&
+        storefrontCustomDomain &&
+        storefrontDomainStatus === "verified"
+      ) {
+        const target = `${window.location.protocol}//${storefrontCustomDomain}/admin`;
+        console.log('✅ [VendorLogin] Redirecting to verified custom-domain admin:', target);
+        window.location.replace(target);
+        return;
+      }
+
       const base = getEffectiveVendorSubdomainBase();
-      const hostLabel = subdomainHostLabelForVendorProfile({
-        storeSlug: merged.storeSlug,
-        vendorId: merged.vendorId,
-        storeName: merged.storeName,
-        businessName: merged.businessName,
-        name: merged.name,
-        email: merged.email,
-      });
+      const hostLabel =
+        subdomainHostLabelForVendorProfile({
+          storeSlug: merged.storeSlug,
+          vendorId: merged.vendorId,
+          storeName: merged.storeName,
+          businessName: merged.businessName,
+          name: merged.name,
+          email: merged.email,
+        }) ||
+        fallbackHostLabelFromVendorProfile({
+          storeName: merged.storeName,
+          businessName: merged.businessName,
+          name: merged.name,
+          email: merged.email,
+        });
       if (base && hostLabel && typeof window !== 'undefined') {
         const proto = window.location.protocol;
         const target = `${proto}//${hostLabel}.${base}/admin`;
@@ -136,7 +182,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
       }
 
       console.log(
-        '✅ [VendorLogin] No subdomain map for slug; using vendor path admin:',
+        '✅ [VendorLogin] No host target resolved; using vendor path admin:',
         merged.storeSlug
       );
       navigate(`/vendor/${encodeURIComponent(merged.storeSlug)}/admin`, { replace: true });
