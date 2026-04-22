@@ -33,7 +33,6 @@ import {
   getCachedVendorProductsAdmin,
   invalidateVendorProductsAdminCache,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
-  primeVendorProductsAdminCache,
   moduleCache,
   CACHE_KEYS,
   getCachedAdminProductsPage,
@@ -121,50 +120,6 @@ interface VendorAdminProductsCRUDProps {
   vendorName: string;
   headerSearchQuery?: string;
   onHeaderSearchQueryChange?: (q: string) => void;
-}
-
-function normalizeCatalogProductToVendorProduct(row: any): Product {
-  const rawPrice = row?.price ?? row?.salePrice ?? row?.regularPrice;
-  let price = 0;
-  if (typeof rawPrice === "number") price = rawPrice;
-  if (typeof rawPrice === "string") {
-    price = parseFloat(rawPrice.replace(/[$,]/g, "")) || 0;
-  }
-
-  const statusRaw = String(row?.status || "active").trim().toLowerCase();
-  const status = statusRaw === "off-shelf" || statusRaw === "discontinued" ? statusRaw : "active";
-  const inventory = Number(row?.inventory ?? row?.stock ?? 0) || 0;
-
-  return {
-    id: String(row?.id ?? ""),
-    name: String(row?.name ?? "Untitled Product"),
-    sku: String(row?.sku ?? ""),
-    price,
-    compareAtPrice:
-      row?.compareAtPrice != null ? Number(row.compareAtPrice) || undefined : undefined,
-    costPerItem: row?.costPerItem != null ? Number(row.costPerItem) || undefined : undefined,
-    description: String(row?.description ?? ""),
-    images: Array.isArray(row?.images) ? row.images : [],
-    category: String(row?.category ?? "Uncategorized"),
-    inventory,
-    status,
-    vendor: row?.vendor ? String(row.vendor) : undefined,
-    hasVariants: !!row?.hasVariants,
-    variants: Array.isArray(row?.variants) ? row.variants : undefined,
-    variantOptions: Array.isArray(row?.variantOptions) ? row.variantOptions : undefined,
-    tags: Array.isArray(row?.tags) ? row.tags : undefined,
-    productType: row?.productType ? String(row.productType) : undefined,
-    weight: row?.weight ? String(row.weight) : undefined,
-    barcode: row?.barcode ? String(row.barcode) : undefined,
-    trackQuantity:
-      typeof row?.trackQuantity === "boolean" ? row.trackQuantity : undefined,
-    continueSellingOutOfStock:
-      typeof row?.continueSellingOutOfStock === "boolean"
-        ? row.continueSellingOutOfStock
-        : undefined,
-    createdAt: row?.createdAt ? String(row.createdAt) : undefined,
-    updatedAt: row?.updatedAt ? String(row.updatedAt) : undefined,
-  };
 }
 
 export function VendorAdminProductsCRUD({
@@ -600,30 +555,6 @@ export function VendorAdminProductsCRUD({
         toast.success(`${added} product(s) added to your store`);
       }
 
-      // Instant update: patch visible list immediately, then revalidate in background.
-      const catalogSource =
-        moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS) || allPlatformProducts;
-      const catalogById = new Map(
-        (Array.isArray(catalogSource) ? catalogSource : []).map((row: any) => [String(row?.id ?? ""), row])
-      );
-      setProducts((prev) => {
-        const removeSet = new Set(toRemove.map((id) => String(id)));
-        const next = prev.filter((p) => !removeSet.has(String(p.id)));
-        const existing = new Set(next.map((p) => String(p.id)));
-        for (const addId of toAdd) {
-          const id = String(addId);
-          if (existing.has(id)) continue;
-          const row = catalogById.get(id);
-          if (!row) continue;
-          const normalized = normalizeCatalogProductToVendorProduct(row);
-          if (!normalized.id) continue;
-          next.unshift(normalized);
-          existing.add(normalized.id);
-        }
-        primeVendorProductsAdminCache(vendorId, next);
-        return next;
-      });
-
       setShowProductSelectModal(false);
       setPickerSelectedIds([]);
       setPickerAssignedUncheckedIds([]);
@@ -633,7 +564,7 @@ export function VendorAdminProductsCRUD({
         vendorStoreSlug,
         routeStoreName,
       ]);
-      void loadProducts(true);
+      await loadProducts(true);
     } catch (error) {
       console.error("Error applying product picker changes:", error);
       toast.error(error instanceof Error ? error.message : "Failed to apply changes");
@@ -802,7 +733,7 @@ export function VendorAdminProductsCRUD({
             variant="outline"
             size="sm"
             onClick={handleOpenSelectProduct}
-            className="bg-slate-900 hover:bg-slate-800 border-slate-900 text-white dark:bg-white dark:hover:bg-slate-100 dark:border-white dark:text-slate-900"
+            className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
           >
           <Plus className="w-4 h-4 mr-2" />
             Select Product
@@ -876,7 +807,7 @@ export function VendorAdminProductsCRUD({
             <Button
               type="button"
               onClick={handleOpenSelectProduct}
-              className="bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900"
+              className="bg-blue-600 hover:bg-blue-700"
             >
               <Plus className="w-4 h-4 mr-2" />
               Select Product
@@ -1281,7 +1212,7 @@ export function VendorAdminProductsCRUD({
                   savingPicker ||
                   (pickerSelectedIds.length === 0 && pickerAssignedUncheckedIds.length === 0)
                 }
-                className="bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900"
+                className="bg-blue-600 hover:bg-blue-700"
               >
                 {savingPicker ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />

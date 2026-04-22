@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { 
   Save,
   Eye,
@@ -16,14 +16,13 @@ import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { compressImage } from "../../../utils/imageCompression";
 import { cacheManager } from "../../utils/cacheManager";
-import { invalidateVendorStorefrontCatalogCache, moduleCache } from "../../utils/module-cache";
+import { invalidateVendorStorefrontCatalogCache } from "../../utils/module-cache";
 import { storeSlugFromBusinessName } from "../../../utils/storeSlug";
 import {
   setVendorAuthSessionCookie,
   readVendorAuthSessionCookie,
 } from "../../utils/vendorAuthCookie";
 import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
-import { Skeleton } from "../ui/skeleton";
 
 interface StoreSettings {
   vendorId: string;
@@ -54,37 +53,26 @@ interface VendorAdminSettingsProps {
 }
 
 export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: VendorAdminSettingsProps) {
-  const settingsCacheKey = useMemo(
-    () => `vendor-admin-store-settings-${encodeURIComponent(vendorId)}`,
-    [vendorId]
-  );
-  const initialCached = moduleCache.peek<StoreSettings>(
-    `vendor-admin-store-settings-${encodeURIComponent(vendorId)}`
-  );
   const [settings, setSettings] = useState<StoreSettings>({
-    ...(initialCached || {
-      vendorId,
-      storeName: vendorName,
-      storeSlug: storeSlugFromBusinessName(vendorName),
-      storeDescription: "Welcome to our store",
-      storeTagline: "",
-      logo: "",
-      banner: "",
-      primaryColor: "#1e293b",
-      secondaryColor: "#64748b",
-      accentColor: "#3b82f6",
-      contactEmail: "",
-      contactPhone: "",
-      address: "",
-      customDomain: "",
-      domainStatus: "none",
-      dnsVerified: false,
-      isActive: true,
-    }),
+    vendorId,
+    storeName: vendorName,
+    storeSlug: storeSlugFromBusinessName(vendorName),
+    storeDescription: "Welcome to our store",
+    storeTagline: "",
+    logo: "",
+    banner: "",
+    primaryColor: "#1e293b",
+    secondaryColor: "#64748b",
+    accentColor: "#3b82f6",
+    contactEmail: "",
+    contactPhone: "",
+    address: "",
+    customDomain: "",
+    domainStatus: 'none',
+    dnsVerified: false,
+    isActive: true,
   });
-  const [loading, setLoading] = useState(
-    () => !moduleCache.has(`vendor-admin-store-settings-${encodeURIComponent(vendorId)}`)
-  );
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [domainBusy, setDomainBusy] = useState<"prepare" | "verify" | "remove" | null>(null);
   const [domainDraft, setDomainDraft] = useState("");
@@ -96,53 +84,42 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
   } | null>(null);
 
   useEffect(() => {
-    void loadSettings(false);
+    loadSettings();
   }, [vendorId]);
 
-  const loadSettings = async (forceRefresh = false) => {
-    let loadingTimer: ReturnType<typeof setTimeout> | null = null;
-    if (forceRefresh) {
-      setLoading(true);
-    } else if (!moduleCache.has(settingsCacheKey)) {
-      loadingTimer = setTimeout(() => setLoading(true), 250);
-    }
+  const loadSettings = async () => {
+    setLoading(true);
     try {
-      const next = await moduleCache.get(
-        settingsCacheKey,
-        async () => {
-          const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendorId}`,
-            {
-              headers: {
-                Authorization: `Bearer ${publicAnonKey}`,
-              },
-            }
-          );
-          if (!response.ok) {
-            throw new Error("Failed to load store settings");
-          }
-          const data = await response.json();
-          return data.settings as StoreSettings;
-        },
-        forceRefresh
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendorId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+        }
       );
-      if (next) {
-        setSettings(next);
-        setDomainDraft(String(next.customDomain || "").trim() || "");
-        const dv = next.domainVerification;
-        if (dv?.txtName && dv?.txtValue) {
-          setDomainHints({
-            hostname: String(next.customDomain || "").trim(),
-            txtName: dv.txtName,
-            txtValue: dv.txtValue,
-            cnameTarget: dv.cnameTarget || "cname.vercel-dns.com",
-          });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.settings) {
+          setSettings(data.settings);
+          setDomainDraft(
+            String(data.settings.customDomain || "").trim() || ""
+          );
+          const dv = data.settings.domainVerification;
+          if (dv?.txtName && dv?.txtValue) {
+            setDomainHints({
+              hostname: String(data.settings.customDomain || "").trim(),
+              txtName: dv.txtName,
+              txtValue: dv.txtValue,
+              cnameTarget: dv.cnameTarget || "cname.vercel-dns.com",
+            });
+          }
         }
       }
     } catch (error) {
       console.error("Failed to load settings:", error);
     } finally {
-      if (loadingTimer) clearTimeout(loadingTimer);
       setLoading(false);
     }
   };
@@ -171,7 +148,6 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
           return;
         }
         setSettings(saved);
-        moduleCache.prime(settingsCacheKey, saved);
 
         // Also update vendor record with new store name, slug, and logo
         const vendorUpdateResponse = await fetch(
@@ -233,11 +209,7 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
             const suffix = pathMatch[3] || "/admin";
             window.location.replace(`/${pathMatch[1]}/${saved.storeSlug}${suffix}`);
           } else {
-            window.dispatchEvent(
-              new CustomEvent("vendorStoreSettingsHydrated", {
-                detail: { vendorId, storeSlug: saved.storeSlug },
-              })
-            );
+            setTimeout(() => window.location.reload(), 400);
           }
         } else {
           toast.error("Failed to update vendor information");
@@ -400,25 +372,8 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Skeleton className="h-8 w-44 mb-2" />
-            <Skeleton className="h-4 w-64" />
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-10 w-32" />
-            <Skeleton className="h-10 w-36" />
-          </div>
-        </div>
-        <div className="max-w-2xl space-y-6">
-          <Skeleton className="h-6 w-36" />
-          <Skeleton className="h-28 w-full rounded-lg" />
-          <Skeleton className="h-14 w-full" />
-          <Skeleton className="h-14 w-full" />
-          <Skeleton className="h-14 w-full" />
-          <Skeleton className="h-28 w-full" />
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin"></div>
       </div>
     );
   }

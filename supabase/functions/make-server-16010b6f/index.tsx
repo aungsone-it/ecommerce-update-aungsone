@@ -8919,6 +8919,63 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
   }
 });
 
+/**
+ * Admin emergency cleanup: hard-purge any domain mapping remnants by hostname.
+ * This removes fast host keys + resets matching storefront customDomain fields.
+ */
+app.post("/make-server-16010b6f/admin/domain/purge", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const raw = String(body?.domain || body?.hostname || "").trim();
+    const normalized = normalizeVendorHostnameInput(raw) || raw.toLowerCase();
+    if (!normalized) {
+      return c.json({ error: "domain/hostname required" }, 400);
+    }
+
+    const variants = customDomainLookupVariants(normalized);
+    const removedHostKeys: string[] = [];
+    const touchedVendors: string[] = [];
+
+    for (const host of variants) {
+      const key = `custom_domain_host:${host}`;
+      const row = await kv.get(key);
+      if (row?.vendorId) touchedVendors.push(String(row.vendorId));
+      await kv.del(key);
+      removedHostKeys.push(key);
+      for (const pendingKey of vendorPendingHostKvKeys(host)) {
+        await kv.del(pendingKey);
+      }
+    }
+
+    const allSettings = await kv.getByPrefix("vendor_storefront_");
+    const validSettings = Array.isArray(allSettings) ? allSettings.filter((s) => s && typeof s === "object") : [];
+    for (const s of validSettings as any[]) {
+      const cd = String(s.customDomain || "").toLowerCase().trim();
+      if (!cd || !variants.includes(cd)) continue;
+      const vendorId = String(s.vendorId || "").trim();
+      if (!vendorId) continue;
+      touchedVendors.push(vendorId);
+      await kv.del(`vendor_domain_pending:${vendorId}`);
+      await kv.set(`vendor_storefront_${vendorId}`, {
+        ...s,
+        customDomain: "",
+        domainStatus: "none",
+        dnsVerified: false,
+      });
+    }
+
+    return c.json({
+      success: true,
+      domain: normalized,
+      removedHostKeys,
+      touchedVendors: [...new Set(touchedVendors)],
+    });
+  } catch (error: any) {
+    console.error("❌ admin/domain/purge:", error);
+    return c.json({ error: error.message || "Failed to purge domain mapping" }, 500);
+  }
+});
+
 // Get vendor storefront by slug (public access)
 app.get("/make-server-16010b6f/vendor/store/:storeSlug", async (c) => {
   try {

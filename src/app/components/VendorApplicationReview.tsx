@@ -26,7 +26,6 @@ import { Separator } from "./ui/separator";
 import { vendorApplicationsApi } from "../../utils/api";
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
-import { notifyAdminVendorApplicationsUpdated } from "../utils/module-cache";
 
 type ApplicationStatus = "pending" | "approved" | "rejected";
 
@@ -127,7 +126,6 @@ export function VendorApplicationReview({
       if (response.success) {
         // Update the application status locally to prevent further clicks
         application.status = newStatus;
-        notifyAdminVendorApplicationsUpdated(`status:${newStatus}`);
 
         onApplicationsMutated?.();
         void Promise.resolve(onUpdate());
@@ -457,7 +455,7 @@ export function VendorApplicationReview({
                     variant="outline"
                     className="text-red-600 border-red-200 hover:bg-red-50"
                     onClick={() => handleUpdateStatus("rejected")}
-                    disabled={updating}
+                    disabled={updating || !reviewNotes.trim()}
                   >
                     <X className="w-4 h-4 mr-2" />
                     Reject Application

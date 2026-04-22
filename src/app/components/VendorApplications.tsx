@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { 
   ArrowLeft, 
   Mail, 
@@ -36,14 +36,10 @@ import {
   CACHE_KEYS,
   getCachedAdminVendorApplications,
   invalidateAdminVendorApplicationsCache,
-  ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT,
-  ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY,
 } from "../utils/module-cache";
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
 import { VendorApplicationReview } from "./VendorApplicationReview";
-import { VendorAdminListingPagination } from "./vendor-admin/VendorAdminListingPagination";
-import { useCrossTabSignal } from "../hooks/useCrossTabSignal";
 
 type ApplicationStatus = "pending" | "approved" | "rejected";
 
@@ -130,21 +126,10 @@ export function VendorApplications({
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">("all");
   const [reviewingApplication, setReviewingApplication] = useState<VendorApplication | null>(null);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     void loadApplications(false);
   }, []);
-
-  useCrossTabSignal({
-    eventName: ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT,
-    storageKey: ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY,
-    onSignal: () => {
-      invalidateAdminVendorApplicationsCache();
-      void loadApplications(true);
-    },
-  });
 
   const loadApplications = async (forceRefresh = false) => {
     let showTimer: ReturnType<typeof setTimeout> | null = null;
@@ -173,19 +158,6 @@ export function VendorApplications({
     const matchesStatus = statusFilter === "all" || app.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
-  const paginatedApplications = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filteredApplications.slice(start, start + pageSize);
-  }, [filteredApplications, page, pageSize]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [searchQuery, statusFilter]);
-
-  useEffect(() => {
-    const totalPages = Math.max(1, Math.ceil(filteredApplications.length / pageSize) || 1);
-    setPage((prev) => Math.min(prev, totalPages));
-  }, [filteredApplications.length, pageSize]);
 
   const getStatusBadge = (status: ApplicationStatus) => {
     const variants: Record<ApplicationStatus, { color: string; label: string; icon: any }> = {
@@ -369,7 +341,7 @@ export function VendorApplications({
           </div>
         ) : (
           <>
-            {paginatedApplications.map((application) => (
+            {filteredApplications.map((application) => (
               <Card key={application.id} className="border border-slate-200 hover:shadow-md transition-shadow">
                 <div className="p-6">
                   <div className="flex items-start justify-between mb-4">
@@ -469,18 +441,6 @@ export function VendorApplications({
           <h3 className="text-lg font-medium text-slate-900 mb-1">No applications found</h3>
           <p className="text-sm text-slate-500">Try adjusting your search or filters</p>
         </Card>
-      )}
-      {!loading && filteredApplications.length > 0 && (
-        <VendorAdminListingPagination
-          variant="standalone"
-          page={page}
-          pageSize={pageSize}
-          totalCount={filteredApplications.length}
-          onPageChange={setPage}
-          onPageSizeChange={setPageSize}
-          itemLabel="applications"
-          loading={loading}
-        />
       )}
     </div>
   );

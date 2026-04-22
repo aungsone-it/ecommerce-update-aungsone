@@ -32,7 +32,6 @@ import { AdminDateRangeFilterPopover } from "../AdminDateRangeFilterPopover";
 import { useLanguage } from "../../contexts/LanguageContext";
 import { Label } from "../ui/label";
 import { Separator } from "../ui/separator";
-import { Skeleton } from "../ui/skeleton";
 import { format, startOfDay, endOfDay } from "date-fns";
 import { PrintInvoice } from "../PrintInvoice";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -1065,43 +1064,11 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
                 </thead>
                 <tbody>
                   {isLoading ? (
-                    Array.from({ length: 5 }).map((_, index) => (
-                      <tr key={`vendor-orders-skeleton-${index}`} className="border-b border-slate-100 animate-pulse">
-                        <td className="py-3 px-4">
-                          <Skeleton className="h-4 w-4" />
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="space-y-2">
-                            <Skeleton className="h-4 w-24" />
-                            <Skeleton className="h-3 w-16" />
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Skeleton className="h-4 w-20" />
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="space-y-2">
-                            <Skeleton className="h-4 w-32" />
-                            <Skeleton className="h-3 w-40" />
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <Skeleton className="h-4 w-16" />
-                        </td>
-                        <td className="py-3 px-4">
-                          <Skeleton className="h-6 w-20 rounded-full" />
-                        </td>
-                        <td className="py-3 px-4">
-                          <Skeleton className="h-6 w-16 rounded-full" />
-                        </td>
-                        <td className="py-3 px-4">
-                          <Skeleton className="h-6 w-20 rounded-full" />
-                        </td>
-                        <td className="py-3 px-4">
-                          <Skeleton className="h-8 w-8 rounded" />
-                        </td>
-                      </tr>
-                    ))
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-slate-500">
+                        Loading orders...
+                      </td>
+                    </tr>
                   ) : filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="py-8 text-center text-slate-500">

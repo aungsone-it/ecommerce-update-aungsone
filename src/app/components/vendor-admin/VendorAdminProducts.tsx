@@ -23,7 +23,6 @@ import {
   CACHE_KEYS,
 } from "../../utils/module-cache";
 import { productMatchesAdminLiveSearch } from "../../utils/adminProductSearch";
-import { Skeleton } from "../ui/skeleton";
 
 interface Product {
   id: string;
@@ -150,46 +149,8 @@ export function VendorAdminProducts({ vendorId, onNavigateToAdd, onNavigateToEdi
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Skeleton className="h-8 w-32 mb-2" />
-            <Skeleton className="h-4 w-56" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-10 w-24" />
-            <Skeleton className="h-10 w-32" />
-          </div>
-        </div>
-        <Skeleton className="h-10 w-full" />
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i} className="p-4 border-slate-200">
-              <div className="flex items-start gap-4">
-                <Skeleton className="h-16 w-16 rounded-lg" />
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-2">
-                      <Skeleton className="h-5 w-56" />
-                      <Skeleton className="h-4 w-28" />
-                    </div>
-                    <div className="flex gap-1">
-                      <Skeleton className="h-8 w-8" />
-                      <Skeleton className="h-8 w-8" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-8 w-24" />
-                    <Skeleton className="h-8 w-20" />
-                    <Skeleton className="h-8 w-20" />
-                  </div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin"></div>
       </div>
     );
   }
