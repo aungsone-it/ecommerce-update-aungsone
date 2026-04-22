@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import {
   Package,
   DollarSign,
@@ -41,6 +41,7 @@ import {
   pctChangePriorWindow,
   vendorOrderDisplayTotal,
   isVendorOrderActive,
+  isVendorOrderFinanciallyAccrued,
   uniqueCustomerEmails,
   countActiveOrders,
   topProductsFromOrders,
@@ -119,22 +120,23 @@ export function VendorAdminDashboard({
 
   const derived = useMemo(() => {
     const endMs = Date.now();
-    const pool = rawOrders.filter(isVendorOrderActive);
+    const activePool = rawOrders.filter(isVendorOrderActive);
+    const accruedPool = rawOrders.filter(isVendorOrderFinanciallyAccrued);
 
     const revenueDays = daysForVendorDashboardLabel(dateFilter.revenue);
     const ordersDays = daysForVendorDashboardLabel(dateFilter.orders);
     const customersDays = daysForVendorDashboardLabel(dateFilter.customers);
     const productsDays = daysForVendorDashboardLabel(dateFilter.products);
 
-    const revCurrent = filterOrdersInRollingWindow(pool, revenueDays, endMs);
-    const revPrev = filterOrdersInPriorWindow(pool, revenueDays, endMs - revenueDays * 86400000);
+    const revCurrent = filterOrdersInRollingWindow(accruedPool, revenueDays, endMs);
+    const revPrev = filterOrdersInPriorWindow(accruedPool, revenueDays, endMs - revenueDays * 86400000);
     const totalRevenue = sumRevenue(revCurrent);
 
-    const ordCurrent = filterOrdersInRollingWindow(pool, ordersDays, endMs);
-    const ordPrev = filterOrdersInPriorWindow(pool, ordersDays, endMs - ordersDays * 86400000);
+    const ordCurrent = filterOrdersInRollingWindow(activePool, ordersDays, endMs);
+    const ordPrev = filterOrdersInPriorWindow(activePool, ordersDays, endMs - ordersDays * 86400000);
 
-    const custCurrent = filterOrdersInRollingWindow(pool, customersDays, endMs);
-    const custPrev = filterOrdersInPriorWindow(pool, customersDays, endMs - customersDays * 86400000);
+    const custCurrent = filterOrdersInRollingWindow(activePool, customersDays, endMs);
+    const custPrev = filterOrdersInPriorWindow(activePool, customersDays, endMs - customersDays * 86400000);
 
     const prodWindowEnd = endMs;
     const prodWindowStart = endMs - productsDays * 86400000;
@@ -167,8 +169,8 @@ export function VendorAdminDashboard({
     };
 
     const topProducts: TopProductRow[] = topProductsFromOrders(revCurrent, 4);
-    const recentOrders: RecentOrderRow[] = recentOrdersFromList(pool, 5);
-    const chartSeries = buildMonthlySeries(rawOrders, 6);
+    const recentOrders: RecentOrderRow[] = recentOrdersFromList(activePool, 5);
+    const chartSeries = buildMonthlySeries(accruedPool, 6);
 
     return { stats, topProducts, recentOrders, chartSeries };
   }, [rawOrders, rawProducts, dateFilter]);
@@ -176,7 +178,15 @@ export function VendorAdminDashboard({
   const { stats, topProducts, recentOrders, chartSeries } = derived;
 
   useEffect(() => {
-    void loadDashboardData(false);
+    void loadDashboardData(true);
+  }, [vendorId]);
+
+  useEffect(() => {
+    const onOrdersUpdated = () => {
+      void loadDashboardData(true);
+    };
+    window.addEventListener("adminOrdersUpdated", onOrdersUpdated);
+    return () => window.removeEventListener("adminOrdersUpdated", onOrdersUpdated);
   }, [vendorId]);
 
   const loadDashboardData = async (forceRefresh = false) => {
@@ -190,7 +200,8 @@ export function VendorAdminDashboard({
       }
     }
 
-    setLoading(true);
+    const hasWarmData = rawOrders.length > 0 || rawProducts.length > 0;
+    if (!hasWarmData) setLoading(true);
     try {
       const [productsData, vendorOrders] = await Promise.all([
         getCachedVendorProductsAdmin(vendorId, forceRefresh).catch(() => ({ products: [] as any[] })),
@@ -200,13 +211,23 @@ export function VendorAdminDashboard({
       setRawOrders(Array.isArray(vendorOrders) ? vendorOrders : []);
     } catch (error) {
       console.error("Failed to load dashboard data:", error);
+      if (!hasWarmData) {
+        setRawOrders([]);
+        setRawProducts([]);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCurrency = (num: number) => {
-    return `${Math.round(num).toLocaleString()} MMK`;
+  const renderCurrency = (num: number) => {
+    const amount = Math.round(Number(num) || 0).toLocaleString();
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        <span>{amount}</span>
+        <span className="text-[0.4rem] font-semibold uppercase tracking-wide text-slate-500">MMK</span>
+      </span>
+    );
   };
 
   if (loading) {
@@ -271,7 +292,7 @@ export function VendorAdminDashboard({
     filterKey,
   }: {
     title: string;
-    value: string | number;
+    value: ReactNode;
     change: number;
     icon: typeof DollarSign;
     iconBg: string;
@@ -356,7 +377,7 @@ export function VendorAdminDashboard({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Total Revenue"
-          value={formatCurrency(stats.totalRevenue)}
+          value={renderCurrency(stats.totalRevenue)}
           change={stats.revenueChange}
           icon={DollarSign}
           iconBg="bg-green-100"
@@ -473,7 +494,7 @@ export function VendorAdminDashboard({
                     <p className="text-xs text-slate-500">{product.sales} sales</p>
                   </div>
                   <p className="text-sm font-semibold text-slate-900 whitespace-nowrap">
-                    {formatCurrency(product.revenue)}
+                    {renderCurrency(product.revenue)}
                   </p>
                 </div>
               ))
@@ -536,7 +557,7 @@ export function VendorAdminDashboard({
                     <td className="py-3 px-4 text-sm text-slate-900">{order.customerName}</td>
                     <td className="py-3 px-4 text-sm text-slate-600">{order.items}</td>
                     <td className="py-3 px-4 text-sm text-slate-900 font-medium">
-                      {formatCurrency(order.total)}
+                      {renderCurrency(order.total)}
                     </td>
                     <td className="py-3 px-4">
                       <span

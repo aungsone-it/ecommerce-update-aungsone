@@ -22,6 +22,7 @@ import { Label } from "./ui/label";
 import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -580,6 +581,7 @@ export function Checkout({
       }
 
       console.log("✅ Order saved to backend:", orderNum);
+      notifyAdminOrdersUpdated("storefront-checkout-order-created");
       
       // 🔥 Save shipping address to database for future use
       if (effectiveUser?.id) {

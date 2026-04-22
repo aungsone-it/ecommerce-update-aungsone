@@ -1,4 +1,5 @@
 import { LucideIcon } from "lucide-react";
+import type { ReactNode } from "react";
 import type { DateRange } from "react-day-picker";
 import { Card } from "./ui/card";
 import { cn } from "./ui/utils";
@@ -8,7 +9,7 @@ import { format } from "date-fns";
 
 interface StatCardProps {
   title: string;
-  value: string | number;
+  value: ReactNode;
   change: string;
   changeType: "positive" | "negative" | "neutral";
   icon: LucideIcon;

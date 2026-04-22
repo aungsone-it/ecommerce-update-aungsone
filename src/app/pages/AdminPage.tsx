@@ -45,6 +45,9 @@ import {
   peekPendingOrdersDigestSourceMs,
   peekPendingVendorApplicationsDigestSourceMs,
 } from "../utils/adminDigestSourceTimes";
+import {
+  adminOrdersUpdatedStorageKey,
+} from "../utils/adminOrdersRealtime";
 
 const ADMIN_PAGES = {
   HOME: 'Home',
@@ -126,11 +129,17 @@ export function AdminPage() {
       setDigestTimesTick((n) => n + 1);
       void loadBadgeCounts(true);
     };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== adminOrdersUpdatedStorageKey()) return;
+      onOrdersUpdated();
+    };
     const onVendorPrimed = () => setDigestTimesTick((n) => n + 1);
     window.addEventListener("adminOrdersUpdated", onOrdersUpdated);
+    window.addEventListener("storage", onStorage);
     window.addEventListener("adminVendorApplicationsPrimed", onVendorPrimed);
     return () => {
       window.removeEventListener("adminOrdersUpdated", onOrdersUpdated);
+      window.removeEventListener("storage", onStorage);
       window.removeEventListener("adminVendorApplicationsPrimed", onVendorPrimed);
     };
   }, [loadBadgeCounts]);

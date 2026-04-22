@@ -58,6 +58,7 @@ import {
   pctChangePriorWindow,
   vendorOrderDisplayTotal,
   isVendorOrderActive,
+  isVendorOrderFinanciallyAccrued,
 } from "../../utils/vendorAdminAnalytics";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
@@ -377,18 +378,19 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
 
   const orderPageKpis = useMemo(() => {
     const endMs = Date.now();
-    const pool = rawVendorOrders.filter(isVendorOrderActive);
+    const activePool = rawVendorOrders.filter(isVendorOrderActive);
+    const accruedPool = rawVendorOrders.filter(isVendorOrderFinanciallyAccrued);
 
     const revDays = daysForVendorDashboardLabel(statDateFilters.revenue);
-    const revCurrent = filterOrdersInRollingWindow(pool, revDays, endMs);
-    const revPrev = filterOrdersInPriorWindow(pool, revDays, endMs - revDays * 86400000);
+    const revCurrent = filterOrdersInRollingWindow(accruedPool, revDays, endMs);
+    const revPrev = filterOrdersInPriorWindow(accruedPool, revDays, endMs - revDays * 86400000);
     const totalRevenueWindow = revCurrent.reduce((s, o) => s + vendorOrderDisplayTotal(o), 0);
     const revenuePrevSum = revPrev.reduce((s, o) => s + vendorOrderDisplayTotal(o), 0);
     const revenueChange = pctChangePriorWindow(totalRevenueWindow, revenuePrevSum);
 
     const commDays = daysForVendorDashboardLabel(statDateFilters.commission);
-    const commCurrent = filterOrdersInRollingWindow(pool, commDays, endMs);
-    const commPrev = filterOrdersInPriorWindow(pool, commDays, endMs - commDays * 86400000);
+    const commCurrent = filterOrdersInRollingWindow(activePool, commDays, endMs);
+    const commPrev = filterOrdersInPriorWindow(activePool, commDays, endMs - commDays * 86400000);
     const commissionCurrent = computeVendorCommissionEarned(
       commCurrent,
       vendorProducts,

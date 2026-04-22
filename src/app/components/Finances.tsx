@@ -41,6 +41,14 @@ const trueMoneyLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/s
 
 const COLORS = ['#3b82f6', '#facc15', '#ef4444', '#22c55e'];
 
+function isFinanciallyAccruedTransaction(transaction: any): boolean {
+  const status = String(transaction?.status || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+  return status === "ready-to-ship" || status === "fulfilled";
+}
+
 function filterFinancesTransactionsByRange(transactions: any[], range: DateRange | undefined): any[] {
   if (!range?.from || !range?.to) return transactions;
   const from = startOfDay(range.from);
@@ -136,7 +144,10 @@ export function Finances() {
   }, []);
 
   // Extract data from API response
-  const transactions = financialData?.transactions || [];
+  const transactions = useMemo(
+    () => (financialData?.transactions || []).filter((t: any) => isFinanciallyAccruedTransaction(t)),
+    [financialData?.transactions]
+  );
   const vendorPayouts = financialData?.vendorPayouts || [];
 
   const overviewFilterActive = Boolean(overviewDateRange?.from && overviewDateRange?.to);
@@ -170,15 +181,11 @@ export function Finances() {
     return list.reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
   }, [transactions, revenueCardDateRange]);
 
-  const vendorStatTotal = useMemo(() => {
-    const hasCardRange = Boolean(vendorCardDateRange?.from && vendorCardDateRange?.to);
-    const summaryTotal = Number(financialData?.summary?.totalVendorPayout);
-    if (!hasCardRange && Number.isFinite(summaryTotal)) {
-      return summaryTotal;
-    }
+  /** Commission amount for this card's date filter (same base rows as vendor Finances logic). */
+  const commissionPayoutStatTotal = useMemo(() => {
     const list = filterFinancesTransactionsByRange(transactions, vendorCardDateRange);
-    return list.reduce((s: number, t: any) => s + (Number(t.vendorPayout) || 0), 0);
-  }, [transactions, vendorCardDateRange, financialData?.summary?.totalVendorPayout]);
+    return list.reduce((s: number, t: any) => s + (Number(t.commission) || 0), 0);
+  }, [transactions, vendorCardDateRange]);
 
   const periodDays = chartPeriod === "7days" ? 7 : chartPeriod === "30days" ? 30 : 90;
 
@@ -439,7 +446,7 @@ export function Finances() {
             <div className="flex min-h-0 flex-1 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t("finances.commissionPayout")}</p>
-                <FinancesStatMmk value={vendorStatTotal} />
+                <FinancesStatMmk value={commissionPayoutStatTotal} />
                 <p className="mt-2 text-xs leading-snug text-slate-500 dark:text-slate-400">
                   {t("finances.commissionPayoutHint")}
                 </p>

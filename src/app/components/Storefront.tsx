@@ -41,6 +41,7 @@ import { SearchInput } from "./SearchInput";
 import { CouponInput } from "./CouponInput";
 import { productsApi, authApi, wishlistApi, ordersApi, customersApi, categoriesApi, blogApi, apiClient } from "../../utils/api";
 import { toast } from "sonner";
+import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 import { useDebounce } from "../hooks/useDebounce";
 import { useScrollAnimation } from "../hooks/useScrollAnimation";
 import { useFaviconLoader } from "../hooks/useFaviconLoader";
@@ -3362,6 +3363,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       
       // Save order to database
       await ordersApi.create(orderData);
+      notifyAdminOrdersUpdated("storefront-order-created");
       
       // 🎫 Track coupon usage if a coupon was applied
       if (appliedCoupon?.id) {

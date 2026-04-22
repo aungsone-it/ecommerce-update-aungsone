@@ -59,6 +59,14 @@ import {
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
 type ShippingStatus = "pending" | "shipped" | "delivered";
+function isFinanciallyAccruedOrderStatus(status: string | undefined): boolean {
+  const normalized = String(status || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+  return normalized === "ready-to-ship" || normalized === "fulfilled";
+}
+
 
 interface Product {
   id: string;
@@ -601,8 +609,9 @@ export function Orders({
   }, [orders, searchQuery]);
 
   const filteredTotalRevenue =
-    ordersAggregates?.filteredTotalRevenue ??
-    displayOrders.filter((order) => order.status !== "cancelled").reduce((sum, order) => sum + order.total, 0);
+    displayOrders
+      .filter((order) => isFinanciallyAccruedOrderStatus(order.status))
+      .reduce((sum, order) => sum + order.total, 0);
   const filteredTotalOrders = ordersAggregates?.filteredCount ?? displayOrders.length;
   const filteredAvgOrderValue =
     ordersAggregates?.filteredAvgOrderValue ??
@@ -858,8 +867,9 @@ export function Orders({
   };
 
   const totalRevenue =
-    ordersAggregates?.filteredTotalRevenue ??
-    orders.filter((order) => order.status !== "cancelled").reduce((sum, order) => sum + order.total, 0);
+    orders
+      .filter((order) => isFinanciallyAccruedOrderStatus(order.status))
+      .reduce((sum, order) => sum + order.total, 0);
   const pendingOrders =
     ordersAggregates?.statusBreakdown ?
       ordersAggregates.statusBreakdown.pending
@@ -891,7 +901,11 @@ export function Orders({
     : uniqueVendors.map((vendor) => ({
         vendor,
         revenue: orders
-          .filter((o) => (o.vendor || "SECURE Store") === vendor)
+          .filter(
+            (o) =>
+              (o.vendor || "SECURE Store") === vendor &&
+              isFinanciallyAccruedOrderStatus(o.status)
+          )
           .reduce((sum, o) => sum + o.total, 0),
       }));
 

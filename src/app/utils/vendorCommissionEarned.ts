@@ -1,6 +1,6 @@
 /**
  * Vendor commission earned — same rules as super-admin vendor profile:
- * accrues only on orders in ready-to-ship / fulfilled / shipped / delivered,
+ * accrues only on orders in ready-to-ship / fulfilled,
  * per line net of order-level discount, using line → product → vendor default %.
  */
 
@@ -23,8 +23,6 @@ export function normalizeOrderStatusKey(status: string | undefined): string {
 export const VENDOR_COMMISSION_ACCRUE_STATUSES = new Set([
   "ready-to-ship",
   "fulfilled",
-  "shipped",
-  "delivered",
 ]);
 
 export function buildVendorCatalogKeys(products: any[]): VendorCatalogKeys {
@@ -126,6 +124,7 @@ export function computeVendorCommissionEarned(
     if (order == null || typeof order !== "object") continue;
     const st = normalizeOrderStatusKey(String(order.status ?? ""));
     if (!VENDOR_COMMISSION_ACCRUE_STATUSES.has(st)) continue;
+    if (order.inventoryDeducted === false) continue;
 
     const lineItems = Array.isArray(order.items) ? order.items : [];
     for (const item of lineItems) {

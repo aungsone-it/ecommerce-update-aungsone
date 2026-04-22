@@ -9392,7 +9392,7 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
         customerName: order.customerName || order.customer,
         email: order.email,
         phone: order.phone,
-        status: order.status || "pending",
+        status: normalizeOrderStatus(order.status) || "pending",
         paymentStatus: order.paymentStatus || "pending",
         paymentMethod: order.paymentMethod || "",
         total: vendorDisplayTotal,
@@ -9406,6 +9406,11 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
         notes: order.notes || "",
         deliveryService: order.deliveryService || "",
         deliveryServiceLogo: order.deliveryServiceLogo || "",
+        ...(order.inventoryDeducted === true
+          ? { inventoryDeducted: true }
+          : order.inventoryDeducted === false
+            ? { inventoryDeducted: false }
+            : {}),
       });
     }
     

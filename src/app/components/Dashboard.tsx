@@ -6,7 +6,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { useLanguage } from "../contexts/LanguageContext";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import {
   ComposedChart,
   Area,
@@ -172,12 +172,14 @@ export function Dashboard() {
   };
   
   // Format currency - Myanmar Kyat (MMK)
-  const formatCurrency = (num: number | null | undefined) => {
-    if (num === null || num === undefined || isNaN(num)) {
-      return "0 MMK";
-    }
-    // Add comma formatting for thousands
-    return `${num.toLocaleString()} MMK`;
+  const formatCurrency = (num: number | null | undefined): ReactNode => {
+    const amount = num === null || num === undefined || isNaN(num) ? 0 : num;
+    return (
+      <span className="inline-flex items-baseline gap-1">
+        <span>{amount.toLocaleString()}</span>
+        <span className="text-[0.4rem] font-semibold uppercase tracking-wide text-slate-500">MMK</span>
+      </span>
+    );
   };
   
   // Format percentage change

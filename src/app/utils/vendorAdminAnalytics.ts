@@ -1,4 +1,8 @@
 import { vendorOrderGrandTotalDisplay } from "./vendorOrderTotals";
+import {
+  normalizeOrderStatusKey,
+  VENDOR_COMMISSION_ACCRUE_STATUSES,
+} from "./vendorCommissionEarned";
 
 /** Parse order timestamp for sorting / windows (ms). */
 export function vendorOrderTimeMs(order: any): number {
@@ -28,6 +32,20 @@ export function vendorOrderDisplayTotal(order: any): number {
 export function isVendorOrderActive(order: any): boolean {
   const s = String(order?.status ?? "").toLowerCase();
   return s !== "cancelled";
+}
+
+/**
+ * Revenue/commission accrue only after fulfillment pipeline reaches shippable/done states.
+ * `inventoryDeducted === false` is set on every new order until the server successfully commits
+ * stock at ready-to-ship/fulfilled — blocks stale/wrong statuses that never completed that commit.
+ * Legacy rows may omit the field (`undefined`) and still accrue when status is accrued.
+ */
+export function isVendorOrderFinanciallyAccrued(order: any): boolean {
+  const raw =
+    typeof order?.status === "string" ? order.status : String(order?.status ?? "");
+  if (!VENDOR_COMMISSION_ACCRUE_STATUSES.has(normalizeOrderStatusKey(raw))) return false;
+  if (order?.inventoryDeducted === false) return false;
+  return true;
 }
 
 export function daysForVendorDashboardLabel(label: string): number {

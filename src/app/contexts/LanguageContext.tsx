@@ -1,16 +1,7 @@
 // Language Context - Bilingual support
 // Force recompile: 2026-02-15-fix-provider-error-v2
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-
-type Language = 'en' | 'zh';
-
-interface LanguageContextType {
-  language: Language;
-  setLanguage: (lang: Language) => void;
-  t: (key: string) => string;
-}
-
-const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
+import { useState, useEffect, ReactNode } from 'react';
+import { Language, LanguageContext } from "./language-core";
 
 // Comprehensive translations
 const translations: Record<Language, Record<string, string>> = {
@@ -346,8 +337,9 @@ const translations: Record<Language, Record<string, string>> = {
     'finances.platformCommission': 'Platform Commission',
     'finances.vendorPayout': 'Vendor Payout',
     /** Top stat card: sum of vendor-side earnings (order total − platform commission). */
-    'finances.commissionPayout': 'Vendor commission earned',
-    'finances.commissionPayoutHint': 'Total vendor share after platform commission',
+    'finances.commissionPayout': 'Commission Payout',
+    'finances.commissionPayoutHint':
+      'Total commission amount for the filtered period, based on item commission rates.',
     'finances.pendingPayouts': 'Pending Payouts',
     'finances.overview': 'Overview',
     'finances.transactions': 'Transactions',
@@ -1267,8 +1259,8 @@ const translations: Record<Language, Record<string, string>> = {
     'finances.totalRevenue': '总收入',
     'finances.platformCommission': '平台佣金',
     'finances.vendorPayout': '供应商付款',
-    'finances.commissionPayout': '供应商佣金收入',
-    'finances.commissionPayoutHint': '扣除平台佣金后供应商所得合计',
+    'finances.commissionPayout': '佣金支付占比',
+    'finances.commissionPayoutHint': '在所选日期范围内，按商品佣金比例计算的佣金总额。',
     'finances.pendingPayouts': '待处理付款',
     'finances.overview': '概览',
     'finances.transactions': '交易',
@@ -1897,11 +1889,4 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     </LanguageContext.Provider>
   );
 }
-
-export function useLanguage() {
-  const context = useContext(LanguageContext);
-  if (context === undefined) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
-  }
-  return context;
-}
+export { useLanguage } from "./useLanguage";

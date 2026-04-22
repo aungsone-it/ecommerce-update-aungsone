@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type ReactNode } from "react";
 import {
   DollarSign,
   ShoppingCart,
@@ -40,6 +40,7 @@ import {
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import {
   isVendorOrderActive,
+  isVendorOrderFinanciallyAccrued,
   vendorOrderDisplayTotal,
   vendorOrderTimeMs,
   buildMonthlySeries,
@@ -72,14 +73,31 @@ interface Transaction {
   paymentMethod: string;
 }
 
-function formatMmk(n: number): string {
-  return `${Math.round(n).toLocaleString()} MMK`;
+/** Tooltips / table: compact single-line label */
+function mmkAmountString(n: number): string {
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return `${Math.round(v).toLocaleString()} MMK`;
+}
+
+/** KPI cards: large number + visually small MMK */
+function vendorFinancesStatMmk(n: number): ReactNode {
+  const v = typeof n === "number" && Number.isFinite(n) ? n : 0;
+  return (
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1 gap-y-0.5">
+      <span className="min-w-0 font-bold tabular-nums text-slate-900 [font-size:clamp(1rem,5cqi,1.25rem)]">
+        {Math.round(v).toLocaleString()}
+      </span>
+      <span className="shrink-0 text-[0.5rem] font-normal uppercase tracking-wider text-slate-500 leading-none">
+        MMK
+      </span>
+    </span>
+  );
 }
 
 function transactionStatusFromOrder(order: any): "paid" | "pending" | "failed" {
   const s = String(order?.status ?? "").toLowerCase();
   if (s === "cancelled") return "failed";
-  if (s === "fulfilled" || order?.paymentStatus === "paid") return "paid";
+  if (isVendorOrderFinanciallyAccrued(order)) return "paid";
   return "pending";
 }
 
@@ -122,16 +140,25 @@ export function VendorAdminFinances({
   });
 
   useEffect(() => {
-    void loadFinancialData();
+    void loadFinancialData(true);
   }, [vendorId, vendorStoreSlug]);
 
-  const loadFinancialData = async () => {
-    setLoading(true);
+  useEffect(() => {
+    const onOrdersUpdated = () => {
+      void loadFinancialData(true);
+    };
+    window.addEventListener("adminOrdersUpdated", onOrdersUpdated);
+    return () => window.removeEventListener("adminOrdersUpdated", onOrdersUpdated);
+  }, [vendorId, vendorStoreSlug]);
+
+  const loadFinancialData = async (forceRefresh = false) => {
+    const hasWarmData = rawOrders.length > 0 || rawProducts.length > 0;
+    if (!hasWarmData) setLoading(true);
     try {
       const slugKey = (vendorStoreSlug && vendorStoreSlug.trim()) || vendorId;
       const [vendorOrders, productsPayload, contractPct] = await Promise.all([
-        getCachedVendorOrders(vendorId, false).catch(() => [] as any[]),
-        getCachedVendorProductsAdmin(vendorId, false).catch(() => ({ products: [] as any[] })),
+        getCachedVendorOrders(vendorId, forceRefresh).catch(() => [] as any[]),
+        getCachedVendorProductsAdmin(vendorId, forceRefresh).catch(() => ({ products: [] as any[] })),
         fetchVendorContractCommissionPercent(slugKey),
       ]);
       setRawOrders(Array.isArray(vendorOrders) ? vendorOrders : []);
@@ -139,8 +166,10 @@ export function VendorAdminFinances({
       setVendorContractCommissionPct(contractPct);
     } catch (error) {
       console.error("Failed to load financial data:", error);
-      setRawOrders([]);
-      setRawProducts([]);
+      if (!hasWarmData) {
+        setRawOrders([]);
+        setRawProducts([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -148,15 +177,16 @@ export function VendorAdminFinances({
 
   const { stats, revenueData, transactions } = useMemo(() => {
     const endMs = Date.now();
-    const pool = rawOrders.filter(isVendorOrderActive);
+    const activePool = rawOrders.filter(isVendorOrderActive);
+    const accruedPool = rawOrders.filter(isVendorOrderFinanciallyAccrued);
 
     const revDays = daysForVendorDashboardLabel(dateFilter.revenue);
     const commDays = daysForVendorDashboardLabel(dateFilter.commission);
     const ordDays = daysForVendorDashboardLabel(dateFilter.orders);
     const avgDays = daysForVendorDashboardLabel(dateFilter.avgOrder);
 
-    const revCurrent = filterOrdersInRollingWindow(pool, revDays, endMs);
-    const revPrev = filterOrdersInPriorWindow(pool, revDays, endMs - revDays * 86400000);
+    const revCurrent = filterOrdersInRollingWindow(accruedPool, revDays, endMs);
+    const revPrev = filterOrdersInPriorWindow(accruedPool, revDays, endMs - revDays * 86400000);
     const totalRevenue = sumRevenueForOrders(revCurrent);
     const revenueChange = pctChangePriorWindow(
       sumRevenueForOrders(revCurrent),
@@ -179,23 +209,23 @@ export function VendorAdminFinances({
     );
     const commissionChange = pctChangePriorWindow(commissionEarned, commissionPrev);
 
-    const ordCurrent = filterOrdersInRollingWindow(pool, ordDays, endMs);
-    const ordPrev = filterOrdersInPriorWindow(pool, ordDays, endMs - ordDays * 86400000);
+    const ordCurrent = filterOrdersInRollingWindow(accruedPool, ordDays, endMs);
+    const ordPrev = filterOrdersInPriorWindow(accruedPool, ordDays, endMs - ordDays * 86400000);
     const ordersChange = pctChangePriorWindow(ordCurrent.length, ordPrev.length);
 
-    const avgCurrent = filterOrdersInRollingWindow(pool, avgDays, endMs);
-    const avgPrev = filterOrdersInPriorWindow(pool, avgDays, endMs - avgDays * 86400000);
+    const avgCurrent = filterOrdersInRollingWindow(accruedPool, avgDays, endMs);
+    const avgPrev = filterOrdersInPriorWindow(accruedPool, avgDays, endMs - avgDays * 86400000);
     const averageOrderValue =
       avgCurrent.length > 0 ? sumRevenueForOrders(avgCurrent) / avgCurrent.length : 0;
     const averageOrderValuePrev =
       avgPrev.length > 0 ? sumRevenueForOrders(avgPrev) / avgPrev.length : 0;
     const avgOrderChange = pctChangePriorWindow(averageOrderValue, averageOrderValuePrev);
 
-    const fullSeries = buildMonthlySeries(rawOrders, 12);
+    const fullSeries = buildMonthlySeries(accruedPool, 12);
     const sliceN = timeFilter === "3months" ? 3 : timeFilter === "6months" ? 6 : 12;
     const chartSlice = fullSeries.slice(-sliceN);
 
-    const trans: Transaction[] = [...pool]
+    const trans: Transaction[] = [...activePool]
       .sort((a, b) => vendorOrderTimeMs(b) - vendorOrderTimeMs(a))
       .map((order: any) => ({
         id: order.id,
@@ -256,14 +286,14 @@ export function VendorAdminFinances({
     filterKey,
   }: {
     title: string;
-    value: string | number;
+    value: ReactNode;
     change: number;
     icon: typeof DollarSign;
     iconBg: string;
     iconColor: string;
     filterKey: FinancesDateFilterKey;
   }) => (
-    <Card className="p-5 border-slate-200 bg-white hover:shadow-md transition-shadow">
+    <Card className="@container p-5 border-slate-200 bg-white hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <p className="text-sm text-slate-600 font-medium mb-1">{title}</p>
@@ -299,7 +329,7 @@ export function VendorAdminFinances({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <p className="text-xl font-bold text-slate-900 mb-2">{value}</p>
+          <div className="mb-2 min-w-0">{value}</div>
           <div className="flex items-center gap-1">
             {change === 0 ? (
               <span className="text-xs font-medium text-slate-500">No change vs prior period</span>
@@ -405,7 +435,7 @@ export function VendorAdminFinances({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Total Revenue"
-          value={formatMmk(stats.totalRevenue)}
+          value={vendorFinancesStatMmk(stats.totalRevenue)}
           change={stats.revenueChange}
           icon={DollarSign}
           iconBg="bg-green-100"
@@ -414,7 +444,7 @@ export function VendorAdminFinances({
         />
         <StatCard
           title="Commission Earned"
-          value={formatMmk(stats.commissionEarned)}
+          value={vendorFinancesStatMmk(stats.commissionEarned)}
           change={stats.commissionChange}
           icon={BadgePercent}
           iconBg="bg-blue-100"
@@ -432,7 +462,7 @@ export function VendorAdminFinances({
         />
         <StatCard
           title="Avg Order Value"
-          value={formatMmk(stats.averageOrderValue)}
+          value={vendorFinancesStatMmk(stats.averageOrderValue)}
           change={stats.avgOrderChange}
           icon={CreditCard}
           iconBg="bg-orange-100"
@@ -494,7 +524,7 @@ export function VendorAdminFinances({
                 />
                 <Tooltip
                   formatter={(value: number | string) => [
-                    `${Math.round(Number(value)).toLocaleString()} MMK`,
+                    mmkAmountString(Number(value)),
                     "Revenue",
                   ]}
                   contentStyle={{
@@ -589,9 +619,14 @@ export function VendorAdminFinances({
                   >
                     {transaction.status}
                   </Badge>
-                  <p className="font-semibold text-slate-900 min-w-[100px] text-right tabular-nums">
-                    {formatMmk(transaction.amount)}
-                  </p>
+                  <div className="flex min-w-[100px] items-baseline justify-end gap-1 tabular-nums">
+                    <span className="font-semibold text-slate-900">
+                      {Math.round(transaction.amount).toLocaleString()}
+                    </span>
+                    <span className="text-[0.5rem] font-normal uppercase tracking-wider text-slate-500">
+                      MMK
+                    </span>
+                  </div>
                 </div>
               </div>
             ))

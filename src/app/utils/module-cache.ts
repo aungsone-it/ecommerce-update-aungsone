@@ -16,6 +16,7 @@ import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { SmartCache } from '../../utils/cache';
 import { vendorApplicationsApi } from '../../utils/api';
 import { withNetworkRetry } from './networkRetry';
+import { notifyAdminOrdersUpdated } from "./adminOrdersRealtime";
 import {
   readPersistedJson,
   writePersistedJson,
@@ -1045,13 +1046,15 @@ export async function fetchVendorCategories(vendorId: string) {
 }
 
 // Fetch vendor orders (vendor admin)
-export async function fetchVendorOrders(vendorId: string) {
-  const response = await fetch(
-    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/orders/${vendorId}`,
-    {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-    }
+export async function fetchVendorOrders(vendorId: string, bustHttpCache = false) {
+  const url = new URL(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/orders/${encodeURIComponent(vendorId)}`
   );
+  if (bustHttpCache) url.searchParams.set("_", String(Date.now()));
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${publicAnonKey}` },
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to fetch vendor orders: ${response.status}`);
@@ -1491,11 +1494,13 @@ export function invalidateAdminOrdersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_ORDERS);
   moduleCache.invalidatePrefix(ADMIN_ORDERS_PAGE_CACHE_PREFIX);
   moduleCache.invalidate(CACHE_KEYS.ADMIN_FINANCES_ANALYTICS);
+  /** Vendor portals peek `vendor-orders-*`; clear so Finances/Dashboard refetch matches super-admin mutations. */
+  moduleCache.invalidatePrefix("vendor-orders-");
   SmartCache.delete("badge_counts");
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix("migoo-ls-admin-orders-p1-");
-    removePersistedKey(LS_ADMIN_FINANCES_ANALYTICS);
-    window.dispatchEvent(new CustomEvent("adminOrdersUpdated"));
+    // Keep last finances snapshot for instant paint; Finances view revalidates in background.
+    notifyAdminOrdersUpdated("invalidate-admin-orders-cache");
   }
 }
 
@@ -1623,11 +1628,18 @@ export function invalidateAdminDashboardStatsCaches(): void {
 
 /** Vendor `/vendor/orders/:id` list — session cache per vendor */
 export async function getCachedVendorOrders(vendorId: string, forceRefresh = false) {
-  return moduleCache.get(CACHE_KEYS.vendorOrders(vendorId), () => fetchVendorOrders(vendorId), forceRefresh);
+  return moduleCache.get(
+    CACHE_KEYS.vendorOrders(vendorId),
+    () => fetchVendorOrders(vendorId, forceRefresh),
+    forceRefresh
+  );
 }
 
 export function invalidateVendorOrdersCache(vendorId: string): void {
   moduleCache.invalidate(CACHE_KEYS.vendorOrders(vendorId));
+  if (typeof window !== "undefined") {
+    notifyAdminOrdersUpdated("invalidate-vendor-orders-cache");
+  }
 }
 
 export function primeVendorOrdersCache(vendorId: string, orders: unknown[]): void {
