@@ -5,6 +5,7 @@ import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
+import { VendorStorefrontFullSkeleton } from "../components/SkeletonLoaders";
 import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 
@@ -86,11 +87,7 @@ export function VendorStorefrontPage() {
   }, [storeName, location.pathname, subdomainSlug, customHostSlug]);
 
   if (customHostLoading && !params.storeName && !subdomainSlug) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="w-10 h-10 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin" />
-      </div>
-    );
+    return <VendorStorefrontFullSkeleton />;
   }
 
   if (!storeName) {

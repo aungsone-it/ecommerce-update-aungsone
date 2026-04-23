@@ -5792,6 +5792,27 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
       await withTimeout(kv.del(`vendor_slug_${(vendorStorefront as any).storeSlug}`), 5000);
       console.log(`✅ Deleted storefront slug mapping: ${(vendorStorefront as any).storeSlug}`);
     }
+    // Release ALL slug aliases pointing to this vendor (legacy + migrated keys).
+    try {
+      const allSlugRows = await withTimeout(kv.getByPrefixWithKeys("vendor_slug_"), 12000);
+      let releasedSlugCount = 0;
+      for (const row of Array.isArray(allSlugRows) ? allSlugRows : []) {
+        if (!row || typeof row !== "object") continue;
+        const rowVendorId =
+          row.value && typeof row.value === "object"
+            ? String((row.value as { vendorId?: unknown }).vendorId || "").trim()
+            : "";
+        if (!rowVendorId || rowVendorId !== String(vendorId)) continue;
+        if (typeof row.key !== "string" || !row.key.trim()) continue;
+        await withTimeout(kv.del(row.key), 5000);
+        releasedSlugCount += 1;
+      }
+      if (releasedSlugCount > 0) {
+        console.log(`✅ Released ${releasedSlugCount} slug alias key(s) for vendor ${vendorId}`);
+      }
+    } catch (slugCleanupError) {
+      console.warn(`⚠️ Failed to fully release slug aliases for vendor ${vendorId}:`, slugCleanupError);
+    }
 
     // Remove verified/pending custom-domain host mappings for this vendor.
     const customDomain =
@@ -5807,6 +5828,33 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
       }
     }
     await withTimeout(kv.del(`vendor_domain_pending:${vendorId}`), 5000);
+    // Safety sweep: remove any host/pending mappings that still point to this vendor,
+    // even if storefront.customDomain was stale/missing.
+    try {
+      const hostRows = await withTimeout(kv.getByPrefixWithKeys("custom_domain_host:"), 15000);
+      let removedHostRows = 0;
+      for (const row of Array.isArray(hostRows) ? hostRows : []) {
+        const mappedVendorId =
+          row?.value && typeof row.value === "object"
+            ? String((row.value as { vendorId?: unknown }).vendorId || "").trim()
+            : "";
+        if (!mappedVendorId || mappedVendorId !== String(vendorId)) continue;
+        if (!row?.key || typeof row.key !== "string") continue;
+        await withTimeout(kv.del(row.key), 5000);
+        removedHostRows += 1;
+        const host = row.key.replace(/^custom_domain_host:/, "").trim().toLowerCase();
+        if (host) {
+          for (const pendingKey of vendorPendingHostKvKeys(host)) {
+            await withTimeout(kv.del(pendingKey), 5000);
+          }
+        }
+      }
+      if (removedHostRows > 0) {
+        console.log(`✅ Removed ${removedHostRows} custom_domain_host key(s) for vendor ${vendorId}`);
+      }
+    } catch (hostSweepError) {
+      console.warn(`⚠️ Failed custom domain host safety sweep for vendor ${vendorId}:`, hostSweepError);
+    }
 
     const vendorTokens = new Set<string>(
       [
@@ -8766,7 +8814,16 @@ async function findOtherVendorWithHostname(
   excludeVendorId: string
 ): Promise<boolean> {
   const direct = await kv.get(`custom_domain_host:${hostname}`);
-  if (direct?.vendorId && direct.vendorId !== excludeVendorId) return true;
+  if (direct?.vendorId && direct.vendorId !== excludeVendorId) {
+    const mappedVendor = await kv.get(`vendor:${direct.vendorId}`);
+    if (mappedVendor) {
+      return true;
+    }
+    // Self-heal stale domain host mapping pointing to deleted vendor.
+    for (const h of customDomainLookupVariants(hostname)) {
+      await kv.del(`custom_domain_host:${h}`);
+    }
+  }
   const all = await kv.getByPrefix("vendor_storefront_");
   const list = Array.isArray(all) ? all : [];
   for (const s of list) {
@@ -8777,7 +8834,19 @@ async function findOtherVendorWithHostname(
       String(v.customDomain || "").toLowerCase() === hostname &&
       v.domainStatus === "verified"
     ) {
-      return true;
+      const mappedVendor = await kv.get(`vendor:${v.vendorId}`);
+      if (mappedVendor) {
+        return true;
+      }
+      // Self-heal stale storefront row from deleted vendor.
+      await kv.del(`vendor_storefront_${v.vendorId}`);
+      for (const h of customDomainLookupVariants(hostname)) {
+        await kv.del(`custom_domain_host:${h}`);
+      }
+      await kv.del(`vendor_domain_pending:${v.vendorId}`);
+      for (const k of vendorPendingHostKvKeys(hostname)) {
+        await kv.del(k);
+      }
     }
   }
   return false;
@@ -8953,7 +9022,14 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
 
     const prevHostEntry = await kv.get(`custom_domain_host:${normalized}`);
     if (prevHostEntry?.vendorId && prevHostEntry.vendorId !== vendorId) {
-      return c.json({ verified: false, error: "Domain conflict" }, 409);
+      const mappedVendor = await kv.get(`vendor:${prevHostEntry.vendorId}`);
+      if (mappedVendor) {
+        return c.json({ verified: false, error: "Domain conflict" }, 409);
+      }
+      // Self-heal stale host keys from deleted vendor before claiming.
+      for (const h of customDomainLookupVariants(normalized)) {
+        await kv.del(`custom_domain_host:${h}`);
+      }
     }
 
     const oldSettings = await kv.get(sfKey);
