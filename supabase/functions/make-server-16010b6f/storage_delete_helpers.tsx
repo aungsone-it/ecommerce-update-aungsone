@@ -92,6 +92,12 @@ export function collectProductImageRefs(product: any): unknown[] {
   if (typeof (product as { image?: string }).image === "string") {
     out.push((product as { image: string }).image);
   }
+  if (typeof (product as { thumbnail?: string }).thumbnail === "string") {
+    out.push((product as { thumbnail: string }).thumbnail);
+  }
+  if (typeof (product as { coverImage?: string }).coverImage === "string") {
+    out.push((product as { coverImage: string }).coverImage);
+  }
   const imgs = (product as { images?: unknown }).images;
   if (Array.isArray(imgs)) {
     for (const x of imgs) {
@@ -104,6 +110,14 @@ export function collectProductImageRefs(product: any): unknown[] {
       if (v && typeof (v as { image?: string }).image === "string") {
         out.push((v as { image: string }).image);
       }
+    }
+  }
+  const description = (product as { description?: unknown }).description;
+  if (typeof description === "string" && description.trim()) {
+    // Collect storage URLs embedded in rich-text HTML/markdown descriptions.
+    const matches = description.match(/https?:\/\/[^\s"'<>]+/gi) || [];
+    for (const u of matches) {
+      out.push(u);
     }
   }
   return out;

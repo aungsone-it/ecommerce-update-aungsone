@@ -5808,6 +5808,174 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
     }
     await withTimeout(kv.del(`vendor_domain_pending:${vendorId}`), 5000);
 
+    const vendorTokens = new Set<string>(
+      [
+        String(vendorId || "").trim().toLowerCase(),
+        String((vendor as any)?.id || "").trim().toLowerCase(),
+        String((vendor as any)?.storeSlug || "").trim().toLowerCase(),
+        String((vendor as any)?.name || "").trim().toLowerCase(),
+        String((vendor as any)?.businessName || "").trim().toLowerCase(),
+        String((vendorSettings as any)?.storeSlug || "").trim().toLowerCase(),
+        String((vendorStorefront as any)?.storeSlug || "").trim().toLowerCase(),
+      ].filter(Boolean)
+    );
+    const vendorEmail = String((vendor as any)?.email || "").trim().toLowerCase();
+    const matchesVendorToken = (value: unknown): boolean => {
+      const s = String(value || "").trim().toLowerCase();
+      return !!s && vendorTokens.has(s);
+    };
+    const entryKeyOrId = (entry: any, prefix: string): string | null => {
+      if (entry && typeof entry === "object" && typeof entry.key === "string" && entry.key.trim()) {
+        return entry.key;
+      }
+      const value = entry && typeof entry === "object" && "value" in entry ? entry.value : entry;
+      const id = value && typeof value === "object" ? (value as any).id : undefined;
+      if (id != null && String(id).trim()) {
+        return `${prefix}${String(id).trim()}`;
+      }
+      return null;
+    };
+    const entryValue = (entry: any): any =>
+      entry && typeof entry === "object" && "value" in entry ? entry.value : entry;
+    let deletedOrders = 0;
+    let deletedNotifications = 0;
+    let deletedConversations = 0;
+    let deletedMessages = 0;
+    let deletedVendorCategories = 0;
+    let deletedVendorApplications = 0;
+    let deletedAudienceRows = 0;
+
+    // Hard-delete vendor-owned order history.
+    const allOrders = await withTimeout(kv.getByPrefix("order:"), 12000).catch(() => []);
+    if (Array.isArray(allOrders)) {
+      for (const raw of allOrders) {
+        const order = entryValue(raw);
+        if (!order || typeof order !== "object") continue;
+        const orderVendorMatch =
+          matchesVendorToken((order as any).vendorId) ||
+          matchesVendorToken((order as any).vendor) ||
+          (Array.isArray((order as any).items) &&
+            (order as any).items.some(
+              (item: any) =>
+                matchesVendorToken(item?.vendorId) || matchesVendorToken(item?.vendor)
+            ));
+        if (!orderVendorMatch) continue;
+        const key = entryKeyOrId(raw, "order:");
+        if (!key) continue;
+        await withTimeout(kv.del(key), 5000);
+        deletedOrders += 1;
+      }
+    }
+    if (deletedOrders > 0) {
+      serverCache.delete("orders_minimal");
+      console.log(`✅ Deleted ${deletedOrders} vendor-owned orders`);
+    }
+
+    // Hard-delete notifications associated to this vendor.
+    const allNotifications = await withTimeout(kv.getByPrefix("notification:"), 12000).catch(() => []);
+    if (Array.isArray(allNotifications)) {
+      for (const raw of allNotifications) {
+        const notification = entryValue(raw);
+        if (!notification || typeof notification !== "object") continue;
+        const isVendorNotification =
+          matchesVendorToken((notification as any).vendorId) ||
+          matchesVendorToken((notification as any).vendor) ||
+          matchesVendorToken((notification as any).vendorSource);
+        if (!isVendorNotification) continue;
+        const key = entryKeyOrId(raw, "notification:");
+        if (!key) continue;
+        await withTimeout(kv.del(key), 5000);
+        deletedNotifications += 1;
+      }
+    }
+
+    // Hard-delete chat conversations + their messages for this vendor.
+    const allConversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 15000).catch(() => []);
+    if (Array.isArray(allConversations)) {
+      for (const raw of allConversations) {
+        const conv = entryValue(raw);
+        if (!conv || typeof conv !== "object") continue;
+        const convId = String((conv as any).id || "").trim();
+        if (!convId) continue;
+        const belongsToVendor =
+          matchesVendorToken((conv as any).vendorId) ||
+          matchesVendorToken((conv as any).vendorSource);
+        if (!belongsToVendor) continue;
+        const convKey = entryKeyOrId(raw, "chat:conversation:");
+        if (convKey) {
+          await withTimeout(kv.del(convKey), 5000);
+          deletedConversations += 1;
+        }
+        const convMessages = await withTimeout(
+          kv.getByPrefix(`chat:message:${convId}:`),
+          12000
+        ).catch(() => []);
+        if (Array.isArray(convMessages)) {
+          for (const msgRaw of convMessages) {
+            const msgKey = entryKeyOrId(msgRaw, `chat:message:${convId}:`);
+            if (!msgKey) continue;
+            await withTimeout(kv.del(msgKey), 5000);
+            deletedMessages += 1;
+          }
+        }
+      }
+    }
+
+    // Hard-delete vendor storefront audience rows (by id and slug alias if any).
+    const audienceKeys = new Set<string>([
+      `vendor:audience:${vendorId}`,
+      `vendor:audience:${(vendorSettings as any)?.storeSlug || ""}`,
+      `vendor:audience:${(vendorStorefront as any)?.storeSlug || ""}`,
+    ]);
+    for (const key of audienceKeys) {
+      const k = String(key || "").trim();
+      if (!k || k.endsWith(":")) continue;
+      await withTimeout(kv.del(k), 5000);
+      deletedAudienceRows += 1;
+    }
+
+    // Hard-delete vendor categories (key format: category:{vendorId}:{id}).
+    const vendorCategories = await withTimeout(kv.getByPrefix(`category:${vendorId}:`), 15000).catch(() => []);
+    if (Array.isArray(vendorCategories)) {
+      for (const catRaw of vendorCategories) {
+        const catKey =
+          (catRaw && typeof catRaw === "object" && typeof (catRaw as any).key === "string"
+            ? String((catRaw as any).key)
+            : "") ||
+          (entryValue(catRaw)?.id ? String(entryValue(catRaw).id) : "");
+        if (!catKey) continue;
+        await withTimeout(kv.del(catKey), 5000);
+        deletedVendorCategories += 1;
+      }
+    }
+    if (deletedVendorCategories > 0) {
+      serverCache.delete("categories");
+      console.log(`✅ Deleted ${deletedVendorCategories} vendor categories`);
+    }
+
+    // Hard-delete linked vendor application records.
+    const applicationId = String((vendor as any)?.applicationId || "").trim();
+    if (applicationId) {
+      await withTimeout(kv.del(`vendor_application:${applicationId}`), 5000);
+      deletedVendorApplications += 1;
+    }
+    const allApplications = await withTimeout(kv.getByPrefix("vendor_application:"), 15000).catch(() => []);
+    if (Array.isArray(allApplications)) {
+      for (const appRaw of allApplications) {
+        const app = entryValue(appRaw);
+        if (!app || typeof app !== "object") continue;
+        const appMatchesVendor =
+          matchesVendorToken((app as any).vendorId) ||
+          matchesVendorToken((app as any).approvedVendorId) ||
+          (vendorEmail && String((app as any).email || "").trim().toLowerCase() === vendorEmail);
+        if (!appMatchesVendor) continue;
+        const appKey = entryKeyOrId(appRaw, "vendor_application:");
+        if (!appKey) continue;
+        await withTimeout(kv.del(appKey), 5000);
+        deletedVendorApplications += 1;
+      }
+    }
+
     // Remove this vendor from product assignments so deleted vendors cannot appear in listings.
     const allProducts = await withTimeout(kv.getByPrefix("product:"), 10000);
     const validProducts = Array.isArray(allProducts) ? allProducts.filter((p) => p && typeof p === "object") : [];
@@ -5855,7 +6023,17 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
     
     return c.json({ 
       success: true,
-      message: "Vendor deleted successfully"
+      message: "Vendor deleted successfully",
+      deleted: {
+        vendorId,
+        orders: deletedOrders,
+        notifications: deletedNotifications,
+        chatConversations: deletedConversations,
+        chatMessages: deletedMessages,
+        categories: deletedVendorCategories,
+        vendorApplications: deletedVendorApplications,
+        audienceRows: deletedAudienceRows,
+      },
     });
   } catch (error) {
     console.error("❌ Error deleting vendor:", error);
@@ -8194,11 +8372,33 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     // Store settings in KV store with vendor ID as key
     const key = `vendor_storefront_${settings.vendorId}`;
     const prevStorefront = await kv.get(key);
+    const prevStorefrontLogo =
+      prevStorefront && typeof prevStorefront === "object" && typeof (prevStorefront as any).logo === "string"
+        ? String((prevStorefront as any).logo).trim()
+        : "";
+    const prevStorefrontBanner =
+      prevStorefront && typeof prevStorefront === "object" && typeof (prevStorefront as any).banner === "string"
+        ? String((prevStorefront as any).banner).trim()
+        : "";
     const nameForSlug = String(settings.storeName || "").trim() || "Vendor Store";
     // Slug always derived from current store name (a-z0-9 only) — same vendor reuses their slug if still "free"
     const finalSlug = await allocateUniqueVendorSlugFromName(nameForSlug, settings.vendorId);
     const mergedSettings = { ...settings, storeSlug: finalSlug };
     await kv.set(key, mergedSettings);
+    const nextStorefrontLogo =
+      typeof (mergedSettings as any).logo === "string" ? String((mergedSettings as any).logo).trim() : "";
+    const nextStorefrontBanner =
+      typeof (mergedSettings as any).banner === "string" ? String((mergedSettings as any).banner).trim() : "";
+    const removedStorefrontAssets: unknown[] = [];
+    if (prevStorefrontLogo && prevStorefrontLogo !== nextStorefrontLogo) {
+      removedStorefrontAssets.push(prevStorefrontLogo);
+    }
+    if (prevStorefrontBanner && prevStorefrontBanner !== nextStorefrontBanner) {
+      removedStorefrontAssets.push(prevStorefrontBanner);
+    }
+    if (removedStorefrontAssets.length > 0) {
+      await deleteOwnedStorageRefs(supabase, removedStorefrontAssets);
+    }
 
     // Keep `vendor_settings:*` in sync — public catalog and auth still read storeName from there first in some paths
     const vsKey = `vendor_settings:${settings.vendorId}`;
@@ -8238,13 +8438,20 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
 
     // 🔥 SYNC LOGO TO VENDOR AVATAR: Update vendor record with new logo
-    if (mergedSettings.logo && vendorData) {
+    if (vendorData) {
+      const prevVendorAvatar =
+        typeof (vendorData as any)?.avatar === "string" ? String((vendorData as any).avatar).trim() : "";
       const updatedVendor = {
         ...vendorData,
-        avatar: mergedSettings.logo,
+        avatar: typeof mergedSettings.logo === "string" ? mergedSettings.logo : "",
         updatedAt: new Date().toISOString()
       };
       await kv.set(`vendor:${settings.vendorId}`, updatedVendor);
+      const nextVendorAvatar =
+        typeof updatedVendor.avatar === "string" ? String(updatedVendor.avatar).trim() : "";
+      if (prevVendorAvatar && prevVendorAvatar !== nextVendorAvatar) {
+        await deleteOwnedStorageRefs(supabase, [prevVendorAvatar]);
+      }
       console.log(`✅ Synced logo to vendor avatar for vendor ${settings.vendorId}`);
       
       // 🔥 INVALIDATE VENDORS CACHE so the updated logo appears immediately
