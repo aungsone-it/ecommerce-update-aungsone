@@ -568,9 +568,18 @@ export function Vendor({
       return;
     }
 
+    const previousVendors = vendors;
+    const deletedVendor = vendors.find((v) => v.id === vendorId) || null;
+    const optimisticVendors = vendors.filter((v) => v.id !== vendorId);
+
+    // Instant UI update: remove the row immediately while backend hard-delete runs.
+    setVendors(optimisticVendors);
+    cachedVendors = optimisticVendors;
+    setSelectedVendors((prev) => prev.filter((id) => id !== vendorId));
+
     try {
       console.log("🗑️ Deleting vendor:", vendorId);
-      
+
       const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${vendorId}`, {
         method: "DELETE",
         headers: {
@@ -582,16 +591,19 @@ export function Vendor({
         throw new Error(`Failed to delete vendor: ${response.statusText}`);
       }
 
-      // Invalidate cache and reload fresh data
+      // Keep cache coherent and verify with a background refresh.
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
-      await loadVendors();
-      
-      // Remove from selection if selected
-      setSelectedVendors(selectedVendors.filter(id => id !== vendorId));
-      
+      void loadVendors();
+
       alert(t('vendor.deleteSuccess') || '✅ Vendor deleted successfully!');
     } catch (error: any) {
       console.error("❌ Error deleting vendor:", error);
+      // Roll back optimistic removal if API delete fails.
+      setVendors(previousVendors);
+      cachedVendors = previousVendors;
+      if (deletedVendor) {
+        setSelectedVendors((prev) => (prev.includes(vendorId) ? prev : [...prev, vendorId]));
+      }
       alert(t('vendor.deleteError') || `Failed to delete vendor: ${error.message}`);
     }
   };
@@ -606,11 +618,20 @@ export function Vendor({
       return;
     }
 
+    const idsToDelete = [...selectedVendors];
+    const previousVendors = vendors;
+    const optimisticVendors = vendors.filter((v) => !idsToDelete.includes(v.id));
+
+    // Instant UI update for bulk delete.
+    setVendors(optimisticVendors);
+    cachedVendors = optimisticVendors;
+    setSelectedVendors([]);
+
     try {
-      console.log(`🗑️ Bulk deleting ${count} vendors:`, selectedVendors);
-      
+      console.log(`🗑️ Bulk deleting ${count} vendors:`, idsToDelete);
+
       // Delete all selected vendors
-      const deletePromises = selectedVendors.map(vendorId =>
+      const deletePromises = idsToDelete.map(vendorId =>
         fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${vendorId}`, {
           method: "DELETE",
           headers: {
@@ -627,16 +648,17 @@ export function Vendor({
         throw new Error(`Failed to delete ${failedDeletions.length} vendor(s)`);
       }
 
-      // Invalidate cache and reload fresh data
+      // Keep cache coherent and verify with a background refresh.
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
-      await loadVendors();
-      
-      // Clear selection
-      setSelectedVendors([]);
-      
+      void loadVendors();
+
       alert(t('vendor.bulkDeleteSuccess')?.replace('{count}', count.toString()) || `✅ ${count} vendor(s) deleted successfully!`);
     } catch (error: any) {
       console.error("❌ Error bulk deleting vendors:", error);
+      // Roll back optimistic removal if any delete fails.
+      setVendors(previousVendors);
+      cachedVendors = previousVendors;
+      setSelectedVendors(idsToDelete);
       alert(t('vendor.bulkDeleteError') || `Failed to delete vendors: ${error.message}`);
     }
   };
