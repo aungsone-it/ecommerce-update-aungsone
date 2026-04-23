@@ -500,7 +500,14 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
           />
         );
       case "settings":
-        return <VendorAdminSettings vendorId={vendor.id} vendorName={vendor.name} onPreviewStore={onPreviewStore} />;
+        return (
+          <VendorAdminSettings
+            vendorId={vendor.id}
+            vendorName={vendor.name}
+            vendorLogo={vendorLogo || vendor.avatar || ""}
+            onPreviewStore={onPreviewStore}
+          />
+        );
       case "finances":
         return (
           <VendorAdminFinances

@@ -8311,6 +8311,13 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
     // Get vendor data to populate contact fields from application
     const vendor = await kv.get(`vendor:${vendorId}`);
     
+    const resolvedVendorLogo =
+      typeof vendor?.avatar === "string" && vendor.avatar.trim()
+        ? vendor.avatar.trim()
+        : typeof vendor?.logo === "string" && vendor.logo.trim()
+          ? vendor.logo.trim()
+          : "";
+
     if (!settings) {
       console.log(`⚠️ No settings found for vendor ${vendorId}, returning defaults`);
       // Return default settings if none exist, populated with vendor data if available
@@ -8321,7 +8328,7 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
           storeSlug: `vendor-${vendorId}`,
           storeDescription: "Welcome to our store",
           storeTagline: "",
-          logo: "",
+          logo: resolvedVendorLogo,
           banner: "",
           primaryColor: "#1e293b",
           secondaryColor: "#64748b",
@@ -8347,6 +8354,10 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
     // Populate empty contact fields from vendor data if they're missing
     const populatedSettings = {
       ...settings,
+      logo:
+        typeof settings.logo === "string" && settings.logo.trim()
+          ? settings.logo
+          : resolvedVendorLogo,
       contactEmail: settings.contactEmail || vendor?.email || "",
       contactPhone: settings.contactPhone || vendor?.phone || "",
       address: settings.address || vendor?.location || "",

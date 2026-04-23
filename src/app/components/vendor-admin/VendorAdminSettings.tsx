@@ -49,17 +49,23 @@ interface StoreSettings {
 interface VendorAdminSettingsProps {
   vendorId: string;
   vendorName: string;
+  vendorLogo?: string;
   onPreviewStore?: (vendorId: string, storeSlug: string) => void;
 }
 
-export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: VendorAdminSettingsProps) {
+export function VendorAdminSettings({
+  vendorId,
+  vendorName,
+  vendorLogo = "",
+  onPreviewStore,
+}: VendorAdminSettingsProps) {
   const [settings, setSettings] = useState<StoreSettings>({
     vendorId,
     storeName: vendorName,
     storeSlug: storeSlugFromBusinessName(vendorName),
     storeDescription: "Welcome to our store",
     storeTagline: "",
-    logo: "",
+    logo: vendorLogo,
     banner: "",
     primaryColor: "#1e293b",
     secondaryColor: "#64748b",
@@ -85,7 +91,7 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
 
   useEffect(() => {
     loadSettings();
-  }, [vendorId]);
+  }, [vendorId, vendorLogo]);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -102,7 +108,13 @@ export function VendorAdminSettings({ vendorId, vendorName, onPreviewStore }: Ve
       if (response.ok) {
         const data = await response.json();
         if (data.settings) {
-          setSettings(data.settings);
+          setSettings({
+            ...data.settings,
+            logo:
+              typeof data.settings.logo === "string" && data.settings.logo.trim()
+                ? data.settings.logo
+                : vendorLogo,
+          });
           setDomainDraft(
             String(data.settings.customDomain || "").trim() || ""
           );
