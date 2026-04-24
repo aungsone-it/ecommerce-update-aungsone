@@ -141,6 +141,8 @@ interface VendorStoreViewProps {
   profileOrderId?: string | null;
   /** `/store/:slug/saved` — saved products (wishlist) for this storefront */
   savedPage?: boolean;
+  /** Optional category route segment (e.g. `/clothing` or `/store/:slug/clothing`). */
+  categorySlug?: string | null;
 }
 
 type VendorAccountViewMode =
@@ -269,6 +271,16 @@ function safeDecodePathSegment(slug: string): string {
   } catch {
     return slug;
   }
+}
+
+function slugifyCategoryName(name: string): string {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 const VENDOR_DEFAULT_STORE_PHONE = "+95 9 XXX XXX XXX";
@@ -562,6 +574,7 @@ export function VendorStoreView({
   profileSegment = null,
   profileOrderId = null,
   savedPage = false,
+  categorySlug = null,
 }: VendorStoreViewProps) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -576,6 +589,18 @@ export function VendorStoreView({
   const navigateStoreHome = useCallback(() => {
     navigate(storeBase || "/");
   }, [navigate, storeBase]);
+
+  const categoryPathForName = useCallback(
+    (categoryName: string) => {
+      const base = storeBase || "";
+      const raw = String(categoryName || "").trim();
+      if (!raw || raw.toLowerCase() === "all") return base || "/";
+      const slug = slugifyCategoryName(raw);
+      if (!slug) return base || "/";
+      return `${base}/${encodeURIComponent(slug)}`;
+    },
+    [storeBase]
+  );
 
   /** Prefer pathname over useParams so async product load cannot reopen detail after user navigated away. */
   const productSlugFromPath = useMemo(() => {
@@ -650,6 +675,10 @@ export function VendorStoreView({
   /** Latest catalog for merging into saved list without re-subscribing the wishlist hydration effect to `products`. */
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products;
+  /** Monotonic id for catalog requests; older async responses are ignored. */
+  const vendorCatalogRequestSeqRef = useRef(0);
+  /** Monotonic id for filter/search-triggered refetch effect status updates. */
+  const vendorCatalogRefetchRunRef = useRef(0);
 
   /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
   const catalogCategoryHintsRef = useRef<Map<string, string>>(new Map());
@@ -706,6 +735,12 @@ export function VendorStoreView({
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     );
   }, [vendorId, vendorCategories, products]);
+
+  const normalizedCategorySlugFromRoute = useMemo(() => {
+    const raw = String(categorySlug || "").trim();
+    if (!raw) return "";
+    return slugifyCategoryName(safeDecodePathSegment(raw));
+  }, [categorySlug]);
 
   useEffect(() => {
     if (savedPage) {
@@ -794,6 +829,32 @@ export function VendorStoreView({
       setVendorViewMode(mode);
     }
   }, [profileSegment]);
+
+  useEffect(() => {
+    if (savedPage) return;
+    if (vendorViewMode !== "storefront") return;
+    if (isVendorProductDetailPath) return;
+
+    if (!normalizedCategorySlugFromRoute) {
+      if (selectedCategory !== "all") setSelectedCategory("all");
+      return;
+    }
+
+    const match = subnavCategoryItems.find(
+      (c) => slugifyCategoryName(c.name) === normalizedCategorySlugFromRoute
+    );
+    if (!match) return;
+    if (String(selectedCategory).trim().toLowerCase() !== match.name.toLowerCase()) {
+      setSelectedCategory(match.name);
+    }
+  }, [
+    savedPage,
+    vendorViewMode,
+    isVendorProductDetailPath,
+    normalizedCategorySlugFromRoute,
+    subnavCategoryItems,
+    selectedCategory,
+  ]);
 
   useEffect(() => {
     const el = vendorScrollRootRef.current;
@@ -898,7 +959,7 @@ export function VendorStoreView({
                   setSelectedProduct(null);
                   setSearchQuery("");
                   setSelectedCategory("all");
-                  navigate(storeBase || "/", { replace: false });
+                  navigate(categoryPathForName("all"), { replace: false });
                 }}
                 className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                   selectedCategory === "all"
@@ -916,7 +977,7 @@ export function VendorStoreView({
                     setSelectedProduct(null);
                     setSearchQuery("");
                     setSelectedCategory(category.name);
-                    navigate(storeBase || "/", { replace: false });
+                    navigate(categoryPathForName(category.name), { replace: false });
                   }}
                   className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
                     String(selectedCategory).trim().toLowerCase() === category.name.toLowerCase()
@@ -949,7 +1010,7 @@ export function VendorStoreView({
     subnavCategoryItems,
     selectedCategory,
     storePhone,
-    storeBase,
+    categoryPathForName,
     navigate,
   ]);
 
@@ -1553,18 +1614,18 @@ export function VendorStoreView({
     setSearchQuery("");
     setSelectedCategory("all");
     setSelectedProduct(null);
-    navigateStoreHome();
+    navigate(categoryPathForName("all"));
     closeVendorMobileNav();
-  }, [navigateStoreHome, closeVendorMobileNav]);
+  }, [navigate, categoryPathForName, closeVendorMobileNav]);
 
   const selectVendorCategoryNav = useCallback(
     (categoryName: string) => {
       setSelectedProduct(null);
       setSelectedCategory(categoryName);
-      navigateStoreHome();
+      navigate(categoryPathForName(categoryName));
       closeVendorMobileNav();
     },
-    [navigateStoreHome, closeVendorMobileNav]
+    [navigate, categoryPathForName, closeVendorMobileNav]
   );
 
   const renderVendorMobileNavDrawer = () => {
@@ -2718,8 +2779,10 @@ export function VendorStoreView({
   };
 
   const refetchVendorCatalogPage1 = useCallback(
-    async (forceRefresh: boolean) => {
-      if (savedPage) return;
+    async (forceRefresh: boolean): Promise<boolean> => {
+      const requestSeq = ++vendorCatalogRequestSeqRef.current;
+      const isLatest = () => requestSeq === vendorCatalogRequestSeqRef.current;
+      if (savedPage) return false;
       const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
       const cat = selectedCategory;
@@ -2734,6 +2797,7 @@ export function VendorStoreView({
           // Old persisted catalog omitted `storePhone` — bypass LS once so we pick up `contactPhone` from the API.
           const lsHasStorePhoneField = Object.prototype.hasOwnProperty.call(fromLs, "storePhone");
           if (lsHasStorePhoneField) {
+            if (!isLatest()) return false;
             moduleCache.prime(cacheKey, fromLs);
             setProducts(fromLs.products || []);
             setVendorCatalogTotal(fromLs.total);
@@ -2751,7 +2815,7 @@ export function VendorStoreView({
                 ? fromLs.resolvedVendorId.trim()
                 : undefined;
             setCanonicalVendorId(rid ?? vendorId);
-            return;
+            return true;
           }
         }
       }
@@ -2767,6 +2831,7 @@ export function VendorStoreView({
           }),
         forceRefresh
       );
+      if (!isLatest()) return false;
       setProducts(productsData.products || []);
       setVendorCatalogTotal(productsData.total);
       setVendorCatalogPage(productsData.page);
@@ -2779,6 +2844,7 @@ export function VendorStoreView({
       if (persistEligible && productsData && typeof productsData === "object") {
         writePersistedJson(lsKey, productsData);
       }
+      return true;
     },
     [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
   );
@@ -2983,6 +3049,7 @@ export function VendorStoreView({
   useEffect(() => {
     if (!savedPage) return;
     let cancelled = false;
+    const runId = ++vendorCatalogRefetchRunRef.current;
     void (async () => {
       try {
         const data = await fetchVendorProducts(vendorId, { page: 1, pageSize: 1 });
@@ -3024,10 +3091,19 @@ export function VendorStoreView({
         if (productsRef.current.length === 0) {
           setServerStatus("checking");
         }
-        await refetchVendorCatalogPage1(false);
-        setServerStatus("healthy");
+        const applied = await refetchVendorCatalogPage1(false);
+        if (runId !== vendorCatalogRefetchRunRef.current) return;
+        if (applied) {
+          setServerStatus("healthy");
+        }
       } catch {
-        setServerStatus("unhealthy");
+        if (runId !== vendorCatalogRefetchRunRef.current) return;
+        // Avoid dropping into full error screen when we already have products rendered.
+        if (productsRef.current.length === 0) {
+          setServerStatus("unhealthy");
+        } else {
+          setServerStatus("healthy");
+        }
       }
     })();
   }, [debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
@@ -4036,7 +4112,7 @@ export function VendorStoreView({
                 <button onClick={() => {
                   setSelectedProduct(null);
                   setSelectedCategory(selectedProduct.category);
-                  navigate(storeBase || "/", { replace: false });
+                  navigate(categoryPathForName(selectedProduct.category), { replace: false });
                 }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
                   {selectedProduct.category}
                 </button>

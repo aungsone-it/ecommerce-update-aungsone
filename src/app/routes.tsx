@@ -22,6 +22,7 @@ import {
   VendorHostOrMarketplaceSaved,
   VendorHostOrMarketplaceProduct,
   VendorHostOrMarketplaceProfile,
+  VendorHostCategoryRoute,
 } from "./components/VendorHostOrMarketplaceRoutes";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
@@ -295,8 +296,23 @@ export const router = createBrowserRouter([
             errorElement: <NotFound />,
           },
           {
+            path: "store/:storeName/:categorySlug",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/:categorySlug",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
             path: "vendor/:storeName",
             element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: ":categorySlug",
+            element: <VendorHostCategoryRoute />,
             errorElement: <NotFound />,
           },
           {
