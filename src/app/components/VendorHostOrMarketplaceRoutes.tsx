@@ -10,15 +10,12 @@ const StorefrontPage = lazy(() =>
   import("../pages/StorefrontPage").then((m) => ({ default: m.StorefrontPage }))
 );
 
-function useIsVendorOnlyHost(): boolean {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: custom } = useResolvedVendorHostSlug();
-  return sub != null || custom != null;
-}
-
 /** `/saved` — vendor subdomain / custom domain use vendor storefront wishlist; apex uses marketplace. */
 export function VendorHostOrMarketplaceSaved() {
-  const vendorHost = useIsVendorOnlyHost();
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: custom, loading } = useResolvedVendorHostSlug();
+  const vendorHost = sub != null || custom != null;
+  if (loading && !sub) return <RouteLoadingFallback />;
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       {vendorHost ? <VendorStorefrontPage /> : <StorefrontPage />}
@@ -28,7 +25,10 @@ export function VendorHostOrMarketplaceSaved() {
 
 /** `/product/:productSlug` — same path shape; vendor host renders vendor product detail. */
 export function VendorHostOrMarketplaceProduct() {
-  const vendorHost = useIsVendorOnlyHost();
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: custom, loading } = useResolvedVendorHostSlug();
+  const vendorHost = sub != null || custom != null;
+  if (loading && !sub) return <RouteLoadingFallback />;
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       {vendorHost ? <VendorStorefrontPage /> : <StorefrontPage />}
@@ -38,7 +38,10 @@ export function VendorHostOrMarketplaceProduct() {
 
 /** `/profile` and nested — vendor host uses vendor storefront account shell. */
 export function VendorHostOrMarketplaceProfile() {
-  const vendorHost = useIsVendorOnlyHost();
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: custom, loading } = useResolvedVendorHostSlug();
+  const vendorHost = sub != null || custom != null;
+  if (loading && !sub) return <RouteLoadingFallback />;
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       {vendorHost ? <VendorStorefrontPage /> : <StorefrontPage />}
