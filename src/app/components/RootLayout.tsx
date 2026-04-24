@@ -9,11 +9,12 @@ import {
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { FloatingChat } from "./FloatingChat";
 import { BackToTop } from "./BackToTop";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCartVisibility } from "../contexts/CartVisibilityContext";
 import { CartVisibilityProvider } from "../contexts/CartVisibilityContext";
 import { LoadingProvider, useLoading } from "../contexts/LoadingContext";
+import { shouldResolveCustomDomainHost } from "../utils/vendorHostResolution";
 
 // Public layout without authentication
 export function RootLayout() {
@@ -59,6 +60,19 @@ function RootLayoutContent() {
     /^\/vendor\/[^/]+\/reset-password$/.test(location.pathname);
   const isVendorLoginPage = location.pathname === '/vendor/login';
   const isAdminPortal = isAdminPortalRoute(location.pathname);
+
+  // Warm vendor storefront chunks on vendor-like hosts to avoid first-visit blink on
+  // routes like /product/:slug, /saved and /profile when code-split chunks are cold.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const host = window.location.hostname;
+    const isVendorLikeHost =
+      subdomainStoreSlug != null ||
+      customHostSlug != null ||
+      shouldResolveCustomDomainHost(host);
+    if (!isVendorLikeHost) return;
+    void import("../pages/VendorStorefrontPage");
+  }, [subdomainStoreSlug, customHostSlug]);
 
   return (
     <>
