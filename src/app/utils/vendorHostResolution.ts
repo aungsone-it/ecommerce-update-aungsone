@@ -73,12 +73,17 @@ export function clearCachedVendorHostSlug(host?: string): void {
   }
 }
 
-export async function fetchVendorSlugByCustomDomain(hostname: string): Promise<string | null> {
+export async function fetchVendorSlugByCustomDomain(
+  hostname: string,
+  options?: { force?: boolean }
+): Promise<string | null> {
   const h = normalizeHostForLookup(hostname);
   if (!shouldResolveCustomDomainHost(h)) return null;
 
-  const cached = readCachedSlug(h);
-  if (cached) return cached;
+  if (!options?.force) {
+    const cached = readCachedSlug(h);
+    if (cached) return cached;
+  }
 
   try {
     const res = await fetch(
@@ -129,13 +134,15 @@ export function useResolvedVendorHostSlug(): {
     }
     const cached = readCachedSlug(h);
     if (cached) {
+      // Use cached value for instant routing, then revalidate in background.
       setCustomSlug(cached);
       setLoading(false);
-      return;
+    } else {
+      setLoading(true);
     }
     let cancelled = false;
     void (async () => {
-      const slug = await fetchVendorSlugByCustomDomain(h);
+      const slug = await fetchVendorSlugByCustomDomain(h, { force: true });
       if (cancelled) return;
       setCustomSlug(slug);
       setLoading(false);
