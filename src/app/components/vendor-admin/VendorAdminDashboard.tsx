@@ -5,7 +5,6 @@ import {
   Users,
   ShoppingCart,
   TrendingUp,
-  Loader2,
   ChevronDown,
   ArrowUpRight,
   ArrowDownRight,
@@ -178,7 +177,7 @@ export function VendorAdminDashboard({
   const { stats, topProducts, recentOrders, chartSeries } = derived;
 
   useEffect(() => {
-    void loadDashboardData(true);
+    void loadDashboardData(false);
   }, [vendorId]);
 
   useEffect(() => {

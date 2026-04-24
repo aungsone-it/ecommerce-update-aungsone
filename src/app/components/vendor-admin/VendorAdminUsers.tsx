@@ -48,6 +48,7 @@ import {
 import { ADMIN_PRODUCTS_INITIAL_PAGE_SIZE } from "../../utils/module-cache";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import { CustomerProfile } from "../CustomerProfile";
+import { cacheManager } from "../../utils/cacheManager";
 
 interface User {
   id: string;
@@ -107,8 +108,12 @@ function SegmentCell({ segment }: { segment: string }) {
 }
 
 export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps) {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const audienceCacheKey = `vendor-admin-audience:${vendorId}:p1:ps${ADMIN_PRODUCTS_INITIAL_PAGE_SIZE}:q:stall:trall:sgall`;
+  const cachedAudience = cacheManager.get(audienceCacheKey);
+  const [users, setUsers] = useState<User[]>(() =>
+    Array.isArray(cachedAudience) ? (cachedAudience as User[]) : []
+  );
+  const [loading, setLoading] = useState(!Array.isArray(cachedAudience));
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterTier, setFilterTier] = useState("all");
@@ -118,87 +123,160 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const [listPage, setListPage] = useState(1);
   const [listPageSize, setListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [viewingCustomer, setViewingCustomer] = useState<any | null>(null);
+  const [serverTotalCustomers, setServerTotalCustomers] = useState(0);
+  const [summary, setSummary] = useState({
+    totalCustomers: 0,
+    activeCustomers: 0,
+    champions: 0,
+    atRisk: 0,
+    totalRevenue: 0,
+    avgLtv: 0,
+  });
 
   useEffect(() => {
-    fetchUsers();
-  }, [vendorId]);
-
-  const fetchUsers = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/audience/${vendorId}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to fetch customers");
-      }
-      const list = Array.isArray(data.customers) ? data.customers : [];
-      setUsers(
-        list.map((c: any) => ({
-          id: c.id,
-          name: c.name || c.email?.split("@")[0] || "Customer",
-          email: c.email,
-          phone: c.phone || "",
-          role: "customer" as const,
-          status: (c.status as "active" | "inactive") || "active",
-          location: c.location,
-          avatar: c.avatar,
-          joinedDate: c.joinedDate || new Date().toISOString(),
-          totalOrders: c.totalOrders ?? 0,
-          totalSpent: c.totalSpent ?? 0,
-          segment: c.segment,
-          avgOrder: c.avgOrder ?? 0,
-          tags: c.tags || [],
-          isNew: c.isNew,
-        }))
-      );
-    } catch (error) {
-      console.error("Error fetching users:", error);
-      toast.error("Failed to load customers");
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredUsers = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    return users.filter((user) => {
-      const displayTags = normalizeDisplayTags(user);
-      const matchesSearch =
-        !q ||
-        user.name.toLowerCase().includes(q) ||
-        user.email.toLowerCase().includes(q) ||
-        displayTags.some((t) => t.toLowerCase().includes(q));
-      const matchesStatus = filterStatus === "all" || user.status === filterStatus;
-      const tier = deriveTier(user);
-      const matchesTier = filterTier === "all" || tier === filterTier;
-      const seg = user.segment || "Other";
-      const matchesSegment = filterSegment === "all" || seg === filterSegment;
-      return matchesSearch && matchesStatus && matchesTier && matchesSegment;
-    });
-  }, [users, searchQuery, filterStatus, filterTier, filterSegment]);
+    const timer = window.setTimeout(() => {
+      fetchUsers();
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [vendorId, listPage, listPageSize, searchQuery, filterStatus, filterTier, filterSegment]);
 
   useEffect(() => {
     setListPage(1);
   }, [searchQuery, filterStatus, filterTier, filterSegment]);
 
-  useEffect(() => {
-    const tp = Math.max(1, Math.ceil(filteredUsers.length / listPageSize) || 1);
-    setListPage((p) => Math.min(p, tp));
-  }, [filteredUsers.length, listPageSize]);
-
-  const pagedUsers = useMemo(() => {
-    const start = (listPage - 1) * listPageSize;
-    return filteredUsers.slice(start, start + listPageSize);
-  }, [filteredUsers, listPage, listPageSize]);
+  const fetchUsers = async () => {
+    const hasWarmUsers = users.length > 0;
+    if (!hasWarmUsers) setLoading(true);
+    try {
+      const queryKey = `vendor-admin-audience:${vendorId}:p${listPage}:ps${listPageSize}:q${searchQuery.trim().toLowerCase()}:st${filterStatus}:tr${filterTier}:sg${filterSegment}`;
+      const rows = await cacheManager.fetch(
+        queryKey,
+        async () => {
+          const params = new URLSearchParams();
+          params.set("page", String(listPage));
+          params.set("pageSize", String(listPageSize));
+          if (searchQuery.trim()) params.set("q", searchQuery.trim());
+          params.set("status", filterStatus);
+          params.set("tier", filterTier);
+          params.set("segment", filterSegment);
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/audience/${vendorId}?${params.toString()}`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${publicAnonKey}`,
+              },
+            }
+          );
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || "Failed to fetch customers");
+          }
+          const list = Array.isArray(data.customers) ? data.customers : [];
+          const mapped = list.map((c: any) => ({
+            id: c.id,
+            name: c.name || c.email?.split("@")[0] || "Customer",
+            email: c.email,
+            phone: c.phone || "",
+            role: "customer" as const,
+            status: (c.status as "active" | "inactive") || "active",
+            location: c.location,
+            avatar: c.avatar,
+            joinedDate: c.joinedDate || new Date().toISOString(),
+            totalOrders: c.totalOrders ?? 0,
+            totalSpent: c.totalSpent ?? 0,
+            segment: c.segment,
+            avgOrder: c.avgOrder ?? 0,
+            tags: c.tags || [],
+            isNew: c.isNew,
+          }));
+          return {
+            rows: mapped,
+            total: Number(data.total ?? mapped.length),
+            summary: data.summary || null,
+          };
+        },
+        { ttl: 60_000, staleWhileRevalidate: true }
+      );
+      setUsers(Array.isArray(rows?.rows) ? (rows.rows as User[]) : []);
+      setServerTotalCustomers(Number(rows?.total || 0));
+      if (rows?.summary) {
+        setSummary({
+          totalCustomers: Number(rows.summary.totalCustomers || 0),
+          activeCustomers: Number(rows.summary.activeCustomers || 0),
+          champions: Number(rows.summary.champions || 0),
+          atRisk: Number(rows.summary.atRisk || 0),
+          totalRevenue: Number(rows.summary.totalRevenue || 0),
+          avgLtv: Number(rows.summary.avgLtv || 0),
+        });
+      }
+      const total = Number(rows?.total || 0);
+      const hasNextPage = total > listPage * listPageSize;
+      if (hasNextPage) {
+        const nextPage = listPage + 1;
+        const nextKey = `vendor-admin-audience:${vendorId}:p${nextPage}:ps${listPageSize}:q${searchQuery.trim().toLowerCase()}:st${filterStatus}:tr${filterTier}:sg${filterSegment}`;
+        void cacheManager
+          .fetch(
+            nextKey,
+            async () => {
+              const params = new URLSearchParams();
+              params.set("page", String(nextPage));
+              params.set("pageSize", String(listPageSize));
+              if (searchQuery.trim()) params.set("q", searchQuery.trim());
+              params.set("status", filterStatus);
+              params.set("tier", filterTier);
+              params.set("segment", filterSegment);
+              const response = await fetch(
+                `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/audience/${vendorId}?${params.toString()}`,
+                {
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${publicAnonKey}`,
+                  },
+                }
+              );
+              const data = await response.json();
+              if (!response.ok) {
+                throw new Error(data.error || "Failed to prefetch customers");
+              }
+              const list = Array.isArray(data.customers) ? data.customers : [];
+              const mapped = list.map((c: any) => ({
+                id: c.id,
+                name: c.name || c.email?.split("@")[0] || "Customer",
+                email: c.email,
+                phone: c.phone || "",
+                role: "customer" as const,
+                status: (c.status as "active" | "inactive") || "active",
+                location: c.location,
+                avatar: c.avatar,
+                joinedDate: c.joinedDate || new Date().toISOString(),
+                totalOrders: c.totalOrders ?? 0,
+                totalSpent: c.totalSpent ?? 0,
+                segment: c.segment,
+                avgOrder: c.avgOrder ?? 0,
+                tags: c.tags || [],
+                isNew: c.isNew,
+              }));
+              return {
+                rows: mapped,
+                total: Number(data.total ?? mapped.length),
+                summary: data.summary || null,
+              };
+            },
+            { ttl: 60_000, staleWhileRevalidate: true }
+          )
+          .catch(() => undefined);
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      toast.error("Failed to load customers");
+      setUsers([]);
+      setServerTotalCustomers(0);
+    } finally {
+      setLoading(false);
+    }
+  };
+  const pagedUsers = useMemo(() => users, [users]);
 
   const pageUserIds = pagedUsers.map((u) => u.id);
 
@@ -216,12 +294,12 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
     }
   };
 
-  const totalCustomers = users.filter((u) => u.role === "customer").length;
-  const activeCustomers = users.filter((u) => u.status === "active" && u.role === "customer").length;
-  const championsCount = users.filter((u) => u.segment === "Champions").length;
-  const atRiskCount = users.filter((u) => u.segment === "At Risk").length;
-  const totalRevenue = users.reduce((sum, u) => sum + (u.totalSpent || 0), 0);
-  const avgLTV = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
+  const totalCustomers = summary.totalCustomers;
+  const activeCustomers = summary.activeCustomers;
+  const championsCount = summary.champions;
+  const atRiskCount = summary.atRisk;
+  const totalRevenue = summary.totalRevenue;
+  const avgLTV = summary.avgLtv;
   const activePercentage = totalCustomers > 0 ? Math.round((activeCustomers / totalCustomers) * 100) : 0;
 
   if (viewingCustomer) {
@@ -370,11 +448,21 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
 
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
             {loading ? (
-              <div className="p-12 text-center">
-                <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                <p className="mt-3 text-slate-600 text-sm">Loading customers...</p>
+              <div className="p-6">
+                <div className="space-y-3 animate-pulse">
+                  {Array.from({ length: 5 }).map((_, idx) => (
+                    <div key={idx} className="flex items-center gap-3 py-2">
+                      <div className="w-10 h-10 rounded-full bg-slate-200" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-4 w-40 bg-slate-200 rounded" />
+                        <div className="h-3 w-64 bg-slate-100 rounded" />
+                      </div>
+                      <div className="h-6 w-20 bg-slate-200 rounded-full" />
+                    </div>
+                  ))}
+                </div>
               </div>
-            ) : filteredUsers.length === 0 ? (
+            ) : serverTotalCustomers === 0 ? (
               <div className="p-12 text-center">
                 <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-800 mb-1">No customers yet</h3>
@@ -572,7 +660,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                   variant="cardFooter"
                   page={listPage}
                   pageSize={listPageSize}
-                  totalCount={filteredUsers.length}
+                  totalCount={serverTotalCustomers}
                   onPageChange={setListPage}
                   onPageSizeChange={setListPageSize}
                   itemLabel="customers"

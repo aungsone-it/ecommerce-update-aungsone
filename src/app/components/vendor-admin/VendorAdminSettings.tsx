@@ -384,8 +384,21 @@ export function VendorAdminSettings({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-4 border-slate-300 border-t-blue-600 rounded-full animate-spin"></div>
+      <div className="space-y-6 animate-pulse">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-7 w-44 bg-slate-200 rounded" />
+            <div className="h-4 w-72 bg-slate-100 rounded" />
+          </div>
+          <div className="h-10 w-32 bg-slate-200 rounded-lg" />
+        </div>
+        <div className="max-w-2xl space-y-4">
+          <div className="h-28 w-28 bg-slate-200 rounded-lg" />
+          <div className="h-10 bg-slate-200 rounded" />
+          <div className="h-10 bg-slate-200 rounded" />
+          <div className="h-10 bg-slate-200 rounded" />
+          <div className="h-24 bg-slate-200 rounded" />
+        </div>
       </div>
     );
   }
@@ -413,7 +426,7 @@ export function VendorAdminSettings({
           <Button 
             onClick={handleSave}
             disabled={saving}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-slate-900 hover:bg-black text-white"
           >
             <Save className="w-4 h-4 mr-2" />
             {saving ? "Saving..." : "Save Changes"}
@@ -594,7 +607,7 @@ export function VendorAdminSettings({
             </Button>
             <Button
               type="button"
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-slate-900 hover:bg-black text-white"
               disabled={
                 domainBusy !== null ||
                 (!String(settings.customDomain || "").trim() && !domainDraft.trim())

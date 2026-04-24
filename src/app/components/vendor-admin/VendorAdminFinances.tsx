@@ -506,6 +506,7 @@ export function VendorAdminFinances({
               variant={timeFilter === "3months" ? "default" : "outline"}
               size="sm"
               onClick={() => setTimeFilter("3months")}
+              className={timeFilter === "3months" ? "bg-slate-900 hover:bg-black text-white" : ""}
             >
               3M
             </Button>
@@ -513,6 +514,7 @@ export function VendorAdminFinances({
               variant={timeFilter === "6months" ? "default" : "outline"}
               size="sm"
               onClick={() => setTimeFilter("6months")}
+              className={timeFilter === "6months" ? "bg-slate-900 hover:bg-black text-white" : ""}
             >
               6M
             </Button>
@@ -520,6 +522,7 @@ export function VendorAdminFinances({
               variant={timeFilter === "12months" ? "default" : "outline"}
               size="sm"
               onClick={() => setTimeFilter("12months")}
+              className={timeFilter === "12months" ? "bg-slate-900 hover:bg-black text-white" : ""}
             >
               12M
             </Button>

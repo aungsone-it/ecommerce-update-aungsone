@@ -1097,6 +1097,67 @@ export async function fetchVendorOrders(vendorId: string, bustHttpCache = false)
   return data.orders || [];
 }
 
+export interface VendorOrdersPageQuery {
+  page: number;
+  pageSize: number;
+  q?: string;
+  status?: string;
+  payment?: string;
+  sort?: "newest" | "oldest";
+  from?: string;
+  to?: string;
+}
+
+export interface VendorOrdersPagePayload {
+  orders: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+  summary?: {
+    totalRevenue: number;
+    pending: number;
+    processing: number;
+    fulfilled: number;
+    cancelled: number;
+  };
+}
+
+export async function fetchVendorOrdersPage(
+  vendorId: string,
+  query: VendorOrdersPageQuery,
+  bustHttpCache = false
+): Promise<VendorOrdersPagePayload> {
+  const url = new URL(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/orders/${encodeURIComponent(vendorId)}`
+  );
+  url.searchParams.set("page", String(query.page));
+  url.searchParams.set("pageSize", String(query.pageSize));
+  if (query.q) url.searchParams.set("q", query.q);
+  if (query.status) url.searchParams.set("status", query.status);
+  if (query.payment) url.searchParams.set("payment", query.payment);
+  if (query.sort) url.searchParams.set("sort", query.sort);
+  if (query.from) url.searchParams.set("from", query.from);
+  if (query.to) url.searchParams.set("to", query.to);
+  if (bustHttpCache) url.searchParams.set("_", String(Date.now()));
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${publicAnonKey}` },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch vendor orders page: ${response.status}`);
+  }
+  const data = await response.json();
+  return {
+    orders: Array.isArray(data.orders) ? data.orders : [],
+    total: Number(data.total ?? 0),
+    page: Number(data.page ?? query.page),
+    pageSize: Number(data.pageSize ?? query.pageSize),
+    hasMore: !!data.hasMore,
+    summary: data.summary,
+  };
+}
+
 // Fetch categories (SECURE storefront)
 export async function fetchAllCategories() {
   const response = await fetch(
@@ -1209,6 +1270,27 @@ export const CACHE_KEYS = {
   vendorProductsAdmin: (vendorId: string) => `vendor-products-admin-${vendorId}`,
   vendorCategories: (vendorId: string) => `vendor-categories-${vendorId}`,
   vendorOrders: (vendorId: string) => `vendor-orders-${vendorId}`,
+  vendorOrdersPage: (
+    vendorId: string,
+    page: number,
+    pageSize: number,
+    q: string,
+    status: string,
+    payment: string,
+    sort: string,
+    from: string,
+    to: string
+  ) =>
+    `vendor-orders-${vendorId}-p${page}-ps${pageSize}-q${q}-st${status}-pay${payment}-so${sort}-f${from}-t${to}`,
+  vendorAudiencePage: (
+    vendorId: string,
+    page: number,
+    pageSize: number,
+    q: string,
+    status: string,
+    tier: string,
+    segment: string
+  ) => `vendor-audience-${vendorId}-p${page}-ps${pageSize}-q${q}-st${status}-tr${tier}-sg${segment}`,
   /** Customer wishlist slice for one vendor storefront — `wishlistSig` bumps when productIds revision changes */
   vendorSavedWishlistPage: (
     userId: string,
@@ -1668,8 +1750,51 @@ export async function getCachedVendorOrders(vendorId: string, forceRefresh = fal
   );
 }
 
+export async function getCachedVendorOrdersPage(
+  vendorId: string,
+  query: VendorOrdersPageQuery,
+  forceRefresh = false
+): Promise<VendorOrdersPagePayload> {
+  const qNorm = String(query.q || "").trim().toLowerCase();
+  const status = String(query.status || "all").trim().toLowerCase();
+  const payment = String(query.payment || "all").trim().toLowerCase();
+  const sort = query.sort === "oldest" ? "oldest" : "newest";
+  const from = String(query.from || "").trim();
+  const to = String(query.to || "").trim();
+  const key = CACHE_KEYS.vendorOrdersPage(
+    vendorId,
+    query.page,
+    query.pageSize,
+    qNorm,
+    status,
+    payment,
+    sort,
+    from,
+    to
+  );
+  return moduleCache.get(
+    key,
+    () =>
+      fetchVendorOrdersPage(
+        vendorId,
+        {
+          ...query,
+          q: qNorm,
+          status,
+          payment,
+          sort,
+          from,
+          to,
+        },
+        forceRefresh
+      ),
+    forceRefresh
+  );
+}
+
 export function invalidateVendorOrdersCache(vendorId: string): void {
   moduleCache.invalidate(CACHE_KEYS.vendorOrders(vendorId));
+  moduleCache.invalidatePrefix(`vendor-orders-${vendorId}-`);
   if (typeof window !== "undefined") {
     notifyAdminOrdersUpdated("invalidate-vendor-orders-cache");
   }

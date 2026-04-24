@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import {
   getCachedVendorOrders,
+  getCachedVendorOrdersPage,
   invalidateVendorOrdersCache,
   moduleCache,
   dispatchAdminProductsCachePatched,
@@ -222,10 +223,22 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
+  const [serverTotalOrders, setServerTotalOrders] = useState(0);
 
   useEffect(() => {
-    loadOrders(false);
-  }, [vendorId]);
+    const timer = window.setTimeout(() => {
+      loadOrders(false);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [
+    vendorId,
+    searchQuery,
+    statusFilter,
+    paymentFilter,
+    sortOrder,
+    orderDateRange?.from?.getTime(),
+    orderDateRange?.to?.getTime(),
+  ]);
 
   const loadOrders = async (forceRefresh = false) => {
     if (!forceRefresh) {
@@ -241,9 +254,25 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
     setListRefreshing(forceRefresh);
     try {
       setIsLoading(true);
-      const raw = await getCachedVendorOrders(vendorId, forceRefresh);
-      const transformedOrders = mapVendorApiOrdersToItems(raw);
+      const from = orderDateRange?.from ? startOfDay(orderDateRange.from).toISOString() : "";
+      const to = orderDateRange?.to ? endOfDay(orderDateRange.to).toISOString() : "";
+      const payload = await getCachedVendorOrdersPage(
+        vendorId,
+        {
+          page: 1,
+          pageSize: 500,
+          q: searchQuery.trim(),
+          status: statusFilter,
+          payment: paymentFilter,
+          sort: sortOrder,
+          from,
+          to,
+        },
+        forceRefresh
+      );
+      const transformedOrders = mapVendorApiOrdersToItems(payload.orders);
       setOrders(transformedOrders);
+      setServerTotalOrders(Number(payload.total || transformedOrders.length));
       if (transformedOrders.length > 0) {
         toast.success(`Loaded ${transformedOrders.length} orders`);
       }
@@ -937,7 +966,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
           <Card className="mb-4">
             <div className="p-4">
               <div className="flex items-center justify-between gap-4 mb-4">
-                <h3 className="font-semibold text-slate-900">All Orders ({filteredOrders.length})</h3>
+                <h3 className="font-semibold text-slate-900">All Orders ({serverTotalOrders})</h3>
                 <div className="flex items-center gap-2">
                   {selectedOrders.length > 0 && (
                     <>
@@ -1065,8 +1094,22 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
                 <tbody>
                   {isLoading ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-500">
-                        Loading orders...
+                      <td colSpan={9} className="py-4">
+                        <div className="space-y-3">
+                          {[...Array(5)].map((_, i) => (
+                            <div key={i} className="flex items-center gap-4 px-4 py-3">
+                              <div className="h-4 w-4 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-10 w-24 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-4 w-20 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-4 w-32 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-4 w-24 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-6 w-20 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-6 w-16 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-6 w-20 rounded bg-slate-200 animate-pulse" />
+                              <div className="h-8 w-16 rounded bg-slate-200 animate-pulse" />
+                            </div>
+                          ))}
+                        </div>
                       </td>
                     </tr>
                   ) : filteredOrders.length === 0 ? (

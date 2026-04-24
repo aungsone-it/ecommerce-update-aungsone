@@ -9734,6 +9734,16 @@ async function enrichLineItemsWithProductVendors(
 app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
   try {
     const vendorId = c.req.param("vendorId");
+    const page = Math.max(1, parseInt(String(c.req.query("page") || "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(c.req.query("pageSize") || "20"), 10) || 20));
+    const q = String(c.req.query("q") || "").trim().toLowerCase();
+    const statusQ = String(c.req.query("status") || "all").trim().toLowerCase();
+    const paymentQ = String(c.req.query("payment") || "all").trim().toLowerCase();
+    const sortQ = String(c.req.query("sort") || "newest").trim().toLowerCase() === "oldest" ? "oldest" : "newest";
+    const fromQ = String(c.req.query("from") || "").trim();
+    const toQ = String(c.req.query("to") || "").trim();
+    const fromMs = fromQ ? new Date(fromQ).getTime() : Number.NaN;
+    const toMs = toQ ? new Date(toQ).getTime() : Number.NaN;
     console.log(`📦 Fetching orders for vendor: ${vendorId}`);
 
     const vendorIdentifiers = await resolveVendorOrderIdentifierSet(vendorId);
@@ -9865,10 +9875,43 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
       });
     }
     
-    console.log(`✅ Found ${vendorOrders.length} orders for vendor ${vendorId}`);
+    const filteredOrders = vendorOrders.filter((order: any) => {
+      const searchText = `${String(order.orderNumber || "")} ${String(order.customer || "")} ${String(order.email || "")}`.toLowerCase();
+      const matchesSearch = !q || searchText.includes(q);
+      const matchesStatus = statusQ === "all" || String(order.status || "").toLowerCase() === statusQ;
+      const matchesPayment = paymentQ === "all" || String(order.paymentStatus || "").toLowerCase() === paymentQ;
+      const createdMs = new Date(order.createdAt || order.date || Date.now()).getTime();
+      const matchesFrom = !Number.isFinite(fromMs) || createdMs >= fromMs;
+      const matchesTo = !Number.isFinite(toMs) || createdMs <= toMs;
+      return matchesSearch && matchesStatus && matchesPayment && matchesFrom && matchesTo;
+    });
+
+    filteredOrders.sort((a: any, b: any) => {
+      const aMs = new Date(a.createdAt || a.date || 0).getTime();
+      const bMs = new Date(b.createdAt || b.date || 0).getTime();
+      return sortQ === "oldest" ? aMs - bMs : bMs - aMs;
+    });
+
+    const total = filteredOrders.length;
+    const slice = filteredOrders.slice((page - 1) * pageSize, page * pageSize);
+    const summary = {
+      totalRevenue: filteredOrders
+        .filter((o: any) => String(o.status || "").toLowerCase() !== "cancelled")
+        .reduce((s: number, o: any) => s + (Number(o.total) || 0), 0),
+      pending: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "pending").length,
+      processing: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "processing").length,
+      fulfilled: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "fulfilled").length,
+      cancelled: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "cancelled").length,
+    };
+
+    console.log(`✅ Found ${vendorOrders.length} orders for vendor ${vendorId} (filtered ${total}, page ${page})`);
     return c.json({ 
-      orders: vendorOrders,
-      total: vendorOrders.length 
+      orders: slice,
+      total,
+      page,
+      pageSize,
+      hasMore: page * pageSize < total,
+      summary,
     });
 
   } catch (error: any) {
@@ -9937,6 +9980,15 @@ app.post("/make-server-16010b6f/vendor/audience/:vendorId/track", async (c) => {
 app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
   try {
     const vendorId = c.req.param("vendorId");
+    const pageQ = c.req.query("page");
+    const hasPagination = pageQ !== undefined && pageQ !== "";
+    const page = Math.max(1, parseInt(String(pageQ || "1"), 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(String(c.req.query("pageSize") || "20"), 10) || 20));
+    const q = String(c.req.query("q") || "").trim().toLowerCase();
+    const statusQ = String(c.req.query("status") || "all").trim().toLowerCase();
+    const tierQ = String(c.req.query("tier") || "all").trim().toLowerCase();
+    const segmentQ = String(c.req.query("segment") || "all").trim();
+    const sortQ = String(c.req.query("sort") || "spent-desc").trim().toLowerCase();
 
     const vendorIdentifiers = await resolveVendorOrderIdentifierSet(vendorId);
     const canonicalVendorId =
@@ -10081,9 +10133,54 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
       };
     });
 
-    customers.sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0));
+    const tierOf = (u: any): "new" | "regular" | "vip" => {
+      if (u?.isNew || Number(u?.totalOrders || 0) === 0) return "new";
+      if (Number(u?.totalSpent || 0) >= 500000 || Number(u?.totalOrders || 0) >= 5) return "vip";
+      return "regular";
+    };
+    const filtered = customers.filter((u: any) => {
+      const matchesQ =
+        !q ||
+        String(u.name || "").toLowerCase().includes(q) ||
+        String(u.email || "").toLowerCase().includes(q) ||
+        (Array.isArray(u.tags) ? u.tags.join(" ").toLowerCase().includes(q) : false);
+      const matchesStatus = statusQ === "all" || String(u.status || "").toLowerCase() === statusQ;
+      const matchesTier = tierQ === "all" || tierOf(u) === tierQ;
+      const matchesSegment = segmentQ === "all" || String(u.segment || "Other") === segmentQ;
+      return matchesQ && matchesStatus && matchesTier && matchesSegment;
+    });
 
-    return c.json({ success: true, customers, total: customers.length });
+    filtered.sort((a: any, b: any) => {
+      if (sortQ === "name-asc") return String(a.name || "").localeCompare(String(b.name || ""));
+      if (sortQ === "orders-desc") return (Number(b.totalOrders) || 0) - (Number(a.totalOrders) || 0);
+      return (Number(b.totalSpent) || 0) - (Number(a.totalSpent) || 0);
+    });
+
+    const total = filtered.length;
+    const rows = hasPagination ? filtered.slice((page - 1) * pageSize, page * pageSize) : filtered;
+    const totalCustomers = total;
+    const activeCustomers = filtered.filter((u: any) => String(u.status || "").toLowerCase() === "active").length;
+    const champions = filtered.filter((u: any) => String(u.segment || "") === "Champions").length;
+    const atRisk = filtered.filter((u: any) => String(u.segment || "") === "At Risk").length;
+    const totalRevenue = filtered.reduce((sum: number, u: any) => sum + (Number(u.totalSpent) || 0), 0);
+    const avgLtv = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
+
+    return c.json({
+      success: true,
+      customers: rows,
+      total,
+      page: hasPagination ? page : 1,
+      pageSize: hasPagination ? pageSize : total,
+      hasMore: hasPagination ? page * pageSize < total : false,
+      summary: {
+        totalCustomers,
+        activeCustomers,
+        champions,
+        atRisk,
+        totalRevenue,
+        avgLtv,
+      },
+    });
   } catch (error: any) {
     console.error("❌ vendor audience get:", error);
     return c.json(

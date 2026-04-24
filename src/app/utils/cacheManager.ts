@@ -9,6 +9,7 @@ type CacheInvalidationCallback = () => void;
 class CacheManager {
   private invalidationCallbacks: Map<string, CacheInvalidationCallback[]> = new Map();
   private cache: Map<string, any> = new Map();
+  private timedCache: Map<string, { value: any; expiresAt: number }> = new Map();
 
   /**
    * Set a value in the cache
@@ -29,6 +30,33 @@ class CacheManager {
    */
   clear(key: string) {
     this.cache.delete(key);
+    this.timedCache.delete(key);
+  }
+
+  async fetch<T>(
+    key: string,
+    loader: () => Promise<T>,
+    opts?: { ttl?: number; staleWhileRevalidate?: boolean }
+  ): Promise<T> {
+    const ttl = Math.max(1000, Number(opts?.ttl || 60000));
+    const now = Date.now();
+    const hit = this.timedCache.get(key);
+    if (hit && hit.expiresAt > now) {
+      return hit.value as T;
+    }
+    if (hit && opts?.staleWhileRevalidate) {
+      void loader()
+        .then((fresh) => {
+          this.timedCache.set(key, { value: fresh, expiresAt: Date.now() + ttl });
+        })
+        .catch(() => {
+          /* keep stale */
+        });
+      return hit.value as T;
+    }
+    const fresh = await loader();
+    this.timedCache.set(key, { value: fresh, expiresAt: Date.now() + ttl });
+    return fresh;
   }
 
   /**

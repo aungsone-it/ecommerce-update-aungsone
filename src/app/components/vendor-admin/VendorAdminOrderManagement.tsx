@@ -41,6 +41,7 @@ import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { Skeleton } from "../ui/skeleton";
 import {
   getCachedVendorOrders,
+  getCachedVendorOrdersPage,
   getCachedVendorProductsAdmin,
   invalidateVendorOrdersCache,
   moduleCache,
@@ -286,6 +287,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
   const [ordersListPage, setOrdersListPage] = useState(1);
   const [ordersListPageSize, setOrdersListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const [serverTotalOrders, setServerTotalOrders] = useState(0);
   const [statDateFilters, setStatDateFilters] = useState({
     revenue: "Last 30 days",
     commission: "Last 30 days",
@@ -294,8 +296,21 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
   });
 
   useEffect(() => {
-    loadOrders(false);
-  }, [vendorId]);
+    const timer = window.setTimeout(() => {
+      loadOrders(false);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [
+    vendorId,
+    ordersListPage,
+    ordersListPageSize,
+    searchQuery,
+    statusFilter,
+    paymentFilter,
+    sortOrder,
+    orderDateRange?.from?.getTime(),
+    orderDateRange?.to?.getTime(),
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,12 +352,45 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     try {
       setIsLoading(true);
       console.log(`📦 Loading orders for vendor: ${vendorId}`);
-      const data = await getCachedVendorOrders(vendorId, forceRefresh);
-      console.log(`📊 Received ${data.length} orders from API`);
-      const transformedOrders = mapVendorMgmtApiOrders(data);
-      console.log(`✅ Transformed ${transformedOrders.length} orders`);
-      setRawVendorOrders(data);
+      const from = orderDateRange?.from ? startOfDay(orderDateRange.from).toISOString() : "";
+      const to = orderDateRange?.to ? endOfDay(orderDateRange.to).toISOString() : "";
+      const data = await getCachedVendorOrdersPage(
+        vendorId,
+        {
+          page: ordersListPage,
+          pageSize: ordersListPageSize,
+          q: searchQuery.trim(),
+          status: statusFilter,
+          payment: paymentFilter,
+          sort: sortOrder,
+          from,
+          to,
+        },
+        forceRefresh
+      );
+      console.log(`📊 Received ${data.orders.length} paged orders from API`);
+      const transformedOrders = mapVendorMgmtApiOrders(data.orders);
+      console.log(`✅ Transformed ${transformedOrders.length} paged orders`);
+      setRawVendorOrders(data.orders);
       setOrders(transformedOrders);
+      setServerTotalOrders(Number(data.total || transformedOrders.length));
+      const hasNextPage = Number(data.total || 0) > ordersListPage * ordersListPageSize;
+      if (hasNextPage) {
+        void getCachedVendorOrdersPage(
+          vendorId,
+          {
+            page: ordersListPage + 1,
+            pageSize: ordersListPageSize,
+            q: searchQuery.trim(),
+            status: statusFilter,
+            payment: paymentFilter,
+            sort: sortOrder,
+            from,
+            to,
+          },
+          false
+        ).catch(() => undefined);
+      }
       if (transformedOrders.length > 0) {
         toast.success(`Loaded ${transformedOrders.length} orders`);
       } else {
@@ -439,55 +487,15 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     };
   }, [rawVendorOrders, vendorProducts, vendorId, vendorCommissionPct, statDateFilters]);
 
-  const filteredOrders = useMemo(
-    () =>
-      orders
-        .filter((order) => {
-          const matchesSearch =
-            order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            order.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            order.email.toLowerCase().includes(searchQuery.toLowerCase());
-
-          const matchesStatusFilter = statusFilter === "all" || order.status === statusFilter;
-          const matchesPaymentFilter = paymentFilter === "all" || order.paymentStatus === paymentFilter;
-
-          const orderDate = new Date(order.date);
-          const from = orderDateRange?.from ? startOfDay(orderDateRange.from) : undefined;
-          const to = orderDateRange?.to ? endOfDay(orderDateRange.to) : undefined;
-          const matchesDateFrom = !from || orderDate >= from;
-          const matchesDateTo = !to || orderDate <= to;
-
-          return (
-            matchesSearch &&
-            matchesStatusFilter &&
-            matchesPaymentFilter &&
-            matchesDateFrom &&
-            matchesDateTo
-          );
-        })
-        .sort((a, b) => {
-          const dateA = new Date(a.createdAt || a.date);
-          const dateB = new Date(b.createdAt || b.date);
-          return sortOrder === "newest"
-            ? dateB.getTime() - dateA.getTime()
-            : dateA.getTime() - dateB.getTime();
-        }),
-    [orders, searchQuery, statusFilter, paymentFilter, orderDateRange, sortOrder]
-  );
+  const filteredOrders = useMemo(() => orders, [orders]);
 
   useEffect(() => {
     setOrdersListPage(1);
   }, [searchQuery, statusFilter, paymentFilter, orderDateRange, sortOrder]);
 
-  useEffect(() => {
-    const tp = Math.max(1, Math.ceil(filteredOrders.length / ordersListPageSize) || 1);
-    setOrdersListPage((p) => Math.min(p, tp));
-  }, [filteredOrders.length, ordersListPageSize]);
-
   const pagedFilteredOrders = useMemo(() => {
-    const start = (ordersListPage - 1) * ordersListPageSize;
-    return filteredOrders.slice(start, start + ordersListPageSize);
-  }, [filteredOrders, ordersListPage, ordersListPageSize]);
+    return filteredOrders;
+  }, [filteredOrders]);
 
   const ordersPageIds = pagedFilteredOrders.map((o) => o.id);
 
@@ -1216,7 +1224,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           <Card className="mb-4 border-slate-200 shadow-sm">
             <div className="p-4">
               <div className="flex items-center justify-between gap-4 mb-4">
-                <h3 className="font-semibold text-slate-900">All Orders ({filteredOrders.length})</h3>
+                <h3 className="font-semibold text-slate-900">All Orders ({serverTotalOrders})</h3>
                 <div className="flex items-center gap-2">
                   {selectedOrders.length > 0 && (
                     <>
@@ -1417,12 +1425,12 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                 </tbody>
               </table>
             </div>
-            {filteredOrders.length > 0 && (
+            {serverTotalOrders > 0 && (
               <VendorAdminListingPagination
                 variant="cardFooter"
                 page={ordersListPage}
                 pageSize={ordersListPageSize}
-                totalCount={filteredOrders.length}
+                totalCount={serverTotalOrders}
                 onPageChange={setOrdersListPage}
                 onPageSizeChange={setOrdersListPageSize}
                 itemLabel="orders"
@@ -1557,7 +1565,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
             <Button variant="outline" onClick={() => setIsStatusDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={saveBulkStatusUpdate}>
+            <Button onClick={saveBulkStatusUpdate} className="bg-slate-900 hover:bg-black text-white">
               Update Status
             </Button>
           </DialogFooter>
@@ -1577,7 +1585,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
             <Button variant="outline" onClick={() => setIsPrintDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={executeBulkPrint}>
+            <Button onClick={executeBulkPrint} className="bg-slate-900 hover:bg-black text-white">
               <Printer className="w-4 h-4 mr-2" />
               Print
             </Button>
