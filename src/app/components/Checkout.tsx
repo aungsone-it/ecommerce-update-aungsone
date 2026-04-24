@@ -22,7 +22,6 @@ import { Label } from "./ui/label";
 import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
-import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -234,8 +233,11 @@ export function Checkout({
     qrContent?: string;
     qrImageUrl?: string;
     payUrl?: string;
+    prepayId?: string;
+    mmOrderId?: string;
   } | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
+  const [kpayError, setKpayError] = useState("");
 
   // Coupon State with localStorage persistence
   const [couponCode, setCouponCode] = useState("");
@@ -334,6 +336,29 @@ export function Checkout({
   const resolveOrderEmail = () =>
     (shippingInfo.email?.trim() || effectiveUser?.email?.trim() || "");
 
+  const buildKPayError = (data: any, fallback: string) => {
+    const reason = [data?.error, data?.message, data?.code].filter(Boolean).join(" | ");
+    return reason || fallback;
+  };
+
+  const closeExistingKPayOrder = async (merchantOrderId: string) => {
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/close-order`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${publicAnonKey}`,
+        },
+        body: JSON.stringify({ merchantOrderId }),
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(buildKPayError(data, "Failed to close previous KPay order"));
+    }
+  };
+
   const handleGenerateKPayQr = async () => {
     try {
       if (finalTotal <= 0) {
@@ -341,6 +366,10 @@ export function Checkout({
         return;
       }
       setKpayLoading(true);
+      setKpayError("");
+      if (kpaySession?.merchantOrderId && kpaySession.status !== "paid") {
+        await closeExistingKPayOrder(kpaySession.merchantOrderId);
+      }
       const merchantOrderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/create-qr`,
@@ -359,7 +388,7 @@ export function Checkout({
         }
       );
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to generate KPay QR");
+      if (!response.ok) throw new Error(buildKPayError(data, "Failed to generate KPay QR"));
       setKpaySession({
         merchantOrderId,
         status: data.status || "pending",
@@ -367,39 +396,59 @@ export function Checkout({
         qrContent: data.qrContent || "",
         qrImageUrl: data.qrImageUrl || "",
         payUrl: data.payUrl || "",
+        prepayId: data.prepayId || "",
+        mmOrderId: data.mmOrderId || "",
       });
       toast.success("KPay QR generated");
     } catch (error: any) {
-      toast.error(error?.message || "Failed to generate KPay QR");
+      const message = error?.message || "Failed to generate KPay QR";
+      setKpayError(message);
+      toast.error(message);
     } finally {
       setKpayLoading(false);
     }
   };
 
   const refreshKPayStatus = async () => {
-    if (!kpaySession?.merchantOrderId) return;
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/status/${encodeURIComponent(kpaySession.merchantOrderId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${publicAnonKey}`,
-        },
+    if (!kpaySession?.merchantOrderId) return false;
+    try {
+      setKpayError("");
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/query-order/${encodeURIComponent(kpaySession.merchantOrderId)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = buildKPayError(data, "Failed to query KPay payment status");
+        setKpayError(message);
+        toast.error(message);
+        return false;
       }
-    );
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return;
-    setKpaySession((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: data.status || prev.status,
-            providerStatus: data.providerStatus || prev.providerStatus,
-            qrContent: data.qrContent || prev.qrContent,
-            qrImageUrl: data.qrImageUrl || prev.qrImageUrl,
-            payUrl: data.payUrl || prev.payUrl,
-          }
-        : prev
-    );
+      setKpaySession((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: data.status || prev.status,
+              providerStatus: data.providerStatus || prev.providerStatus,
+              qrContent: data.qrContent || prev.qrContent,
+              qrImageUrl: data.qrImageUrl || prev.qrImageUrl,
+              payUrl: data.payUrl || prev.payUrl,
+              prepayId: data.prepayId || prev.prepayId,
+              mmOrderId: data.mmOrderId || prev.mmOrderId,
+            }
+          : prev
+      );
+      return true;
+    } catch (error: any) {
+      const message = error?.message || "Failed to query KPay payment status";
+      setKpayError(message);
+      toast.error(message);
+      return false;
+    }
   };
 
   const handlePlaceOrder = async (e?: React.FormEvent | React.MouseEvent) => {
@@ -454,7 +503,11 @@ export function Checkout({
         setLoading(false);
         return;
       }
-      await refreshKPayStatus();
+      const ok = await refreshKPayStatus();
+      if (!ok) {
+        setLoading(false);
+        return;
+      }
     } else {
       toast.info("🚀 Coming Soon! This payment method will be available soon.", { duration: 3000 });
       setLoading(false);
@@ -537,6 +590,8 @@ export function Checkout({
           qrContent: kpaySession?.qrContent || "",
           qrImageUrl: kpaySession?.qrImageUrl || "",
           payUrl: kpaySession?.payUrl || "",
+          prepayId: kpaySession?.prepayId || "",
+          mmOrderId: kpaySession?.mmOrderId || "",
         };
       }
 
@@ -581,7 +636,6 @@ export function Checkout({
       }
 
       console.log("✅ Order saved to backend:", orderNum);
-      notifyAdminOrdersUpdated("storefront-checkout-order-created");
       
       // 🔥 Save shipping address to database for future use
       if (effectiveUser?.id) {
@@ -1221,6 +1275,11 @@ export function Checkout({
                         </Button>
                       )}
                     </div>
+                    {kpayError && (
+                      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                        {kpayError}
+                      </div>
+                    )}
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                       <div className="mb-4 flex justify-center">
                         <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
@@ -1238,14 +1297,38 @@ export function Checkout({
                             <span className="font-mono font-semibold text-slate-900">{kpaySession.merchantOrderId}</span>
                           </div>
                         )}
+                        {kpaySession?.prepayId && (
+                          <div className="flex justify-between border-b border-slate-200 py-1">
+                            <span className="text-slate-600">Prepay ID:</span>
+                            <span className="max-w-[180px] truncate text-right font-mono text-xs font-semibold text-slate-900">
+                              {kpaySession.prepayId}
+                            </span>
+                          </div>
+                        )}
+                        {kpaySession?.mmOrderId && (
+                          <div className="flex justify-between border-b border-slate-200 py-1">
+                            <span className="text-slate-600">MM Order ID:</span>
+                            <span className="max-w-[180px] truncate text-right font-mono text-xs font-semibold text-slate-900">
+                              {kpaySession.mmOrderId}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex justify-between border-b border-slate-200 py-1">
                           <span className="text-slate-600">Amount to Pay:</span>
                           <span className="font-semibold text-emerald-700">{finalTotal.toFixed(0)} MMK</span>
                         </div>
                         {kpaySession?.status && (
-                          <div className="flex justify-between py-1">
+                          <div className="flex justify-between border-b border-slate-200 py-1">
                             <span className="text-slate-600">Payment Status:</span>
                             <span className="font-semibold uppercase text-slate-900">{kpaySession.status}</span>
+                          </div>
+                        )}
+                        {kpaySession?.providerStatus && (
+                          <div className="flex justify-between py-1">
+                            <span className="text-slate-600">Provider Status:</span>
+                            <span className="font-mono text-xs font-semibold uppercase text-slate-900">
+                              {kpaySession.providerStatus}
+                            </span>
                           </div>
                         )}
                       </div>

@@ -7,7 +7,15 @@ import blogEngagementApp from "./blog_engagement_routes.tsx";
 import customerApp from "./customer_routes.tsx";
 import userApp from "./user_routes.tsx";
 import { createPaymentIntent, verifyPayment } from "./stripe_routes.tsx";
-import { createKPayQr, getKPayStatus, handleKPayWebhook } from "./kpay_routes.tsx";
+import {
+  closeKPayOrder,
+  createKPayQr,
+  getKPayStatus,
+  handleKPayWebhook,
+  queryKPayOrder,
+  queryKPayRefund,
+  refundKPayOrder,
+} from "./kpay_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import {
   collectProductImageRefs,
@@ -752,6 +760,11 @@ app.get("/make-server-16010b6f/verify-payment/:paymentIntentId", verifyPayment);
 app.post("/make-server-16010b6f/kpay/create-qr", createKPayQr);
 app.get("/make-server-16010b6f/kpay/status/:merchantOrderId", getKPayStatus);
 app.post("/make-server-16010b6f/kpay/webhook", handleKPayWebhook);
+app.get("/make-server-16010b6f/kpay/query-order/:merchantOrderId", queryKPayOrder);
+app.post("/make-server-16010b6f/kpay/query-order", queryKPayOrder);
+app.post("/make-server-16010b6f/kpay/close-order", closeKPayOrder);
+app.post("/make-server-16010b6f/kpay/refund", refundKPayOrder);
+app.post("/make-server-16010b6f/kpay/query-refund", queryKPayRefund);
 
 // Retry wrapper for database operations with exponential backoff
 async function withRetry<T>(
@@ -5750,31 +5763,8 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
       return c.json({ error: "Vendor not found" }, 404);
     }
     
-    const vendorSettings = await withTimeout(kv.get(`vendor_settings:${vendorId}`), 5000);
-    const vendorStorefront = await withTimeout(kv.get(`vendor_storefront_${vendorId}`), 5000);
-
-    // Hard-delete owned storage files tied to this vendor profile/settings/storefront.
-    const vendorStorageRefs: unknown[] = [];
-    if (vendor && typeof vendor === "object") {
-      vendorStorageRefs.push((vendor as any).logo, (vendor as any).avatar, (vendor as any).banner);
-    }
-    if (vendorSettings && typeof vendorSettings === "object") {
-      vendorStorageRefs.push(
-        (vendorSettings as any).logo,
-        (vendorSettings as any).avatar,
-        (vendorSettings as any).banner
-      );
-    }
-    if (vendorStorefront && typeof vendorStorefront === "object") {
-      vendorStorageRefs.push(
-        (vendorStorefront as any).logo,
-        (vendorStorefront as any).avatar,
-        (vendorStorefront as any).banner
-      );
-    }
-    await deleteOwnedStorageRefs(supabase, vendorStorageRefs);
-
     // Delete vendor settings
+    const vendorSettings = await withTimeout(kv.get(`vendor_settings:${vendorId}`), 5000);
     if (vendorSettings) {
       await withTimeout(kv.del(`vendor_settings:${vendorId}`), 5000);
       console.log(`✅ Deleted vendor settings: ${vendorId}`);
@@ -5784,280 +5774,6 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
         await withTimeout(kv.del(`vendor_slug_${vendorSettings.storeSlug}`), 5000);
         console.log(`✅ Deleted slug mapping: ${vendorSettings.storeSlug}`);
       }
-    }
-
-    // Delete storefront profile/settings cache row for this vendor
-    await withTimeout(kv.del(`vendor_storefront_${vendorId}`), 5000);
-    if (vendorStorefront && typeof vendorStorefront === "object" && (vendorStorefront as any).storeSlug) {
-      await withTimeout(kv.del(`vendor_slug_${(vendorStorefront as any).storeSlug}`), 5000);
-      console.log(`✅ Deleted storefront slug mapping: ${(vendorStorefront as any).storeSlug}`);
-    }
-    // Release ALL slug aliases pointing to this vendor (legacy + migrated keys).
-    try {
-      const allSlugRows = await withTimeout(kv.getByPrefixWithKeys("vendor_slug_"), 12000);
-      let releasedSlugCount = 0;
-      for (const row of Array.isArray(allSlugRows) ? allSlugRows : []) {
-        if (!row || typeof row !== "object") continue;
-        const rowVendorId =
-          row.value && typeof row.value === "object"
-            ? String((row.value as { vendorId?: unknown }).vendorId || "").trim()
-            : "";
-        if (!rowVendorId || rowVendorId !== String(vendorId)) continue;
-        if (typeof row.key !== "string" || !row.key.trim()) continue;
-        await withTimeout(kv.del(row.key), 5000);
-        releasedSlugCount += 1;
-      }
-      if (releasedSlugCount > 0) {
-        console.log(`✅ Released ${releasedSlugCount} slug alias key(s) for vendor ${vendorId}`);
-      }
-    } catch (slugCleanupError) {
-      console.warn(`⚠️ Failed to fully release slug aliases for vendor ${vendorId}:`, slugCleanupError);
-    }
-
-    // Remove verified/pending custom-domain host mappings for this vendor.
-    const customDomain =
-      vendorStorefront && typeof vendorStorefront === "object"
-        ? String((vendorStorefront as any).customDomain || "").toLowerCase().trim()
-        : "";
-    if (customDomain) {
-      for (const h of customDomainLookupVariants(customDomain)) {
-        await withTimeout(kv.del(`custom_domain_host:${h}`), 5000);
-      }
-      for (const k of vendorPendingHostKvKeys(customDomain)) {
-        await withTimeout(kv.del(k), 5000);
-      }
-    }
-    await withTimeout(kv.del(`vendor_domain_pending:${vendorId}`), 5000);
-    // Safety sweep: remove any host/pending mappings that still point to this vendor,
-    // even if storefront.customDomain was stale/missing.
-    try {
-      const hostRows = await withTimeout(kv.getByPrefixWithKeys("custom_domain_host:"), 15000);
-      let removedHostRows = 0;
-      for (const row of Array.isArray(hostRows) ? hostRows : []) {
-        const mappedVendorId =
-          row?.value && typeof row.value === "object"
-            ? String((row.value as { vendorId?: unknown }).vendorId || "").trim()
-            : "";
-        if (!mappedVendorId || mappedVendorId !== String(vendorId)) continue;
-        if (!row?.key || typeof row.key !== "string") continue;
-        await withTimeout(kv.del(row.key), 5000);
-        removedHostRows += 1;
-        const host = row.key.replace(/^custom_domain_host:/, "").trim().toLowerCase();
-        if (host) {
-          for (const pendingKey of vendorPendingHostKvKeys(host)) {
-            await withTimeout(kv.del(pendingKey), 5000);
-          }
-        }
-      }
-      if (removedHostRows > 0) {
-        console.log(`✅ Removed ${removedHostRows} custom_domain_host key(s) for vendor ${vendorId}`);
-      }
-    } catch (hostSweepError) {
-      console.warn(`⚠️ Failed custom domain host safety sweep for vendor ${vendorId}:`, hostSweepError);
-    }
-
-    const vendorTokens = new Set<string>(
-      [
-        String(vendorId || "").trim().toLowerCase(),
-        String((vendor as any)?.id || "").trim().toLowerCase(),
-        String((vendor as any)?.storeSlug || "").trim().toLowerCase(),
-        String((vendor as any)?.name || "").trim().toLowerCase(),
-        String((vendor as any)?.businessName || "").trim().toLowerCase(),
-        String((vendorSettings as any)?.storeSlug || "").trim().toLowerCase(),
-        String((vendorStorefront as any)?.storeSlug || "").trim().toLowerCase(),
-      ].filter(Boolean)
-    );
-    const vendorEmail = String((vendor as any)?.email || "").trim().toLowerCase();
-    const matchesVendorToken = (value: unknown): boolean => {
-      const s = String(value || "").trim().toLowerCase();
-      return !!s && vendorTokens.has(s);
-    };
-    const entryKeyOrId = (entry: any, prefix: string): string | null => {
-      if (entry && typeof entry === "object" && typeof entry.key === "string" && entry.key.trim()) {
-        return entry.key;
-      }
-      const value = entry && typeof entry === "object" && "value" in entry ? entry.value : entry;
-      const id = value && typeof value === "object" ? (value as any).id : undefined;
-      if (id != null && String(id).trim()) {
-        return `${prefix}${String(id).trim()}`;
-      }
-      return null;
-    };
-    const entryValue = (entry: any): any =>
-      entry && typeof entry === "object" && "value" in entry ? entry.value : entry;
-    let deletedOrders = 0;
-    let deletedNotifications = 0;
-    let deletedConversations = 0;
-    let deletedMessages = 0;
-    let deletedVendorCategories = 0;
-    let deletedVendorApplications = 0;
-    let deletedAudienceRows = 0;
-
-    // Hard-delete vendor-owned order history.
-    const allOrders = await withTimeout(kv.getByPrefix("order:"), 12000).catch(() => []);
-    if (Array.isArray(allOrders)) {
-      for (const raw of allOrders) {
-        const order = entryValue(raw);
-        if (!order || typeof order !== "object") continue;
-        const orderVendorMatch =
-          matchesVendorToken((order as any).vendorId) ||
-          matchesVendorToken((order as any).vendor) ||
-          (Array.isArray((order as any).items) &&
-            (order as any).items.some(
-              (item: any) =>
-                matchesVendorToken(item?.vendorId) || matchesVendorToken(item?.vendor)
-            ));
-        if (!orderVendorMatch) continue;
-        const key = entryKeyOrId(raw, "order:");
-        if (!key) continue;
-        await withTimeout(kv.del(key), 5000);
-        deletedOrders += 1;
-      }
-    }
-    if (deletedOrders > 0) {
-      serverCache.delete("orders_minimal");
-      console.log(`✅ Deleted ${deletedOrders} vendor-owned orders`);
-    }
-
-    // Hard-delete notifications associated to this vendor.
-    const allNotifications = await withTimeout(kv.getByPrefix("notification:"), 12000).catch(() => []);
-    if (Array.isArray(allNotifications)) {
-      for (const raw of allNotifications) {
-        const notification = entryValue(raw);
-        if (!notification || typeof notification !== "object") continue;
-        const isVendorNotification =
-          matchesVendorToken((notification as any).vendorId) ||
-          matchesVendorToken((notification as any).vendor) ||
-          matchesVendorToken((notification as any).vendorSource);
-        if (!isVendorNotification) continue;
-        const key = entryKeyOrId(raw, "notification:");
-        if (!key) continue;
-        await withTimeout(kv.del(key), 5000);
-        deletedNotifications += 1;
-      }
-    }
-
-    // Hard-delete chat conversations + their messages for this vendor.
-    const allConversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 15000).catch(() => []);
-    if (Array.isArray(allConversations)) {
-      for (const raw of allConversations) {
-        const conv = entryValue(raw);
-        if (!conv || typeof conv !== "object") continue;
-        const convId = String((conv as any).id || "").trim();
-        if (!convId) continue;
-        const belongsToVendor =
-          matchesVendorToken((conv as any).vendorId) ||
-          matchesVendorToken((conv as any).vendorSource);
-        if (!belongsToVendor) continue;
-        const convKey = entryKeyOrId(raw, "chat:conversation:");
-        if (convKey) {
-          await withTimeout(kv.del(convKey), 5000);
-          deletedConversations += 1;
-        }
-        const convMessages = await withTimeout(
-          kv.getByPrefix(`chat:message:${convId}:`),
-          12000
-        ).catch(() => []);
-        if (Array.isArray(convMessages)) {
-          for (const msgRaw of convMessages) {
-            const msgKey = entryKeyOrId(msgRaw, `chat:message:${convId}:`);
-            if (!msgKey) continue;
-            await withTimeout(kv.del(msgKey), 5000);
-            deletedMessages += 1;
-          }
-        }
-      }
-    }
-
-    // Hard-delete vendor storefront audience rows (by id and slug alias if any).
-    const audienceKeys = new Set<string>([
-      `vendor:audience:${vendorId}`,
-      `vendor:audience:${(vendorSettings as any)?.storeSlug || ""}`,
-      `vendor:audience:${(vendorStorefront as any)?.storeSlug || ""}`,
-    ]);
-    for (const key of audienceKeys) {
-      const k = String(key || "").trim();
-      if (!k || k.endsWith(":")) continue;
-      await withTimeout(kv.del(k), 5000);
-      deletedAudienceRows += 1;
-    }
-
-    // Hard-delete vendor categories (key format: category:{vendorId}:{id}).
-    const vendorCategories = await withTimeout(kv.getByPrefix(`category:${vendorId}:`), 15000).catch(() => []);
-    if (Array.isArray(vendorCategories)) {
-      for (const catRaw of vendorCategories) {
-        const catKey =
-          (catRaw && typeof catRaw === "object" && typeof (catRaw as any).key === "string"
-            ? String((catRaw as any).key)
-            : "") ||
-          (entryValue(catRaw)?.id ? String(entryValue(catRaw).id) : "");
-        if (!catKey) continue;
-        await withTimeout(kv.del(catKey), 5000);
-        deletedVendorCategories += 1;
-      }
-    }
-    if (deletedVendorCategories > 0) {
-      serverCache.delete("categories");
-      console.log(`✅ Deleted ${deletedVendorCategories} vendor categories`);
-    }
-
-    // Hard-delete linked vendor application records.
-    const applicationId = String((vendor as any)?.applicationId || "").trim();
-    if (applicationId) {
-      await withTimeout(kv.del(`vendor_application:${applicationId}`), 5000);
-      deletedVendorApplications += 1;
-    }
-    const allApplications = await withTimeout(kv.getByPrefix("vendor_application:"), 15000).catch(() => []);
-    if (Array.isArray(allApplications)) {
-      for (const appRaw of allApplications) {
-        const app = entryValue(appRaw);
-        if (!app || typeof app !== "object") continue;
-        const appMatchesVendor =
-          matchesVendorToken((app as any).vendorId) ||
-          matchesVendorToken((app as any).approvedVendorId) ||
-          (vendorEmail && String((app as any).email || "").trim().toLowerCase() === vendorEmail);
-        if (!appMatchesVendor) continue;
-        const appKey = entryKeyOrId(appRaw, "vendor_application:");
-        if (!appKey) continue;
-        await withTimeout(kv.del(appKey), 5000);
-        deletedVendorApplications += 1;
-      }
-    }
-
-    // Remove this vendor from product assignments so deleted vendors cannot appear in listings.
-    const allProducts = await withTimeout(kv.getByPrefix("product:"), 10000);
-    const validProducts = Array.isArray(allProducts) ? allProducts.filter((p) => p && typeof p === "object") : [];
-    let detachedCount = 0;
-    for (const product of validProducts) {
-      const productId = (product as any).id;
-      if (!productId) continue;
-      const selected = Array.isArray((product as any).selectedVendors)
-        ? (product as any).selectedVendors.map((x: any) => String(x))
-        : [];
-      const nextSelected = selected.filter((x: string) => x !== String(vendorId));
-      const hadSelectedVendor = nextSelected.length !== selected.length;
-      const hadVendorId = String((product as any).vendorId || "") === String(vendorId);
-      const hadVendorField = String((product as any).vendor || "") === String(vendorId);
-      if (!hadSelectedVendor && !hadVendorId && !hadVendorField) continue;
-
-      const nextPrimary = nextSelected[0] || "";
-      const nextProduct = {
-        ...(product as any),
-        selectedVendors: nextSelected,
-        vendorId: hadVendorId ? nextPrimary : (product as any).vendorId,
-        vendor: hadVendorField ? nextPrimary : (product as any).vendor,
-        updatedAt: new Date().toISOString(),
-      };
-      if (!nextPrimary && String(nextProduct.status || "").toLowerCase() === "active") {
-        nextProduct.status = "off_shelf";
-      }
-      await withTimeout(kv.set(`product:${productId}`, nextProduct), 5000);
-      detachedCount += 1;
-    }
-    if (detachedCount > 0) {
-      console.log(`✅ Detached deleted vendor ${vendorId} from ${detachedCount} products`);
-      clearCache("products");
-      serverCache.delete("all_products");
     }
     
     // Delete vendor data
@@ -6071,17 +5787,7 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
     
     return c.json({ 
       success: true,
-      message: "Vendor deleted successfully",
-      deleted: {
-        vendorId,
-        orders: deletedOrders,
-        notifications: deletedNotifications,
-        chatConversations: deletedConversations,
-        chatMessages: deletedMessages,
-        categories: deletedVendorCategories,
-        vendorApplications: deletedVendorApplications,
-        audienceRows: deletedAudienceRows,
-      },
+      message: "Vendor deleted successfully"
     });
   } catch (error) {
     console.error("❌ Error deleting vendor:", error);
@@ -6337,13 +6043,6 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
       updatedAt: new Date().toISOString(),
     };
 
-    const prevLogoRef =
-      typeof (existingVendor as any)?.logo === "string" && (existingVendor as any).logo.trim()
-        ? (existingVendor as any).logo
-        : typeof (existingVendor as any)?.avatar === "string" && (existingVendor as any).avatar.trim()
-          ? (existingVendor as any).avatar
-          : "";
-
     /** Keep storefront + admin list in sync: public catalog prefers `vendor_storefront_*.logo`, then `vendor.avatar`. */
     const logoTouched =
       Object.prototype.hasOwnProperty.call(body, "logo") ||
@@ -6373,11 +6072,6 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
           : typeof updatedVendor.avatar === "string"
             ? updatedVendor.avatar
             : "";
-      const normalizedPrev = String(prevLogoRef || "").trim();
-      const normalizedNext = String(nextLogo || "").trim();
-      if (normalizedPrev && normalizedPrev !== normalizedNext) {
-        await deleteOwnedStorageRefs(supabase, [normalizedPrev]);
-      }
       try {
         const vsKey = `vendor_settings:${id}`;
         const existingVs = await withTimeout(kv.get(vsKey), 5000);
@@ -8420,33 +8114,11 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     // Store settings in KV store with vendor ID as key
     const key = `vendor_storefront_${settings.vendorId}`;
     const prevStorefront = await kv.get(key);
-    const prevStorefrontLogo =
-      prevStorefront && typeof prevStorefront === "object" && typeof (prevStorefront as any).logo === "string"
-        ? String((prevStorefront as any).logo).trim()
-        : "";
-    const prevStorefrontBanner =
-      prevStorefront && typeof prevStorefront === "object" && typeof (prevStorefront as any).banner === "string"
-        ? String((prevStorefront as any).banner).trim()
-        : "";
     const nameForSlug = String(settings.storeName || "").trim() || "Vendor Store";
     // Slug always derived from current store name (a-z0-9 only) — same vendor reuses their slug if still "free"
     const finalSlug = await allocateUniqueVendorSlugFromName(nameForSlug, settings.vendorId);
     const mergedSettings = { ...settings, storeSlug: finalSlug };
     await kv.set(key, mergedSettings);
-    const nextStorefrontLogo =
-      typeof (mergedSettings as any).logo === "string" ? String((mergedSettings as any).logo).trim() : "";
-    const nextStorefrontBanner =
-      typeof (mergedSettings as any).banner === "string" ? String((mergedSettings as any).banner).trim() : "";
-    const removedStorefrontAssets: unknown[] = [];
-    if (prevStorefrontLogo && prevStorefrontLogo !== nextStorefrontLogo) {
-      removedStorefrontAssets.push(prevStorefrontLogo);
-    }
-    if (prevStorefrontBanner && prevStorefrontBanner !== nextStorefrontBanner) {
-      removedStorefrontAssets.push(prevStorefrontBanner);
-    }
-    if (removedStorefrontAssets.length > 0) {
-      await deleteOwnedStorageRefs(supabase, removedStorefrontAssets);
-    }
 
     // Keep `vendor_settings:*` in sync — public catalog and auth still read storeName from there first in some paths
     const vsKey = `vendor_settings:${settings.vendorId}`;
@@ -8486,20 +8158,13 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
 
     // 🔥 SYNC LOGO TO VENDOR AVATAR: Update vendor record with new logo
-    if (vendorData) {
-      const prevVendorAvatar =
-        typeof (vendorData as any)?.avatar === "string" ? String((vendorData as any).avatar).trim() : "";
+    if (mergedSettings.logo && vendorData) {
       const updatedVendor = {
         ...vendorData,
-        avatar: typeof mergedSettings.logo === "string" ? mergedSettings.logo : "",
+        avatar: mergedSettings.logo,
         updatedAt: new Date().toISOString()
       };
       await kv.set(`vendor:${settings.vendorId}`, updatedVendor);
-      const nextVendorAvatar =
-        typeof updatedVendor.avatar === "string" ? String(updatedVendor.avatar).trim() : "";
-      if (prevVendorAvatar && prevVendorAvatar !== nextVendorAvatar) {
-        await deleteOwnedStorageRefs(supabase, [prevVendorAvatar]);
-      }
       console.log(`✅ Synced logo to vendor avatar for vendor ${settings.vendorId}`);
       
       // 🔥 INVALIDATE VENDORS CACHE so the updated logo appears immediately
@@ -8566,13 +8231,6 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
     // Get vendor data to populate contact fields from application
     const vendor = await kv.get(`vendor:${vendorId}`);
     
-    const resolvedVendorLogo =
-      typeof vendor?.avatar === "string" && vendor.avatar.trim()
-        ? vendor.avatar.trim()
-        : typeof vendor?.logo === "string" && vendor.logo.trim()
-          ? vendor.logo.trim()
-          : "";
-
     if (!settings) {
       console.log(`⚠️ No settings found for vendor ${vendorId}, returning defaults`);
       // Return default settings if none exist, populated with vendor data if available
@@ -8583,7 +8241,7 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
           storeSlug: `vendor-${vendorId}`,
           storeDescription: "Welcome to our store",
           storeTagline: "",
-          logo: resolvedVendorLogo,
+          logo: "",
           banner: "",
           primaryColor: "#1e293b",
           secondaryColor: "#64748b",
@@ -8609,10 +8267,6 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
     // Populate empty contact fields from vendor data if they're missing
     const populatedSettings = {
       ...settings,
-      logo:
-        typeof settings.logo === "string" && settings.logo.trim()
-          ? settings.logo
-          : resolvedVendorLogo,
       contactEmail: settings.contactEmail || vendor?.email || "",
       contactPhone: settings.contactPhone || vendor?.phone || "",
       address: settings.address || vendor?.location || "",
@@ -8814,16 +8468,7 @@ async function findOtherVendorWithHostname(
   excludeVendorId: string
 ): Promise<boolean> {
   const direct = await kv.get(`custom_domain_host:${hostname}`);
-  if (direct?.vendorId && direct.vendorId !== excludeVendorId) {
-    const mappedVendor = await kv.get(`vendor:${direct.vendorId}`);
-    if (mappedVendor) {
-      return true;
-    }
-    // Self-heal stale domain host mapping pointing to deleted vendor.
-    for (const h of customDomainLookupVariants(hostname)) {
-      await kv.del(`custom_domain_host:${h}`);
-    }
-  }
+  if (direct?.vendorId && direct.vendorId !== excludeVendorId) return true;
   const all = await kv.getByPrefix("vendor_storefront_");
   const list = Array.isArray(all) ? all : [];
   for (const s of list) {
@@ -8834,19 +8479,7 @@ async function findOtherVendorWithHostname(
       String(v.customDomain || "").toLowerCase() === hostname &&
       v.domainStatus === "verified"
     ) {
-      const mappedVendor = await kv.get(`vendor:${v.vendorId}`);
-      if (mappedVendor) {
-        return true;
-      }
-      // Self-heal stale storefront row from deleted vendor.
-      await kv.del(`vendor_storefront_${v.vendorId}`);
-      for (const h of customDomainLookupVariants(hostname)) {
-        await kv.del(`custom_domain_host:${h}`);
-      }
-      await kv.del(`vendor_domain_pending:${v.vendorId}`);
-      for (const k of vendorPendingHostKvKeys(hostname)) {
-        await kv.del(k);
-      }
+      return true;
     }
   }
   return false;
@@ -9022,14 +8655,7 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
 
     const prevHostEntry = await kv.get(`custom_domain_host:${normalized}`);
     if (prevHostEntry?.vendorId && prevHostEntry.vendorId !== vendorId) {
-      const mappedVendor = await kv.get(`vendor:${prevHostEntry.vendorId}`);
-      if (mappedVendor) {
-        return c.json({ verified: false, error: "Domain conflict" }, 409);
-      }
-      // Self-heal stale host keys from deleted vendor before claiming.
-      for (const h of customDomainLookupVariants(normalized)) {
-        await kv.del(`custom_domain_host:${h}`);
-      }
+      return c.json({ verified: false, error: "Domain conflict" }, 409);
     }
 
     const oldSettings = await kv.get(sfKey);
@@ -9165,13 +8791,6 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
       const fast = await kv.get(`custom_domain_host:${hostKey}`);
       if (fast?.vendorId && fast?.storeSlug) {
         const vendor = await kv.get(`vendor:${fast.vendorId}`);
-        if (!vendor) {
-          // Self-heal stale host mapping when vendor was deleted.
-          for (const h of customDomainLookupVariants(hostKey)) {
-            await kv.del(`custom_domain_host:${h}`);
-          }
-          continue;
-        }
         return c.json({
           vendorId: fast.vendorId,
           storeSlug: fast.storeSlug,
@@ -9210,63 +8829,6 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
   } catch (error: any) {
     console.error("❌ Error looking up vendor by domain:", error);
     return c.json({ error: error.message || "Failed to lookup vendor" }, 500);
-  }
-});
-
-/**
- * Admin emergency cleanup: hard-purge any domain mapping remnants by hostname.
- * This removes fast host keys + resets matching storefront customDomain fields.
- */
-app.post("/make-server-16010b6f/admin/domain/purge", async (c) => {
-  try {
-    const body = await c.req.json().catch(() => ({}));
-    const raw = String(body?.domain || body?.hostname || "").trim();
-    const normalized = normalizeVendorHostnameInput(raw) || raw.toLowerCase();
-    if (!normalized) {
-      return c.json({ error: "domain/hostname required" }, 400);
-    }
-
-    const variants = customDomainLookupVariants(normalized);
-    const removedHostKeys: string[] = [];
-    const touchedVendors: string[] = [];
-
-    for (const host of variants) {
-      const key = `custom_domain_host:${host}`;
-      const row = await kv.get(key);
-      if (row?.vendorId) touchedVendors.push(String(row.vendorId));
-      await kv.del(key);
-      removedHostKeys.push(key);
-      for (const pendingKey of vendorPendingHostKvKeys(host)) {
-        await kv.del(pendingKey);
-      }
-    }
-
-    const allSettings = await kv.getByPrefix("vendor_storefront_");
-    const validSettings = Array.isArray(allSettings) ? allSettings.filter((s) => s && typeof s === "object") : [];
-    for (const s of validSettings as any[]) {
-      const cd = String(s.customDomain || "").toLowerCase().trim();
-      if (!cd || !variants.includes(cd)) continue;
-      const vendorId = String(s.vendorId || "").trim();
-      if (!vendorId) continue;
-      touchedVendors.push(vendorId);
-      await kv.del(`vendor_domain_pending:${vendorId}`);
-      await kv.set(`vendor_storefront_${vendorId}`, {
-        ...s,
-        customDomain: "",
-        domainStatus: "none",
-        dnsVerified: false,
-      });
-    }
-
-    return c.json({
-      success: true,
-      domain: normalized,
-      removedHostKeys,
-      touchedVendors: [...new Set(touchedVendors)],
-    });
-  } catch (error: any) {
-    console.error("❌ admin/domain/purge:", error);
-    return c.json({ error: error.message || "Failed to purge domain mapping" }, 500);
   }
 });
 
@@ -9734,16 +9296,6 @@ async function enrichLineItemsWithProductVendors(
 app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
   try {
     const vendorId = c.req.param("vendorId");
-    const page = Math.max(1, parseInt(String(c.req.query("page") || "1"), 10) || 1);
-    const pageSize = Math.min(100, Math.max(1, parseInt(String(c.req.query("pageSize") || "20"), 10) || 20));
-    const q = String(c.req.query("q") || "").trim().toLowerCase();
-    const statusQ = String(c.req.query("status") || "all").trim().toLowerCase();
-    const paymentQ = String(c.req.query("payment") || "all").trim().toLowerCase();
-    const sortQ = String(c.req.query("sort") || "newest").trim().toLowerCase() === "oldest" ? "oldest" : "newest";
-    const fromQ = String(c.req.query("from") || "").trim();
-    const toQ = String(c.req.query("to") || "").trim();
-    const fromMs = fromQ ? new Date(fromQ).getTime() : Number.NaN;
-    const toMs = toQ ? new Date(toQ).getTime() : Number.NaN;
     console.log(`📦 Fetching orders for vendor: ${vendorId}`);
 
     const vendorIdentifiers = await resolveVendorOrderIdentifierSet(vendorId);
@@ -9853,7 +9405,7 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
         customerName: order.customerName || order.customer,
         email: order.email,
         phone: order.phone,
-        status: normalizeOrderStatus(order.status) || "pending",
+        status: order.status || "pending",
         paymentStatus: order.paymentStatus || "pending",
         paymentMethod: order.paymentMethod || "",
         total: vendorDisplayTotal,
@@ -9867,51 +9419,13 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
         notes: order.notes || "",
         deliveryService: order.deliveryService || "",
         deliveryServiceLogo: order.deliveryServiceLogo || "",
-        ...(order.inventoryDeducted === true
-          ? { inventoryDeducted: true }
-          : order.inventoryDeducted === false
-            ? { inventoryDeducted: false }
-            : {}),
       });
     }
     
-    const filteredOrders = vendorOrders.filter((order: any) => {
-      const searchText = `${String(order.orderNumber || "")} ${String(order.customer || "")} ${String(order.email || "")}`.toLowerCase();
-      const matchesSearch = !q || searchText.includes(q);
-      const matchesStatus = statusQ === "all" || String(order.status || "").toLowerCase() === statusQ;
-      const matchesPayment = paymentQ === "all" || String(order.paymentStatus || "").toLowerCase() === paymentQ;
-      const createdMs = new Date(order.createdAt || order.date || Date.now()).getTime();
-      const matchesFrom = !Number.isFinite(fromMs) || createdMs >= fromMs;
-      const matchesTo = !Number.isFinite(toMs) || createdMs <= toMs;
-      return matchesSearch && matchesStatus && matchesPayment && matchesFrom && matchesTo;
-    });
-
-    filteredOrders.sort((a: any, b: any) => {
-      const aMs = new Date(a.createdAt || a.date || 0).getTime();
-      const bMs = new Date(b.createdAt || b.date || 0).getTime();
-      return sortQ === "oldest" ? aMs - bMs : bMs - aMs;
-    });
-
-    const total = filteredOrders.length;
-    const slice = filteredOrders.slice((page - 1) * pageSize, page * pageSize);
-    const summary = {
-      totalRevenue: filteredOrders
-        .filter((o: any) => String(o.status || "").toLowerCase() !== "cancelled")
-        .reduce((s: number, o: any) => s + (Number(o.total) || 0), 0),
-      pending: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "pending").length,
-      processing: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "processing").length,
-      fulfilled: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "fulfilled").length,
-      cancelled: filteredOrders.filter((o: any) => String(o.status || "").toLowerCase() === "cancelled").length,
-    };
-
-    console.log(`✅ Found ${vendorOrders.length} orders for vendor ${vendorId} (filtered ${total}, page ${page})`);
+    console.log(`✅ Found ${vendorOrders.length} orders for vendor ${vendorId}`);
     return c.json({ 
-      orders: slice,
-      total,
-      page,
-      pageSize,
-      hasMore: page * pageSize < total,
-      summary,
+      orders: vendorOrders,
+      total: vendorOrders.length 
     });
 
   } catch (error: any) {
@@ -9980,15 +9494,6 @@ app.post("/make-server-16010b6f/vendor/audience/:vendorId/track", async (c) => {
 app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
   try {
     const vendorId = c.req.param("vendorId");
-    const pageQ = c.req.query("page");
-    const hasPagination = pageQ !== undefined && pageQ !== "";
-    const page = Math.max(1, parseInt(String(pageQ || "1"), 10) || 1);
-    const pageSize = Math.min(100, Math.max(1, parseInt(String(c.req.query("pageSize") || "20"), 10) || 20));
-    const q = String(c.req.query("q") || "").trim().toLowerCase();
-    const statusQ = String(c.req.query("status") || "all").trim().toLowerCase();
-    const tierQ = String(c.req.query("tier") || "all").trim().toLowerCase();
-    const segmentQ = String(c.req.query("segment") || "all").trim();
-    const sortQ = String(c.req.query("sort") || "spent-desc").trim().toLowerCase();
 
     const vendorIdentifiers = await resolveVendorOrderIdentifierSet(vendorId);
     const canonicalVendorId =
@@ -10133,54 +9638,9 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
       };
     });
 
-    const tierOf = (u: any): "new" | "regular" | "vip" => {
-      if (u?.isNew || Number(u?.totalOrders || 0) === 0) return "new";
-      if (Number(u?.totalSpent || 0) >= 500000 || Number(u?.totalOrders || 0) >= 5) return "vip";
-      return "regular";
-    };
-    const filtered = customers.filter((u: any) => {
-      const matchesQ =
-        !q ||
-        String(u.name || "").toLowerCase().includes(q) ||
-        String(u.email || "").toLowerCase().includes(q) ||
-        (Array.isArray(u.tags) ? u.tags.join(" ").toLowerCase().includes(q) : false);
-      const matchesStatus = statusQ === "all" || String(u.status || "").toLowerCase() === statusQ;
-      const matchesTier = tierQ === "all" || tierOf(u) === tierQ;
-      const matchesSegment = segmentQ === "all" || String(u.segment || "Other") === segmentQ;
-      return matchesQ && matchesStatus && matchesTier && matchesSegment;
-    });
+    customers.sort((a, b) => (b.totalSpent || 0) - (a.totalSpent || 0));
 
-    filtered.sort((a: any, b: any) => {
-      if (sortQ === "name-asc") return String(a.name || "").localeCompare(String(b.name || ""));
-      if (sortQ === "orders-desc") return (Number(b.totalOrders) || 0) - (Number(a.totalOrders) || 0);
-      return (Number(b.totalSpent) || 0) - (Number(a.totalSpent) || 0);
-    });
-
-    const total = filtered.length;
-    const rows = hasPagination ? filtered.slice((page - 1) * pageSize, page * pageSize) : filtered;
-    const totalCustomers = total;
-    const activeCustomers = filtered.filter((u: any) => String(u.status || "").toLowerCase() === "active").length;
-    const champions = filtered.filter((u: any) => String(u.segment || "") === "Champions").length;
-    const atRisk = filtered.filter((u: any) => String(u.segment || "") === "At Risk").length;
-    const totalRevenue = filtered.reduce((sum: number, u: any) => sum + (Number(u.totalSpent) || 0), 0);
-    const avgLtv = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
-
-    return c.json({
-      success: true,
-      customers: rows,
-      total,
-      page: hasPagination ? page : 1,
-      pageSize: hasPagination ? pageSize : total,
-      hasMore: hasPagination ? page * pageSize < total : false,
-      summary: {
-        totalCustomers,
-        activeCustomers,
-        champions,
-        atRisk,
-        totalRevenue,
-        avgLtv,
-      },
-    });
+    return c.json({ success: true, customers, total: customers.length });
   } catch (error: any) {
     console.error("❌ vendor audience get:", error);
     return c.json(
