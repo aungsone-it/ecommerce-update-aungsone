@@ -2,6 +2,7 @@ import { Suspense, lazy } from "react";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { RouteLoadingFallback } from "./RouteLoadingFallback";
+import { NotFound } from "../pages/NotFound";
 
 const VendorStorefrontPage = lazy(() =>
   import("../pages/VendorStorefrontPage").then((m) => ({ default: m.VendorStorefrontPage }))
@@ -42,6 +43,19 @@ export function VendorHostOrMarketplaceProfile() {
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       {vendorHost ? <VendorStorefrontPage /> : <StorefrontPage />}
+    </Suspense>
+  );
+}
+
+/** `/:categorySlug` — valid only on vendor-only hosts (subdomain/custom-domain). */
+export function VendorHostCategoryRoute() {
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: custom, loading } = useResolvedVendorHostSlug();
+  const vendorHost = sub != null || custom != null;
+  if (loading && !sub) return <RouteLoadingFallback />;
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      {vendorHost ? <VendorStorefrontPage /> : <NotFound />}
     </Suspense>
   );
 }

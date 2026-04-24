@@ -53,6 +53,28 @@ function vendorProfileSegmentFromPathname(
   return null;
 }
 
+function vendorCategorySlugFromPathname(pathname: string, storeName: string): string | null {
+  const direct =
+    matchPath({ path: "/store/:storeName/:categorySlug", end: true }, pathname) ??
+    matchPath({ path: "/vendor/:storeName/:categorySlug", end: true }, pathname);
+  if (direct?.params?.storeName === storeName) {
+    const seg = direct.params.categorySlug;
+    return typeof seg === "string" && seg.trim() ? decodeURIComponent(seg) : null;
+  }
+
+  const root =
+    matchPath({ path: "/:categorySlug", end: true }, pathname) ??
+    matchPath({ path: "/:categorySlug/", end: true }, pathname);
+  const seg = root?.params?.categorySlug;
+  if (!seg) return null;
+  const normalized = decodeURIComponent(seg).trim().toLowerCase();
+  if (!normalized) return null;
+  if (["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation"].includes(normalized)) {
+    return null;
+  }
+  return decodeURIComponent(seg);
+}
+
 export function VendorStorefrontPage() {
   const params = useParams();
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
@@ -84,6 +106,11 @@ export function VendorStorefrontPage() {
       matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null
     );
   }, [storeName, location.pathname, subdomainSlug, customHostSlug]);
+
+  const categorySlug = useMemo(() => {
+    if (!storeName) return null;
+    return vendorCategorySlugFromPathname(location.pathname, storeName);
+  }, [storeName, location.pathname]);
 
   if (customHostLoading && !params.storeName && !subdomainSlug) {
     return (
@@ -136,6 +163,7 @@ export function VendorStorefrontPage() {
           profileSegment={profileSegment}
           profileOrderId={profileOrderId}
           savedPage={savedPage}
+          categorySlug={categorySlug}
         />
       </CartProvider>
     </AuthProvider>

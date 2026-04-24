@@ -499,9 +499,9 @@ export function AdminPage() {
   /** ProductList refreshes its own data; remounting forced a refetch every visit — leave empty */
   const handleProductsChanged = () => {};
 
-  const handleViewVendorStorefront = (vendorId: string, storeSlug: string) => {
-    // Always use vendor ID for navigation (e.g., /vendor/vendcr-177082261392)
-    navigate(`/vendor/${vendorId}`);
+  const openVendorStorefrontInNewTab = (vendorId: string) => {
+    const href = `/vendor/${encodeURIComponent(vendorId)}`;
+    window.open(href, "_blank", "noopener,noreferrer");
   };
 
   const renderContent = () => {
@@ -589,8 +589,8 @@ export function AdminPage() {
           listSearchApplyToken={vendorSearchPrefill?.t}
           onVendorApplicationsMutated={handleVendorApplicationsMutated}
           onPreviewVendorStore={(vendorId, storeSlug) => {
-            // Always use vendor ID for navigation
-            navigate(`/vendor/${vendorId}`);
+            void storeSlug;
+            openVendorStorefrontInNewTab(vendorId);
           }}
           onLoginAsVendor={(vendor) => {
             // Check if vendor has credentials set up
@@ -606,8 +606,8 @@ export function AdminPage() {
       case ADMIN_PAGES.VENDOR_PROFILE:
         return <VendorProfile 
           onPreviewVendorStore={(vendorId, storeSlug) => {
-            // Always use vendor ID for navigation
-            navigate(`/vendor/${vendorId}`);
+            void storeSlug;
+            openVendorStorefrontInNewTab(vendorId);
           }}
           onLoginAsVendor={(vendor) => {
             // Check if vendor has credentials set up

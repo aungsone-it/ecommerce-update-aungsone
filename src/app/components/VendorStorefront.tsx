@@ -255,16 +255,20 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
           </div>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            onClick={() => {
-              if (onPreviewStore) {
-                onPreviewStore(vendor.id, settings.storeSlug, vendor);
-              }
-            }}
-          >
-            <Eye className="w-4 h-4 mr-2" />
-            Preview Store
+          <Button variant="outline" asChild>
+            <a
+              href={storeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => {
+                if (onPreviewStore) {
+                  onPreviewStore(vendor.id, settings.storeSlug, vendor);
+                }
+              }}
+            >
+              <Eye className="w-4 h-4 mr-2" />
+              Preview Store
+            </a>
           </Button>
           <Button 
             onClick={handleSaveSettings}
