@@ -30,15 +30,29 @@ export function AnimatedOutlet() {
       return "landing";
     }
 
-    // Same host: product/saved/profile are still VendorStorefrontPage — must share the home group
-    // so AnimatedOutlet's key does not remount and reset subnav/catalog state.
-    if (
-      vendorOnlyStoreGroup &&
-      (pathname.startsWith("/product/") ||
+    // Vendor-only host: storefront routes must stay in one group so key stays stable
+    // across /, /product/*, /saved, /profile/*, /checkout, /order-confirmation,
+    // and category slugs like /clothing.
+    if (vendorOnlyStoreGroup) {
+      const first = pathname.split("/").filter(Boolean)[0] || "";
+      const isVendorStorefrontRootPath =
+        pathname === "/" ||
+        pathname.startsWith("/product/") ||
         pathname === "/saved" ||
-        pathname.startsWith("/profile"))
-    ) {
-      return vendorOnlyStoreGroup;
+        pathname.startsWith("/profile") ||
+        pathname === "/checkout" ||
+        pathname === "/order-confirmation";
+      const vendorRootReserved = new Set([
+        "admin",
+        "setup",
+        "vendor",
+        "store",
+        "blog",
+        "auth",
+      ]);
+      if (isVendorStorefrontRootPath || (first && !vendorRootReserved.has(first))) {
+        return vendorOnlyStoreGroup;
+      }
     }
 
     // Storefront routes (all use StorefrontPage component)

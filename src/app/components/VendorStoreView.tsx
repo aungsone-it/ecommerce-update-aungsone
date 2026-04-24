@@ -679,6 +679,9 @@ export function VendorStoreView({
   const vendorCatalogRequestSeqRef = useRef(0);
   /** Monotonic id for filter/search-triggered refetch effect status updates. */
   const vendorCatalogRefetchRunRef = useRef(0);
+  /** Last successful revalidate time per catalog key (throttle background refetch spam). */
+  const vendorCatalogRevalidateAtRef = useRef<Map<string, number>>(new Map());
+  const VENDOR_REVALIDATE_COOLDOWN_MS = 15000;
 
   /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
   const catalogCategoryHintsRef = useRef<Map<string, string>>(new Map());
@@ -2788,7 +2791,7 @@ export function VendorStoreView({
       const cat = selectedCategory;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
       const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
-      const persistEligible = !qRaw && cat === "all";
+      const persistEligible = !qRaw;
       const lsKey = lsVendorCatalogPage1Key(vendorId, qk, cat, pageSize);
 
       if (!forceRefresh && persistEligible) {
@@ -3001,7 +3004,8 @@ export function VendorStoreView({
       console.log(`✅ [VENDOR STORE] Loaded ${categoriesData?.length || 0} categories`);
     } catch (error) {
       console.error("❌ [VENDOR STORE] Error loading vendor data:", error);
-      setServerStatus("unhealthy");
+      if (productsRef.current.length > 0) setServerStatus("healthy");
+      else setServerStatus("unhealthy");
     }
   };
 
@@ -3049,7 +3053,6 @@ export function VendorStoreView({
   useEffect(() => {
     if (!savedPage) return;
     let cancelled = false;
-    const runId = ++vendorCatalogRefetchRunRef.current;
     void (async () => {
       try {
         const data = await fetchVendorProducts(vendorId, { page: 1, pageSize: 1 });
@@ -3077,14 +3080,71 @@ export function VendorStoreView({
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  useLayoutEffect(() => {
+    if (savedPage) return;
+    const qRaw = debouncedVendorServerQ.trim();
+    const qk = qRaw.toLowerCase();
+    const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, selectedCategory, pageSize);
+    const fromMem = moduleCache.peek<any>(cacheKey);
+    if (fromMem && typeof fromMem === "object" && Array.isArray(fromMem.products)) {
+      setProducts(fromMem.products || []);
+      setVendorCatalogTotal(typeof fromMem.total === "number" ? fromMem.total : 0);
+      setVendorCatalogPage(typeof fromMem.page === "number" ? fromMem.page : 1);
+      setVendorCatalogHasMore(!!fromMem.hasMore);
+      if (typeof fromMem.storeName === "string" && fromMem.storeName.trim()) {
+        setStoreName(fromMem.storeName.trim());
+      }
+      if (typeof fromMem.logo === "string") {
+        setStoreLogo(fromMem.logo);
+      }
+      if (typeof fromMem.storePhone === "string" && fromMem.storePhone.trim()) {
+        setStorePhone(fromMem.storePhone.trim());
+      }
+      setServerStatus("healthy");
+      return;
+    }
+    if (qRaw) return;
+    const lsKey = lsVendorCatalogPage1Key(vendorId, qk, selectedCategory, pageSize);
+    const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
+    if (!fromLs || typeof fromLs !== "object" || !Array.isArray(fromLs.products)) return;
+    setProducts(fromLs.products || []);
+    setVendorCatalogTotal(typeof fromLs.total === "number" ? fromLs.total : 0);
+    setVendorCatalogPage(typeof fromLs.page === "number" ? fromLs.page : 1);
+    setVendorCatalogHasMore(!!fromLs.hasMore);
+    if (typeof fromLs.storeName === "string" && fromLs.storeName.trim()) {
+      setStoreName(fromLs.storeName.trim());
+    }
+    if (typeof fromLs.logo === "string") {
+      setStoreLogo(fromLs.logo);
+    }
+    if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
+      setStorePhone(fromLs.storePhone.trim());
+    }
+    setServerStatus("healthy");
+  }, [vendorId, selectedCategory, debouncedVendorServerQ, savedPage]);
+
   useEffect(() => {
     if (savedPage) return;
     if (isFirstSearchCategoryEffect.current) {
       isFirstSearchCategoryEffect.current = false;
       return;
     }
+    const runId = ++vendorCatalogRefetchRunRef.current;
     void (async () => {
       try {
+        const qRaw = debouncedVendorServerQ.trim();
+        const qk = qRaw.toLowerCase();
+        const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+        const page1Key = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, selectedCategory, pageSize);
+        const now = Date.now();
+        const lastAt = vendorCatalogRevalidateAtRef.current.get(page1Key) || 0;
+        const recentEnough = now - lastAt < VENDOR_REVALIDATE_COOLDOWN_MS;
+        if (!qRaw && moduleCache.has(page1Key) && recentEnough) {
+          if (runId !== vendorCatalogRefetchRunRef.current) return;
+          setServerStatus("healthy");
+          return;
+        }
         // Only block the UI with "checking" on first load. Refetching filters/search with
         // catalog already in memory should not swap the whole page for a skeleton (blink when
         // returning from product detail or changing category after browse).
@@ -3094,6 +3154,7 @@ export function VendorStoreView({
         const applied = await refetchVendorCatalogPage1(false);
         if (runId !== vendorCatalogRefetchRunRef.current) return;
         if (applied) {
+          vendorCatalogRevalidateAtRef.current.set(page1Key, Date.now());
           setServerStatus("healthy");
         }
       } catch {
@@ -3106,7 +3167,7 @@ export function VendorStoreView({
         }
       }
     })();
-  }, [debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
+  }, [vendorId, debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
 
   // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.
   useLayoutEffect(() => {

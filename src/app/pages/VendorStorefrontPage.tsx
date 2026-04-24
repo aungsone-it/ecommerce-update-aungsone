@@ -151,7 +151,6 @@ export function VendorStorefrontPage() {
     <AuthProvider>
       <CartProvider>
         <VendorStoreView
-          key={storeName}
           vendorId={storeName}
           storeSlug={storeName}
           hostRootStorePaths={!!(subdomainSlug || customHostSlug)}
