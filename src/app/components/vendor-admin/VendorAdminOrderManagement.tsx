@@ -281,7 +281,12 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
   const [rawVendorOrders, setRawVendorOrders] = useState<any[]>([]);
   const [vendorProducts, setVendorProducts] = useState<any[]>([]);
   const [vendorCommissionPct, setVendorCommissionPct] = useState(15);
-  const [isLoading, setIsLoading] = useState(() => !moduleCache.peek(CACHE_KEYS.vendorOrders(vendorId)));
+  const [isLoading, setIsLoading] = useState(
+    () =>
+      !moduleCache.peek(
+        CACHE_KEYS.vendorOrdersPage(vendorId, 1, ADMIN_PRODUCTS_INITIAL_PAGE_SIZE, "", "all", "all", "newest", "", "")
+      )
+  );
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
@@ -337,23 +342,25 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
   }, [vendorId, vendorStoreSlug]);
 
   const loadOrders = async (forceRefresh = false) => {
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
-      if (peeked != null && Array.isArray(peeked)) {
-        setRawVendorOrders(peeked);
-        setOrders(mapVendorMgmtApiOrders(peeked));
-        setIsLoading(false);
-        setListRefreshing(false);
-        return;
-      }
-    }
-
     setListRefreshing(forceRefresh);
     try {
-      setIsLoading(true);
-      console.log(`📦 Loading orders for vendor: ${vendorId}`);
       const from = orderDateRange?.from ? startOfDay(orderDateRange.from).toISOString() : "";
       const to = orderDateRange?.to ? endOfDay(orderDateRange.to).toISOString() : "";
+      const pageKey = CACHE_KEYS.vendorOrdersPage(
+        vendorId,
+        ordersListPage,
+        ordersListPageSize,
+        searchQuery.trim().toLowerCase(),
+        statusFilter,
+        paymentFilter,
+        sortOrder,
+        from,
+        to
+      );
+      if (!moduleCache.peek(pageKey)) {
+        setIsLoading(true);
+      }
+      console.log(`📦 Loading orders for vendor: ${vendorId}`);
       const data = await getCachedVendorOrdersPage(
         vendorId,
         {
@@ -391,11 +398,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           false
         ).catch(() => undefined);
       }
-      if (transformedOrders.length > 0) {
-        toast.success(`Loaded ${transformedOrders.length} orders`);
-      } else {
-        toast.info('No orders found for this vendor');
-      }
+      // Silent success path: keep tab revisits instant without noisy toasts.
     } catch (error: any) {
       // 🔇 SUPPRESS WARMUP ERRORS - these are expected during server startup
       const isWarmupError = error.name === 'TypeError' && error.message === 'Failed to fetch';

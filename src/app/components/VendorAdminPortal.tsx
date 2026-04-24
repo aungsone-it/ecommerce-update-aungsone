@@ -122,6 +122,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   } | null>(null);
   /** Header search — synced with Products screen (client filter; no API per keystroke). */
   const [vendorHeaderProductSearch, setVendorHeaderProductSearch] = useState("");
+  const [mountedPages, setMountedPages] = useState<VendorPage[]>(["dashboard"]);
 
   const loadStorefrontSnapshot = useCallback(async () => {
     try {
@@ -291,6 +292,10 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, adminPathPrefix, routeStoreSlug, onVendorHostCleanAdmin]);
+
+  useEffect(() => {
+    setMountedPages((prev) => (prev.includes(currentPage) ? prev : [...prev, currentPage]));
+  }, [currentPage]);
 
   // Poll vendor pending orders on a long interval (same badge behavior as super admin orders)
   useEffect(() => {
@@ -469,8 +474,8 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     setSidebarOpen(false);
   };
 
-  const renderContent = () => {
-    switch (currentPage) {
+  const renderPage = (page: VendorPage) => {
+    switch (page) {
       case "dashboard":
         return (
           <VendorAdminDashboard 
@@ -519,14 +524,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       case "users":
         return <VendorAdminUsers vendorId={vendor.id} vendorName={vendor.name} />;
       default:
-        return (
-          <VendorAdminDashboard 
-            vendorId={vendor.id} 
-            vendorName={vendor.name}
-            onNavigate={setCurrentPage}
-            onPreviewStore={onPreviewStore}
-          />
-        );
+        return null;
     }
   };
 
@@ -826,7 +824,15 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
 
         {/* Content Area */}
         <div className="flex-1 overflow-y-auto p-6">
-          {renderContent()}
+          {mountedPages.map((page) => (
+            <section
+              key={page}
+              className={currentPage === page ? "block" : "hidden"}
+              aria-hidden={currentPage === page ? "false" : "true"}
+            >
+              {renderPage(page)}
+            </section>
+          ))}
         </div>
       </main>
     </div>

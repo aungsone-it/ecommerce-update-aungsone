@@ -20,7 +20,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Loader2,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -140,11 +139,16 @@ export function VendorAdminProductsCRUD({
     : location.pathname.startsWith("/store/")
       ? "store"
       : "vendor";
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(
-    () =>
-      moduleCache.peek(CACHE_KEYS.vendorProductsAdmin(vendorId)) == null
+  const cachedVendorProductsPayload = moduleCache.peek<{ products?: Product[] }>(
+    CACHE_KEYS.vendorProductsAdmin(vendorId)
   );
+  const hasWarmVendorProductsCache =
+    cachedVendorProductsPayload != null && Array.isArray(cachedVendorProductsPayload.products);
+  const [products, setProducts] = useState<Product[]>(
+    () =>
+      (hasWarmVendorProductsCache ? cachedVendorProductsPayload?.products : undefined) || []
+  );
+  const [loading, setLoading] = useState(() => !hasWarmVendorProductsCache);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "off-shelf">("all");
   const [sortBy, setSortBy] = useState("newest");
@@ -200,10 +204,13 @@ export function VendorAdminProductsCRUD({
       }
     }
 
-    setLoading(true);
+    // Keep current rows visible when revisiting; only show skeleton on true cold starts.
+    if (products.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await getCachedVendorProductsAdmin(vendorId, forceRefresh);
-        setProducts(data.products || []);
+      setProducts(data.products || []);
     } catch (error) {
       console.error("Error loading products:", error);
       toast.error("Failed to load products");
@@ -733,7 +740,7 @@ export function VendorAdminProductsCRUD({
             variant="outline"
             size="sm"
             onClick={handleOpenSelectProduct}
-            className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+            className="bg-slate-100 border-slate-300 text-slate-900 hover:bg-slate-200"
           >
           <Plus className="w-4 h-4 mr-2" />
             Select Product
@@ -807,7 +814,7 @@ export function VendorAdminProductsCRUD({
             <Button
               type="button"
               onClick={handleOpenSelectProduct}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-slate-900 hover:bg-black text-white"
             >
               <Plus className="w-4 h-4 mr-2" />
               Select Product
@@ -1212,14 +1219,10 @@ export function VendorAdminProductsCRUD({
                   savingPicker ||
                   (pickerSelectedIds.length === 0 && pickerAssignedUncheckedIds.length === 0)
                 }
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-slate-900 hover:bg-black text-white"
               >
-                {savingPicker ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Check className="w-4 h-4 mr-2" />
-                )}
-                Apply changes
+                <Check className="w-4 h-4 mr-2" />
+                {savingPicker ? "Applying..." : "Apply changes"}
               </Button>
             </div>
           </DialogFooter>

@@ -219,7 +219,12 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
   const [bulkStatus, setBulkStatus] = useState<OrderStatus>("processing");
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
-  const [isLoading, setIsLoading] = useState(() => !moduleCache.peek(CACHE_KEYS.vendorOrders(vendorId)));
+  const [isLoading, setIsLoading] = useState(
+    () =>
+      !moduleCache.peek(
+        CACHE_KEYS.vendorOrdersPage(vendorId, 1, 500, "", "all", "all", "newest", "", "")
+      )
+  );
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
@@ -241,21 +246,24 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
   ]);
 
   const loadOrders = async (forceRefresh = false) => {
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<any[]>(CACHE_KEYS.vendorOrders(vendorId));
-      if (peeked != null && Array.isArray(peeked)) {
-        setOrders(mapVendorApiOrdersToItems(peeked));
-        setIsLoading(false);
-        setListRefreshing(false);
-        return;
-      }
-    }
-
     setListRefreshing(forceRefresh);
     try {
-      setIsLoading(true);
       const from = orderDateRange?.from ? startOfDay(orderDateRange.from).toISOString() : "";
       const to = orderDateRange?.to ? endOfDay(orderDateRange.to).toISOString() : "";
+      const pageKey = CACHE_KEYS.vendorOrdersPage(
+        vendorId,
+        1,
+        500,
+        searchQuery.trim().toLowerCase(),
+        statusFilter,
+        paymentFilter,
+        sortOrder,
+        from,
+        to
+      );
+      if (!moduleCache.peek(pageKey)) {
+        setIsLoading(true);
+      }
       const payload = await getCachedVendorOrdersPage(
         vendorId,
         {
@@ -273,9 +281,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
       const transformedOrders = mapVendorApiOrdersToItems(payload.orders);
       setOrders(transformedOrders);
       setServerTotalOrders(Number(payload.total || transformedOrders.length));
-      if (transformedOrders.length > 0) {
-        toast.success(`Loaded ${transformedOrders.length} orders`);
-      }
+      // Silent success path: avoid repetitive "Loaded" toasts on revisit.
     } catch (error: any) {
       console.error("Failed to load orders:", error);
       toast.error(`Failed to load orders: ${error.message || 'Unknown error'}`);

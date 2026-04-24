@@ -42,12 +42,14 @@ class CacheManager {
     const now = Date.now();
     const hit = this.timedCache.get(key);
     if (hit && hit.expiresAt > now) {
+      this.cache.set(key, hit.value);
       return hit.value as T;
     }
     if (hit && opts?.staleWhileRevalidate) {
       void loader()
         .then((fresh) => {
           this.timedCache.set(key, { value: fresh, expiresAt: Date.now() + ttl });
+          this.cache.set(key, fresh);
         })
         .catch(() => {
           /* keep stale */
@@ -56,6 +58,7 @@ class CacheManager {
     }
     const fresh = await loader();
     this.timedCache.set(key, { value: fresh, expiresAt: Date.now() + ttl });
+    this.cache.set(key, fresh);
     return fresh;
   }
 
@@ -107,6 +110,7 @@ class CacheManager {
       callbacks.forEach(callback => callback());
     });
     this.cache.clear();
+    this.timedCache.clear();
   }
 
   /**

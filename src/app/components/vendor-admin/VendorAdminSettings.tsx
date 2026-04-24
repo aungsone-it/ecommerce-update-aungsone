@@ -59,26 +59,30 @@ export function VendorAdminSettings({
   vendorLogo = "",
   onPreviewStore,
 }: VendorAdminSettingsProps) {
+  const settingsCacheKey = `vendor-admin-settings:${vendorId}`;
+  const cachedSettings = cacheManager.get(settingsCacheKey) as StoreSettings | undefined;
   const [settings, setSettings] = useState<StoreSettings>({
-    vendorId,
-    storeName: vendorName,
-    storeSlug: storeSlugFromBusinessName(vendorName),
-    storeDescription: "Welcome to our store",
-    storeTagline: "",
-    logo: vendorLogo,
-    banner: "",
-    primaryColor: "#1e293b",
-    secondaryColor: "#64748b",
-    accentColor: "#3b82f6",
-    contactEmail: "",
-    contactPhone: "",
-    address: "",
-    customDomain: "",
-    domainStatus: 'none',
-    dnsVerified: false,
-    isActive: true,
+    ...(cachedSettings || {
+      vendorId,
+      storeName: vendorName,
+      storeSlug: storeSlugFromBusinessName(vendorName),
+      storeDescription: "Welcome to our store",
+      storeTagline: "",
+      logo: vendorLogo,
+      banner: "",
+      primaryColor: "#1e293b",
+      secondaryColor: "#64748b",
+      accentColor: "#3b82f6",
+      contactEmail: "",
+      contactPhone: "",
+      address: "",
+      customDomain: "",
+      domainStatus: "none",
+      dnsVerified: false,
+      isActive: true,
+    }),
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedSettings);
   const [saving, setSaving] = useState(false);
   const [domainBusy, setDomainBusy] = useState<"prepare" | "verify" | "remove" | null>(null);
   const [domainDraft, setDomainDraft] = useState("");
@@ -94,39 +98,47 @@ export function VendorAdminSettings({
   }, [vendorId, vendorLogo]);
 
   const loadSettings = async () => {
-    setLoading(true);
+    if (!cacheManager.get(settingsCacheKey)) {
+      setLoading(true);
+    }
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendorId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.settings) {
-          setSettings({
-            ...data.settings,
-            logo:
-              typeof data.settings.logo === "string" && data.settings.logo.trim()
-                ? data.settings.logo
-                : vendorLogo,
-          });
-          setDomainDraft(
-            String(data.settings.customDomain || "").trim() || ""
+      const data = await cacheManager.fetch(
+        settingsCacheKey,
+        async () => {
+          const response = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendorId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${publicAnonKey}`,
+              },
+            }
           );
-          const dv = data.settings.domainVerification;
-          if (dv?.txtName && dv?.txtValue) {
-            setDomainHints({
-              hostname: String(data.settings.customDomain || "").trim(),
-              txtName: dv.txtName,
-              txtValue: dv.txtValue,
-              cnameTarget: dv.cnameTarget || "cname.vercel-dns.com",
-            });
+          if (!response.ok) {
+            throw new Error("Failed to load storefront settings");
           }
+          return response.json();
+        },
+        { ttl: 60_000, staleWhileRevalidate: true }
+      );
+      if (data?.settings) {
+        const nextSettings = {
+          ...data.settings,
+          logo:
+            typeof data.settings.logo === "string" && data.settings.logo.trim()
+              ? data.settings.logo
+              : vendorLogo,
+        };
+        setSettings(nextSettings);
+        cacheManager.set(settingsCacheKey, nextSettings);
+        setDomainDraft(String(data.settings.customDomain || "").trim() || "");
+        const dv = data.settings.domainVerification;
+        if (dv?.txtName && dv?.txtValue) {
+          setDomainHints({
+            hostname: String(data.settings.customDomain || "").trim(),
+            txtName: dv.txtName,
+            txtValue: dv.txtValue,
+            cnameTarget: dv.cnameTarget || "cname.vercel-dns.com",
+          });
         }
       }
     } catch (error) {
@@ -160,6 +172,7 @@ export function VendorAdminSettings({
           return;
         }
         setSettings(saved);
+        cacheManager.set(settingsCacheKey, saved);
 
         // Also update vendor record with new store name, slug, and logo
         const vendorUpdateResponse = await fetch(
@@ -219,9 +232,9 @@ export function VendorAdminSettings({
           const pathMatch = window.location.pathname.match(/^\/(store|vendor)\/([^/]+)(\/.*)?$/);
           if (pathMatch && pathMatch[2] !== saved.storeSlug) {
             const suffix = pathMatch[3] || "/admin";
-            window.location.replace(`/${pathMatch[1]}/${saved.storeSlug}${suffix}`);
-          } else {
-            setTimeout(() => window.location.reload(), 400);
+            const nextPath = `/${pathMatch[1]}/${saved.storeSlug}${suffix}`;
+            window.history.replaceState(window.history.state, "", nextPath);
+            window.dispatchEvent(new PopStateEvent("popstate"));
           }
         } else {
           toast.error("Failed to update vendor information");
