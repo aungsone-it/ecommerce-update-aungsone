@@ -650,6 +650,10 @@ export function VendorStoreView({
   /** Latest catalog for merging into saved list without re-subscribing the wishlist hydration effect to `products`. */
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products;
+  /** Monotonic id for catalog requests; older async responses are ignored. */
+  const vendorCatalogRequestSeqRef = useRef(0);
+  /** Monotonic id for filter/search-triggered refetch effect status updates. */
+  const vendorCatalogRefetchRunRef = useRef(0);
 
   /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
   const catalogCategoryHintsRef = useRef<Map<string, string>>(new Map());
@@ -2718,8 +2722,10 @@ export function VendorStoreView({
   };
 
   const refetchVendorCatalogPage1 = useCallback(
-    async (forceRefresh: boolean) => {
-      if (savedPage) return;
+    async (forceRefresh: boolean): Promise<boolean> => {
+      const requestSeq = ++vendorCatalogRequestSeqRef.current;
+      const isLatest = () => requestSeq === vendorCatalogRequestSeqRef.current;
+      if (savedPage) return false;
       const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
       const cat = selectedCategory;
@@ -2734,6 +2740,7 @@ export function VendorStoreView({
           // Old persisted catalog omitted `storePhone` — bypass LS once so we pick up `contactPhone` from the API.
           const lsHasStorePhoneField = Object.prototype.hasOwnProperty.call(fromLs, "storePhone");
           if (lsHasStorePhoneField) {
+            if (!isLatest()) return false;
             moduleCache.prime(cacheKey, fromLs);
             setProducts(fromLs.products || []);
             setVendorCatalogTotal(fromLs.total);
@@ -2751,7 +2758,7 @@ export function VendorStoreView({
                 ? fromLs.resolvedVendorId.trim()
                 : undefined;
             setCanonicalVendorId(rid ?? vendorId);
-            return;
+            return true;
           }
         }
       }
@@ -2767,6 +2774,7 @@ export function VendorStoreView({
           }),
         forceRefresh
       );
+      if (!isLatest()) return false;
       setProducts(productsData.products || []);
       setVendorCatalogTotal(productsData.total);
       setVendorCatalogPage(productsData.page);
@@ -2779,6 +2787,7 @@ export function VendorStoreView({
       if (persistEligible && productsData && typeof productsData === "object") {
         writePersistedJson(lsKey, productsData);
       }
+      return true;
     },
     [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
   );
@@ -2935,7 +2944,8 @@ export function VendorStoreView({
       console.log(`✅ [VENDOR STORE] Loaded ${categoriesData?.length || 0} categories`);
     } catch (error) {
       console.error("❌ [VENDOR STORE] Error loading vendor data:", error);
-      setServerStatus("unhealthy");
+      if (productsRef.current.length > 0) setServerStatus("healthy");
+      else setServerStatus("unhealthy");
     }
   };
 
@@ -3016,6 +3026,7 @@ export function VendorStoreView({
       isFirstSearchCategoryEffect.current = false;
       return;
     }
+    const runId = ++vendorCatalogRefetchRunRef.current;
     void (async () => {
       try {
         // Only block the UI with "checking" on first load. Refetching filters/search with
@@ -3024,10 +3035,13 @@ export function VendorStoreView({
         if (productsRef.current.length === 0) {
           setServerStatus("checking");
         }
-        await refetchVendorCatalogPage1(false);
-        setServerStatus("healthy");
+        const applied = await refetchVendorCatalogPage1(false);
+        if (runId !== vendorCatalogRefetchRunRef.current) return;
+        if (applied) setServerStatus("healthy");
       } catch {
-        setServerStatus("unhealthy");
+        if (runId !== vendorCatalogRefetchRunRef.current) return;
+        if (productsRef.current.length === 0) setServerStatus("unhealthy");
+        else setServerStatus("healthy");
       }
     })();
   }, [debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
