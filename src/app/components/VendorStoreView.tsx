@@ -679,9 +679,12 @@ export function VendorStoreView({
   const vendorCatalogRequestSeqRef = useRef(0);
   /** Monotonic id for filter/search-triggered refetch effect status updates. */
   const vendorCatalogRefetchRunRef = useRef(0);
+<<<<<<< HEAD
   /** Last successful revalidate time per catalog key (throttle background refetch spam). */
   const vendorCatalogRevalidateAtRef = useRef<Map<string, number>>(new Map());
   const VENDOR_REVALIDATE_COOLDOWN_MS = 15000;
+=======
+>>>>>>> checkup
 
   /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
   const catalogCategoryHintsRef = useRef<Map<string, string>>(new Map());
@@ -3153,6 +3156,7 @@ export function VendorStoreView({
         }
         const applied = await refetchVendorCatalogPage1(false);
         if (runId !== vendorCatalogRefetchRunRef.current) return;
+<<<<<<< HEAD
         if (applied) {
           vendorCatalogRevalidateAtRef.current.set(page1Key, Date.now());
           setServerStatus("healthy");
@@ -3165,6 +3169,13 @@ export function VendorStoreView({
         } else {
           setServerStatus("healthy");
         }
+=======
+        if (applied) setServerStatus("healthy");
+      } catch {
+        if (runId !== vendorCatalogRefetchRunRef.current) return;
+        if (productsRef.current.length === 0) setServerStatus("unhealthy");
+        else setServerStatus("healthy");
+>>>>>>> checkup
       }
     })();
   }, [vendorId, debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
