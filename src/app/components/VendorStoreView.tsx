@@ -3884,23 +3884,20 @@ export function VendorStoreView({
     if (idx >= 0) setVendorProductImageIndex(idx);
   }, [selectedProduct, vendorVariantSelections]);
 
-  // Checkout must render before product detail — otherwise selectedProduct keeps the detail view mounted and checkout never shows
-  if (showCheckout) {
-    return (
-      <div className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 scrollbar-thin">
-        <Checkout
-          onBack={() => setShowCheckout(false)}
-          storeName={storeName}
-          vendorId={vendorId}
-          vendorName={storeName}
-          accountUser={user}
-          onOrderPlacedSuccess={(ctx) => {
-            if (ctx?.userId) invalidateCustomerOrdersCache(ctx.userId);
-          }}
-        />
-      </div>
-    );
-  }
+  const checkoutOverlay = showCheckout ? (
+    <div className="fixed inset-0 z-[120] bg-slate-50">
+      <Checkout
+        onBack={() => setShowCheckout(false)}
+        storeName={storeName}
+        vendorId={vendorId}
+        vendorName={storeName}
+        accountUser={user}
+        onOrderPlacedSuccess={(ctx) => {
+          if (ctx?.userId) invalidateCustomerOrdersCache(ctx.userId);
+        }}
+      />
+    </div>
+  ) : null;
 
   // Product Detail View (inline, not modal)
   if (selectedProduct && vendorViewMode === "storefront" && !savedPage) {
@@ -4624,6 +4621,7 @@ export function VendorStoreView({
         {!cartOpen && (
           <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
         )}
+        {checkoutOverlay}
       </>
     );
   }
@@ -5160,6 +5158,7 @@ export function VendorStoreView({
     {!cartOpen && (
       <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
     )}
+    {checkoutOverlay}
     </>
   );
 }
