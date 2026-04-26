@@ -3885,7 +3885,7 @@ export function VendorStoreView({
   }, [selectedProduct, vendorVariantSelections]);
 
   const checkoutOverlay = showCheckout ? (
-    <div className="fixed inset-0 z-[120] bg-slate-50">
+    <div className="fixed inset-0 z-[120] overflow-y-auto overflow-x-hidden bg-slate-50">
       <Checkout
         onBack={() => setShowCheckout(false)}
         storeName={storeName}
