@@ -112,9 +112,6 @@ export function Settings() {
   const [storeDomain, setStoreDomain] = useState(""); // Custom domain for the store
   const [currency, setCurrency] = useState("MMK");
   const [timezone, setTimezone] = useState("Asia/Yangon");
-  const [kpayPhone, setKpayPhone] = useState("+95 9 XXX XXX XXX");
-  const [kpayQrCode, setKpayQrCode] = useState("");
-  const [kpayQrCodePreview, setKpayQrCodePreview] = useState("");
   const [storeLogo, setStoreLogo] = useState("");
   const [storeLogoPreview, setStoreLogoPreview] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -217,9 +214,6 @@ export function Settings() {
           setStoreDomain(data.storeDomain || "");
           setCurrency(data.currency || "MMK");
           setTimezone(data.timezone || "Asia/Yangon");
-          setKpayPhone(data.kpayPhone || "+95 9 XXX XXX XXX");
-          setKpayQrCode(data.kpayQrCode || "");
-          setKpayQrCodePreview(data.kpayQrCode || "");
           setStoreLogo(data.storeLogo || "");
           setStoreLogoPreview(data.storeLogo || "");
         }
@@ -297,8 +291,6 @@ export function Settings() {
             storeDomain,
             currency,
             timezone,
-            kpayPhone,
-            kpayQrCode,
             storeLogo,
           }),
         }
@@ -1110,100 +1102,6 @@ export function Settings() {
               <VendorDomainsList />
             </div>
             )}
-
-            {/* KPay Settings */}
-            <div className="pt-6 border-t border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">KPay Settings</h3>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="kpayPhone" className="text-sm font-medium text-slate-900 mb-2 block">
-                    KPay Phone Number
-                  </Label>
-                  <Input
-                    id="kpayPhone"
-                    type="number"
-                    value={kpayPhone}
-                    onChange={(e) => setKpayPhone(e.target.value)}
-                    className="h-10 max-w-md"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="kpayQrCode" className="text-sm font-medium text-slate-900 mb-2 block">
-                    KPay QR Code
-                  </Label>
-                  
-                  {/* QR Code Preview */}
-                  <div className="mb-3">
-                    <div className="w-48 h-48 bg-slate-100 rounded-lg flex items-center justify-center overflow-hidden border-2 border-slate-200">
-                      {kpayQrCodePreview ? (
-                        <img
-                          src={kpayQrCodePreview}
-                          alt="KPay QR Code"
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <div className="text-center px-4">
-                          <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                          <p className="text-sm text-slate-500">No QR code uploaded</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Upload Button */}
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => document.getElementById('kpayQrUpload')?.click()}
-                      className="relative"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      {kpayQrCodePreview ? 'Change QR Code' : 'Upload QR Code'}
-                    </Button>
-                    
-                    {kpayQrCodePreview && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setKpayQrCode("");
-                          setKpayQrCodePreview("");
-                        }}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Remove
-                      </Button>
-                    )}
-                  </div>
-                  
-                  <input
-                    id="kpayQrUpload"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      try {
-                        const dataUrl = await compressImage(file, 500);
-                        setKpayQrCode(dataUrl);
-                        setKpayQrCodePreview(dataUrl);
-                      } catch (err: any) {
-                        toast.error(err?.message || "Could not process image");
-                      }
-                      e.target.value = "";
-                    }}
-                  />
-                  
-                  <p className="text-xs text-slate-500 mt-2">
-                    Upload your KPay QR code image (PNG, JPG). Recommended size: 500x500px
-                  </p>
-                </div>
-              </div>
-            </div>
 
             {/* Store Logo */}
             <div className="pt-6 border-t border-slate-200">

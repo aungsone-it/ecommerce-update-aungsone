@@ -235,6 +235,13 @@ export function Checkout({
   });
   const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
+  const hasKPayPayload = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent || kpaySession?.payUrl);
+  const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasKPayPayload);
+  const kpayQrDisplayUrl = kpaySession?.qrImageUrl
+    ? kpaySession.qrImageUrl
+    : kpaySession?.qrContent
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.qrContent)}`
+    : "";
 
   // Coupon State with localStorage persistence
   const [couponCode, setCouponCode] = useState("");
@@ -419,8 +426,8 @@ export function Checkout({
       await new Promise((resolve) => setTimeout(resolve, 2000));
       toast.success("💳 Payment Successful!", { duration: 3000 });
     } else if (paymentMethod === "KPay") {
-      if (!kpaySession?.merchantOrderId) {
-        toast.error("Please generate KPay QR first");
+      if (!canSubmitKPayOrder) {
+        toast.error("KPay QR payload is missing. Please regenerate QR first");
         setLoading(false);
         return;
       }
@@ -1194,10 +1201,14 @@ export function Checkout({
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                       <div className="mb-4 flex justify-center">
                         <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
-                          {kpaySession?.qrImageUrl ? (
-                            <img src={kpaySession.qrImageUrl} alt="KPay QR Code" className="h-full w-full object-contain" />
+                          {kpayQrDisplayUrl ? (
+                            <img src={kpayQrDisplayUrl} alt="KPay QR Code" className="h-full w-full object-contain" />
                           ) : (
-                            <div className="px-4 text-center text-sm text-slate-500">Generate KPay QR to scan and pay</div>
+                            <div className="px-4 text-center text-sm text-slate-500">
+                              {kpaySession?.merchantOrderId
+                                ? "QR not returned by provider for this order"
+                                : "Generate KPay QR to scan and pay"}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1212,10 +1223,27 @@ export function Checkout({
                           <span className="text-slate-600">Amount to Pay:</span>
                           <span className="font-semibold text-emerald-700">{finalTotal.toFixed(0)} MMK</span>
                         </div>
+                        {!!kpaySession?.payUrl && (
+                          <div className="py-1 border-b border-slate-200">
+                            <a
+                              href={kpaySession.payUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-700 underline break-all"
+                            >
+                              Open KPay payment link
+                            </a>
+                          </div>
+                        )}
                         {kpaySession?.status && (
                           <div className="flex justify-between py-1">
                             <span className="text-slate-600">Payment Status:</span>
                             <span className="font-semibold uppercase text-slate-900">{kpaySession.status}</span>
+                          </div>
+                        )}
+                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && !kpaySession?.payUrl && (
+                          <div className="text-xs text-amber-700">
+                            KPay returned pending order without QR payload. Please confirm endpoint contract with KPay team.
                           </div>
                         )}
                       </div>
@@ -1368,7 +1396,7 @@ export function Checkout({
                 className="mt-4 flex h-11 w-full shrink-0 items-center justify-center rounded-xl border-2 border-orange-500 bg-transparent text-sm font-semibold leading-normal text-slate-900 transition-all duration-300 hover:border-green-600 hover:bg-green-600 hover:text-white"
                 size="lg"
                 onClick={() => void handlePlaceOrder()}
-                disabled={loading}
+                disabled={loading || (paymentMethod === "KPay" && !canSubmitKPayOrder)}
               >
                 {loading ? (
                   <>

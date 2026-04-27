@@ -1112,6 +1112,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   });
   const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
+  const hasKPayPayload = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent || kpaySession?.payUrl);
+  const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasKPayPayload);
+  const kpayQrDisplayUrl = kpaySession?.qrImageUrl
+    ? kpaySession.qrImageUrl
+    : kpaySession?.qrContent
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.qrContent)}`
+    : "";
 
   // Profile page states
   const [orderCount, setOrderCount] = useState(0);
@@ -3167,8 +3174,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
 
     if (paymentMethod === "KPay") {
-      if (!kpaySession?.merchantOrderId) {
-        toast.warning("Placing order as pending payment because KPay QR is not generated yet.");
+      if (!canSubmitKPayOrder) {
+        toast.error("KPay QR payload is missing. Please regenerate QR and try again.");
+        return;
       }
       await refreshKPayStatus();
     }
@@ -6387,16 +6395,20 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       
                       <div className="flex justify-center mb-6">
                         <div className="w-48 h-48 bg-white rounded-lg overflow-hidden flex items-center justify-center border-2 border-slate-200">
-                          {kpaySession?.qrImageUrl ? (
+                          {kpayQrDisplayUrl ? (
                             <img
-                              src={kpaySession.qrImageUrl}
+                              src={kpayQrDisplayUrl}
                               alt="KPay Dynamic QR Code"
                               className="w-full h-full object-contain"
                             />
                           ) : (
                             <div className="text-center px-4">
                               <CreditCard className="w-12 h-12 text-slate-400 mx-auto mb-2" />
-                              <p className="text-sm text-slate-500">Generate KPay QR to start payment</p>
+                              <p className="text-sm text-slate-500">
+                                {kpaySession?.merchantOrderId
+                                  ? "QR not returned by provider for this order"
+                                  : "Generate KPay QR to start payment"}
+                              </p>
                             </div>
                           )}
                         </div>
@@ -6420,6 +6432,23 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           <span className="text-slate-600">Amount to Pay:</span>
                           <span className="font-bold text-emerald-600 text-lg">{formatPriceMMK(`$${(getCartTotal() - (appliedCoupon?.discountAmount || 0)).toFixed(2)}`)}</span>
                         </div>
+                        {!!kpaySession?.payUrl && (
+                          <div className="py-2 border-t border-slate-200">
+                            <a
+                              href={kpaySession.payUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs text-blue-700 underline break-all"
+                            >
+                              Open KPay payment link
+                            </a>
+                          </div>
+                        )}
+                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && !kpaySession?.payUrl && (
+                          <div className="py-2 border-t border-slate-200 text-xs text-amber-700">
+                            KPay returned pending order without QR payload. Please confirm endpoint contract with KPay team.
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -6555,7 +6584,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     className="w-full bg-transparent hover:bg-green-600 text-slate-900 hover:text-white border-2 border-orange-500 hover:border-green-600 font-semibold text-sm rounded-xl transition-all duration-300 h-11 flex items-center justify-center leading-normal" 
                     size="lg"
                     onClick={handlePlaceOrder}
-                    disabled={isProcessingOrder}
+                    disabled={isProcessingOrder || (paymentMethod === "KPay" && !canSubmitKPayOrder)}
                   >
                     {isProcessingOrder ? (
                       <>

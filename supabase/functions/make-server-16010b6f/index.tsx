@@ -353,8 +353,6 @@ app.get("/make-server-16010b6f/settings/general", async (c) => {
         storeAddress: "123 Main St, Yangon, Myanmar",
         currency: "MMK",
         timezone: "Asia/Yangon",
-        kpayPhone: "+95 9 XXX XXX XXX",
-        kpayQrCode: "",
         storeLogo: "",
       });
     }
@@ -370,8 +368,6 @@ app.get("/make-server-16010b6f/settings/general", async (c) => {
       storeAddress: "123 Main St, Yangon, Myanmar",
       currency: "MMK",
       timezone: "Asia/Yangon",
-      kpayPhone: "+95 9 XXX XXX XXX",
-      kpayQrCode: "",
       storeLogo: "",
     });
   }
