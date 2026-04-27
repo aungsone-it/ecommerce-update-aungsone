@@ -23,6 +23,12 @@ import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
+import {
+  type KPaySession,
+  buildMerchantOrderId,
+  createKPayQrSession,
+  fetchKPaySessionStatus,
+} from "../utils/kpayClient";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -227,14 +233,7 @@ export function Checkout({
     expiryDate: "",
     cvv: ""
   });
-  const [kpaySession, setKpaySession] = useState<{
-    merchantOrderId: string;
-    status: "pending" | "paid" | "failed";
-    providerStatus?: string;
-    qrContent?: string;
-    qrImageUrl?: string;
-    payUrl?: string;
-  } | null>(null);
+  const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
 
   // Coupon State with localStorage persistence
@@ -341,33 +340,16 @@ export function Checkout({
         return;
       }
       setKpayLoading(true);
-      const merchantOrderId = `ORD-${Date.now().toString(36).toUpperCase()}`;
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/create-qr`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({
-            merchantOrderId,
-            amount: finalTotal,
-            currency: "MMK",
-            title: `Order ${merchantOrderId}`,
-          }),
-        }
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || "Failed to generate KPay QR");
-      setKpaySession({
+      const merchantOrderId = buildMerchantOrderId("ORD");
+      const session = await createKPayQrSession({
+        projectId,
+        publicAnonKey,
         merchantOrderId,
-        status: data.status || "pending",
-        providerStatus: data.providerStatus || "",
-        qrContent: data.qrContent || "",
-        qrImageUrl: data.qrImageUrl || "",
-        payUrl: data.payUrl || "",
+        amount: finalTotal,
+        currency: "MMK",
+        title: `Order ${merchantOrderId}`,
       });
+      setKpaySession(session);
       toast.success("KPay QR generated");
     } catch (error: any) {
       toast.error(error?.message || "Failed to generate KPay QR");
@@ -378,28 +360,16 @@ export function Checkout({
 
   const refreshKPayStatus = async () => {
     if (!kpaySession?.merchantOrderId) return;
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/status/${encodeURIComponent(kpaySession.merchantOrderId)}`,
-      {
-        headers: {
-          Authorization: `Bearer ${publicAnonKey}`,
-        },
-      }
-    );
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return;
-    setKpaySession((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: data.status || prev.status,
-            providerStatus: data.providerStatus || prev.providerStatus,
-            qrContent: data.qrContent || prev.qrContent,
-            qrImageUrl: data.qrImageUrl || prev.qrImageUrl,
-            payUrl: data.payUrl || prev.payUrl,
-          }
-        : prev
-    );
+    try {
+      const session = await fetchKPaySessionStatus({
+        projectId,
+        publicAnonKey,
+        merchantOrderId: kpaySession.merchantOrderId,
+      });
+      setKpaySession((prev) => (prev ? { ...prev, ...session } : prev));
+    } catch {
+      // keep existing UI state; status will refresh again
+    }
   };
 
   const handlePlaceOrder = async (e?: React.FormEvent | React.MouseEvent) => {

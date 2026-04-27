@@ -87,6 +87,12 @@ import {
   MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
   notifyMigooUserSessionChanged,
 } from "../../constants";
+import {
+  type KPaySession,
+  buildMerchantOrderId,
+  createKPayQrSession,
+  fetchKPaySessionStatus,
+} from "../utils/kpayClient";
 
 // 🚀 MODULE-LEVEL CACHE - These persist across all navigations and component remounts
 // This is critical for reducing Supabase API calls from 20k → ~100-500
@@ -1104,14 +1110,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     expiryDate: '',
     cvv: ''
   });
-  const [kpaySession, setKpaySession] = useState<{
-    merchantOrderId: string;
-    status: "pending" | "paid" | "failed";
-    providerStatus?: string;
-    qrContent?: string;
-    qrImageUrl?: string;
-    payUrl?: string;
-  } | null>(null);
+  const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
 
   // Profile page states
@@ -3121,36 +3120,16 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       }
 
       setKpayLoading(true);
-      const merchantOrderId = `MG${Date.now().toString().slice(-8)}`;
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/create-qr`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({
-            merchantOrderId,
-            amount: totalAmount,
-            currency: "MMK",
-            title: `Order ${merchantOrderId}`,
-          }),
-        }
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.error || "Failed to generate KPay QR");
-      }
-
-      setKpaySession({
+      const merchantOrderId = buildMerchantOrderId("ORD");
+      const session = await createKPayQrSession({
+        projectId,
+        publicAnonKey,
         merchantOrderId,
-        status: data.status || "pending",
-        providerStatus: data.providerStatus || "",
-        qrContent: data.qrContent || "",
-        qrImageUrl: data.qrImageUrl || "",
-        payUrl: data.payUrl || "",
+        amount: totalAmount,
+        currency: "MMK",
+        title: `Order ${merchantOrderId}`,
       });
+      setKpaySession(session);
       toast.success("KPay QR generated");
     } catch (error: any) {
       console.error("Failed to generate KPay QR:", error);
@@ -3163,28 +3142,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const refreshKPayStatus = async () => {
     if (!kpaySession?.merchantOrderId) return;
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/status/${encodeURIComponent(kpaySession.merchantOrderId)}`,
-        {
-          headers: {
-            "Authorization": `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) return;
-      setKpaySession((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: data.status || prev.status,
-              providerStatus: data.providerStatus || prev.providerStatus,
-              qrContent: data.qrContent || prev.qrContent,
-              qrImageUrl: data.qrImageUrl || prev.qrImageUrl,
-              payUrl: data.payUrl || prev.payUrl,
-            }
-          : prev
-      );
+      const session = await fetchKPaySessionStatus({
+        projectId,
+        publicAnonKey,
+        merchantOrderId: kpaySession.merchantOrderId,
+      });
+      setKpaySession((prev) => (prev ? { ...prev, ...session } : prev));
     } catch (error) {
       console.warn("Unable to refresh KPay status", error);
     }
@@ -3203,25 +3166,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       return;
     }
 
-    if (paymentMethod === "KPay" && !kpaySession?.merchantOrderId) {
-      toast.error("Please generate KPay QR before placing the order.");
-      return;
-    }
-
     if (paymentMethod === "KPay") {
+      if (!kpaySession?.merchantOrderId) {
+        toast.warning("Placing order as pending payment because KPay QR is not generated yet.");
+      }
       await refreshKPayStatus();
-    }
-
-    // 🚫 Block Bank Transfer - KPay QR is supported
-    if (paymentMethod === "BankTransfer") {
-      toast.info("🚀 Coming Soon! This payment method will be available soon.", { 
-        duration: 4000,
-        style: {
-          background: '#3b82f6',
-          color: '#fff',
-        }
-      });
-      return;
     }
 
     // 💳 TEST CARD PAYMENT PROCESSING (Stripe-style)
@@ -3303,8 +3252,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
     try {
       const orderNum =
-        paymentMethod === "KPay" && kpaySession?.merchantOrderId
-          ? kpaySession.merchantOrderId
+        paymentMethod === "KPay"
+          ? (kpaySession?.merchantOrderId || `KPAY-${Date.now().toString().slice(-8)}`)
           : `MG${Date.now().toString().slice(-8)}`;
       const orderTotal = getCartTotal();
       
@@ -6436,7 +6385,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
                       <h3 className="font-bold text-slate-900 mb-4">Scan QR Code to Pay</h3>
                       
-                      {/* KPay QR from site settings */}
                       <div className="flex justify-center mb-6">
                         <div className="w-48 h-48 bg-white rounded-lg overflow-hidden flex items-center justify-center border-2 border-slate-200">
                           {kpaySession?.qrImageUrl ? (
@@ -6445,16 +6393,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                               alt="KPay Dynamic QR Code"
                               className="w-full h-full object-contain"
                             />
-                          ) : siteSettings?.kpayQrCode ? (
-                            <img
-                              src={siteSettings.kpayQrCode}
-                              alt="KPay QR Code"
-                              className="w-full h-full object-contain"
-                            />
                           ) : (
                             <div className="text-center px-4">
                               <CreditCard className="w-12 h-12 text-slate-400 mx-auto mb-2" />
-                              <p className="text-sm text-slate-500">KPay QR Code</p>
+                              <p className="text-sm text-slate-500">Generate KPay QR to start payment</p>
                             </div>
                           )}
                         </div>
@@ -6462,10 +6404,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
                       {/* Payment Details */}
                       <div className="space-y-3 text-sm">
-                        <div className="flex justify-between py-2 border-b border-slate-200">
-                          <span className="text-slate-600">KPay Phone Number:</span>
-                          <span className="font-semibold text-slate-900 font-mono">{siteSettings?.kpayPhone || "+95 9 XXX XXX XXX"}</span>
-                        </div>
                         {kpaySession?.merchantOrderId && (
                           <div className="flex justify-between py-2 border-b border-slate-200">
                             <span className="text-slate-600">Merchant Order ID:</span>
@@ -6492,18 +6430,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       </p>
                       <ul className="text-sm text-blue-900 mt-2 space-y-1 list-disc list-inside">
                         <li>Scan the QR code with your KPay app</li>
-                        <li>Or manually transfer to: <strong>{siteSettings?.kpayPhone || "+95 9 XXX XXX XXX"}</strong></li>
                         <li>Enter the exact amount shown above</li>
                         <li>Complete the payment in your KPay app</li>
                       </ul>
                     </div>
-                    {!siteSettings?.kpayQrCode && !kpaySession?.qrImageUrl && (
-                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                        <p className="text-sm text-amber-900">
-                          Static KPay QR is not configured. Use "Generate KPay QR" for dynamic payment.
-                        </p>
-                      </div>
-                    )}
                   </div>
                 )}
 
