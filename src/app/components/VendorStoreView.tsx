@@ -585,6 +585,7 @@ export function VendorStoreView({
     if (location.pathname.startsWith("/vendor/")) return `/vendor/${slug}`;
     return `/store/${slug}`;
   }, [hostRootStorePaths, location.pathname, storeSlug, vendorId]);
+  const checkoutPath = `${storeBase}/checkout`;
 
   const navigateStoreHome = useCallback(() => {
     navigate(storeBase || "/");
@@ -771,6 +772,14 @@ export function VendorStoreView({
   const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
   const [vendorProductImageIndex, setVendorProductImageIndex] = useState(0);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+
+  useEffect(() => {
+    const isCheckoutRoute =
+      location.pathname === "/checkout" ||
+      matchPath({ path: "/store/:storeName/checkout", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null;
+    setShowCheckout(isCheckoutRoute);
+  }, [location.pathname]);
 
   const { addToCart, totalItems, clearCart } = useCart();
 
@@ -3353,7 +3362,7 @@ export function VendorStoreView({
       setQuantity(1);
       if (overrides?.buyNow) {
         setCartOpen(false);
-        setShowCheckout(true);
+        navigate(checkoutPath);
       } else if (typeof window !== "undefined" && window.innerWidth >= 768) {
         setCartOpen(true);
       }
@@ -3884,6 +3893,7 @@ export function VendorStoreView({
     if (idx >= 0) setVendorProductImageIndex(idx);
   }, [selectedProduct, vendorVariantSelections]);
 
+<<<<<<< HEAD
   const checkoutOverlay = showCheckout ? (
     <div className="fixed inset-0 z-[120] overflow-y-auto overflow-x-hidden bg-slate-50">
       <Checkout
@@ -3898,6 +3908,25 @@ export function VendorStoreView({
       />
     </div>
   ) : null;
+=======
+  // Checkout must render before product detail — otherwise selectedProduct keeps the detail view mounted and checkout never shows
+  if (showCheckout) {
+    return (
+      <div className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 scrollbar-thin">
+        <Checkout
+          onBack={navigateStoreHome}
+          storeName={storeName}
+          vendorId={vendorId}
+          vendorName={storeName}
+          accountUser={user}
+          onOrderPlacedSuccess={(ctx) => {
+            if (ctx?.userId) invalidateCustomerOrdersCache(ctx.userId);
+          }}
+        />
+      </div>
+    );
+  }
+>>>>>>> checkup
 
   // Product Detail View (inline, not modal)
   if (selectedProduct && vendorViewMode === "storefront" && !savedPage) {
@@ -3930,7 +3959,7 @@ export function VendorStoreView({
           onClose={() => setCartOpen(false)} 
           onCheckout={() => {
             setCartOpen(false);
-            setShowCheckout(true);
+            navigate(checkoutPath);
           }}
           user={user}
           onShowAuthModal={() => {
@@ -4669,7 +4698,7 @@ export function VendorStoreView({
         onClose={() => setCartOpen(false)} 
         onCheckout={() => {
           setCartOpen(false);
-          setShowCheckout(true);
+          navigate(checkoutPath);
         }}
         user={user}
         onShowAuthModal={() => {

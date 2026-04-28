@@ -866,9 +866,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       } else {
         setViewMode("product-detail");
       }
-    } else if (path === "/checkout") {
+    } else if (path === "/checkout" || path === "/store/checkout") {
       setViewMode("checkout");
-    } else if (path === "/order-confirmation") {
+    } else if (
+      path === "/order-confirmation" ||
+      path === "/checkout/success" ||
+      path === "/store/checkout/success"
+    ) {
       setViewMode("order-confirmation");
     } else if (path === "/profile") {
       setViewMode("view-profile");
@@ -942,10 +946,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         }
         break;
       case "checkout":
-        targetPath = "/checkout";
+        targetPath = "/store/checkout";
         break;
       case "order-confirmation":
-        targetPath = "/order-confirmation";
+        targetPath = "/store/checkout/success";
         break;
       case "view-profile":
         targetPath = "/profile";
