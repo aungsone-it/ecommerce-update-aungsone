@@ -98,6 +98,32 @@ function MarketplaceStoreRoute() {
   return <StorefrontPage />;
 }
 
+/** `/checkout` resolves by host: vendor hosts use vendor storefront checkout, marketplace uses `/store` checkout. */
+function HostAwareCheckoutRoute() {
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
+  if (loading && !sub) {
+    return <RouteLoadingFallback />;
+  }
+  if (sub || customSlug) {
+    return <VendorStorefrontPage />;
+  }
+  return <StorefrontPage />;
+}
+
+/** `/checkout/success` resolves by host: vendor hosts use vendor storefront, marketplace uses `/store` checkout success. */
+function HostAwareCheckoutSuccessRoute() {
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
+  if (loading && !sub) {
+    return <RouteLoadingFallback />;
+  }
+  if (sub || customSlug) {
+    return <VendorStorefrontPage />;
+  }
+  return <StorefrontPage />;
+}
+
 function LazyBoundary({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
 }
@@ -168,10 +194,22 @@ export const router = createBrowserRouter([
           },
           {
             path: "checkout",
+            element: <HostAwareCheckoutRoute />,
+          },
+          {
+            path: "checkout/success",
+            element: <HostAwareCheckoutSuccessRoute />,
+          },
+          {
+            path: "store/checkout",
             element: <StorefrontPage />,
           },
           {
             path: "order-confirmation",
+            element: <HostAwareCheckoutSuccessRoute />,
+          },
+          {
+            path: "store/checkout/success",
             element: <StorefrontPage />,
           },
           {
@@ -265,6 +303,16 @@ export const router = createBrowserRouter([
             errorElement: <NotFound />,
           },
           {
+            path: "store/:storeName/checkout",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "store/:storeName/checkout/success",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
             path: "store/:storeName",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
@@ -291,6 +339,16 @@ export const router = createBrowserRouter([
           },
           {
             path: "vendor/:storeName/saved",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/checkout",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/checkout/success",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
           },

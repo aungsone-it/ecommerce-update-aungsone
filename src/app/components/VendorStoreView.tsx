@@ -572,6 +572,7 @@ export function VendorStoreView({
     if (location.pathname.startsWith("/vendor/")) return `/vendor/${slug}`;
     return `/store/${slug}`;
   }, [hostRootStorePaths, location.pathname, storeSlug, vendorId]);
+  const checkoutPath = `${storeBase}/checkout`;
 
   const navigateStoreHome = useCallback(() => {
     navigate(storeBase || "/");
@@ -737,6 +738,14 @@ export function VendorStoreView({
   const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
   const [vendorProductImageIndex, setVendorProductImageIndex] = useState(0);
   const [debugInfo, setDebugInfo] = useState<any>(null);
+
+  useEffect(() => {
+    const isCheckoutRoute =
+      location.pathname === "/checkout" ||
+      matchPath({ path: "/store/:storeName/checkout", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null;
+    setShowCheckout(isCheckoutRoute);
+  }, [location.pathname]);
 
   const { addToCart, totalItems, clearCart } = useCart();
 
@@ -3230,7 +3239,7 @@ export function VendorStoreView({
       setQuantity(1);
       if (overrides?.buyNow) {
         setCartOpen(false);
-        setShowCheckout(true);
+        navigate(checkoutPath);
       } else if (typeof window !== "undefined" && window.innerWidth >= 768) {
         setCartOpen(true);
       }
@@ -3766,7 +3775,7 @@ export function VendorStoreView({
     return (
       <div className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 scrollbar-thin">
         <Checkout
-          onBack={() => setShowCheckout(false)}
+          onBack={navigateStoreHome}
           storeName={storeName}
           vendorId={vendorId}
           vendorName={storeName}
@@ -3810,7 +3819,7 @@ export function VendorStoreView({
           onClose={() => setCartOpen(false)} 
           onCheckout={() => {
             setCartOpen(false);
-            setShowCheckout(true);
+            navigate(checkoutPath);
           }}
           user={user}
           onShowAuthModal={() => {
@@ -4548,7 +4557,7 @@ export function VendorStoreView({
         onClose={() => setCartOpen(false)} 
         onCheckout={() => {
           setCartOpen(false);
-          setShowCheckout(true);
+          navigate(checkoutPath);
         }}
         user={user}
         onShowAuthModal={() => {
