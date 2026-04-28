@@ -137,6 +137,35 @@ async function postJson(
   }
 }
 
+function providerBusinessSuccess(body: AnyRecord): boolean {
+  const nested = providerData(body);
+  const response = asRecord(body.Response);
+  const result = String(
+    nested.result ||
+      response.result ||
+      body.result ||
+      nested.respCode ||
+      nested.resp_code ||
+      response.respCode ||
+      body.respCode ||
+      nested.resultCode ||
+      response.resultCode ||
+      body.resultCode ||
+      nested.code ||
+      response.code ||
+      body.code ||
+      "",
+  )
+    .trim()
+    .toUpperCase();
+  if (!result) return false;
+  if (["SUCCESS", "SUCC", "S", "OK", "00", "0000", "PAY_SUCCESS", "TRADE_SUCCESS"].includes(result)) {
+    return true;
+  }
+  if (result === "0") return true;
+  return false;
+}
+
 function mapProviderStatus(rawStatus: unknown): PaymentStatus {
   const value = String(rawStatus ?? "").trim().toUpperCase();
   if (!value) return "pending";
@@ -585,7 +614,7 @@ async function tryProviderVariants(args: {
             signMode,
             args.apiKey,
           );
-          if (res.ok) {
+          if (res.ok && providerBusinessSuccess(res.body)) {
             return { success: true as const, endpoint, body: res.body, wrapRequest, signMode };
           }
           attempts.push({
@@ -596,6 +625,13 @@ async function tryProviderVariants(args: {
             wrapRequest,
             signMode,
           });
+          // Some KBZ responses omit status/result but include usable QR payload directly.
+          if (res.ok) {
+            const qr = extractQrPayload(res.body);
+            if (qr.qrContent || qr.qrImageUrl || qr.payUrl) {
+              return { success: true as const, endpoint, body: res.body, wrapRequest, signMode };
+            }
+          }
         }
       }
     }
