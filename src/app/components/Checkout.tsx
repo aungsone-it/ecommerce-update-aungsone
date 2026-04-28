@@ -236,11 +236,15 @@ export function Checkout({
   const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
   const hasKPayPayload = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent || kpaySession?.payUrl);
+  const hasNativeKPayQr = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent);
+  const hasLinkOnlyKPay = Boolean(!hasNativeKPayQr && kpaySession?.payUrl);
   const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasKPayPayload);
   const kpayQrDisplayUrl = kpaySession?.qrImageUrl
     ? kpaySession.qrImageUrl
     : kpaySession?.qrContent
     ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.qrContent)}`
+    : kpaySession?.payUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.payUrl)}`
     : "";
 
   // Coupon State with localStorage persistence
@@ -358,6 +362,10 @@ export function Checkout({
       });
       setKpaySession(session);
       toast.success("KPay QR generated");
+      if (!session.qrImageUrl && !session.qrContent && !session.payUrl) {
+        toast.info("Waiting for KPay QR from provider...");
+        await waitForKPayPayload(merchantOrderId);
+      }
     } catch (error: any) {
       toast.error(error?.message || "Failed to generate KPay QR");
     } finally {
@@ -376,6 +384,27 @@ export function Checkout({
       setKpaySession((prev) => (prev ? { ...prev, ...session } : prev));
     } catch {
       // keep existing UI state; status will refresh again
+    }
+  };
+
+  const waitForKPayPayload = async (merchantOrderId: string) => {
+    const maxAttempts = 12;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const session = await fetchKPaySessionStatus({
+          projectId,
+          publicAnonKey,
+          merchantOrderId,
+        });
+        setKpaySession((prev) => (prev ? { ...prev, ...session } : session));
+        if (session.qrImageUrl || session.qrContent || session.payUrl) {
+          if (attempt > 0) toast.success("KPay QR is ready");
+          return;
+        }
+      } catch {
+        // Ignore transient provider/API errors while polling.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2500));
     }
   };
 
@@ -1229,7 +1258,7 @@ export function Checkout({
                               href={kpaySession.payUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-xs text-blue-700 underline break-all"
+                              className="inline-flex items-center rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                             >
                               Open KPay payment link
                             </a>
@@ -1244,6 +1273,25 @@ export function Checkout({
                         {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && !kpaySession?.payUrl && (
                           <div className="text-xs text-amber-700">
                             KPay returned pending order without QR payload. Please confirm endpoint contract with KPay team.
+                          </div>
+                        )}
+                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
+                          <details className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
+                            <summary className="cursor-pointer font-medium text-slate-800">KPay debug details</summary>
+                            <div className="mt-2 space-y-1">
+                              <div>endpointUsed: {kpaySession?.debug?.endpointUsed || "-"}</div>
+                              <div>queryEndpointUsed: {kpaySession?.debug?.queryEndpointUsed || "-"}</div>
+                              <div>signMode: {kpaySession?.debug?.signMode || "-"}</div>
+                              <div>wrapRequest: {String(kpaySession?.debug?.wrapRequest ?? false)}</div>
+                              <div>providerStatus: {kpaySession?.providerStatus || "-"}</div>
+                              <div>topLevelKeys: {(kpaySession?.debug?.providerTopLevelKeys || []).join(", ") || "-"}</div>
+                              <div>nestedKeys: {(kpaySession?.debug?.providerNestedKeys || []).join(", ") || "-"}</div>
+                            </div>
+                          </details>
+                        )}
+                        {hasLinkOnlyKPay && (
+                          <div className="text-xs text-amber-700">
+                            This QR is generated from a payment link and may show invalid transaction type in KBZPay scanner. Use the payment link button above.
                           </div>
                         )}
                       </div>

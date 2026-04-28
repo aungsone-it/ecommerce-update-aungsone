@@ -1113,11 +1113,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
   const hasKPayPayload = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent || kpaySession?.payUrl);
+  const hasNativeKPayQr = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent);
+  const hasLinkOnlyKPay = Boolean(!hasNativeKPayQr && kpaySession?.payUrl);
   const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasKPayPayload);
   const kpayQrDisplayUrl = kpaySession?.qrImageUrl
     ? kpaySession.qrImageUrl
     : kpaySession?.qrContent
     ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.qrContent)}`
+    : kpaySession?.payUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.payUrl)}`
     : "";
 
   // Profile page states
@@ -3138,6 +3142,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       });
       setKpaySession(session);
       toast.success("KPay QR generated");
+      if (!session.qrImageUrl && !session.qrContent && !session.payUrl) {
+        toast.info("Waiting for KPay QR from provider...");
+        await waitForKPayPayload(merchantOrderId);
+      }
     } catch (error: any) {
       console.error("Failed to generate KPay QR:", error);
       toast.error(error?.message || "Failed to generate KPay QR");
@@ -3157,6 +3165,27 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setKpaySession((prev) => (prev ? { ...prev, ...session } : prev));
     } catch (error) {
       console.warn("Unable to refresh KPay status", error);
+    }
+  };
+
+  const waitForKPayPayload = async (merchantOrderId: string) => {
+    const maxAttempts = 12;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const session = await fetchKPaySessionStatus({
+          projectId,
+          publicAnonKey,
+          merchantOrderId,
+        });
+        setKpaySession((prev) => (prev ? { ...prev, ...session } : session));
+        if (session.qrImageUrl || session.qrContent || session.payUrl) {
+          if (attempt > 0) toast.success("KPay QR is ready");
+          return;
+        }
+      } catch (error) {
+        console.warn("Unable to refresh KPay status while polling", error);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2500));
     }
   };
 
@@ -6438,7 +6467,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                               href={kpaySession.payUrl}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-xs text-blue-700 underline break-all"
+                              className="inline-flex items-center rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                             >
                               Open KPay payment link
                             </a>
@@ -6447,6 +6476,25 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && !kpaySession?.payUrl && (
                           <div className="py-2 border-t border-slate-200 text-xs text-amber-700">
                             KPay returned pending order without QR payload. Please confirm endpoint contract with KPay team.
+                          </div>
+                        )}
+                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
+                          <details className="py-2 border-t border-slate-200 rounded text-xs text-slate-700">
+                            <summary className="cursor-pointer font-medium text-slate-800">KPay debug details</summary>
+                            <div className="mt-2 space-y-1">
+                              <div>endpointUsed: {kpaySession?.debug?.endpointUsed || "-"}</div>
+                              <div>queryEndpointUsed: {kpaySession?.debug?.queryEndpointUsed || "-"}</div>
+                              <div>signMode: {kpaySession?.debug?.signMode || "-"}</div>
+                              <div>wrapRequest: {String(kpaySession?.debug?.wrapRequest ?? false)}</div>
+                              <div>providerStatus: {kpaySession?.providerStatus || "-"}</div>
+                              <div>topLevelKeys: {(kpaySession?.debug?.providerTopLevelKeys || []).join(", ") || "-"}</div>
+                              <div>nestedKeys: {(kpaySession?.debug?.providerNestedKeys || []).join(", ") || "-"}</div>
+                            </div>
+                          </details>
+                        )}
+                        {hasLinkOnlyKPay && (
+                          <div className="py-2 border-t border-slate-200 text-xs text-amber-700">
+                            This QR is generated from a payment link and may show invalid transaction type in KBZPay scanner. Use the payment link button above.
                           </div>
                         )}
                       </div>
@@ -6458,7 +6506,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         📱 <strong>How to pay:</strong>
                       </p>
                       <ul className="text-sm text-blue-900 mt-2 space-y-1 list-disc list-inside">
-                        <li>Scan the QR code with your KPay app</li>
+                        <li>If scanner shows invalid transaction type, tap "Open KPay payment link" instead</li>
                         <li>Enter the exact amount shown above</li>
                         <li>Complete the payment in your KPay app</li>
                       </ul>
