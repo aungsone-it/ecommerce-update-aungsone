@@ -344,20 +344,67 @@ export const router = createBrowserRouter([
             errorElement: <NotFound />,
           },
           {
-<<<<<<< HEAD
-            path: "store/:storeName/:categorySlug",
-=======
-            path: "vendor/:storeName/checkout",
->>>>>>> checkup
+            path: "vendor-:storeName/profile/orders/:orderId",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
           },
           {
-<<<<<<< HEAD
-            path: "vendor/:storeName/:categorySlug",
-=======
+            path: "vendor-:storeName/profile/:profileSection",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor-:storeName/profile",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor-:storeName/product/:productSlug",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor-:storeName/saved",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor-:storeName/checkout",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor-:storeName/checkout/success",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor-:storeName/:categorySlug",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor-:storeName",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "store/:storeName/:categorySlug",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/checkout",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
             path: "vendor/:storeName/checkout/success",
->>>>>>> checkup
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/:categorySlug",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
           },

@@ -17,7 +17,8 @@ function vendorProfileOrderIdFromPathname(pathname: string, storeName: string): 
   }
   const m =
     matchPath({ path: "/store/:storeName/profile/orders/:orderId", end: true }, pathname) ??
-    matchPath({ path: "/vendor/:storeName/profile/orders/:orderId", end: true }, pathname);
+    matchPath({ path: "/vendor/:storeName/profile/orders/:orderId", end: true }, pathname) ??
+    matchPath({ path: "/vendor-:storeName/profile/orders/:orderId", end: true }, pathname);
   if (m?.params?.storeName !== storeName) return null;
   const id = m.params.orderId;
   return typeof id === "string" && id.trim() ? decodeURIComponent(id) : null;
@@ -41,8 +42,10 @@ function vendorProfileSegmentFromPathname(
   const patterns = [
     "/store/:storeName/profile/:profileSection",
     "/vendor/:storeName/profile/:profileSection",
+    "/vendor-:storeName/profile/:profileSection",
     "/store/:storeName/profile",
     "/vendor/:storeName/profile",
+    "/vendor-:storeName/profile",
   ] as const;
   for (const path of patterns) {
     const m = matchPath({ path, end: true }, pathname);
@@ -57,7 +60,8 @@ function vendorProfileSegmentFromPathname(
 function vendorCategorySlugFromPathname(pathname: string, storeName: string): string | null {
   const direct =
     matchPath({ path: "/store/:storeName/:categorySlug", end: true }, pathname) ??
-    matchPath({ path: "/vendor/:storeName/:categorySlug", end: true }, pathname);
+    matchPath({ path: "/vendor/:storeName/:categorySlug", end: true }, pathname) ??
+    matchPath({ path: "/vendor-:storeName/:categorySlug", end: true }, pathname);
   if (direct?.params?.storeName === storeName) {
     const seg = direct.params.categorySlug;
     return typeof seg === "string" && seg.trim() ? decodeURIComponent(seg) : null;
@@ -104,7 +108,8 @@ export function VendorStorefrontPage() {
     if ((subdomainSlug || customHostSlug) && location.pathname === "/saved") return true;
     return (
       matchPath({ path: "/store/:storeName/saved", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null
+      matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor-:storeName/saved", end: true }, location.pathname) != null
     );
   }, [storeName, location.pathname, subdomainSlug, customHostSlug]);
 

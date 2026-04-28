@@ -582,6 +582,7 @@ export function VendorStoreView({
   const storeBase = useMemo(() => {
     if (hostRootStorePaths) return "";
     const slug = encodeURIComponent(storeSlug || vendorId);
+    if (location.pathname.startsWith("/vendor-")) return `/vendor-${slug}`;
     if (location.pathname.startsWith("/vendor/")) return `/vendor/${slug}`;
     return `/store/${slug}`;
   }, [hostRootStorePaths, location.pathname, storeSlug, vendorId]);
@@ -608,6 +609,7 @@ export function VendorStoreView({
     const m =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     return typeof m?.params?.productSlug === "string" ? m.params.productSlug : undefined;
   }, [location.pathname]);
@@ -616,6 +618,7 @@ export function VendorStoreView({
     () =>
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname) != null,
     [location.pathname]
   );
@@ -777,6 +780,7 @@ export function VendorStoreView({
     const isCheckoutRoute =
       location.pathname === "/checkout" ||
       matchPath({ path: "/store/:storeName/checkout", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor-:storeName/checkout", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null;
     setShowCheckout(isCheckoutRoute);
   }, [location.pathname]);
@@ -3183,6 +3187,7 @@ export function VendorStoreView({
     const stillOnProduct =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     if (!stillOnProduct) {
       startTransition(() => setSelectedProduct(null));
@@ -3259,6 +3264,7 @@ export function VendorStoreView({
     const stillOnProduct =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
+      matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     if (!stillOnProduct) return;
     if (resolveVendorProductFromSlug(products, decoded)) return;
@@ -3893,22 +3899,6 @@ export function VendorStoreView({
     if (idx >= 0) setVendorProductImageIndex(idx);
   }, [selectedProduct, vendorVariantSelections]);
 
-<<<<<<< HEAD
-  const checkoutOverlay = showCheckout ? (
-    <div className="fixed inset-0 z-[120] overflow-y-auto overflow-x-hidden bg-slate-50">
-      <Checkout
-        onBack={() => setShowCheckout(false)}
-        storeName={storeName}
-        vendorId={vendorId}
-        vendorName={storeName}
-        accountUser={user}
-        onOrderPlacedSuccess={(ctx) => {
-          if (ctx?.userId) invalidateCustomerOrdersCache(ctx.userId);
-        }}
-      />
-    </div>
-  ) : null;
-=======
   // Checkout must render before product detail — otherwise selectedProduct keeps the detail view mounted and checkout never shows
   if (showCheckout) {
     return (
@@ -3926,7 +3916,6 @@ export function VendorStoreView({
       </div>
     );
   }
->>>>>>> checkup
 
   // Product Detail View (inline, not modal)
   if (selectedProduct && vendorViewMode === "storefront" && !savedPage) {
