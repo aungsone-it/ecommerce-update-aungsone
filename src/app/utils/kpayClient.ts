@@ -118,7 +118,6 @@ function deepExtractPayload(
     }
   };
   visit(value);
-  if (!out.qrContent && out.payUrl) out.qrContent = out.payUrl;
   return out;
 }
 
@@ -148,6 +147,64 @@ function normalizeSession(data: Record<string, any>, fallbackOrderId: string): K
       providerCode: String(data.providerStatus || ""),
       providerMessage: String(data.message || debugPayload.message || ""),
     },
+  };
+}
+
+function readProviderErrorDetails(data: Record<string, any>): {
+  providerCode?: string;
+  providerMessage?: string;
+  endpoint?: string;
+  signMode?: string;
+  wrapRequest?: boolean;
+} {
+  const details = (data.details && typeof data.details === "object")
+    ? (data.details as Record<string, any>)
+    : {};
+  const response = (details.Response && typeof details.Response === "object")
+    ? (details.Response as Record<string, any>)
+    : {};
+  const nested = (
+    (response.data && typeof response.data === "object" && (response.data as Record<string, any>)) ||
+    (details.data && typeof details.data === "object" && (details.data as Record<string, any>)) ||
+    {}
+  );
+
+  const providerCode = String(
+    data.providerStatus ||
+      data.code ||
+      data.resultCode ||
+      details.code ||
+      details.resultCode ||
+      details.respCode ||
+      response.code ||
+      response.resultCode ||
+      response.respCode ||
+      nested.code ||
+      nested.resultCode ||
+      nested.respCode ||
+      "",
+  ).trim();
+
+  const providerMessage = String(
+    data.message ||
+      data.error_description ||
+      details.message ||
+      details.msg ||
+      details.error ||
+      response.message ||
+      response.msg ||
+      nested.message ||
+      nested.msg ||
+      nested.error ||
+      "",
+  ).trim();
+
+  return {
+    providerCode: providerCode || undefined,
+    providerMessage: providerMessage || undefined,
+    endpoint: String(data.endpoint || "").trim() || undefined,
+    signMode: String(data.signMode || "").trim() || undefined,
+    wrapRequest: typeof data.wrapRequest === "boolean" ? data.wrapRequest : undefined,
   };
 }
 
@@ -184,7 +241,17 @@ export async function createKPayQrSession(params: CreateKPayQrParams): Promise<K
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(String(data?.error || data?.message || "Failed to generate KPay QR"));
+    const info = readProviderErrorDetails((data || {}) as Record<string, any>);
+    const headline = String(data?.error || data?.message || "Failed to generate KPay QR");
+    const parts = [
+      info.providerCode ? `providerCode=${info.providerCode}` : "",
+      info.providerMessage ? `providerMessage=${info.providerMessage}` : "",
+      info.endpoint ? `endpoint=${info.endpoint}` : "",
+      info.signMode ? `signMode=${info.signMode}` : "",
+      typeof info.wrapRequest === "boolean" ? `wrapRequest=${String(info.wrapRequest)}` : "",
+    ].filter(Boolean);
+    const detailSuffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
+    throw new Error(`${headline}${detailSuffix}`);
   }
   const normalized = normalizeSession(data as Record<string, any>, merchantOrderId);
   if (!normalized.qrContent && !normalized.qrImageUrl && !normalized.payUrl) {

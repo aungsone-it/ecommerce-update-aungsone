@@ -9,7 +9,21 @@ import { VendorStorefrontFullSkeleton } from "../components/SkeletonLoaders";
 import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 
+function parseVendorDashPath(pathname: string): { storeName: string; tail: string[] } | null {
+  const parts = pathname.split("/").filter(Boolean);
+  const first = parts[0] || "";
+  if (!first.startsWith("vendor-")) return null;
+  const storeName = first.slice("vendor-".length).trim();
+  if (!storeName) return null;
+  return { storeName: decodeURIComponent(storeName), tail: parts.slice(1) };
+}
+
 function vendorProfileOrderIdFromPathname(pathname: string, storeName: string): string | null {
+  const vendorDash = parseVendorDashPath(pathname);
+  if (vendorDash?.storeName === storeName && vendorDash.tail[0] === "profile" && vendorDash.tail[1] === "orders") {
+    const id = vendorDash.tail[2] || "";
+    return id ? decodeURIComponent(id) : null;
+  }
   const mRoot = matchPath({ path: "/profile/orders/:orderId", end: true }, pathname);
   if (mRoot?.params?.orderId) {
     const id = mRoot.params.orderId;
@@ -28,6 +42,12 @@ function vendorProfileSegmentFromPathname(
   pathname: string,
   storeName: string
 ): string | null {
+  const vendorDash = parseVendorDashPath(pathname);
+  if (vendorDash?.storeName === storeName && vendorDash.tail[0] === "profile") {
+    const seg = vendorDash.tail[1];
+    if (!seg) return "view";
+    if (seg === "edit" || seg === "orders" || seg === "addresses" || seg === "security") return seg;
+  }
   if (matchPath({ path: "/profile/orders/:orderId", end: true }, pathname)) return "orders";
   const rootPatterns = [
     ["/profile/edit", "edit"],
@@ -58,6 +78,17 @@ function vendorProfileSegmentFromPathname(
 }
 
 function vendorCategorySlugFromPathname(pathname: string, storeName: string): string | null {
+  const vendorDash = parseVendorDashPath(pathname);
+  if (vendorDash?.storeName === storeName) {
+    const seg = vendorDash.tail[0] || "";
+    const normalized = seg.trim().toLowerCase();
+    if (
+      normalized &&
+      !["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation"].includes(normalized)
+    ) {
+      return decodeURIComponent(seg);
+    }
+  }
   const direct =
     matchPath({ path: "/store/:storeName/:categorySlug", end: true }, pathname) ??
     matchPath({ path: "/vendor/:storeName/:categorySlug", end: true }, pathname) ??
@@ -82,14 +113,16 @@ function vendorCategorySlugFromPathname(pathname: string, storeName: string): st
 
 export function VendorStorefrontPage() {
   const params = useParams();
+  const location = useLocation();
+  const vendorDash = parseVendorDashPath(location.pathname);
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
-  const storeName = params.storeName ?? subdomainSlug ?? customHostSlug ?? undefined;
+  const storeName = params.storeName ?? vendorDash?.storeName ?? subdomainSlug ?? customHostSlug ?? undefined;
   const productSlug =
     (typeof params.productSlug === "string" && params.productSlug) ||
     (typeof (params as { sku?: string }).sku === "string" && (params as { sku?: string }).sku) ||
+    (vendorDash?.tail[0] === "product" && typeof vendorDash.tail[1] === "string" ? vendorDash.tail[1] : undefined) ||
     undefined;
-  const location = useLocation();
   const navigate = useNavigate();
 
   const profileOrderId = useMemo(() => {
@@ -105,13 +138,14 @@ export function VendorStorefrontPage() {
 
   const savedPage = useMemo(() => {
     if (!storeName) return false;
+    if (vendorDash?.storeName === storeName && vendorDash.tail[0] === "saved") return true;
     if ((subdomainSlug || customHostSlug) && location.pathname === "/saved") return true;
     return (
       matchPath({ path: "/store/:storeName/saved", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/saved", end: true }, location.pathname) != null
     );
-  }, [storeName, location.pathname, subdomainSlug, customHostSlug]);
+  }, [storeName, location.pathname, subdomainSlug, customHostSlug, vendorDash]);
 
   const categorySlug = useMemo(() => {
     if (!storeName) return null;

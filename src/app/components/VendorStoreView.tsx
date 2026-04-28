@@ -606,21 +606,29 @@ export function VendorStoreView({
 
   /** Prefer pathname over useParams so async product load cannot reopen detail after user navigated away. */
   const productSlugFromPath = useMemo(() => {
+    const fromDashBase =
+      storeBase &&
+      storeBase.startsWith("/vendor-") &&
+      location.pathname.startsWith(`${storeBase}/product/`)
+        ? location.pathname.slice(`${storeBase}/product/`.length).split("/")[0]
+        : "";
+    if (fromDashBase) return fromDashBase;
     const m =
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     return typeof m?.params?.productSlug === "string" ? m.params.productSlug : undefined;
-  }, [location.pathname]);
+  }, [location.pathname, storeBase]);
 
   const isVendorProductDetailPath = useMemo(
     () =>
+      (storeBase.startsWith("/vendor-") && location.pathname.startsWith(`${storeBase}/product/`)) ||
       matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname) != null,
-    [location.pathname]
+    [location.pathname, storeBase]
   );
 
   const goToProfileMode = useCallback(
@@ -779,11 +787,12 @@ export function VendorStoreView({
   useEffect(() => {
     const isCheckoutRoute =
       location.pathname === "/checkout" ||
+      location.pathname === `${storeBase}/checkout` ||
       matchPath({ path: "/store/:storeName/checkout", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/checkout", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null;
     setShowCheckout(isCheckoutRoute);
-  }, [location.pathname]);
+  }, [location.pathname, storeBase]);
 
   const { addToCart, totalItems, clearCart } = useCart();
 
@@ -4639,7 +4648,6 @@ export function VendorStoreView({
         {!cartOpen && (
           <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
         )}
-        {checkoutOverlay}
       </>
     );
   }
@@ -5176,7 +5184,6 @@ export function VendorStoreView({
     {!cartOpen && (
       <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
     )}
-    {checkoutOverlay}
     </>
   );
 }

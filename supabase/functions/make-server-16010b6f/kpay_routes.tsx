@@ -257,9 +257,6 @@ function extractQrPayload(payload: AnyRecord): { qrContent: string; qrImageUrl: 
   };
 
   if (fromKnownFields.qrContent || fromKnownFields.qrImageUrl || fromKnownFields.payUrl) {
-    if (!fromKnownFields.qrContent && fromKnownFields.payUrl) {
-      fromKnownFields.qrContent = fromKnownFields.payUrl;
-    }
     return fromKnownFields;
   }
 
@@ -295,7 +292,7 @@ function extractQrPayload(payload: AnyRecord): { qrContent: string; qrImageUrl: 
 
   const scanned = deepScan(payload);
   const payUrl = String(scanned.payUrl || "").trim();
-  const qrContent = String(scanned.qrContent || payUrl || "").trim();
+  const qrContent = String(scanned.qrContent || "").trim();
   const qrImageUrl = String(scanned.qrImageUrl || "").trim();
   return { qrContent, qrImageUrl, payUrl };
 }
@@ -625,13 +622,6 @@ async function tryProviderVariants(args: {
             wrapRequest,
             signMode,
           });
-          // Some KBZ responses omit status/result but include usable QR payload directly.
-          if (res.ok) {
-            const qr = extractQrPayload(res.body);
-            if (qr.qrContent || qr.qrImageUrl || qr.payUrl) {
-              return { success: true as const, endpoint, body: res.body, wrapRequest, signMode };
-            }
-          }
         }
       }
     }
