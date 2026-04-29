@@ -41,6 +41,7 @@ import { SearchInput } from "./SearchInput";
 import { CouponInput } from "./CouponInput";
 import { productsApi, authApi, wishlistApi, ordersApi, customersApi, categoriesApi, blogApi, apiClient } from "../../utils/api";
 import { toast } from "sonner";
+import { QRCodeCanvas } from "qrcode.react";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 import { useDebounce } from "../hooks/useDebounce";
 import { useScrollAnimation } from "../hooks/useScrollAnimation";
@@ -1120,12 +1121,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const hasNativeKPayQr = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent);
   const hasLinkOnlyKPay = Boolean(!hasNativeKPayQr && kpaySession?.payUrl);
   const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasKPayPayload);
-  const kpayQrDisplayUrl = kpaySession?.qrImageUrl
-    ? kpaySession.qrImageUrl
-    : kpaySession?.qrContent
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.qrContent)}`
-    : kpaySession?.payUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.payUrl)}`
+  // Only the rare hosted-image case uses an <img>. For native EMV QR strings
+  // (the common case) we render with QRCodeCanvas locally — no third-party
+  // QR rendering service required, no remote dependency, no privacy leak of
+  // the merchant order id.
+  const kpayQrDisplayUrl = kpaySession?.qrImageUrl ? kpaySession.qrImageUrl : "";
+  const kpayQrCanvasValue = !kpayQrDisplayUrl
+    ? (kpaySession?.qrContent || kpaySession?.payUrl || "")
     : "";
 
   // Profile page states
@@ -6434,6 +6436,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                               alt="KPay Dynamic QR Code"
                               className="w-full h-full object-contain"
                             />
+                          ) : kpayQrCanvasValue ? (
+                            <QRCodeCanvas
+                              value={kpayQrCanvasValue}
+                              size={184}
+                              level="M"
+                              marginSize={2}
+                            />
                           ) : (
                             <div className="text-center px-4">
                               <CreditCard className="w-12 h-12 text-slate-400 mx-auto mb-2" />
@@ -6485,14 +6494,39 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
                           <details className="py-2 border-t border-slate-200 rounded text-xs text-slate-700">
                             <summary className="cursor-pointer font-medium text-slate-800">KPay debug details</summary>
-                            <div className="mt-2 space-y-1">
+                            <div className="mt-2 space-y-1 break-all">
                               <div>endpointUsed: {kpaySession?.debug?.endpointUsed || "-"}</div>
                               <div>queryEndpointUsed: {kpaySession?.debug?.queryEndpointUsed || "-"}</div>
-                              <div>signMode: {kpaySession?.debug?.signMode || "-"}</div>
                               <div>wrapRequest: {String(kpaySession?.debug?.wrapRequest ?? false)}</div>
                               <div>providerStatus: {kpaySession?.providerStatus || "-"}</div>
+                              <div>providerCode: {kpaySession?.debug?.providerCode || "-"}</div>
+                              <div>providerMessage: {kpaySession?.debug?.providerMessage || "-"}</div>
                               <div>topLevelKeys: {(kpaySession?.debug?.providerTopLevelKeys || []).join(", ") || "-"}</div>
                               <div>nestedKeys: {(kpaySession?.debug?.providerNestedKeys || []).join(", ") || "-"}</div>
+                              <div className="pt-1 font-medium text-slate-800">signSource:</div>
+                              <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700">{kpaySession?.debug?.signSource || "-"}</pre>
+                              <div>sign: <code>{kpaySession?.debug?.sign || "-"}</code></div>
+                              <div className="pt-1 font-medium text-slate-800">signedPayload:</div>
+                              <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700 max-h-64 overflow-auto">{JSON.stringify(kpaySession?.debug?.signedPayload || {}, null, 2)}</pre>
+                              <button
+                                type="button"
+                                className="mt-1 inline-flex items-center rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                                onClick={() => {
+                                  try {
+                                    const blob = JSON.stringify({
+                                      merchantOrderId: kpaySession?.merchantOrderId,
+                                      providerStatus: kpaySession?.providerStatus,
+                                      debug: kpaySession?.debug,
+                                    }, null, 2);
+                                    navigator.clipboard?.writeText(blob);
+                                    toast.success("KPay debug copied to clipboard");
+                                  } catch {
+                                    toast.error("Could not copy debug payload");
+                                  }
+                                }}
+                              >
+                                Copy debug JSON
+                              </button>
                             </div>
                           </details>
                         )}

@@ -22,6 +22,7 @@ import { Label } from "./ui/label";
 import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import { QRCodeCanvas } from "qrcode.react";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 import {
   type KPaySession,
@@ -355,6 +356,12 @@ export function Checkout({
         title: `Order ${merchantOrderId}`,
       });
       setKpaySession(session);
+      if (session.status === "failed") {
+        toast.error(`KPay precreate failed: ${session.providerStatus || session.debug?.providerCode || "UNKNOWN"}`, {
+          duration: 8000,
+        });
+        return;
+      }
       toast.success("KPay QR generated");
       if (!session.qrImageUrl && !session.qrContent && !session.payUrl) {
         toast.info("Waiting for KPay QR from provider...");
@@ -1234,7 +1241,7 @@ export function Checkout({
                       <Button type="button" variant="outline" onClick={handleGenerateKPayQr} disabled={kpayLoading}>
                         {kpayLoading ? "Generating..." : kpaySession?.merchantOrderId ? "Regenerate KPay QR" : "Generate KPay QR"}
                       </Button>
-                      {kpaySession?.merchantOrderId && (
+                      {kpaySession?.merchantOrderId && kpaySession?.status !== "failed" && (
                         <Button type="button" variant="outline" onClick={refreshKPayStatus}>
                           Check Payment Status
                         </Button>
@@ -1245,12 +1252,18 @@ export function Checkout({
                         <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
                           {kpayQrDisplayUrl ? (
                             <img src={kpayQrDisplayUrl} alt="KPay QR Code" className="h-full w-full object-contain" />
+                          ) : kpaySession?.qrContent ? (
+                            <QRCodeCanvas
+                              value={kpaySession.qrContent}
+                              size={184}
+                              level="M"
+                              marginSize={2}
+                              imageSettings={undefined}
+                            />
                           ) : (
                             <div className="px-4 text-center text-sm text-slate-500">
                               {kpaySession?.merchantOrderId
-                                ? (kpaySession?.qrContent
-                                    ? "Native QR text returned (image not provided by provider)"
-                                    : "QR not returned by provider for this order")
+                                ? "QR not returned by provider for this order"
                                 : "Generate KPay QR to scan and pay"}
                             </div>
                           )}
@@ -1293,20 +1306,45 @@ export function Checkout({
                         {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
                           <details className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
                             <summary className="cursor-pointer font-medium text-slate-800">KPay debug details</summary>
-                            <div className="mt-2 space-y-1">
+                            <div className="mt-2 space-y-1 break-all">
                               <div>endpointUsed: {kpaySession?.debug?.endpointUsed || "-"}</div>
                               <div>queryEndpointUsed: {kpaySession?.debug?.queryEndpointUsed || "-"}</div>
-                              <div>signMode: {kpaySession?.debug?.signMode || "-"}</div>
                               <div>wrapRequest: {String(kpaySession?.debug?.wrapRequest ?? false)}</div>
                               <div>providerStatus: {kpaySession?.providerStatus || "-"}</div>
+                              <div>providerCode: {kpaySession?.debug?.providerCode || "-"}</div>
+                              <div>providerMessage: {kpaySession?.debug?.providerMessage || "-"}</div>
                               <div>topLevelKeys: {(kpaySession?.debug?.providerTopLevelKeys || []).join(", ") || "-"}</div>
                               <div>nestedKeys: {(kpaySession?.debug?.providerNestedKeys || []).join(", ") || "-"}</div>
+                              <div className="pt-1 font-medium text-slate-800">signSource:</div>
+                              <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700">{kpaySession?.debug?.signSource || "-"}</pre>
+                              <div>sign: <code>{kpaySession?.debug?.sign || "-"}</code></div>
+                              <div className="pt-1 font-medium text-slate-800">signedPayload:</div>
+                              <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700 max-h-64 overflow-auto">{JSON.stringify(kpaySession?.debug?.signedPayload || {}, null, 2)}</pre>
+                              <button
+                                type="button"
+                                className="mt-1 inline-flex items-center rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                                onClick={() => {
+                                  try {
+                                    const blob = JSON.stringify({
+                                      merchantOrderId: kpaySession?.merchantOrderId,
+                                      providerStatus: kpaySession?.providerStatus,
+                                      debug: kpaySession?.debug,
+                                    }, null, 2);
+                                    navigator.clipboard?.writeText(blob);
+                                    toast.success("KPay debug copied to clipboard");
+                                  } catch {
+                                    toast.error("Could not copy debug payload");
+                                  }
+                                }}
+                              >
+                                Copy debug JSON
+                              </button>
                             </div>
                           </details>
                         )}
                         {kpaySession?.qrContent && !kpaySession?.qrImageUrl && (
-                          <div className="rounded border border-slate-200 bg-white p-2 text-xs text-slate-700 break-all">
-                            Native QR content: {kpaySession.qrContent}
+                          <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                            Open KBZPay app → tap <span className="font-medium">Scan QR</span> → point at the code above.
                           </div>
                         )}
                       </div>

@@ -29,6 +29,12 @@ type CreateKPayQrParams = KPayBaseParams & {
   amount: number;
   merchantOrderId?: string;
   currency?: string;
+  /**
+   * Legacy display label. Kept for callers that still pass it,
+   * but no longer forwarded to the server: KBZ PGW `precreate` for `PAY_BY_QRCODE`
+   * does not accept arbitrary biz_content fields like `title` and rejects them
+   * with `AOP04502` (signature/biz validation failure).
+   */
   title?: string;
   notifyUrl?: string;
 };
@@ -51,12 +57,40 @@ function isLikelyImageUrl(value: string): boolean {
   );
 }
 
+// Customer-facing pay URL must look like a real KBZPay deeplink or H5/PWA URL
+// — NOT just "any http://… string", which used to match `notify_url`,
+// `endpointUsed`, and the gateway URL we POST to. For QR-mode `precreate`
+// KBZ doesn't return a customer pay URL at all, so this stays empty.
 function isLikelyCustomerPayUrl(value: string): boolean {
   const v = value.trim().toLowerCase();
   if (!v) return false;
   if (v.startsWith("kbzpay://")) return true;
-  return v.startsWith("http");
+  if (!v.startsWith("http")) return false;
+  return (
+    v.includes("wap.kbzpay.com") ||
+    v.includes("kbzpay.com") ||
+    v.includes("/cashier") ||
+    v.includes("/h5") ||
+    v.includes("/pay/")
+  );
 }
+
+const PAY_URL_KEYS = new Set([
+  "payurl",
+  "paymenturl",
+  "pay_url",
+  "payment_url",
+  "deeplink",
+  "deep_link",
+  "prepayurl",
+  "prepay_url",
+  "cashierurl",
+  "cashier_url",
+  "h5url",
+  "h5_url",
+  "redirecturl",
+  "redirect_url",
+]);
 
 function deepExtractPayload(
   value: unknown,
@@ -88,7 +122,10 @@ function deepExtractPayload(
       if (!out.qrImageUrl && isLikelyImageUrl(val)) {
         out.qrImageUrl = val;
       }
-      if (!out.payUrl && isLikelyCustomerPayUrl(val)) {
+      // Only accept payUrl when the KEY itself signals it's a customer pay URL.
+      // Without this gate, any random `http://…` field (notify_url, endpointUsed,
+      // signedPayload echoes) would get hijacked as a clickable "pay" link.
+      if (!out.payUrl && PAY_URL_KEYS.has(lk) && isLikelyCustomerPayUrl(val)) {
         out.payUrl = val;
       }
       if (
@@ -114,7 +151,7 @@ function deepExtractPayload(
         const v = child.trim();
         if (!v) continue;
         if (!out.qrImageUrl && isLikelyImageUrl(v)) out.qrImageUrl = v;
-        if (!out.payUrl && isLikelyCustomerPayUrl(v)) out.payUrl = v;
+        // Intentionally NO payUrl pickup here — see the key-gated pass above.
       } else if (typeof child === "object") {
         visit(child);
       }
@@ -236,7 +273,6 @@ export async function createKPayQrSession(params: CreateKPayQrParams): Promise<K
     amount,
     merchantOrderId = buildMerchantOrderId("KPAY"),
     currency = "MMK",
-    title = `Order ${merchantOrderId}`,
     notifyUrl,
   } = params;
   const response = await fetch(
@@ -251,7 +287,6 @@ export async function createKPayQrSession(params: CreateKPayQrParams): Promise<K
         merchantOrderId,
         amount,
         currency,
-        title,
         ...(notifyUrl ? { notifyUrl } : {}),
       }),
     },
@@ -259,16 +294,34 @@ export async function createKPayQrSession(params: CreateKPayQrParams): Promise<K
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const info = readProviderErrorDetails((data || {}) as Record<string, any>);
-    const headline = String(data?.error || data?.message || "Failed to generate KPay QR");
-    const parts = [
-      info.providerCode ? `providerCode=${info.providerCode}` : "",
-      info.providerMessage ? `providerMessage=${info.providerMessage}` : "",
-      info.endpoint ? `endpoint=${info.endpoint}` : "",
-      info.signMode ? `signMode=${info.signMode}` : "",
-      typeof info.wrapRequest === "boolean" ? `wrapRequest=${String(info.wrapRequest)}` : "",
-    ].filter(Boolean);
-    const detailSuffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
-    throw new Error(`${headline}${detailSuffix}`);
+    const providerCode = info.providerCode || "";
+    const providerMessage = info.providerMessage || "";
+
+    // Return a structured "failed" session so the UI can show the real provider error.
+    return {
+      merchantOrderId: String(merchantOrderId),
+      status: "failed",
+      providerStatus: providerCode,
+      qrContent: "",
+      qrImageUrl: "",
+      payUrl: "",
+      debug: {
+        endpointUsed: String(data?.endpoint || ""),
+        queryEndpointUsed: "",
+        signMode: String(data?.signMode || ""),
+        wrapRequest: typeof data?.wrapRequest === "boolean" ? data.wrapRequest : undefined,
+        signSource: String(data?.signSource || ""),
+        sign: String(data?.sign || ""),
+        signedPayload:
+          (data?.signedPayload && typeof data.signedPayload === "object")
+            ? (data.signedPayload as Record<string, unknown>)
+            : undefined,
+        providerTopLevelKeys: [],
+        providerNestedKeys: [],
+        providerCode,
+        providerMessage,
+      },
+    };
   }
   const normalized = normalizeSession(data as Record<string, any>, merchantOrderId);
   if (!normalized.qrContent && !normalized.qrImageUrl && !normalized.payUrl) {

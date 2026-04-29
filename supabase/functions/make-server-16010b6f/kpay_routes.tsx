@@ -43,10 +43,12 @@ function resolveEnv(name: string, fallbackName?: string): string {
 }
 
 function buildSignSource(payload: AnyRecord): string {
+  // KBZ stringA: sort all keys alphabetically, join as k=v with '&', no URL-encoding.
+  // Per KBZ spec, exclude `sign`, `signature`, AND `sign_type` from the signing string.
+  // Also: callers must pass a FLATTENED collection (no nested objects / no `biz_content`),
+  // because KBZ verifies against the union of common params + biz_content fields.
   const keys = Object.keys(payload)
-    // Signature input excludes only the sign field itself.
-    // KBZ docs include other fields like `sign_type` in the sign string.
-    .filter((key) => !["sign", "signature"].includes(key))
+    .filter((key) => !["sign", "signature", "sign_type"].includes(key))
     .filter((key) => {
       const value = payload[key];
       if (value === undefined || value === null) return false;
@@ -54,7 +56,6 @@ function buildSignSource(payload: AnyRecord): string {
       return true;
     })
     .sort();
-  // KBZ stringA expects plain key=value pairs joined by '&' (no URL-encoding).
   return keys.map((key) => `${key}=${String(payload[key])}`).join("&");
 }
 
@@ -99,6 +100,26 @@ function providerData(payload: AnyRecord): AnyRecord {
   return {};
 }
 
+// KBZ often returns HTTP 200 even when the gateway result is FAIL.
+// We must inspect the payload's `result`/`return_code` to decide success.
+function providerIndicatesSuccess(body: AnyRecord): boolean {
+  const nested = providerData(body);
+
+  const resultRaw =
+    nested.result ??
+    nested.return_code ??
+    nested.returnCode ??
+    nested.result_code ??
+    nested.resultCode ??
+    "";
+
+  const result = String(resultRaw).trim().toUpperCase();
+  if (!result) return false;
+
+  // Your logs show: result="FAIL" and code="AOP04502" on failure.
+  return ["SUCCESS", "OK"].includes(result);
+}
+
 async function postJson(
   url: string,
   payload: AnyRecord,
@@ -108,6 +129,9 @@ async function postJson(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("kpay-timeout"), timeoutMs);
   try {
+    // `redirect: "manual"` so an HTTP→HTTPS 301 (or any other 30x) doesn't silently
+    // strip our POST body. KBZ's relay used to do this and we'd see misleading
+    // "internal system error!" responses. Surface it as an explicit error instead.
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -116,7 +140,17 @@ async function postJson(
       },
       body: JSON.stringify(payload),
       signal: controller.signal,
+      redirect: "manual",
     });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location") || "";
+      return {
+        ok: false,
+        status: response.status,
+        body: {},
+        networkError: `KPay endpoint redirected (${response.status}) to ${location || "<unknown>"}. Update KPAY_PROXY_BASE_URL to the redirect target.`,
+      };
+    }
     return { ok: response.ok, status: response.status, body: await safeJson(response) };
   } catch (error: any) {
     return { ok: false, status: 0, body: {}, networkError: String(error?.message || error) };
@@ -246,7 +280,7 @@ async function upsertOrderPaymentStatus(
 
 function kpayConfig() {
   const baseUrl = resolveEnv("KPAY_PROXY_BASE_URL", "KPAY_BASE_URL");
-  const appId = resolveEnv("KPAY_APPID");
+  const appId = resolveEnv("KPAY_APPID", "KPAY_APP_ID");
   const merchCode = resolveEnv("KPAY_MERCH_CODE", "KPAY_MERCHANT_ID");
   const signKey = resolveEnv("KPAY_SIGN_KEY", "KPAY_SECRET");
   const notifyUrl = resolveEnv("KPAY_NOTIFY_URL");
@@ -259,24 +293,53 @@ function kpayConfig() {
   // KBZ examples typically wrap payload under "Request".
   // Default to wrapped mode unless explicitly disabled.
   const wrapRequest = resolveEnv("KPAY_WRAP_REQUEST") !== "0";
-  return { baseUrl, appId, merchCode, signKey, notifyUrl, createPath, queryPath, apiKey, timeoutMs, autoDiscover, strictProtocol, wrapRequest };
+  // The 150.109.123.187 relay (and similar KBZ partner proxies) gate inbound traffic
+  // with an auth header that's separate from the KBZ sign key. Header name, scheme,
+  // and token are configurable so the same code works against direct KBZ endpoints
+  // (none of these set) and against gated proxies (all three set).
+  const proxyAuthHeader = resolveEnv("KPAY_PROXY_AUTH_HEADER");
+  const proxyAuthScheme = resolveEnv("KPAY_PROXY_AUTH_SCHEME");
+  const proxyAuthToken = resolveEnv("KPAY_PROXY_AUTH_TOKEN");
+  return {
+    baseUrl, appId, merchCode, signKey, notifyUrl, createPath, queryPath,
+    apiKey, timeoutMs, autoDiscover, strictProtocol, wrapRequest,
+    proxyAuthHeader, proxyAuthScheme, proxyAuthToken,
+  };
 }
+
+// Build the set of headers the KBZ proxy expects on every call.
+// `x-api-key` covers gateways that take a key on that header.
+// `KPAY_PROXY_AUTH_*` covers gateways that take a custom header (often Authorization).
+function buildProviderHeaders(cfg: ReturnType<typeof kpayConfig>): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (cfg.apiKey) headers["x-api-key"] = cfg.apiKey;
+  if (cfg.proxyAuthToken) {
+    const headerName = text(cfg.proxyAuthHeader) || "Authorization";
+    const scheme = text(cfg.proxyAuthScheme);
+    headers[headerName] = scheme ? `${scheme} ${cfg.proxyAuthToken}` : cfg.proxyAuthToken;
+  }
+  return headers;
+}
+
+// A KBZ provider call has two distinct shapes:
+//   - signCollection: the FLATTENED key/value map used to compute `sign` (stringA).
+//   - requestBody:    what actually goes on the wire. `biz_content` here is an OBJECT,
+//                     not a stringified JSON, per the KBZ reference clients.
+type PayloadPair = { signCollection: AnyRecord; requestBody: AnyRecord };
 
 async function signedProviderRequest(
   endpoint: string,
-  basePayload: AnyRecord,
+  pair: PayloadPair,
   signKey: string,
   timeoutMs: number,
   wrapRequest: boolean,
-  apiKey?: string,
+  extraHeaders: Record<string, string>,
 ) {
-  const signSource = buildSignSource(basePayload);
+  const signSource = buildSignSource(pair.signCollection);
   const sign = await sha256Upper(`${signSource}&key=${signKey}`);
-  const signed = { ...basePayload, sign };
+  const signed = { ...pair.requestBody, sign };
   const payload = wrapRequest ? { Request: signed } : signed;
-  const headers: Record<string, string> = {};
-  if (apiKey) headers["x-api-key"] = apiKey;
-  const response = await postJson(endpoint, payload, timeoutMs, headers);
+  const response = await postJson(endpoint, payload, timeoutMs, extraHeaders);
   return { ...response, signSource, sign, signedPayload: payload };
 }
 
@@ -305,150 +368,105 @@ function endpointCandidates(
   return resolved;
 }
 
+// KBZ PGW `precreate` (PAY_BY_QRCODE) — see https://wap.kbzpay.com/pgw/uat/api/.
+// Signing rule (stringA): union of common params + every biz_content field, sorted, no URL encoding,
+// excluding `sign` and `sign_type`. `biz_content` itself is NOT in stringA.
+// Wire body: `biz_content` is sent as a JSON OBJECT.
 function createPayloadCandidates(params: {
   appId: string;
   merchCode: string;
   merchantOrderId: string;
   amount: string;
   currency: string;
-  title: string;
   notifyUrl: string;
-}, strictPrimaryOnly: boolean): AnyRecord[] {
+}): PayloadPair[] {
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const ts = String(Math.floor(Date.now() / 1000));
-  // Official KBZ precreate shape: common params + biz_content (order fields live inside biz_content).
-  const bizObject: AnyRecord = {
+
+  const bizContent: AnyRecord = {
+    appid: params.appId,
+    merch_code: params.merchCode,
     merch_order_id: params.merchantOrderId,
     total_amount: params.amount,
     trans_currency: params.currency,
     trade_type: "PAY_BY_QRCODE",
-    title: params.title,
-    timeout_express: "100m",
   };
-  const bizString = JSON.stringify(bizObject);
 
-  const primary: AnyRecord = {
-    method: "kbz.payment.precreate",
-    sign_type: "SHA256",
-    version: "1.0",
+  const signCollection: AnyRecord = {
     appid: params.appId,
     merch_code: params.merchCode,
+    merch_order_id: params.merchantOrderId,
+    method: "kbz.payment.precreate",
     nonce_str: nonce,
     timestamp: ts,
-    biz_content: bizString,
+    total_amount: params.amount,
+    trade_type: "PAY_BY_QRCODE",
+    trans_currency: params.currency,
+    version: "1.0",
   };
   if (text(params.notifyUrl)) {
-    primary.notify_url = params.notifyUrl;
+    signCollection.notify_url = params.notifyUrl;
   }
 
-  const primaryBizObject: AnyRecord = {
+  const requestBody: AnyRecord = {
+    timestamp: ts,
     method: "kbz.payment.precreate",
+    nonce_str: nonce,
     sign_type: "SHA256",
     version: "1.0",
-    appid: params.appId,
-    merch_code: params.merchCode,
-    nonce_str: nonce,
-    timestamp: ts,
-    biz_content: bizObject,
+    biz_content: bizContent,
   };
   if (text(params.notifyUrl)) {
-    primaryBizObject.notify_url = params.notifyUrl;
+    requestBody.notify_url = params.notifyUrl;
   }
 
-  // In strict mode, only sign the exact request payload we intend.
-  // (Signing a JS object directly would stringify as "[object Object]" and break signatures.)
-  if (strictPrimaryOnly) return [primary];
-  return [
-    primary,
-    primaryBizObject,
-    {
-      method: "kbz.payment.precreate",
-      signType: "SHA256",
-      appId: params.appId,
-      merchCode: params.merchCode,
-      merchOrderId: params.merchantOrderId,
-      amount: params.amount,
-      tradeType: "PAY_BY_QRCODE",
-      currency: params.currency,
-      subject: params.title,
-      nonceStr: nonce,
-      timestamp: ts,
-      notifyUrl: params.notifyUrl,
-    },
-    {
-      method: "kbz.payment.precreate",
-      signType: "SHA256",
-      merchantId: params.merchCode,
-      merchantOrderId: params.merchantOrderId,
-      amount: params.amount,
-      currency: params.currency,
-      title: params.title,
-      nonceStr: nonce,
-      timestamp: ts,
-      notifyUrl: params.notifyUrl,
-    },
-  ];
+  return [{ signCollection, requestBody }];
 }
 
-function queryPayloadCandidates(
-  params: { appId: string; merchCode: string; merchantOrderId: string },
-  strictPrimaryOnly: boolean,
-): AnyRecord[] {
+// KBZ PGW `queryorder` uses version "3.0" per the PGW reference.
+function queryPayloadCandidates(params: {
+  appId: string;
+  merchCode: string;
+  merchantOrderId: string;
+}): PayloadPair[] {
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const ts = String(Math.floor(Date.now() / 1000));
-  const bizObject: AnyRecord = {
+
+  const bizContent: AnyRecord = {
     appid: params.appId,
     merch_code: params.merchCode,
     merch_order_id: params.merchantOrderId,
   };
-  const bizString = JSON.stringify(bizObject);
-  const primary: AnyRecord = {
+
+  const signCollection: AnyRecord = {
+    appid: params.appId,
+    merch_code: params.merchCode,
+    merch_order_id: params.merchantOrderId,
     method: "kbz.payment.queryorder",
-    sign_type: "SHA256",
-    version: "1.0",
     nonce_str: nonce,
     timestamp: ts,
-    biz_content: bizString,
+    version: "3.0",
   };
-  const primaryBizObject: AnyRecord = {
-    method: "kbz.payment.queryorder",
-    sign_type: "SHA256",
-    version: "1.0",
-    nonce_str: nonce,
+
+  const requestBody: AnyRecord = {
     timestamp: ts,
-    biz_content: bizObject,
+    method: "kbz.payment.queryorder",
+    nonce_str: nonce,
+    sign_type: "SHA256",
+    version: "3.0",
+    biz_content: bizContent,
   };
-  if (strictPrimaryOnly) return [primary];
-  return [
-    primary,
-    primaryBizObject,
-    {
-      method: "kbz.payment.queryorder",
-      signType: "SHA256",
-      appId: params.appId,
-      merchCode: params.merchCode,
-      merchOrderId: params.merchantOrderId,
-      nonceStr: nonce,
-      timestamp: ts,
-    },
-    {
-      method: "kbz.payment.queryorder",
-      signType: "SHA256",
-      merchantId: params.merchCode,
-      merchantOrderId: params.merchantOrderId,
-      nonceStr: nonce,
-      timestamp: ts,
-    },
-  ];
+
+  return [{ signCollection, requestBody }];
 }
 
 async function tryProviderVariants(args: {
   endpoints: string[];
-  payloads: AnyRecord[];
+  payloads: PayloadPair[];
   signKey: string;
   timeoutMs: number;
   wrapRequest: boolean;
-  apiKey?: string;
+  extraHeaders: Record<string, string>;
 }) {
   const attempts: Array<{
     endpoint: string;
@@ -460,16 +478,16 @@ async function tryProviderVariants(args: {
     signedPayload?: AnyRecord;
   }> = [];
   for (const endpoint of args.endpoints) {
-    for (const payload of args.payloads) {
+    for (const pair of args.payloads) {
       const res = await signedProviderRequest(
         endpoint,
-        payload,
+        pair,
         args.signKey,
         args.timeoutMs,
         args.wrapRequest,
-        args.apiKey,
+        args.extraHeaders,
       );
-      if (res.ok) {
+      if (providerIndicatesSuccess(res.body)) {
         return { success: true as const, endpoint, body: res.body, signSource: res.signSource, sign: res.sign, signedPayload: res.signedPayload };
       }
       attempts.push({
@@ -517,10 +535,8 @@ export async function createKPayQr(c: Context) {
       merchantOrderId,
       amount,
       currency,
-      // Avoid spaces/special chars by default; keeps payload and signature deterministic.
-      title: text(body.title) || merchantOrderId,
       notifyUrl,
-    }, strictPrimaryOnly);
+    });
 
     const provider = await tryProviderVariants({
       endpoints,
@@ -528,7 +544,7 @@ export async function createKPayQr(c: Context) {
       signKey: cfg.signKey,
       timeoutMs: cfg.timeoutMs,
       wrapRequest: cfg.wrapRequest,
-      apiKey: cfg.apiKey,
+      extraHeaders: buildProviderHeaders(cfg),
     });
     if (!provider.success) {
       const last = provider.attempts[provider.attempts.length - 1];
@@ -550,7 +566,9 @@ export async function createKPayQr(c: Context) {
     }
 
     const providerStatus = providerStatusFrom(provider.body);
-    const status = mapProviderStatus(providerStatus);
+    // `precreate` never carries a payment status (its `code=0` just means "QR issued").
+    // Real status comes from `queryorder` or the async webhook.
+    const status: PaymentStatus = "pending";
     const qr = extractQrPayload(provider.body);
     const timestamp = nowIso();
 
@@ -622,14 +640,14 @@ export async function getKPayStatus(c: Context) {
       appId: cfg.appId,
       merchCode: cfg.merchCode,
       merchantOrderId,
-    }, strictPrimaryOnly);
+    });
     const provider = await tryProviderVariants({
       endpoints,
       payloads,
       signKey: cfg.signKey,
       timeoutMs: cfg.timeoutMs,
       wrapRequest: cfg.wrapRequest,
-      apiKey: cfg.apiKey,
+      extraHeaders: buildProviderHeaders(cfg),
     });
 
     if (!provider.success) {
