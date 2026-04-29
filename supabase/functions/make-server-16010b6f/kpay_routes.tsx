@@ -44,7 +44,9 @@ function resolveEnv(name: string, fallbackName?: string): string {
 
 function buildSignSource(payload: AnyRecord): string {
   const keys = Object.keys(payload)
-    .filter((key) => !["sign", "signature", "signType", "sign_type"].includes(key))
+    // Signature input excludes only the sign field itself.
+    // KBZ docs include other fields like `sign_type` in the sign string.
+    .filter((key) => !["sign", "signature"].includes(key))
     .filter((key) => {
       const value = payload[key];
       if (value === undefined || value === null) return false;
@@ -353,7 +355,9 @@ function createPayloadCandidates(params: {
     primaryBizObject.notify_url = params.notifyUrl;
   }
 
-  if (strictPrimaryOnly) return [primary, primaryBizObject];
+  // In strict mode, only sign the exact request payload we intend.
+  // (Signing a JS object directly would stringify as "[object Object]" and break signatures.)
+  if (strictPrimaryOnly) return [primary];
   return [
     primary,
     primaryBizObject,
@@ -414,7 +418,7 @@ function queryPayloadCandidates(
     timestamp: ts,
     biz_content: bizObject,
   };
-  if (strictPrimaryOnly) return [primary, primaryBizObject];
+  if (strictPrimaryOnly) return [primary];
   return [
     primary,
     primaryBizObject,
