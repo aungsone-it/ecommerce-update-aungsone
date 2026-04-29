@@ -427,6 +427,8 @@ export function Checkout({
 
     setLoading(true);
 
+    let latestKpaySession = kpaySession;
+
     if (paymentMethod === "Card") {
       if (!paymentInfo.cardNumber || !paymentInfo.cardName || !paymentInfo.expiryDate || !paymentInfo.cvv) {
         toast.error("Please fill in all card details");
@@ -460,7 +462,24 @@ export function Checkout({
         setLoading(false);
         return;
       }
-      await refreshKPayStatus();
+      try {
+        const refreshedSession = await fetchKPaySessionStatus({
+          projectId,
+          publicAnonKey,
+          merchantOrderId: kpaySession!.merchantOrderId,
+        });
+        latestKpaySession = { ...(kpaySession || refreshedSession), ...refreshedSession };
+        setKpaySession((prev) => (prev ? { ...prev, ...refreshedSession } : refreshedSession));
+      } catch {
+        toast.error("Unable to verify KPay status. Please try again.");
+        setLoading(false);
+        return;
+      }
+      if (latestKpaySession?.status !== "paid") {
+        toast.error("Payment is not confirmed yet. Please complete payment in KBZPay and check status.");
+        setLoading(false);
+        return;
+      }
     } else {
       toast.info("🚀 Coming Soon! This payment method will be available soon.", { duration: 3000 });
       setLoading(false);
@@ -476,8 +495,8 @@ export function Checkout({
 
     // Generate order number
     const orderNum =
-      paymentMethod === "KPay" && kpaySession?.merchantOrderId
-        ? kpaySession.merchantOrderId
+      paymentMethod === "KPay" && latestKpaySession?.merchantOrderId
+        ? latestKpaySession.merchantOrderId
         : `ORD-${Date.now().toString(36).toUpperCase()}`;
     setOrderNumber(orderNum);
 
@@ -493,7 +512,7 @@ export function Checkout({
         status: paymentMethod === "KPay" ? "pending_payment" : "pending",
         paymentStatus:
           paymentMethod === "KPay"
-            ? (kpaySession?.status === "paid" ? "paid" : "pending")
+            ? (latestKpaySession?.status === "paid" ? "paid" : "pending")
             : "paid",
         paymentMethod:
           paymentMethod === "Card"
@@ -537,12 +556,12 @@ export function Checkout({
 
       if (paymentMethod === "KPay") {
         orderData.kpay = {
-          merchantOrderId: kpaySession?.merchantOrderId || orderNum,
-          status: kpaySession?.status || "pending",
-          providerStatus: kpaySession?.providerStatus || "",
-          qrContent: kpaySession?.qrContent || "",
-          qrImageUrl: kpaySession?.qrImageUrl || "",
-          payUrl: kpaySession?.payUrl || "",
+          merchantOrderId: latestKpaySession?.merchantOrderId || orderNum,
+          status: latestKpaySession?.status || "pending",
+          providerStatus: latestKpaySession?.providerStatus || "",
+          qrContent: latestKpaySession?.qrContent || "",
+          qrImageUrl: latestKpaySession?.qrImageUrl || "",
+          payUrl: latestKpaySession?.payUrl || "",
         };
       }
 

@@ -44,7 +44,7 @@ function resolveEnv(name: string, fallbackName?: string): string {
 
 function buildSignSource(payload: AnyRecord): string {
   const keys = Object.keys(payload)
-    .filter((key) => !["sign", "signature", "signType"].includes(key))
+    .filter((key) => !["sign", "signature", "signType", "sign_type"].includes(key))
     .filter((key) => {
       const value = payload[key];
       if (value === undefined || value === null) return false;
@@ -52,19 +52,13 @@ function buildSignSource(payload: AnyRecord): string {
       return true;
     })
     .sort();
+  // KBZ stringA expects plain key=value pairs joined by '&' (no URL-encoding).
   return keys.map((key) => `${key}=${String(payload[key])}`).join("&");
 }
 
-async function hmacSha256Upper(secret: string, source: string): Promise<string> {
+async function sha256Upper(source: string): Promise<string> {
   const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(source));
+  const sig = await crypto.subtle.digest("SHA-256", enc.encode(source));
   const bytes = new Uint8Array(sig);
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
@@ -259,8 +253,11 @@ function kpayConfig() {
   const apiKey = resolveEnv("KPAY_API_KEY");
   const timeoutMs = Math.max(4000, Number(resolveEnv("KPAY_TIMEOUT_MS")) || 12000);
   const autoDiscover = resolveEnv("KPAY_AUTO_DISCOVER") === "1";
-  const wrapRequest = resolveEnv("KPAY_WRAP_REQUEST") === "1";
-  return { baseUrl, appId, merchCode, signKey, notifyUrl, createPath, queryPath, apiKey, timeoutMs, autoDiscover, wrapRequest };
+  const strictProtocol = resolveEnv("KPAY_STRICT_PROTOCOL") !== "0";
+  // KBZ examples typically wrap payload under "Request".
+  // Default to wrapped mode unless explicitly disabled.
+  const wrapRequest = resolveEnv("KPAY_WRAP_REQUEST") !== "0";
+  return { baseUrl, appId, merchCode, signKey, notifyUrl, createPath, queryPath, apiKey, timeoutMs, autoDiscover, strictProtocol, wrapRequest };
 }
 
 async function signedProviderRequest(
@@ -272,12 +269,13 @@ async function signedProviderRequest(
   apiKey?: string,
 ) {
   const signSource = buildSignSource(basePayload);
-  const sign = await hmacSha256Upper(signKey, signSource);
+  const sign = await sha256Upper(`${signSource}&key=${signKey}`);
   const signed = { ...basePayload, sign };
   const payload = wrapRequest ? { Request: signed } : signed;
   const headers: Record<string, string> = {};
   if (apiKey) headers["x-api-key"] = apiKey;
-  return postJson(endpoint, payload, timeoutMs, headers);
+  const response = await postJson(endpoint, payload, timeoutMs, headers);
+  return { ...response, signSource, sign, signedPayload: payload };
 }
 
 function endpointCandidates(
@@ -315,24 +313,50 @@ function createPayloadCandidates(params: {
   notifyUrl: string;
 }, strictPrimaryOnly: boolean): AnyRecord[] {
   const nonce = crypto.randomUUID().replaceAll("-", "");
-  const ts = Date.now();
+  const ts = String(Math.floor(Date.now() / 1000));
+  // Official KBZ precreate shape: common params + biz_content (order fields live inside biz_content).
+  const bizObject: AnyRecord = {
+    merch_order_id: params.merchantOrderId,
+    total_amount: params.amount,
+    trans_currency: params.currency,
+    trade_type: "PAY_BY_QRCODE",
+    title: params.title,
+    timeout_express: "100m",
+  };
+  const bizString = JSON.stringify(bizObject);
+
   const primary: AnyRecord = {
     method: "kbz.payment.precreate",
     sign_type: "SHA256",
+    version: "1.0",
     appid: params.appId,
     merch_code: params.merchCode,
-    merch_order_id: params.merchantOrderId,
-    total_amount: params.amount,
-    trade_type: "PAY_BY_QRCODE",
-    currency: params.currency,
-    title: params.title,
     nonce_str: nonce,
     timestamp: ts,
-    notify_url: params.notifyUrl,
+    biz_content: bizString,
   };
-  if (strictPrimaryOnly) return [primary];
+  if (text(params.notifyUrl)) {
+    primary.notify_url = params.notifyUrl;
+  }
+
+  const primaryBizObject: AnyRecord = {
+    method: "kbz.payment.precreate",
+    sign_type: "SHA256",
+    version: "1.0",
+    appid: params.appId,
+    merch_code: params.merchCode,
+    nonce_str: nonce,
+    timestamp: ts,
+    biz_content: bizObject,
+  };
+  if (text(params.notifyUrl)) {
+    primaryBizObject.notify_url = params.notifyUrl;
+  }
+
+  if (strictPrimaryOnly) return [primary, primaryBizObject];
   return [
     primary,
+    primaryBizObject,
     {
       method: "kbz.payment.precreate",
       signType: "SHA256",
@@ -367,19 +391,33 @@ function queryPayloadCandidates(
   strictPrimaryOnly: boolean,
 ): AnyRecord[] {
   const nonce = crypto.randomUUID().replaceAll("-", "");
-  const ts = Date.now();
-  const primary: AnyRecord = {
-    method: "kbz.payment.queryorder",
-    sign_type: "SHA256",
+  const ts = String(Math.floor(Date.now() / 1000));
+  const bizObject: AnyRecord = {
     appid: params.appId,
     merch_code: params.merchCode,
     merch_order_id: params.merchantOrderId,
+  };
+  const bizString = JSON.stringify(bizObject);
+  const primary: AnyRecord = {
+    method: "kbz.payment.queryorder",
+    sign_type: "SHA256",
+    version: "1.0",
     nonce_str: nonce,
     timestamp: ts,
+    biz_content: bizString,
   };
-  if (strictPrimaryOnly) return [primary];
+  const primaryBizObject: AnyRecord = {
+    method: "kbz.payment.queryorder",
+    sign_type: "SHA256",
+    version: "1.0",
+    nonce_str: nonce,
+    timestamp: ts,
+    biz_content: bizObject,
+  };
+  if (strictPrimaryOnly) return [primary, primaryBizObject];
   return [
     primary,
+    primaryBizObject,
     {
       method: "kbz.payment.queryorder",
       signType: "SHA256",
@@ -408,7 +446,15 @@ async function tryProviderVariants(args: {
   wrapRequest: boolean;
   apiKey?: string;
 }) {
-  const attempts: Array<{ endpoint: string; status: number; networkError?: string; details?: AnyRecord }> = [];
+  const attempts: Array<{
+    endpoint: string;
+    status: number;
+    networkError?: string;
+    details?: AnyRecord;
+    signSource?: string;
+    sign?: string;
+    signedPayload?: AnyRecord;
+  }> = [];
   for (const endpoint of args.endpoints) {
     for (const payload of args.payloads) {
       const res = await signedProviderRequest(
@@ -420,13 +466,16 @@ async function tryProviderVariants(args: {
         args.apiKey,
       );
       if (res.ok) {
-        return { success: true as const, endpoint, body: res.body };
+        return { success: true as const, endpoint, body: res.body, signSource: res.signSource, sign: res.sign, signedPayload: res.signedPayload };
       }
       attempts.push({
         endpoint,
         status: res.status || 0,
         networkError: res.networkError,
         details: res.body,
+        signSource: res.signSource,
+        sign: res.sign,
+        signedPayload: res.signedPayload,
       });
     }
   }
@@ -456,15 +505,16 @@ export async function createKPayQr(c: Context) {
     const currency = text(body.currency || "MMK") || "MMK";
     const notifyUrl = text(body.notifyUrl) || cfg.notifyUrl;
 
-    const endpoints = endpointCandidates(cfg.baseUrl, cfg.createPath, "create", !cfg.autoDiscover);
-    const strictPrimaryOnly = !cfg.autoDiscover;
+    const strictPrimaryOnly = cfg.strictProtocol ? true : !cfg.autoDiscover;
+    const endpoints = endpointCandidates(cfg.baseUrl, cfg.createPath, "create", strictPrimaryOnly);
     const payloads = createPayloadCandidates({
       appId: cfg.appId,
       merchCode: cfg.merchCode,
       merchantOrderId,
       amount,
       currency,
-      title: text(body.title) || `Order ${merchantOrderId}`,
+      // Avoid spaces/special chars by default; keeps payload and signature deterministic.
+      title: text(body.title) || merchantOrderId,
       notifyUrl,
     }, strictPrimaryOnly);
 
@@ -485,6 +535,10 @@ export async function createKPayQr(c: Context) {
           details: last?.details || {},
           networkError: last?.networkError || undefined,
           endpoint: last?.endpoint || "",
+          wrapRequest: cfg.wrapRequest,
+          signSource: last?.signSource || "",
+          sign: last?.sign || "",
+          signedPayload: last?.signedPayload || {},
           attemptedEndpoints: Array.from(new Set(provider.attempts.map((a) => a.endpoint))),
         },
         502,
@@ -509,6 +563,7 @@ export async function createKPayQr(c: Context) {
       updatedAt: timestamp,
       rawCreateResponse: provider.body,
       endpointUsed: provider.endpoint,
+      wrapRequest: cfg.wrapRequest,
     });
 
     return c.json({
@@ -520,7 +575,12 @@ export async function createKPayQr(c: Context) {
       qrImageUrl: qr.qrImageUrl,
       payUrl: qr.payUrl,
       endpointUsed: provider.endpoint,
+      wrapRequest: cfg.wrapRequest,
       debug: {
+        wrapRequest: cfg.wrapRequest,
+        signSource: provider.signSource || "",
+        sign: provider.sign || "",
+        signedPayload: provider.signedPayload || {},
         providerTopLevelKeys: topLevelKeys(provider.body),
         providerNestedKeys: nestedKeys(provider.body),
       },
@@ -552,8 +612,8 @@ export async function getKPayStatus(c: Context) {
       });
     }
 
-    const endpoints = endpointCandidates(cfg.baseUrl, cfg.queryPath, "query", !cfg.autoDiscover);
-    const strictPrimaryOnly = !cfg.autoDiscover;
+    const strictPrimaryOnly = cfg.strictProtocol ? true : !cfg.autoDiscover;
+    const endpoints = endpointCandidates(cfg.baseUrl, cfg.queryPath, "query", strictPrimaryOnly);
     const payloads = queryPayloadCandidates({
       appId: cfg.appId,
       merchCode: cfg.merchCode,
@@ -578,6 +638,10 @@ export async function getKPayStatus(c: Context) {
             details: last?.details || {},
             networkError: last?.networkError || undefined,
             endpoint: last?.endpoint || "",
+            wrapRequest: cfg.wrapRequest,
+            signSource: last?.signSource || "",
+            sign: last?.sign || "",
+            signedPayload: last?.signedPayload || {},
             attemptedEndpoints: Array.from(new Set(provider.attempts.map((a) => a.endpoint))),
           },
           502,
@@ -591,6 +655,9 @@ export async function getKPayStatus(c: Context) {
         qrContent: existing.qrContent || "",
         qrImageUrl: existing.qrImageUrl || "",
         payUrl: existing.payUrl || "",
+        endpointUsed: text(existing?.endpointUsed),
+        queryEndpointUsed: last?.endpoint || "",
+        wrapRequest: cfg.wrapRequest,
         updatedAt: existing.updatedAt,
         stale: true,
       });
@@ -612,7 +679,9 @@ export async function getKPayStatus(c: Context) {
       qrImageUrl: qr.qrImageUrl || text(existing?.qrImageUrl),
       payUrl: qr.payUrl || text(existing?.payUrl),
       rawStatusResponse: provider.body,
-      endpointUsed: provider.endpoint,
+      endpointUsed: text(existing?.endpointUsed) || provider.endpoint,
+      queryEndpointUsed: provider.endpoint,
+      wrapRequest: cfg.wrapRequest,
       paidAt: paidAt || undefined,
       createdAt: text(existing?.createdAt) || updatedAt,
       updatedAt,
@@ -630,8 +699,19 @@ export async function getKPayStatus(c: Context) {
       qrContent: qr.qrContent || text(existing?.qrContent),
       qrImageUrl: qr.qrImageUrl || text(existing?.qrImageUrl),
       payUrl: qr.payUrl || text(existing?.payUrl),
+      endpointUsed: text(existing?.endpointUsed) || provider.endpoint,
+      queryEndpointUsed: provider.endpoint,
+      wrapRequest: cfg.wrapRequest,
       paidAt: paidAt || undefined,
       updatedAt,
+      debug: {
+        wrapRequest: cfg.wrapRequest,
+        signSource: provider.signSource || "",
+        sign: provider.sign || "",
+        signedPayload: provider.signedPayload || {},
+        providerTopLevelKeys: topLevelKeys(provider.body),
+        providerNestedKeys: nestedKeys(provider.body),
+      },
     });
   } catch (error: any) {
     console.error("getKPayStatus error", error);
@@ -655,7 +735,7 @@ export async function handleKPayWebhook(c: Context) {
         body.signature,
     ).toUpperCase();
     const source = buildSignSource(body);
-    const expectedSign = await hmacSha256Upper(cfg.signKey, source);
+    const expectedSign = await sha256Upper(`${source}&key=${cfg.signKey}`);
     if (!providedSign || providedSign !== expectedSign) {
       return c.json({ error: "Invalid signature" }, 401);
     }

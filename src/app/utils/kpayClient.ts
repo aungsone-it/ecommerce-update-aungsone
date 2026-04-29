@@ -10,6 +10,9 @@ export type KPaySession = {
     queryEndpointUsed?: string;
     signMode?: string;
     wrapRequest?: boolean;
+    signSource?: string;
+    sign?: string;
+    signedPayload?: Record<string, unknown>;
     providerTopLevelKeys?: string[];
     providerNestedKeys?: string[];
     providerCode?: string;
@@ -130,6 +133,12 @@ function normalizeSession(data: Record<string, any>, fallbackOrderId: string): K
   const debugPayload = (data.debug && typeof data.debug === "object") ? data.debug as Record<string, any> : {};
   const topLevelKeys = Array.isArray(debugPayload.providerTopLevelKeys) ? debugPayload.providerTopLevelKeys : [];
   const nestedKeys = Array.isArray(debugPayload.providerNestedKeys) ? debugPayload.providerNestedKeys : [];
+  const wrapFromPayload =
+    typeof debugPayload.wrapRequest === "boolean"
+      ? debugPayload.wrapRequest
+      : typeof data.wrapRequest === "boolean"
+        ? data.wrapRequest
+        : false;
   return {
     merchantOrderId: String(data.merchantOrderId || extracted.merchantOrderId || fallbackOrderId),
     status: data.status === "paid" ? "paid" : data.status === "failed" ? "failed" : "pending",
@@ -138,10 +147,18 @@ function normalizeSession(data: Record<string, any>, fallbackOrderId: string): K
     qrImageUrl,
     payUrl,
     debug: {
-      endpointUsed: String(data.endpointUsed || ""),
-      queryEndpointUsed: String(data.queryEndpointUsed || ""),
-      signMode: String(data.signMode || ""),
-      wrapRequest: Boolean(data.wrapRequest),
+      endpointUsed: String(debugPayload.endpointUsed || data.endpointUsed || ""),
+      queryEndpointUsed: String(debugPayload.queryEndpointUsed || data.queryEndpointUsed || ""),
+      signMode: String(debugPayload.signMode || data.signMode || ""),
+      wrapRequest: wrapFromPayload,
+      signSource: String(debugPayload.signSource || data.signSource || ""),
+      sign: String(debugPayload.sign || data.sign || ""),
+      signedPayload:
+        (debugPayload.signedPayload && typeof debugPayload.signedPayload === "object")
+          ? (debugPayload.signedPayload as Record<string, unknown>)
+          : (data.signedPayload && typeof data.signedPayload === "object")
+            ? (data.signedPayload as Record<string, unknown>)
+            : undefined,
       providerTopLevelKeys: topLevelKeys,
       providerNestedKeys: nestedKeys,
       providerCode: String(data.providerStatus || ""),
