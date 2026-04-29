@@ -235,16 +235,10 @@ export function Checkout({
   });
   const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
-  const hasKPayPayload = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent || kpaySession?.payUrl);
   const hasNativeKPayQr = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent);
-  const hasLinkOnlyKPay = Boolean(!hasNativeKPayQr && kpaySession?.payUrl);
-  const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasKPayPayload);
+  const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasNativeKPayQr);
   const kpayQrDisplayUrl = kpaySession?.qrImageUrl
     ? kpaySession.qrImageUrl
-    : kpaySession?.qrContent
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.qrContent)}`
-    : kpaySession?.payUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(kpaySession.payUrl)}`
     : "";
 
   // Coupon State with localStorage persistence
@@ -1254,7 +1248,9 @@ export function Checkout({
                           ) : (
                             <div className="px-4 text-center text-sm text-slate-500">
                               {kpaySession?.merchantOrderId
-                                ? "QR not returned by provider for this order"
+                                ? (kpaySession?.qrContent
+                                    ? "Native QR text returned (image not provided by provider)"
+                                    : "QR not returned by provider for this order")
                                 : "Generate KPay QR to scan and pay"}
                             </div>
                           )}
@@ -1289,9 +1285,9 @@ export function Checkout({
                             <span className="font-semibold uppercase text-slate-900">{kpaySession.status}</span>
                           </div>
                         )}
-                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && !kpaySession?.payUrl && (
+                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
                           <div className="text-xs text-amber-700">
-                            KPay returned pending order without QR payload. Please confirm endpoint contract with KPay team.
+                            KPay native QR was not returned by provider. Please confirm precreate response contract with KPay team.
                           </div>
                         )}
                         {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
@@ -1308,9 +1304,9 @@ export function Checkout({
                             </div>
                           </details>
                         )}
-                        {hasLinkOnlyKPay && (
-                          <div className="text-xs text-amber-700">
-                            This QR is generated from a payment link and may show invalid transaction type in KBZPay scanner. Use the payment link button above.
+                        {kpaySession?.qrContent && !kpaySession?.qrImageUrl && (
+                          <div className="rounded border border-slate-200 bg-white p-2 text-xs text-slate-700 break-all">
+                            Native QR content: {kpaySession.qrContent}
                           </div>
                         )}
                       </div>
