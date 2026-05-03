@@ -393,12 +393,18 @@ function kpayConfig() {
   const proxyAuthHeader = resolveEnv("KPAY_PROXY_AUTH_HEADER");
   const proxyAuthScheme = resolveEnv("KPAY_PROXY_AUTH_SCHEME");
   const proxyAuthToken = resolveEnv("KPAY_PROXY_AUTH_TOKEN");
+  // Service-provider (ISV) / sub-merchant mode — required by KBZ for some merchants on
+  // PWA and distributor APIs. See distributor PWA precreate doc (sub_merch_code, sub_appid, trans_type).
+  const subMerchCode = resolveEnv("KPAY_SUB_MERCH_CODE", "KPAY_SUB_MERCHANT_CODE");
+  const subAppid = resolveEnv("KPAY_SUB_APPID", "KPAY_SUB_APP_ID");
+  const isvTransType = resolveEnv("KPAY_ISV_TRANS_TYPE", "KPAY_TRANS_TYPE") || "OnlinePaymentISV";
   return {
     baseUrl, appId, merchCode, signKey, notifyUrl, createPath, queryPath,
     createPathConfigured: Boolean(text(createPathFromEnv)),
     queryPathConfigured: Boolean(text(queryPathFromEnv)),
     apiKey, timeoutMs, autoDiscover, strictProtocol, wrapRequest,
     proxyAuthHeader, proxyAuthScheme, proxyAuthToken,
+    subMerchCode, subAppid, isvTransType,
   };
 }
 
@@ -452,7 +458,6 @@ async function signedProviderRequest(
 const PUBLIC_KBZ_UAT_BASE = "https://wap.kbzpay.com/pgw/uat/api/";
 // Keep this list short to avoid blowing up polling latency if the public host is slow.
 const PUBLIC_QUERY_PATHS = ["/pgw/uat/api/queryorder", "queryorder", "orderquery"];
-const PUBLIC_PRECREATE_PATHS = ["precreate", "/pgw/uat/api/precreate", "/payment/gateway/uat/precreate"];
 
 function endpointCandidates(
   baseUrl: string,
@@ -489,21 +494,6 @@ function endpointCandidates(
   // so the public host is the fallback that can actually return live status.
   if (kind === "query" && !resolved.some((u) => u.includes("wap.kbzpay.com"))) {
     for (const path of PUBLIC_QUERY_PATHS) {
-      try {
-        const url = new URL(path, PUBLIC_KBZ_UAT_BASE).toString();
-        if (!seen.has(url)) {
-          seen.add(url);
-          resolved.push(url);
-        }
-      } catch {
-        // ignore malformed path
-      }
-    }
-  }
-  // 3) For `create`: optional public-host fallback — some relays mis-handle certain trade_type
-  // values; the docs hostname may still accept the same signed precreate.
-  if (kind === "create" && !resolved.some((u) => u.includes("wap.kbzpay.com"))) {
-    for (const path of PUBLIC_PRECREATE_PATHS) {
       try {
         const url = new URL(path, PUBLIC_KBZ_UAT_BASE).toString();
         if (!seen.has(url)) {
@@ -573,25 +563,38 @@ function createPayloadCandidates(params: {
   return [{ signCollection, requestBody }];
 }
 
+/** Comma-separated list, e.g. `PWAAPP` or `PWAAPP,APPH5`. Default: PWAAPP only. */
+function resolvePwaTradeTypes(): string[] {
+  const raw = text(Deno.env.get("KPAY_PWA_TRADE_TYPES"));
+  if (raw) {
+    const parts = raw.split(/[,\s]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+    return [...new Set(parts)];
+  }
+  return ["PWAAPP"];
+}
+
 // KBZ PGW `precreate` for the PWA (Progressive Web App) payment scenario.
-// Per https://wap.kbzpay.com/pgw/uat/api/#/en/docs/PWA/scenes-PWA-en the only
-// differences from QR Pay are:
-//   - trade_type = "PWAAPP" (vs "PAY_BY_QRCODE")
-//   - optional `title` in biz_content (offering name shown in KBZPay)
-// Everything else (signing rule, version "1.0", method, common params) is
-// identical to the standard precreate flow.
-function buildPwaPayloadPair(params: {
-  appId: string;
-  merchCode: string;
-  merchantOrderId: string;
-  amount: string;
-  currency: string;
-  notifyUrl: string;
-  title?: string;
-  callbackInfo?: string;
-}): PayloadPair {
+// Per https://wap.kbzpay.com/pgw/uat/api/#/en/docs/PWA/scenes-PWA-en :
+//   - trade_type is normally `PWAAPP` (override / retry list via KPAY_PWA_TRADE_TYPES).
+//   - optional `title` in biz_content
+// Service-provider merchants must also send sub_merch_code, sub_appid, trans_type — see distributor PWA doc.
+function buildPwaPayloadPair(
+  params: {
+    appId: string;
+    merchCode: string;
+    merchantOrderId: string;
+    amount: string;
+    currency: string;
+    notifyUrl: string;
+    title?: string;
+    callbackInfo?: string;
+    tradeType: string;
+  },
+  cfg: ReturnType<typeof kpayConfig>,
+): PayloadPair {
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const ts = String(Math.floor(Date.now() / 1000));
+  const trade = text(params.tradeType) || "PWAAPP";
 
   const bizContent: AnyRecord = {
     appid: params.appId,
@@ -599,8 +602,9 @@ function buildPwaPayloadPair(params: {
     merch_order_id: params.merchantOrderId,
     total_amount: params.amount,
     trans_currency: params.currency,
-    trade_type: "PWAAPP",
+    trade_type: trade,
   };
+  applyIsvBizFields(bizContent, cfg);
   if (text(params.title)) {
     bizContent.title = params.title;
   }
@@ -616,10 +620,11 @@ function buildPwaPayloadPair(params: {
     nonce_str: nonce,
     timestamp: ts,
     total_amount: params.amount,
-    trade_type: "PWAAPP",
+    trade_type: trade,
     trans_currency: params.currency,
     version: "1.0",
   };
+  applyIsvBizFields(signCollection, cfg);
   if (text(params.title)) {
     signCollection.title = params.title;
   }
@@ -645,29 +650,35 @@ function buildPwaPayloadPair(params: {
   return { signCollection, requestBody, nonce, timestamp: ts };
 }
 
-/** Try with title first (docs example), then without — some UAT accounts reject extra biz fields. */
-function createPwaPayloadCandidates(params: {
-  appId: string;
-  merchCode: string;
-  merchantOrderId: string;
-  amount: string;
-  currency: string;
-  notifyUrl: string;
-  title: string;
-  callbackInfo?: string;
-}): PayloadPair[] {
-  const withTitle = buildPwaPayloadPair({
-    ...params,
-    title: params.title,
-  });
-  const noTitle = buildPwaPayloadPair({
-    ...params,
-    title: "",
-  });
-  const a = JSON.stringify(withTitle.signCollection);
-  const b = JSON.stringify(noTitle.signCollection);
-  if (a === b) return [withTitle];
-  return [withTitle, noTitle];
+/** For each trade_type (see KPAY_PWA_TRADE_TYPES): try with title, then without. */
+function createPwaPayloadCandidates(
+  params: {
+    appId: string;
+    merchCode: string;
+    merchantOrderId: string;
+    amount: string;
+    currency: string;
+    notifyUrl: string;
+    title: string;
+    callbackInfo?: string;
+  },
+  cfg: ReturnType<typeof kpayConfig>,
+): PayloadPair[] {
+  const tradeTypes = resolvePwaTradeTypes();
+  const out: PayloadPair[] = [];
+  const seen = new Set<string>();
+  for (const tradeType of tradeTypes) {
+    const withTitle = buildPwaPayloadPair({ ...params, title: params.title, tradeType }, cfg);
+    const noTitle = buildPwaPayloadPair({ ...params, title: "", tradeType }, cfg);
+    for (const pair of [withTitle, noTitle]) {
+      const key = JSON.stringify(pair.signCollection);
+      if (!seen.has(key)) {
+        seen.add(key);
+        out.push(pair);
+      }
+    }
+  }
+  return out;
 }
 
 // KBZ PGW `queryorder` uses version "3.0" per the PGW reference.
@@ -953,7 +964,7 @@ export async function startKPayPwa(c: Context) {
       notifyUrl,
       title,
       callbackInfo: callbackInfo || undefined,
-    });
+    }, cfg);
 
     const provider = await tryProviderVariants({
       endpoints,
@@ -1009,11 +1020,16 @@ export async function startKPayPwa(c: Context) {
       }, 502);
     }
 
-    // The signCollection passed into tryProviderVariants is the FIRST payload — re-derive
-    // the same nonce/timestamp from it so the redirect URL signature matches.
-    const usedPair = payloads[0];
-    const ts = text(usedPair.timestamp) || text(usedPair.signCollection.timestamp);
-    const nonce = text(usedPair.nonce) || text(usedPair.signCollection.nonce_str);
+    // Use the *winning* request's nonce/timestamp for the PWA redirect signature
+    // (must match the precreate that returned prepay_id — not necessarily payloads[0]).
+    const signedRoot = asRecord(provider.signedPayload || {});
+    const winReq = asRecord(signedRoot.Request || signedRoot);
+    const ts = text(winReq.timestamp) || text(payloads[0]?.timestamp) ||
+      text(payloads[0]?.signCollection?.timestamp as string);
+    const nonce = text(winReq.nonce_str) || text(payloads[0]?.nonce) ||
+      text(payloads[0]?.signCollection?.nonce_str as string);
+    const bizUsed = asRecord(winReq.biz_content);
+    const tradeTypeUsed = text(bizUsed.trade_type) || resolvePwaTradeTypes()[0] || "PWAAPP";
 
     const orderInfoSign = await buildPwaOrderInfoSignature({
       appId: cfg.appId,
@@ -1046,6 +1062,7 @@ export async function startKPayPwa(c: Context) {
       currency,
       title,
       method: "pwa",
+      tradeType: tradeTypeUsed,
       prepayId,
       status: "pending" as PaymentStatus,
       providerStatus,
@@ -1064,10 +1081,12 @@ export async function startKPayPwa(c: Context) {
       redirectUrl,
       pwaBase: base,
       isUat,
+      tradeTypeUsed,
       endpointUsed: provider.endpoint,
       wrapRequest: cfg.wrapRequest,
       debug: {
         wrapRequest: cfg.wrapRequest,
+        tradeTypeUsed,
         signSource: provider.signSource || "",
         sign: provider.sign || "",
         signedPayload: provider.signedPayload || {},
