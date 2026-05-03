@@ -50,6 +50,7 @@ import {
   CACHE_KEYS as MODULE_CACHE_KEYS,
   type AdminOrdersPagePayload,
 } from "../utils/module-cache";
+import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
@@ -596,6 +597,23 @@ export function Orders({
 
   useEffect(() => {
     void loadOrders(false);
+  }, [loadOrders]);
+
+  /** Refetch when storefront/admin creates or mutates orders (same tab + other tabs via storage). */
+  useEffect(() => {
+    const bump = () => {
+      void loadOrders(true);
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== adminOrdersUpdatedStorageKey()) return;
+      void loadOrders(true);
+    };
+    window.addEventListener("adminOrdersUpdated", bump);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("adminOrdersUpdated", bump);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [loadOrders]);
 
   const uniqueVendors =

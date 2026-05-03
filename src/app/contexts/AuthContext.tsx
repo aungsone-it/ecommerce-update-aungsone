@@ -80,6 +80,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 /** Throttle background profile refresh to avoid a burst of API calls when alt-tabbing (each was 2+ fetches). */
 const PROFILE_BG_REFRESH_MIN_MS = 5 * 60 * 1000;
 
+/** Profile fetch: long enough for cold edge + local dev; background refresh stays shorter. */
+const PROFILE_FETCH_TIMEOUT_MS = (background: boolean) => (background ? 12_000 : 25_000);
+const PROFILE_INITIAL_ATTEMPTS = 3;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientProfileFetchError(err: unknown, responseStatus?: number): boolean {
+  if (responseStatus != null && responseStatus >= 500) return true;
+  if (!err || typeof err !== "object") return false;
+  const e = err as { name?: string; message?: string };
+  if (e.name === "AbortError") return true;
+  const m = String(e.message || "");
+  return m === "Failed to fetch" || m.includes("NetworkError");
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,128 +139,133 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkSession = async () => {
     try {
-      console.log('🔍 Checking for existing session...');
-      
-      // Add aggressive timeout to prevent infinite loading - 5 seconds max
-      const sessionPromise = supabase.auth.getSession();
-      
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Session check timeout')), 5000)
-      );
-      
-      const result = await Promise.race([
-        sessionPromise,
-        timeoutPromise
-      ]) as any;
-      
-      const session = result.data?.session;
-      
-      if (session?.user) {
-        console.log('✅ Found existing session for:', session.user.email);
-        console.log('🔍 User ID:', session.user.id);
-        
-        // 🔥 REMOVED: Don't clear sessions based on user ID format
-        // Supabase generates legitimate UUIDs - we should trust them
-        
-        // Load profile but don't let it block the app from loading
-        loadUserProfile(session.user.id).catch(err => {
-          console.error('❌ Failed to load profile, continuing anyway:', err);
-          setLoading(false);
-        });
-      } else {
-        console.log('ℹ️ No existing session found');
-        setLoading(false);
+      console.log("🔍 Checking for existing session...");
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error("❌ getSession error:", error.message);
+        return;
       }
+      const session = data.session;
+      if (session?.user) {
+        console.log("✅ Found existing session for:", session.user.email);
+        await loadUserProfile(session.user.id, false);
+        return;
+      }
+      console.log("ℹ️ No existing session found");
     } catch (error) {
-      console.error('❌ Session check error:', error);
-      // ALWAYS set loading to false, even if there's an error
+      console.error("❌ Session check error:", error);
+    } finally {
       setLoading(false);
     }
   };
 
-  const loadUserProfile = async (userId: string, isBackgroundRefresh: boolean = false) => {
+  const loadUserProfile = async (
+    userId: string,
+    isBackgroundRefresh: boolean = false
+  ): Promise<AuthUser | null> => {
     try {
-      // Get user profile from KV store with aggressive timeout - 5 seconds max
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      
-      const url = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/profile/${userId}`;
-      console.log('📡 Fetching profile from:', url);
-      
-      const response = await fetch(
-        url,
-        {
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-      
-      clearTimeout(timeoutId);
+      const maxAttempts = isBackgroundRefresh ? 1 : PROFILE_INITIAL_ATTEMPTS;
+      let lastNonOkStatus: number | undefined;
 
-      if (response.ok) {
-        const data = await response.json();
-        const profile =
-          data && typeof data === "object" && data.user != null && typeof data.user === "object"
-            ? data.user
-            : data;
-        console.log('✅ Profile loaded successfully');
-        setUser(profile);
-        
-        // 🔥 AUTO-CLEANUP: Run database cleanup silently in the background (super admin only)
-        if (
-          (profile.role === 'super-admin' || profile.role === 'store-owner') &&
-          !isBackgroundRefresh
-        ) {
-          setTimeout(() => {
-            autoCleanupCorruptedData();
-          }, 2000); // Wait 2 seconds after login to let server warm up
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (attempt > 0) {
+          await sleep(700 * attempt);
+          console.log(`📡 Profile fetch retry ${attempt + 1}/${maxAttempts}…`);
         }
-      } else if (response.status === 404) {
-        // Profile not found - this is expected if setup hasn't been completed
-        console.warn('⚠️ User profile not found. Setup may be required.');
-        console.warn('   User ID:', userId);
-        
-        // 🔥 FIX: Only clear user on initial load, not on background refresh
-        if (!isBackgroundRefresh) {
-          setUser(null);
-        }
-      } else {
-        const errorText = await response.text();
-        console.warn('⚠️ Failed to load profile:', response.status, errorText);
-        
-        // 🔥 FIX: Only clear user on initial load, not on background refresh
-        if (isBackgroundRefresh) {
-          console.warn('⚠️ Background refresh failed, keeping existing user session');
-          // Don't clear user - this is just a background refresh failure
-        } else {
-          // 🔥 FIX: Don't sign out on profile load failure
-          // The Supabase session is valid - we just couldn't load the profile from KV store
-          // This can happen if the Edge Function is still warming up
-          // Keep the session and try again later
-          console.warn('⚠️ Keeping session active despite profile load failure');
-          console.warn('⚠️ You may need to create a user profile in the database');
-          setUser(null); // Clear user but don't sign out
+
+        const controller = new AbortController();
+        const timeoutMs = PROFILE_FETCH_TIMEOUT_MS(isBackgroundRefresh);
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        const url = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/profile/${userId}`;
+        console.log("📡 Fetching profile from:", url);
+
+        try {
+          const response = await fetch(url, {
+            headers: {
+              Authorization: `Bearer ${publicAnonKey}`,
+            },
+            signal: controller.signal,
+          });
+
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            const data = await response.json();
+            const profile =
+              data && typeof data === "object" && data.user != null && typeof data.user === "object"
+                ? data.user
+                : data;
+            console.log("✅ Profile loaded successfully");
+            setUser(profile as AuthUser);
+
+            if (
+              (profile.role === "super-admin" || profile.role === "store-owner") &&
+              !isBackgroundRefresh
+            ) {
+              setTimeout(() => {
+                autoCleanupCorruptedData();
+              }, 2000);
+            }
+            return profile as AuthUser;
+          }
+
+          if (response.status === 404) {
+            console.warn("⚠️ User profile not found. Setup may be required.");
+            console.warn("   User ID:", userId);
+            if (!isBackgroundRefresh) {
+              setUser(null);
+            }
+            return null;
+          }
+
+          lastNonOkStatus = response.status;
+          const errorText = await response.text();
+          console.warn("⚠️ Failed to load profile:", response.status, errorText);
+
+          const transientHttp = response.status >= 500;
+          if (
+            !isBackgroundRefresh &&
+            transientHttp &&
+            attempt < maxAttempts - 1
+          ) {
+            continue;
+          }
+
+          if (isBackgroundRefresh) {
+            console.warn("⚠️ Background refresh failed, keeping existing user session");
+          } else {
+            console.warn("⚠️ Profile load failed after attempts; signing out app user state");
+            setUser(null);
+          }
+          return null;
+        } catch (error: unknown) {
+          clearTimeout(timeoutId);
+          const err = error as { name?: string; message?: string };
+          if (err?.name === "AbortError") {
+            console.warn("⚠️ Profile request timed out or was aborted");
+          } else if (err?.message === "Failed to fetch") {
+            console.warn("⚠️ Could not connect to server while loading profile");
+          } else {
+            console.error("❌ Load profile error:", error);
+          }
+
+          const transient = isTransientProfileFetchError(error, lastNonOkStatus);
+          if (!isBackgroundRefresh && transient && attempt < maxAttempts - 1) {
+            continue;
+          }
+
+          if (!isBackgroundRefresh) {
+            setUser(null);
+          }
+          return null;
         }
       }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.warn('⚠️ Server is taking longer than expected to respond, continuing without profile');
-      } else if (error.message === 'Failed to fetch') {
-        console.warn('⚠️ Could not connect to server, continuing with cached session');
-        console.warn('   The server may still be starting up. Try refreshing in a moment.');
-      } else {
-        console.error('❌ Load profile error:', error);
-      }
-      
-      // 🔥 FIX: Only clear user on initial load, not on background refresh
-      if (!isBackgroundRefresh) {
-        setUser(null);
-      }
+      return null;
     } finally {
-      // ALWAYS set loading to false, no matter what
-      setLoading(false);
+      if (!isBackgroundRefresh) {
+        setLoading(false);
+      }
     }
   };
 
@@ -309,14 +331,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (data.user) {
         console.log('✅ Login successful for:', data.user.email);
-        await loadUserProfile(data.user.id);
-        
-        // Check if temp password
-        const profile = user;
+        const profile = await loadUserProfile(data.user.id);
         if (profile?.tempPassword) {
           return { success: true, needsPasswordChange: true };
         }
-        
         return { success: true };
       }
 
