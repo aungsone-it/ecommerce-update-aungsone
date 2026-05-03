@@ -3,15 +3,14 @@
 // Supabase Edge Functions verify JWT by default, which means KBZ's webhook POSTs
 // (which carry no Supabase JWT) get rejected with 401 BEFORE our handler runs.
 // This dedicated function is deployed with `--no-verify-jwt` so KBZ can actually
-// reach us. The function then:
-//   1. Logs the raw incoming request to the KV store under `kpay_webhook_log:*`
-//      so we can confirm KBZ is delivering callbacks even if signature validation
-//      fails.
-//   2. Verifies KBZ's SHA256 signature against KPAY_SIGN_KEY (same algo as the
-//      precreate signing). If invalid, returns 401 (but the raw entry is still
-//      logged for diagnostics).
-//   3. Updates the `kpay_txn:{merchantOrderId}` record so the storefront sees the
-//      payment as confirmed via webhook (no more pending status).
+// reach us. The handler:
+//   1. Logs every POST under `kpay_webhook_log:*` (diagnostics).
+//   2. Verifies KBZ's SHA256 sign (same rules as PGW: sort k=v, exclude sign/sign_type,
+//      flatten optional nested `biz_content` like other KBZ APIs).
+//   3. Upserts `kpay_txn:{merchantOrderId}` so Realtime can flip checkout UI.
+//
+// KBZ callback doc: the merchant must respond with the plain text `success` (any case),
+// not JSON — otherwise KBZ treats the delivery as failed and may not stop retrying.
 
 import * as kv from "../make-server-16010b6f/kv_store.tsx";
 
@@ -19,7 +18,9 @@ type AnyRecord = Record<string, unknown>;
 type PaymentStatus = "pending" | "paid" | "failed";
 
 function text(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value.trim();
+  return String(value).trim();
 }
 
 function nowIso(): string {
@@ -30,11 +31,37 @@ function asRecord(value: unknown): AnyRecord {
   return value && typeof value === "object" ? (value as AnyRecord) : {};
 }
 
+/** KBZ sometimes sends `biz_content` as a JSON string in notify callbacks. */
+function parseKbBizContent(raw: unknown): AnyRecord {
+  if (raw && typeof raw === "object") return raw as AnyRecord;
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return parsed && typeof parsed === "object" ? (parsed as AnyRecord) : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 async function sha256Upper(source: string): Promise<string> {
   const enc = new TextEncoder();
   const sig = await crypto.subtle.digest("SHA-256", enc.encode(source));
   const bytes = new Uint8Array(sig);
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+
+/** Flatten optional `biz_content` object into the same map used for stringA (KBZ notify can mirror precreate nesting). */
+function notifyBodyForSigning(body: AnyRecord): AnyRecord {
+  const biz = parseKbBizContent(body.biz_content);
+  if (Object.keys(biz).length === 0) return { ...body };
+  const next: AnyRecord = { ...body };
+  delete next.biz_content;
+  for (const [k, v] of Object.entries(biz)) {
+    next[k] = v;
+  }
+  return next;
 }
 
 function buildSignSource(payload: AnyRecord): string {
@@ -43,11 +70,12 @@ function buildSignSource(payload: AnyRecord): string {
     .filter((k) => {
       const v = payload[k];
       if (v === undefined || v === null) return false;
+      if (typeof v === "object") return false;
       if (typeof v === "string" && !v.trim()) return false;
       return true;
     })
     .sort();
-  return keys.map((k) => `${k}=${String(payload[k])}`).join("&");
+  return keys.map((k) => `${k}=${String(payload[k]).trim()}`).join("&");
 }
 
 function mapProviderStatus(rawStatus: unknown): PaymentStatus {
@@ -78,9 +106,9 @@ function mapProviderStatus(rawStatus: unknown): PaymentStatus {
 }
 
 function providerStatusFrom(payload: AnyRecord): string {
+  const trade = text(payload.trade_status || payload.tradeStatus);
+  if (trade) return trade;
   const candidates = [
-    payload.tradeStatus,
-    payload.trade_status,
     payload.orderStatus,
     payload.order_status,
     payload.payStatus,
@@ -97,6 +125,37 @@ function providerStatusFrom(payload: AnyRecord): string {
   return text(payload.status) || text(payload.code) || "";
 }
 
+function parseNotifyInput(rawText: string, contentType: string): AnyRecord {
+  const ct = (contentType || "").toLowerCase();
+  if (ct.includes("application/x-www-form-urlencoded") && rawText) {
+    const params = new URLSearchParams(rawText);
+    const o: AnyRecord = {};
+    params.forEach((v, k) => {
+      o[k] = v;
+    });
+    return unwrapRequestWrapper(o);
+  }
+  try {
+    return rawText ? (JSON.parse(rawText) as AnyRecord) : {};
+  } catch {
+    return {};
+  }
+}
+
+function unwrapRequestWrapper(raw: AnyRecord): AnyRecord {
+  const wrapped = asRecord(raw.Request);
+  if (Object.keys(wrapped).length > 0) return wrapped;
+  return raw;
+}
+
+/** Plain-text ack KBZ expects for a successfully processed callback. */
+function kpayAckSuccess(): Response {
+  return new Response("success", {
+    status: 200,
+    headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
@@ -105,28 +164,19 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  let rawBody: AnyRecord = {};
-  let rawText = "";
-  try {
-    rawText = await req.text();
-    rawBody = rawText ? JSON.parse(rawText) : {};
-  } catch {
-    rawBody = {};
-  }
-
-  const wrapped = asRecord((rawBody as AnyRecord).Request);
-  const body = Object.keys(wrapped).length > 0 ? wrapped : rawBody;
-  const bizContent = asRecord(body.biz_content);
+  const rawText = await req.text();
+  const rawBody = parseNotifyInput(rawText, req.headers.get("content-type") || "");
+  const body = unwrapRequestWrapper(rawBody);
+  const bizContent = parseKbBizContent(body.biz_content);
   const merchantOrderId = text(
-    (body as AnyRecord).merchantOrderId ||
-      (body as AnyRecord).merch_order_id ||
-      (body as AnyRecord).outTradeNo ||
+    body.merchantOrderId ||
+      body.merch_order_id ||
+      body.outTradeNo ||
       bizContent.merch_order_id ||
       bizContent.merchOrderId ||
       bizContent.outTradeNo,
   );
 
-  // Always log first — proves KBZ is actually delivering callbacks.
   const debugKey = `kpay_webhook_log:${nowIso()}:${merchantOrderId || "unknown"}`;
   try {
     await kv.set(debugKey, {
@@ -134,14 +184,13 @@ Deno.serve(async (req: Request) => {
       method: req.method,
       url: req.url,
       headers: Object.fromEntries(req.headers.entries()),
-      rawText,
-      rawBody,
+      rawText: rawText.slice(0, 20000),
       merchantOrderId,
     });
   } catch (logErr) {
     console.warn("kpay_webhook_log write failed", logErr);
   }
-  console.log("KPay webhook received", { merchantOrderId, headers: Object.fromEntries(req.headers.entries()) });
+  console.log("KPay webhook received", { merchantOrderId });
 
   if (!merchantOrderId) {
     return new Response(JSON.stringify({ error: "merchantOrderId missing" }), {
@@ -163,23 +212,50 @@ Deno.serve(async (req: Request) => {
       req.headers.get("x-signature") ||
       (rawBody as AnyRecord).sign ||
       (rawBody as AnyRecord).signature ||
-      (body as AnyRecord).sign ||
-      (body as AnyRecord).signature,
+      body.sign ||
+      body.signature,
   ).toUpperCase();
 
-  const source = buildSignSource(body);
+  const forSign = notifyBodyForSigning(body);
+  const source = buildSignSource(forSign);
   const expectedSign = await sha256Upper(`${source}&key=${signKey}`);
-  const sigOk = providedSign && providedSign === expectedSign;
-  if (!sigOk) {
-    console.warn("KPay webhook signature mismatch", { merchantOrderId, providedSign, expectedSign });
-    // Still log to KV (already done above). Return 401 so KBZ knows we rejected it.
+  const sigOk = Boolean(providedSign) && providedSign === expectedSign;
+
+  const insecureTrust = text(Deno.env.get("KPAY_WEBHOOK_UAT_TRUST_NOTIFY")) === "1";
+  const tradeForTrust = text(
+    forSign.trade_status || forSign.tradeStatus || body.trade_status || body.tradeStatus,
+  ).toUpperCase();
+  const allowInsecurePaid = insecureTrust && tradeForTrust === "PAY_SUCCESS";
+
+  if (!sigOk && !allowInsecurePaid) {
+    console.warn("KPay webhook signature mismatch", {
+      merchantOrderId,
+      providedSign: providedSign || "(empty)",
+      expectedSign,
+      signSourceSample: source.slice(0, 220),
+    });
+    try {
+      await kv.set(`${debugKey}:sig_debug`, {
+        expectedSign,
+        providedSign: providedSign || null,
+        stringA: source,
+      });
+    } catch {
+      // ignore
+    }
     return new Response(JSON.stringify({ error: "Invalid signature" }), {
       status: 401,
       headers: { "content-type": "application/json" },
     });
   }
 
-  const providerStatus = providerStatusFrom(body);
+  if (!sigOk && allowInsecurePaid) {
+    console.warn("KPay webhook accepting PAY_SUCCESS without signature (KPAY_WEBHOOK_UAT_TRUST_NOTIFY=1)", {
+      merchantOrderId,
+    });
+  }
+
+  const providerStatus = providerStatusFrom(forSign);
   const nextStatus = mapProviderStatus(providerStatus);
   const existing = (await kv.get(`kpay_txn:${merchantOrderId}`)) as AnyRecord | null;
   const updatedAt = nowIso();
@@ -194,10 +270,8 @@ Deno.serve(async (req: Request) => {
     rawWebhook: body,
     createdAt: text(existing?.createdAt) || updatedAt,
     updatedAt,
+    webhookSigOk: sigOk,
   });
 
-  return new Response(JSON.stringify({ success: true }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+  return kpayAckSuccess();
 });
