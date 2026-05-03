@@ -25,9 +25,10 @@ export function resolveVendorSubdomainStoreSlug(): string | null {
   return getStoreSlugFromSubdomainLabel(label);
 }
 
-/** `/admin` or `/admin/...` (avoids matching `/administrator`). */
+/** `/admin` or `/admin/...` (avoids matching `/administrator`). Case- and trailing-slash tolerant. */
 export function pathnameUnderAdmin(pathname: string): boolean {
-  return pathname === "/admin" || pathname.startsWith("/admin/");
+  const p = (pathname.replace(/\/+$/, "") || "/").toLowerCase();
+  return p === "/admin" || p.startsWith("/admin/");
 }
 
 /** Super-admin `/admin`, vendor-host `/admin`, and marketplace `/store|vendor/:slug/admin` panels — hide storefront-only UI (e.g. FloatingChat). */
@@ -47,26 +48,46 @@ export type ParsedVendorSubdomainAdminPath = {
   productId?: string;
 };
 
+const VENDOR_ADMIN_TOP_SEGMENTS = new Set([
+  "dashboard",
+  "products",
+  "categories",
+  "orders",
+  "settings",
+  "finances",
+  "users",
+  "marketing",
+]);
+
 /**
- * Parse `/admin`, `/admin/orders`, `/admin/products/:id/view` on a vendor subdomain into route params.
- * Returns null for paths that are not valid vendor-admin URLs (e.g. `/admin/foo/bar`).
+ * Parse `/admin`, `/admin/orders`, `/admin/products/:id/view`, and deeper paths like
+ * `/admin/orders/:orderId` on a vendor host (`/admin/*` after VendorProtectedLayout).
+ * Returns null only for paths that are clearly not vendor admin (e.g. `/admin/foo/bar` with unknown root).
  */
 export function parseVendorSubdomainAdminPath(
   pathname: string,
   storeSlug: string
 ): ParsedVendorSubdomainAdminPath | null {
   if (!pathnameUnderAdmin(pathname)) return null;
-  const subPath = pathname.replace(/^\/admin\/?/, "").replace(/\/+$/, "");
-  const normalized = subPath.replace(/^\/+|\/+$/g, "");
-  const viewMatch = normalized.match(/^products\/([^/]+)\/view$/);
+  const pathTrim = pathname.replace(/\/+$/, "") || "/";
+  const m = pathTrim.match(/^\/admin(?:\/(.*))?$/i);
+  const rawTail = (m?.[1] ?? "").replace(/\/+$/, "");
+  const normalized = rawTail.replace(/^\/+|\/+$/g, "");
+  const viewMatch = normalized.match(/^products\/([^/]+)\/view$/i);
   if (viewMatch) {
     return { storeName: storeSlug, productId: viewMatch[1] };
   }
   if (!normalized) {
     return { storeName: storeSlug };
   }
-  if (/^[^/]+$/.test(normalized)) {
-    return { storeName: storeSlug, section: normalized };
+  const segments = normalized.split("/").filter(Boolean);
+  if (segments.length === 1) {
+    return { storeName: storeSlug, section: segments[0] };
+  }
+  const first = segments[0] ?? "";
+  const firstLower = first.toLowerCase();
+  if (VENDOR_ADMIN_TOP_SEGMENTS.has(firstLower)) {
+    return { storeName: storeSlug, section: firstLower };
   }
   return null;
 }
