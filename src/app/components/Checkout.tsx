@@ -890,13 +890,13 @@ export function Checkout({
               </span>
             </div>
 
-            {/* Order Number Header */}
-            <div className="flex items-center justify-between bg-blue-600 px-6 py-5">
+            {/* Order number — neutral panel, typography-led */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/90 px-6 py-5">
               <div>
-                <p className="text-xs text-blue-200 uppercase tracking-wider mb-1">Order Number</p>
-                <p className="text-2xl font-bold text-white">{orderNumber}</p>
+                <p className="mb-1 text-xs font-medium uppercase tracking-widest text-slate-500">Order number</p>
+                <p className="font-mono text-2xl font-semibold tracking-tight text-slate-900">{orderNumber}</p>
               </div>
-              <ShoppingBag className="w-8 h-8 text-white opacity-80" strokeWidth={1.5} />
+              <ShoppingBag className="h-8 w-8 text-slate-300" strokeWidth={1.5} aria-hidden />
             </div>
 
             {/* ORDER ITEMS */}
@@ -949,9 +949,11 @@ export function Checkout({
                   <span className="font-bold text-emerald-600">FREE</span>
                 </div>
                 
-                <div className="pt-2 border-t border-slate-200 flex justify-between">
+                <div className="flex justify-between border-t border-slate-200 pt-2">
                   <span className="text-base font-semibold text-slate-900">Total</span>
-                  <span className="text-xl font-bold text-blue-600">{confirmedTotal.toFixed(0)} MMK</span>
+                  <span className="text-xl font-semibold tabular-nums tracking-tight text-slate-900">
+                    {confirmedTotal.toFixed(0)} MMK
+                  </span>
                 </div>
               </div>
             </div>
@@ -979,11 +981,11 @@ export function Checkout({
             )}
             
             {/* Payment Method */}
-            <div className="px-6 py-4 border-b border-slate-200">
-              <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Payment Method</p>
+            <div className="border-b border-slate-200 px-6 py-4">
+              <p className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-500">Payment method</p>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                  <CreditCard className="w-5 h-5 text-white" strokeWidth={2} />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <CreditCard className="h-5 w-5 text-slate-600" strokeWidth={2} />
                 </div>
                 <span className="text-sm font-semibold text-slate-900">Credit / Debit Card</span>
               </div>
@@ -1001,11 +1003,11 @@ export function Checkout({
 
             {/* Shipping Information */}
             <div className="px-6 py-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                  <MapPin className="w-5 h-5 text-white" strokeWidth={2} />
+              <div className="mb-4 flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <MapPin className="h-5 w-5 text-slate-600" strokeWidth={2} />
                 </div>
-                <h3 className="text-base font-semibold text-slate-900">Shipping Information</h3>
+                <h3 className="text-base font-semibold text-slate-900">Shipping information</h3>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -1032,12 +1034,14 @@ export function Checkout({
             </div>
           </div>
 
-          <Button
-            className="mt-4 h-12 w-full rounded-xl bg-blue-600 font-semibold text-white shadow-lg hover:bg-blue-700"
-            onClick={onBack}
-          >
-            Continue Shopping
-          </Button>
+          <div className="mt-4 flex justify-center">
+            <Button
+              className="h-11 w-64 rounded-lg bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
+              onClick={onBack}
+            >
+              Continue Shopping
+            </Button>
+          </div>
 
           <p className="mt-4 text-center text-sm text-slate-600">
             Thanks for purchasing from <span className="font-semibold text-slate-900">{storeName}</span>
