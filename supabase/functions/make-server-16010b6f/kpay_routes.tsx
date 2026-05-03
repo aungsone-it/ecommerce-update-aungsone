@@ -104,6 +104,26 @@ function providerData(payload: AnyRecord): AnyRecord {
   return {};
 }
 
+/** Best-effort KBZ business error fields for human-readable client toasts. */
+function kbzBizErrorFromBody(body: AnyRecord): { code?: string; msg?: string; result?: string } {
+  if (!body || typeof body !== "object") return {};
+  const data = providerData(body);
+  const rawCode = data.code ?? data.err_code ?? data.error_code;
+  const rawMsg = data.msg ?? data.message ?? data.error_msg ?? data.err_msg ?? data.sub_msg;
+  const rawResult = data.result ?? data.return_code ?? data.returnCode;
+  const out: { code?: string; msg?: string; result?: string } = {};
+  if (rawCode !== undefined && rawCode !== null && String(rawCode).trim() !== "") {
+    out.code = String(rawCode).trim();
+  }
+  if (rawMsg !== undefined && rawMsg !== null && String(rawMsg).trim() !== "") {
+    out.msg = String(rawMsg).trim();
+  }
+  if (rawResult !== undefined && rawResult !== null && String(rawResult).trim() !== "") {
+    out.result = String(rawResult).trim();
+  }
+  return out;
+}
+
 // KBZ often returns HTTP 200 even when the gateway result is FAIL.
 // We must inspect the payload's `result`/`return_code` to decide success.
 function providerIndicatesSuccess(body: AnyRecord): boolean {
@@ -432,6 +452,7 @@ async function signedProviderRequest(
 const PUBLIC_KBZ_UAT_BASE = "https://wap.kbzpay.com/pgw/uat/api/";
 // Keep this list short to avoid blowing up polling latency if the public host is slow.
 const PUBLIC_QUERY_PATHS = ["/pgw/uat/api/queryorder", "queryorder", "orderquery"];
+const PUBLIC_PRECREATE_PATHS = ["precreate", "/pgw/uat/api/precreate", "/payment/gateway/uat/precreate"];
 
 function endpointCandidates(
   baseUrl: string,
@@ -468,6 +489,21 @@ function endpointCandidates(
   // so the public host is the fallback that can actually return live status.
   if (kind === "query" && !resolved.some((u) => u.includes("wap.kbzpay.com"))) {
     for (const path of PUBLIC_QUERY_PATHS) {
+      try {
+        const url = new URL(path, PUBLIC_KBZ_UAT_BASE).toString();
+        if (!seen.has(url)) {
+          seen.add(url);
+          resolved.push(url);
+        }
+      } catch {
+        // ignore malformed path
+      }
+    }
+  }
+  // 3) For `create`: optional public-host fallback — some relays mis-handle certain trade_type
+  // values; the docs hostname may still accept the same signed precreate.
+  if (kind === "create" && !resolved.some((u) => u.includes("wap.kbzpay.com"))) {
+    for (const path of PUBLIC_PRECREATE_PATHS) {
       try {
         const url = new URL(path, PUBLIC_KBZ_UAT_BASE).toString();
         if (!seen.has(url)) {
@@ -541,19 +577,19 @@ function createPayloadCandidates(params: {
 // Per https://wap.kbzpay.com/pgw/uat/api/#/en/docs/PWA/scenes-PWA-en the only
 // differences from QR Pay are:
 //   - trade_type = "PWAAPP" (vs "PAY_BY_QRCODE")
-//   - `title` is included in biz_content (offering name shown in KBZPay)
+//   - optional `title` in biz_content (offering name shown in KBZPay)
 // Everything else (signing rule, version "1.0", method, common params) is
 // identical to the standard precreate flow.
-function createPwaPayloadCandidates(params: {
+function buildPwaPayloadPair(params: {
   appId: string;
   merchCode: string;
   merchantOrderId: string;
   amount: string;
   currency: string;
   notifyUrl: string;
-  title: string;
+  title?: string;
   callbackInfo?: string;
-}): PayloadPair[] {
+}): PayloadPair {
   const nonce = crypto.randomUUID().replaceAll("-", "");
   const ts = String(Math.floor(Date.now() / 1000));
 
@@ -561,11 +597,13 @@ function createPwaPayloadCandidates(params: {
     appid: params.appId,
     merch_code: params.merchCode,
     merch_order_id: params.merchantOrderId,
-    title: params.title,
     total_amount: params.amount,
     trans_currency: params.currency,
     trade_type: "PWAAPP",
   };
+  if (text(params.title)) {
+    bizContent.title = params.title;
+  }
   if (text(params.callbackInfo)) {
     bizContent.callback_info = params.callbackInfo;
   }
@@ -577,12 +615,14 @@ function createPwaPayloadCandidates(params: {
     method: "kbz.payment.precreate",
     nonce_str: nonce,
     timestamp: ts,
-    title: params.title,
     total_amount: params.amount,
     trade_type: "PWAAPP",
     trans_currency: params.currency,
     version: "1.0",
   };
+  if (text(params.title)) {
+    signCollection.title = params.title;
+  }
   if (text(params.notifyUrl)) {
     signCollection.notify_url = params.notifyUrl;
   }
@@ -602,7 +642,32 @@ function createPwaPayloadCandidates(params: {
     requestBody.notify_url = params.notifyUrl;
   }
 
-  return [{ signCollection, requestBody, nonce, timestamp: ts } as PayloadPair];
+  return { signCollection, requestBody, nonce, timestamp: ts };
+}
+
+/** Try with title first (docs example), then without — some UAT accounts reject extra biz fields. */
+function createPwaPayloadCandidates(params: {
+  appId: string;
+  merchCode: string;
+  merchantOrderId: string;
+  amount: string;
+  currency: string;
+  notifyUrl: string;
+  title: string;
+  callbackInfo?: string;
+}): PayloadPair[] {
+  const withTitle = buildPwaPayloadPair({
+    ...params,
+    title: params.title,
+  });
+  const noTitle = buildPwaPayloadPair({
+    ...params,
+    title: "",
+  });
+  const a = JSON.stringify(withTitle.signCollection);
+  const b = JSON.stringify(noTitle.signCollection);
+  if (a === b) return [withTitle];
+  return [withTitle, noTitle];
 }
 
 // KBZ PGW `queryorder` uses version "3.0" per the PGW reference.
@@ -869,6 +934,14 @@ export async function startKPayPwa(c: Context) {
     const title = text(body.title) || "Order";
     const callbackInfo = text(body.callbackInfo);
 
+    if (!text(notifyUrl)) {
+      return c.json({
+        error: "kpay-notify-url-required",
+        message:
+          "KBZ precreate requires notify_url. Set the KPAY_NOTIFY_URL secret for the Edge function or pass notifyUrl in the request body.",
+      }, 400);
+    }
+
     const strictPrimaryOnly = cfg.strictProtocol ? cfg.createPathConfigured : !cfg.autoDiscover;
     const endpoints = endpointCandidates(cfg.baseUrl, cfg.createPath, "create", strictPrimaryOnly);
     const payloads = createPwaPayloadCandidates({
@@ -892,10 +965,23 @@ export async function startKPayPwa(c: Context) {
     });
     if (!provider.success) {
       const last = provider.attempts[provider.attempts.length - 1];
+      const kbz = kbzBizErrorFromBody(asRecord(last?.details || {}));
+      // If the last body was empty, scan earlier attempts for a KBZ message.
+      let mergedKbz = kbz;
+      if (!mergedKbz.code && !mergedKbz.msg) {
+        for (let i = provider.attempts.length - 1; i >= 0; i--) {
+          const row = kbzBizErrorFromBody(asRecord(provider.attempts[i]?.details || {}));
+          if (row.code || row.msg) {
+            mergedKbz = row;
+            break;
+          }
+        }
+      }
       return c.json(
         {
           error: "kpay-pwa-start-failed",
           status: last?.status || 502,
+          kbz: mergedKbz,
           details: last?.details || {},
           networkError: last?.networkError || undefined,
           endpoint: last?.endpoint || "",

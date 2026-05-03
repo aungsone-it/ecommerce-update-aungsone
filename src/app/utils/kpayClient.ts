@@ -496,7 +496,21 @@ export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaS
   );
   const data = (await response.json().catch(() => ({}))) as Record<string, any>;
   if (!response.ok || !data?.success) {
-    throw new Error(String(data?.error || data?.message || "Failed to start KPay PWA"));
+    const kbz = data?.kbz as { code?: string; msg?: string; result?: string } | undefined;
+    const kbzLine =
+      kbz?.msg && kbz?.code
+        ? `${kbz.code}: ${kbz.msg}`
+        : (kbz?.msg || kbz?.code || (kbz?.result && kbz.result !== "SUCCESS" ? kbz.result : ""));
+    const networkErr = typeof data?.networkError === "string" ? data.networkError : "";
+    const hint = typeof data?.message === "string" ? data.message : "";
+    const errTag = typeof data?.error === "string" ? data.error : "";
+    const core =
+      kbzLine ||
+      hint ||
+      networkErr ||
+      errTag ||
+      "Failed to start KPay PWA";
+    throw new Error(core);
   }
   return {
     merchantOrderId: String(data.merchantOrderId || merchantOrderId),
