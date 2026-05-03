@@ -573,6 +573,15 @@ function resolvePwaTradeTypes(): string[] {
   return ["PWAAPP"];
 }
 
+function applyIsvBizFields(target: AnyRecord, cfg: ReturnType<typeof kpayConfig>) {
+  const subMc = text(cfg.subMerchCode);
+  const subAid = text(cfg.subAppid);
+  if (!subMc || !subAid) return;
+  target.sub_merch_code = subMc;
+  target.sub_appid = subAid;
+  target.trans_type = text(cfg.isvTransType) || "OnlinePaymentISV";
+}
+
 // KBZ PGW `precreate` for the PWA (Progressive Web App) payment scenario.
 // Per https://wap.kbzpay.com/pgw/uat/api/#/en/docs/PWA/scenes-PWA-en :
 //   - trade_type is normally `PWAAPP` (override / retry list via KPAY_PWA_TRADE_TYPES).
