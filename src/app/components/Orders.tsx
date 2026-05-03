@@ -35,6 +35,7 @@ import { format } from "date-fns";
 import { PrintInvoice } from "./PrintInvoice";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ordersApi } from "../../utils/api";
+import { ApiError } from "../../utils/api-client";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -754,7 +755,16 @@ export function Orders({
       // Roll back on error
       console.error("❌ Failed to bulk update orders:", error);
       setOrders(previousOrders);
-      toast.error("Failed to save changes. Updates reverted.");
+      const detail =
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Unknown error";
+      toast.error("Failed to save changes. Updates reverted.", {
+        description: detail,
+        duration: 8000,
+      });
       onOrderUpdate?.();
     }
   };
@@ -793,15 +803,19 @@ export function Orders({
       };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
       if (orderBeingUpdated) {
-        await refreshAdminInventoryAfterOrderStatusPut(
-          {
-            status: orderBeingUpdated.status,
-            inventoryDeducted: orderBeingUpdated.inventoryDeducted,
-            vendor: orderBeingUpdated.vendor,
-            products: orderBeingUpdated.products,
-          },
-          newStatus
-        );
+        try {
+          await refreshAdminInventoryAfterOrderStatusPut(
+            {
+              status: orderBeingUpdated.status,
+              inventoryDeducted: orderBeingUpdated.inventoryDeducted,
+              vendor: orderBeingUpdated.vendor,
+              products: orderBeingUpdated.products,
+            },
+            newStatus
+          );
+        } catch (invErr) {
+          console.warn("[inventory] post-status cache sync failed:", invErr);
+        }
       }
       if (result?.order?.inventoryDeducted !== undefined) {
         setOrders((prev) =>
@@ -815,7 +829,16 @@ export function Orders({
       // Roll back on error
       console.error("❌ Failed to update order status:", error);
       setOrders(previousOrders);
-      toast.error("Failed to save status. Changes reverted.");
+      const detail =
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Unknown error";
+      toast.error("Failed to save status. Changes reverted.", {
+        description: detail,
+        duration: 8000,
+      });
       onOrderUpdate?.();
     }
   };

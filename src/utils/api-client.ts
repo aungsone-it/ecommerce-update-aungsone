@@ -205,11 +205,18 @@ async function apiRequest<T = any>(
         return data as T;
       }
 
-      throw new ApiError(
-        data.error || `Server error: ${response.status}`,
-        response.status,
-        data.details
-      );
+      const d = data as { error?: string; message?: string; details?: string };
+      const primary = d.error || `Server error: ${response.status}`;
+      const extra =
+        typeof d.message === "string" && d.message.trim()
+          ? d.message.trim()
+          : "";
+      const message =
+        extra && extra !== primary && !extra.startsWith(primary)
+          ? `${primary}: ${extra}`
+          : extra || primary;
+
+      throw new ApiError(message, response.status, d.details);
     }
 
     if (!silent) {

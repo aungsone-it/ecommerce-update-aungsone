@@ -4081,6 +4081,7 @@ app.get("/make-server-16010b6f/orders", async (c) => {
             notes: order.notes,
             deliveryService: order.deliveryService,
             deliveryServiceLogo: order.deliveryServiceLogo,
+            inventoryDeducted: order.inventoryDeducted === true,
             date: order.date || order.createdAt || new Date().toISOString(),
             createdAt: order.createdAt || new Date().toISOString(),
             updatedAt: order.updatedAt || new Date().toISOString(),
@@ -4130,13 +4131,12 @@ app.get("/make-server-16010b6f/orders", async (c) => {
 app.get("/make-server-16010b6f/orders/:id", async (c) => {
   try {
     const id = c.req.param("id");
-    const order = await withTimeout(kv.get(`order:${id}`), 5000);
-    
-    if (!order) {
+    const resolved = await resolveOrderStorage(id);
+    if (!resolved) {
       return c.json({ error: "Order not found" }, 404);
     }
-    
-    return c.json({ order: { id, ...order } });
+    const { record, orderKvId } = resolved;
+    return c.json({ order: { ...record, id: orderKvId } });
   } catch (error) {
     console.error("❌ Error fetching order:", error);
     return c.json({ error: "Failed to fetch order" }, 500);
@@ -4234,6 +4234,41 @@ app.get("/make-server-16010b6f/user/:userId/orders", async (c) => {
 function normalizeOrderStatus(s: string | undefined): string {
   if (s == null || s === "") return "";
   return String(s).trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+/** Resolve KV row for GET/PUT/DELETE when :id is the canonical key, document id, or orderNumber. */
+async function resolveOrderStorage(orderIdParam: string): Promise<{
+  record: any;
+  storageKey: string;
+  orderKvId: string;
+} | null> {
+  const trimmed = String(orderIdParam || "").trim();
+  if (!trimmed) return null;
+
+  const direct = await withTimeout(kv.get(`order:${trimmed}`), 5000);
+  if (direct && typeof direct === "object") {
+    return { record: direct, storageKey: `order:${trimmed}`, orderKvId: trimmed };
+  }
+
+  try {
+    const rows = await withTimeout(kv.getByPrefixWithKeys("order:"), 8000);
+    const match = rows.find(
+      ({ value: o }) =>
+        o &&
+        typeof o === "object" &&
+        (String(o.id || "").trim() === trimmed ||
+          String(o.orderNumber || "").trim() === trimmed),
+    );
+    if (!match) return null;
+    const storageKey = match.key;
+    const orderKvId = storageKey.startsWith("order:")
+      ? storageKey.slice("order:".length)
+      : storageKey;
+    return { record: match.value, storageKey, orderKvId };
+  } catch (e) {
+    console.error("resolveOrderStorage: scan failed", e);
+    return null;
+  }
 }
 
 function isInventoryCommitStatus(status: string | undefined): boolean {
@@ -4605,11 +4640,12 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
   try {
     const id = c.req.param("id");
     const body = await c.req.json();
-    
-    const existingOrder = await withTimeout(kv.get(`order:${id}`), 5000);
-    if (!existingOrder) {
+
+    const resolved = await resolveOrderStorage(id);
+    if (!resolved) {
       return c.json({ error: "Order not found" }, 404);
     }
+    const { record: existingOrder, storageKey, orderKvId } = resolved;
     
     const prevNorm = normalizeOrderStatus(existingOrder.status);
     const newStatusRaw = body.status !== undefined ? body.status : existingOrder.status;
@@ -4685,12 +4721,12 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     const updatedOrder = {
       ...existingOrder,
       ...body,
-      id,
+      id: orderKvId,
       updatedAt: new Date().toISOString(),
       inventoryDeducted: nextInventoryFlag,
     };
     
-    await withTimeout(kv.set(`order:${id}`, updatedOrder), 5000);
+    await withTimeout(kv.set(storageKey, updatedOrder), 5000);
     
     // Clear cache when order is updated
     serverCache.delete('orders_minimal');
@@ -4710,11 +4746,12 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
 app.delete("/make-server-16010b6f/orders/:id", async (c) => {
   try {
     const id = c.req.param("id");
-    
-    const existingOrder = await withTimeout(kv.get(`order:${id}`), 5000);
-    if (!existingOrder) {
+
+    const resolved = await resolveOrderStorage(id);
+    if (!resolved) {
       return c.json({ error: "Order not found" }, 404);
     }
+    const { record: existingOrder, storageKey } = resolved;
     
     // Restore stock when deleting only if inventory had been reduced (legacy, admin-committed, or checkout-time)
     if (
@@ -4728,7 +4765,7 @@ app.delete("/make-server-16010b6f/orders/:id", async (c) => {
       console.log(`✅ Stock restoration complete for deleted order ${existingOrder.orderNumber}`);
     }
     
-    await withTimeout(kv.del(`order:${id}`), 5000);
+    await withTimeout(kv.del(storageKey), 5000);
     
     // Clear cache when order is deleted
     serverCache.delete('orders_minimal');
