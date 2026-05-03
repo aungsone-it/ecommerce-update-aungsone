@@ -286,6 +286,12 @@ export const apiClient = {
   delete: <T = any>(endpoint: string, options?: ApiRequestOptions) =>
     apiRequest<T>(endpoint, { ...options, method: 'DELETE' }),
 
+  putWithRetry: <T = any>(endpoint: string, data?: any, options?: ApiRequestOptions) =>
+    retryWithBackoff(() => apiClient.put<T>(endpoint, data, options)),
+
+  deleteWithRetry: <T = any>(endpoint: string, options?: ApiRequestOptions) =>
+    retryWithBackoff(() => apiClient.delete<T>(endpoint, options)),
+
   // With retry
   getWithRetry: <T = any>(endpoint: string, options?: ApiRequestOptions) =>
     retryWithBackoff(() => apiClient.get<T>(endpoint, options)),

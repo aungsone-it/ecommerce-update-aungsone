@@ -213,12 +213,25 @@ app.use("*", async (c, next) => {
       c.req.url.includes('/bulk-assign-vendor')) {
     return await next();
   }
+
+  let pathname = "";
+  try {
+    pathname = new URL(c.req.url).pathname;
+  } catch {
+    pathname = c.req.url;
+  }
+  const method = c.req.method;
+  /** Order writes can run KV scans + stock updates; parallel admin navigation often stacks requests — allow longer than default. */
+  const isOrderMutation =
+    pathname.includes("make-server-16010b6f/orders") &&
+    ["PUT", "POST", "DELETE", "PATCH"].includes(method);
+  const budgetMs = isOrderMutation ? 65000 : 25000;
   
   let timeoutId: number | undefined;
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error("Request timeout"));
-    }, 25000); // Reduced to 25s
+    }, budgetMs);
   });
   
   try {

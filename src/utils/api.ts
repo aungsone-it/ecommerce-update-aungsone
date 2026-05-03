@@ -150,21 +150,21 @@ export const ordersApi = {
     id: string,
     orderData: Partial<Order>
   ): Promise<ApiResponse<Order>> => {
-    return apiClient.put<ApiResponse<Order>>(`/orders/${id}`, orderData);
+    return apiClient.putWithRetry<ApiResponse<Order>>(`/orders/${id}`, orderData);
   },
 
   /**
    * Delete a single order
    */
   delete: async (id: string): Promise<ApiResponse<void>> => {
-    return apiClient.delete<ApiResponse<void>>(`/orders/${id}`);
+    return apiClient.deleteWithRetry<ApiResponse<void>>(`/orders/${id}`);
   },
 
   /**
    * Delete ALL orders (for testing/cleanup)
    */
   deleteAll: async (): Promise<ApiResponse<{ deletedCount: number }>> => {
-    return apiClient.delete<ApiResponse<{ deletedCount: number }>>('/orders');
+    return apiClient.deleteWithRetry<ApiResponse<{ deletedCount: number }>>('/orders');
   },
 };
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { DateRange } from "react-day-picker";
 import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "./ui/button";
@@ -465,6 +465,14 @@ export function Orders({
   listSearchApplyToken?: number;
 }) {
   const { t } = useLanguage();
+  /** False after unmount when the admin switches to another section — PUT may still be in flight. */
+  const ordersSurfaceActiveRef = useRef(true);
+  useEffect(() => {
+    ordersSurfaceActiveRef.current = true;
+    return () => {
+      ordersSurfaceActiveRef.current = false;
+    };
+  }, []);
   const [selectedTab, setSelectedTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -763,17 +771,24 @@ export function Orders({
     } catch (error) {
       // Roll back on error
       console.error("❌ Failed to bulk update orders:", error);
-      setOrders(previousOrders);
       const detail =
         error instanceof ApiError
           ? error.message
           : error instanceof Error
             ? error.message
             : "Unknown error";
-      toast.error("Failed to save changes. Updates reverted.", {
-        description: detail,
-        duration: 8000,
-      });
+      if (ordersSurfaceActiveRef.current) {
+        setOrders(previousOrders);
+        toast.error("Failed to save changes. Updates reverted.", {
+          description: detail,
+          duration: 8000,
+        });
+      } else {
+        toast.error("Bulk order save may have partially failed", {
+          description: `${detail}. Open Orders and refresh to confirm.`,
+          duration: 10000,
+        });
+      }
       onOrderUpdate?.();
     }
   };
@@ -826,7 +841,7 @@ export function Orders({
           console.warn("[inventory] post-status cache sync failed:", invErr);
         }
       }
-      if (result?.order?.inventoryDeducted !== undefined) {
+      if (result?.order?.inventoryDeducted !== undefined && ordersSurfaceActiveRef.current) {
         setOrders((prev) =>
           prev.map((o) =>
             o.id === orderId ? { ...o, inventoryDeducted: result.order!.inventoryDeducted } : o
@@ -837,17 +852,28 @@ export function Orders({
     } catch (error) {
       // Roll back on error
       console.error("❌ Failed to update order status:", error);
-      setOrders(previousOrders);
       const detail =
         error instanceof ApiError
           ? error.message
           : error instanceof Error
             ? error.message
             : "Unknown error";
-      toast.error("Failed to save status. Changes reverted.", {
-        description: detail,
-        duration: 8000,
-      });
+      const stillHere = ordersSurfaceActiveRef.current;
+      if (stillHere) {
+        setOrders(previousOrders);
+        toast.error("Failed to save status. Changes reverted.", {
+          description: detail,
+          duration: 8000,
+        });
+      } else {
+        const isTimeout =
+          detail.toLowerCase().includes("timeout") ||
+          (error instanceof ApiError && error.statusCode === 504);
+        toast.error(isTimeout ? "Order save may have finished late" : "Order status update failed", {
+          description: `${detail}. Open Orders and use Refresh if the status looks wrong.`,
+          duration: 10000,
+        });
+      }
       onOrderUpdate?.();
     }
   };
