@@ -35,6 +35,21 @@ export function readPersistedJson<T>(key: string, maxAgeMs: number): T | null {
   }
 }
 
+export function readPersistedPayloadSavedAt(key: string): number | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedWrapper<unknown>;
+    if (!parsed || parsed.v !== WRAPPER_VERSION || typeof parsed.savedAt !== "number") {
+      return null;
+    }
+    return parsed.savedAt;
+  } catch {
+    return null;
+  }
+}
+
 export function writePersistedJson<T>(key: string, payload: T): void {
   if (typeof localStorage === "undefined") return;
   try {

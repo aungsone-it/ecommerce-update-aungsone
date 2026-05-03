@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useSearchParams, useParams, useNavigate } from "react-router";
+import { useSearchParams, useParams, useNavigate, useLocation } from "react-router";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import type { User } from "../types/user";
@@ -79,13 +79,22 @@ type AdminPage = typeof ADMIN_PAGES[keyof typeof ADMIN_PAGES];
 export function AdminPage() {
   const [searchParams] = useSearchParams();
   const params = useParams();
-  /** `admin/*` — section is in splat `*`, not `params.section`. */
+  const location = useLocation();
+  /**
+   * Section for `/admin/...`: explicit child routes (`orders`, `products`, …) do not set
+   * `params.section` or splat `*` — derive the first segment after `/admin` from the URL.
+   */
   const resolvedAdminSection = useMemo(() => {
     if (params.section) return params.section;
     const splat = params["*"];
-    if (typeof splat !== "string" || !splat.trim()) return undefined;
-    return splat.split("/").filter(Boolean)[0];
-  }, [params.section, params["*"]]);
+    if (typeof splat === "string" && splat.trim()) {
+      return splat.split("/").filter(Boolean)[0];
+    }
+    const p = (location.pathname.replace(/\/+$/, "") || "/").toLowerCase();
+    if (p === "/admin") return undefined;
+    const m = p.match(/^\/admin\/([^/]+)/);
+    return m?.[1];
+  }, [params.section, params["*"], location.pathname]);
   const navigate = useNavigate();
   const { refreshUser, user: authUser } = useAuth();
   const allowedAdminPages = useMemo(

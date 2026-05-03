@@ -1,6 +1,6 @@
 // Routes Configuration - Cache bust: 20260307181500
 import { lazy, Suspense, type ReactNode } from "react";
-import { createBrowserRouter } from "react-router";
+import { type RouteObject } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { VendorProtectedLayout } from "./components/VendorProtectedLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
@@ -18,6 +18,7 @@ import {
   AdminEntryLayout,
   AdminSubdomainLeaf,
 } from "./components/AdminSubdomainOrSuper";
+import { OrderRealtimeBridge } from "./components/OrderRealtimeBridge";
 import {
   VendorHostOrMarketplaceSaved,
   VendorHostOrMarketplaceProduct,
@@ -141,6 +142,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           <VendorAuthProvider>
             <ErrorBoundary>
               <ScrollController />
+              <OrderRealtimeBridge />
               {children}
             </ErrorBoundary>
           </VendorAuthProvider>
@@ -150,7 +152,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   );
 }
 
-export const router = createBrowserRouter([
+export const appRouteObjects: RouteObject[] = [
   {
     path: "/",
     element: (
@@ -166,7 +168,6 @@ export const router = createBrowserRouter([
             <AnimatedOutlet />
           </LazyBoundary>
         ),
-        errorElement: <NotFound />,
         children: [
           {
             index: true,
@@ -263,6 +264,28 @@ export const router = createBrowserRouter([
             element: <AdminEntryLayout />,
             children: [
               { index: true, element: <AdminSubdomainLeaf /> },
+              { path: "customers/add", element: <AdminSubdomainLeaf /> },
+              { path: "orders", element: <AdminSubdomainLeaf /> },
+              { path: "products", element: <AdminSubdomainLeaf /> },
+              { path: "categories", element: <AdminSubdomainLeaf /> },
+              { path: "inventory", element: <AdminSubdomainLeaf /> },
+              { path: "customers", element: <AdminSubdomainLeaf /> },
+              { path: "chat", element: <AdminSubdomainLeaf /> },
+              { path: "marketing", element: <AdminSubdomainLeaf /> },
+              { path: "livestream", element: <AdminSubdomainLeaf /> },
+              { path: "blog", element: <AdminSubdomainLeaf /> },
+              { path: "vendors", element: <AdminSubdomainLeaf /> },
+              { path: "vendor-profile", element: <AdminSubdomainLeaf /> },
+              { path: "vendor-applications", element: <AdminSubdomainLeaf /> },
+              { path: "vendor-promotions", element: <AdminSubdomainLeaf /> },
+              { path: "vendor-store", element: <AdminSubdomainLeaf /> },
+              { path: "collaborators", element: <AdminSubdomainLeaf /> },
+              { path: "collaborator-profile", element: <AdminSubdomainLeaf /> },
+              { path: "collaborator-applications", element: <AdminSubdomainLeaf /> },
+              { path: "finances", element: <AdminSubdomainLeaf /> },
+              { path: "logistics", element: <AdminSubdomainLeaf /> },
+              { path: "settings", element: <AdminSubdomainLeaf /> },
+              { path: "search", element: <AdminSubdomainLeaf /> },
               { path: "*", element: <AdminSubdomainLeaf /> },
             ],
           },
@@ -271,19 +294,58 @@ export const router = createBrowserRouter([
             element: <VendorProtectedLayout />,
             children: [
               {
+                index: true,
                 element: (
                   <LazyBoundary>
-                    <AnimatedOutlet />
+                    <VendorAdminPage />
                   </LazyBoundary>
                 ),
-                children: [
-                  { index: true, element: <VendorAdminPage /> },
-                  {
-                    path: "products/:productId/view",
-                    element: <VendorAdminProductViewPage />,
-                  },
-                  { path: ":section", element: <VendorAdminPage /> },
-                ],
+              },
+              {
+                path: "products/:productId/view",
+                element: (
+                  <LazyBoundary>
+                    <VendorAdminProductViewPage />
+                  </LazyBoundary>
+                ),
+              },
+              {
+                path: ":section",
+                element: (
+                  <LazyBoundary>
+                    <VendorAdminPage />
+                  </LazyBoundary>
+                ),
+              },
+            ],
+          },
+          {
+            path: "vendor/:storeName/admin",
+            element: <VendorProtectedLayout />,
+            children: [
+              {
+                index: true,
+                element: (
+                  <LazyBoundary>
+                    <VendorAdminPage />
+                  </LazyBoundary>
+                ),
+              },
+              {
+                path: "products/:productId/view",
+                element: (
+                  <LazyBoundary>
+                    <VendorAdminProductViewPage />
+                  </LazyBoundary>
+                ),
+              },
+              {
+                path: ":section",
+                element: (
+                  <LazyBoundary>
+                    <VendorAdminPage />
+                  </LazyBoundary>
+                ),
               },
             ],
           },
@@ -390,40 +452,4 @@ export const router = createBrowserRouter([
       },
     ],
   },
-  {
-    path: "/",
-    element: (
-      <ProvidersWrapper>
-        <VendorProtectedLayout />
-      </ProvidersWrapper>
-    ),
-    errorElement: <NotFound />,
-    children: [
-      {
-        element: (
-          <LazyBoundary>
-            <AnimatedOutlet />
-          </LazyBoundary>
-        ),
-        errorElement: <NotFound />,
-        children: [
-          {
-            path: "vendor/:storeName/admin",
-            element: <VendorAdminPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "vendor/:storeName/admin/:section",
-            element: <VendorAdminPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "vendor/:storeName/admin/products/:productId/view",
-            element: <VendorAdminProductViewPage />,
-            errorElement: <NotFound />,
-          },
-        ],
-      },
-    ],
-  },
-]);
+];

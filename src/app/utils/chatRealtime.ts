@@ -1,7 +1,8 @@
 /**
- * Supabase Realtime **Broadcast** for chat (messages live in Edge KV, not Postgres).
- * Enable Realtime in the Supabase Dashboard (Project Settings → API → Realtime, or Realtime section).
- * If Realtime is off, subscribe/send no-ops gracefully; HTTP polling remains as fallback.
+ * Supabase Realtime **Broadcast** for chat (messages persist in Edge/KV; broadcast carries live deltas).
+ * Wired in `FloatingChat` (marketplace + vendor storefronts) and super-admin `Chat`.
+ * Enable Realtime in the Supabase Dashboard. If Realtime is off, subscribe/send no-ops gracefully;
+ * HTTP polling in those components remains as fallback.
  */
 import { supabase } from "../contexts/AuthContext";
 

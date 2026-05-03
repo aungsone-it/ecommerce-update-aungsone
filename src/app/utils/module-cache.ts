@@ -16,7 +16,7 @@ import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { SmartCache } from '../../utils/cache';
 import { vendorApplicationsApi } from '../../utils/api';
 import { withNetworkRetry } from './networkRetry';
-import { notifyAdminOrdersUpdated } from "./adminOrdersRealtime";
+import { notifyAdminOrdersUpdated, isSuperAdminFinancesSessionStale } from "./adminOrdersRealtime";
 import {
   readPersistedJson,
   writePersistedJson,
@@ -1621,9 +1621,34 @@ export function invalidateAdminOrdersCache(): void {
 
 /** Hydrate finances UI from session module cache or localStorage (same TTL as catalog snapshots). */
 export function readFinancialAnalyticsHydrate(): Record<string, unknown> | null {
+  if (isSuperAdminFinancesSessionStale()) return null;
   const fromModule = moduleCache.peek<Record<string, unknown>>(CACHE_KEYS.ADMIN_FINANCES_ANALYTICS);
   if (fromModule) return fromModule;
-  return readPersistedJson<Record<string, unknown>>(LS_ADMIN_FINANCES_ANALYTICS, PERSISTED_CATALOG_TTL_MS);
+  const fromLs = readPersistedJson<Record<string, unknown>>(LS_ADMIN_FINANCES_ANALYTICS, PERSISTED_CATALOG_TTL_MS);
+  if (fromLs) {
+    moduleCache.prime(CACHE_KEYS.ADMIN_FINANCES_ANALYTICS, fromLs);
+    return fromLs;
+  }
+  return null;
+}
+
+/**
+ * Session-scoped cache + localStorage persist — skip network when fresh (navigation, remount).
+ * Use `forceRefresh`/invalidate for post-mutation and storefront order paths.
+ */
+export async function getCachedFinancialAnalytics(forceRefresh = false): Promise<Record<string, unknown>> {
+  return moduleCache.get(
+    CACHE_KEYS.ADMIN_FINANCES_ANALYTICS,
+    async () => {
+      const data = await withNetworkRetry(() => fetchFinancialAnalyticsFromApi(), {
+        retries: 1,
+        delayMs: 500,
+      });
+      writePersistedJson(LS_ADMIN_FINANCES_ANALYTICS, data);
+      return data;
+    },
+    forceRefresh
+  );
 }
 
 export async function fetchFinancialAnalyticsFromApi(): Promise<Record<string, unknown>> {
@@ -1650,12 +1675,9 @@ export async function fetchFinancialAnalyticsFromApi(): Promise<Record<string, u
   }
 }
 
-/** Network fetch + prime session + persist for reload. */
+/** Force network + persist (alias for `getCachedFinancialAnalytics(true)`). */
 export async function fetchAndCacheFinancialAnalytics(): Promise<Record<string, unknown>> {
-  const data = await withNetworkRetry(() => fetchFinancialAnalyticsFromApi(), { retries: 1, delayMs: 500 });
-  moduleCache.prime(CACHE_KEYS.ADMIN_FINANCES_ANALYTICS, data);
-  writePersistedJson(LS_ADMIN_FINANCES_ANALYTICS, data);
-  return data;
+  return getCachedFinancialAnalytics(true);
 }
 
 export async function getCachedAdminAllCategories(forceRefresh = false) {

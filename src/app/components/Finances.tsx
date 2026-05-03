@@ -1,7 +1,22 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { DateRange } from "react-day-picker";
 import { useLanguage } from "../contexts/LanguageContext";
-import { TrendingUp, CreditCard, Banknote, Wallet, ArrowUpRight, Calendar, Download, Search, X, Eye, Coins } from "lucide-react";
+import {
+  TrendingUp,
+  CreditCard,
+  Banknote,
+  Wallet,
+  ArrowUpRight,
+  Calendar,
+  Download,
+  Search,
+  X,
+  Eye,
+  Coins,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -16,8 +31,13 @@ import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { toast } from "sonner";
 import {
   readFinancialAnalyticsHydrate,
-  fetchAndCacheFinancialAnalytics,
+  getCachedFinancialAnalytics,
 } from "../utils/module-cache";
+import {
+  LS_ADMIN_FINANCES_ANALYTICS,
+  readPersistedPayloadSavedAt,
+} from "../utils/persistedLocalCache";
+import { adminOrdersUpdatedStorageKey, consumeSuperAdminFinancesSessionStale } from "../utils/adminOrdersRealtime";
 
 /** Large amount + very small MMK; font scales down inside @container cards for billion-scale values. */
 function FinancesStatMmk({ value }: { value: number }) {
@@ -76,6 +96,7 @@ export function Finances() {
   const [filterMethod, setFilterMethod] = useState("all");
   const [txnTableDateRange, setTxnTableDateRange] = useState<DateRange | undefined>(undefined);
   const [txnDatePickerOpen, setTxnDatePickerOpen] = useState(false);
+  const [txnListPage, setTxnListPage] = useState(1);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState("7days");
   const [overviewDateRange, setOverviewDateRange] = useState<DateRange | undefined>(undefined);
@@ -91,20 +112,25 @@ export function Finances() {
   }, []);
   const [financialData, setFinancialData] = useState<any>(financesBoot.data);
   const [loading, setLoading] = useState(financesBoot.showSkeleton);
+  const [revalidating, setRevalidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const financialDataRef = useRef<any>(null);
   financialDataRef.current = financialData;
 
-  // Stale-while-revalidate: show module/localStorage snapshot immediately; always refetch in background.
-  // Numbers update when fresh data arrives. Order mutations invalidate cache and dispatch adminOrdersUpdated.
+  const FINANCES_BACKGROUND_MAX_AGE_MS = 120_000;
+
+  // Cache-first: session module + localStorage via `getCachedFinancialAnalytics(false)` (no network when warm).
+  // Forced refresh: session stale flag (storefront/admin orders), `adminOrdersUpdated`, cross-tab storage,
+  // and background TTL for long-lived tabs.
   useEffect(() => {
     let cancelled = false;
 
-    const load = async () => {
+    const load = async (forceRefresh: boolean) => {
       const hadData = financialDataRef.current != null;
       if (!hadData) setLoading(true);
+      if (forceRefresh && hadData) setRevalidating(true);
       try {
-        const data = await fetchAndCacheFinancialAnalytics();
+        const data = await getCachedFinancialAnalytics(forceRefresh);
         if (cancelled) return;
         setFinancialData(data);
         setError(null);
@@ -130,16 +156,48 @@ export function Finances() {
           });
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRevalidating(false);
+        }
       }
     };
 
-    void load();
-    const onOrdersUpdated = () => void load();
+    const runInitial = async () => {
+      const mustForce = consumeSuperAdminFinancesSessionStale();
+      await load(mustForce);
+      if (cancelled || mustForce) return;
+
+      const savedAt = readPersistedPayloadSavedAt(LS_ADMIN_FINANCES_ANALYTICS);
+      if (savedAt != null && Date.now() - savedAt < FINANCES_BACKGROUND_MAX_AGE_MS) return;
+
+      if (cancelled) return;
+      if (financialDataRef.current == null) return;
+      setRevalidating(true);
+      try {
+        const data = await getCachedFinancialAnalytics(true);
+        if (cancelled) return;
+        setFinancialData(data);
+      } catch (err: any) {
+        if (!cancelled) console.warn("Finances background revalidate:", err);
+      } finally {
+        if (!cancelled) setRevalidating(false);
+      }
+    };
+
+    void runInitial();
+
+    const onOrdersUpdated = () => void load(true);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== adminOrdersUpdatedStorageKey()) return;
+      void load(true);
+    };
     window.addEventListener("adminOrdersUpdated", onOrdersUpdated);
+    window.addEventListener("storage", onStorage);
     return () => {
       cancelled = true;
       window.removeEventListener("adminOrdersUpdated", onOrdersUpdated);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 
@@ -270,6 +328,23 @@ export function Finances() {
     return matchesSearch && matchesStatus && matchesMethod && matchesDateFrom && matchesDateTo;
   });
 
+  const TX_PAGE_SIZE = 25;
+
+  useEffect(() => {
+    setTxnListPage(1);
+  }, [searchQuery, filterStatus, filterMethod, txnTableDateRange?.from, txnTableDateRange?.to]);
+
+  const txnListTotalPages = Math.max(1, Math.ceil(filteredTransactions.length / TX_PAGE_SIZE));
+
+  useEffect(() => {
+    setTxnListPage((p) => Math.min(p, txnListTotalPages));
+  }, [txnListTotalPages]);
+
+  const paginatedTransactions = useMemo(() => {
+    const start = (txnListPage - 1) * TX_PAGE_SIZE;
+    return filteredTransactions.slice(start, start + TX_PAGE_SIZE);
+  }, [filteredTransactions, txnListPage]);
+
   // Calculate filtered totals
   const filteredTotalRevenue = filteredTransactions.reduce((sum: number, t: any) => sum + t.amount, 0);
   const filteredTotalCommission = filteredTransactions.reduce((sum: number, t: any) => sum + t.commission, 0);
@@ -375,6 +450,12 @@ export function Finances() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{t('finances.title')}</h1>
         <p className="text-slate-600 dark:text-slate-400">{t('finances.subtitle')}</p>
+        {revalidating && (
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+            <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
+            Syncing latest numbers…
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <AdminDateRangeFilterPopover
             value={overviewDateRange}
@@ -727,7 +808,7 @@ export function Finances() {
                         </td>
                       </tr>
                     ) : (
-                      filteredTransactions.map((transaction: any) => {
+                      paginatedTransactions.map((transaction: any) => {
                         const methodInfo = getPaymentMethodIcon(transaction.method);
                         const MethodIcon = methodInfo.icon;
                         
@@ -774,6 +855,39 @@ export function Finances() {
                   </tbody>
                 </table>
               </div>
+              {filteredTransactions.length > 0 && filteredTransactions.length > TX_PAGE_SIZE && (
+                <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-200 dark:border-slate-700 pt-4">
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    Showing {(txnListPage - 1) * TX_PAGE_SIZE + 1}–
+                    {Math.min(txnListPage * TX_PAGE_SIZE, filteredTransactions.length)} of {filteredTransactions.length}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={txnListPage <= 1}
+                      onClick={() => setTxnListPage((p) => Math.max(1, p - 1))}
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-slate-600 dark:text-slate-400 tabular-nums">
+                      {txnListPage} / {txnListTotalPages}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={txnListPage >= txnListTotalPages}
+                      onClick={() => setTxnListPage((p) => Math.min(txnListTotalPages, p + 1))}
+                      aria-label="Next page"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

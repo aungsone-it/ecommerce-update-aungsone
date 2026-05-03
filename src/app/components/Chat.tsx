@@ -234,19 +234,18 @@ export function Chat({
     }
   }, []);
 
-  // Supabase Realtime Broadcast: inbox list + thread messages (reduces HTTP polling)
+  // Supabase Realtime Broadcast: inbox list + thread messages (kept live even when tab is in background)
   useEffect(() => {
-    if (!docVisible) return;
     return subscribeAdminInbox(() => {
       if (inboxDebounceRef.current) clearTimeout(inboxDebounceRef.current);
       inboxDebounceRef.current = setTimeout(() => {
         void loadConversationsRef.current();
       }, 400);
     });
-  }, [docVisible]);
+  }, []);
 
   useEffect(() => {
-    if (!selectedConversation || !docVisible) return;
+    if (!selectedConversation) return;
     return subscribeConversationBroadcast(selectedConversation, (msg) => {
       setMessages((prev) => {
         const id = String(msg.id ?? "");
@@ -258,7 +257,7 @@ export function Chat({
         );
       });
     });
-  }, [selectedConversation, docVisible]);
+  }, [selectedConversation]);
 
   // Auto-scroll: debounce bursts; use instant scroll for long threads (less layout thrash)
   useEffect(() => {

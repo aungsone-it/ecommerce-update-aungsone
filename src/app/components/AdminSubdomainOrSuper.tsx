@@ -10,6 +10,13 @@ import {
 } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 
+/** Real vendor hosts (subdomain / custom domain). Local dev uses `/vendor/:slug/admin` for vendor panel. */
+function isLocalDevHostname(): boolean {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname.toLowerCase();
+  return h === "localhost" || h === "[::1]" || h.startsWith("127.");
+}
+
 const AdminPage = lazy(() =>
   import("../pages/AdminPage").then((m) => ({ default: m.AdminPage }))
 );
@@ -36,7 +43,8 @@ export function AdminEntryLayout() {
   if (loading && !subSlug) {
     return <RouteLoadingFallback />;
   }
-  if (slug) {
+  const useVendorLayoutForAdmin = Boolean(slug) && !isLocalDevHostname();
+  if (useVendorLayoutForAdmin) {
     return (
       <VendorProtectedLayout>
         <Outlet />
@@ -58,12 +66,13 @@ export function AdminSubdomainLeaf() {
   const { slug: hostSlug, loading } = useResolvedVendorHostSlug();
   const slug = subSlug ?? hostSlug;
   const location = useLocation();
+  const vendorHostResolvedSlug = Boolean(slug) && !isLocalDevHostname();
 
   if (loading && !subSlug) {
     return <RouteLoadingFallback />;
   }
 
-  if (!slug) {
+  if (!vendorHostResolvedSlug) {
     const path = location.pathname;
     const inner =
       path === "/admin/customers/add" ? (

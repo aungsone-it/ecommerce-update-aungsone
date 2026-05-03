@@ -281,9 +281,9 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   isOpenRef.current = isOpen;
   isMinimizedRef.current = isMinimized;
 
-  // Realtime: admin replies without tight polling
+  // Realtime: admin replies without tight polling (keep channel while conversation exists, even if tab background)
   useEffect(() => {
-    if (!conversationId || !docVisible) return;
+    if (!conversationId) return;
     return subscribeConversationBroadcast(conversationId, (msg) => {
       if (String(msg.sender) !== "admin") return;
       setMessages((prev) => {
@@ -299,7 +299,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         setUnreadCount((c) => c + 1);
       }
     });
-  }, [conversationId, docVisible]);
+  }, [conversationId]);
 
   // Reset unread count when chat is opened
   useEffect(() => {

@@ -1,6 +1,8 @@
-import { RouterProvider } from "react-router";
+import { RouterProvider, createBrowserRouter } from "react-router";
 import { Toaster } from "sonner";
-import { router } from "./routes";
+import { appRouteObjects } from "./routes";
+
+const router = createBrowserRouter(appRouteObjects);
 
 // ============================================
 // MAIN APP COMPONENT
