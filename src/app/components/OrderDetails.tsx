@@ -8,6 +8,7 @@ import { Invoice } from "./Invoice";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { ordersApi } from "../../utils/api";
+import { ApiError } from "../../utils/api-client";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
   normalizeOrderLineParentProductId,
@@ -140,13 +141,19 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
     setStatusSaving(true);
     try {
       await ordersApi.update(order.id, { status: newStatus });
-      await refreshAdminInventoryAfterOrderStatusPut(snapshot, newStatus);
+      try {
+        await refreshAdminInventoryAfterOrderStatusPut(snapshot, newStatus);
+      } catch (invErr) {
+        console.warn("[inventory] post-status cache sync failed:", invErr);
+      }
       setOrderStatus(newStatus);
       toast.success("Order status updated");
       onOrderUpdated?.();
     } catch (e) {
       console.error(e);
-      toast.error("Failed to update order status");
+      const detail =
+        e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Unknown error";
+      toast.error("Failed to update order status", { description: detail, duration: 8000 });
     } finally {
       setStatusSaving(false);
     }
