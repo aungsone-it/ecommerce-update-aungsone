@@ -381,11 +381,11 @@ export function Marketing() {
     }
   };
 
-  // Fetch campaigns from backend
+  // Fetch campaigns from backend (background if module cache already populated — avoids full “refresh” on revisit)
   useEffect(() => {
-    fetchCampaigns();
-    fetchAnnouncementSettings();
-    fetchAppearanceSettings();
+    void fetchCampaigns({ background: cachedCampaigns.length > 0 });
+    void fetchAnnouncementSettings();
+    void fetchAppearanceSettings();
   }, []);
 
   // 🔄 Real-time auto-refresh: Poll campaigns every 10 seconds when viewing the list
@@ -450,13 +450,15 @@ export function Marketing() {
     }
   }, [currentView, selectedCampaign]);
 
-  const fetchCampaigns = async () => {
-    // 🚀 SMART LOADING: Only show spinner if request takes > 300ms
+  const fetchCampaigns = async (opts?: { background?: boolean }) => {
+    // When we already have cached rows (e.g. revisiting Promo), refresh quietly — no spinner flash.
+    const background = !!opts?.background;
     let showLoadingTimer: NodeJS.Timeout | null = null;
-    
-    showLoadingTimer = setTimeout(() => {
-      setLoading(true);
-    }, 300);
+    if (!background) {
+      showLoadingTimer = setTimeout(() => {
+        setLoading(true);
+      }, 300);
+    }
     
     try {
       setError(null);
@@ -494,7 +496,9 @@ export function Marketing() {
       if (showLoadingTimer) {
         clearTimeout(showLoadingTimer);
       }
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   };
 

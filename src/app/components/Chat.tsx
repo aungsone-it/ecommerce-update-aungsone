@@ -115,6 +115,12 @@ function mergeConversationAvatarsByEmail(conversations: Conversation[]): Convers
   });
 }
 
+/** Inbox survives super-admin section switches (Chat unmounts off `AdminPage` when you leave). */
+let chatAdminInboxCache: Conversation[] | null = null;
+const chatAdminMessagesCache = new Map<string, Message[]>();
+
+type ChatInboxLoadMode = "initial" | "refresh" | "silent";
+
 export function Chat({
   initialCustomer = null,
   onInitialCustomerHandled,
@@ -126,9 +132,13 @@ export function Chat({
   const [sortOrder, setSortOrder] = useState<"new-old" | "old-new">("new-old");
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [messageInput, setMessageInput] = useState("");
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>(() =>
+    chatAdminInboxCache?.length
+      ? mergeConversationAvatarsByEmail([...chatAdminInboxCache])
+      : []
+  );
   const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !(chatAdminInboxCache && chatAdminInboxCache.length > 0));
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -166,13 +176,16 @@ export function Chat({
     };
   }, []);
 
-  const loadConversations = async () => {
+  const loadConversations = async (mode: ChatInboxLoadMode = "refresh") => {
     try {
+      if (mode === "initial" || mode === "refresh") {
+        setLoading(true);
+      }
       const response = await chatApi.getConversations();
       if (response.conversations && Array.isArray(response.conversations)) {
-        setConversations(
-          mergeConversationAvatarsByEmail(response.conversations as Conversation[])
-        );
+        const merged = mergeConversationAvatarsByEmail(response.conversations as Conversation[]);
+        chatAdminInboxCache = merged;
+        setConversations(merged);
         const totalUnread = response.conversations.reduce(
           (sum: number, conv: Conversation) => sum + (Number(conv.unread) || 0),
           0
@@ -181,17 +194,27 @@ export function Chat({
           new CustomEvent("admin-chat-unread-updated", { detail: { total: totalUnread } })
         );
       }
-      setLoading(false);
     } catch (error) {
       console.error("Failed to load conversations:", error);
-      setLoading(false);
+    } finally {
+      if (mode !== "silent") {
+        setLoading(false);
+      }
     }
   };
 
-  loadConversationsRef.current = loadConversations;
+  loadConversationsRef.current = () => {
+    void loadConversations("silent");
+  };
 
   const loadMessages = useCallback(async (conversationId: string, silent = false) => {
-    if (!silent) setLoadingMessages(true);
+    if (!silent) {
+      const cached = chatAdminMessagesCache.get(conversationId);
+      if (cached && cached.length > 0) {
+        setMessages(cached);
+      }
+      setLoadingMessages(true);
+    }
     try {
       const response = await chatApi.getMessages(conversationId);
       if (response.messages && Array.isArray(response.messages)) {
@@ -199,6 +222,7 @@ export function Chat({
           (a: Message, b: Message) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
+        chatAdminMessagesCache.set(conversationId, sortedMessages);
         setMessages(sortedMessages);
 
         if (!silent) {
@@ -251,10 +275,12 @@ export function Chat({
         const id = String(msg.id ?? "");
         if (!id || prev.some((m) => m.id === id)) return prev;
         const next = [...prev, msg as unknown as Message];
-        return next.sort(
+        const sorted = next.sort(
           (a, b) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
+        chatAdminMessagesCache.set(selectedConversation, sorted);
+        return sorted;
       });
     });
   }, [selectedConversation]);
@@ -277,7 +303,13 @@ export function Chat({
   // Load conversations (skip when opening from Customers → Message; handoff effect loads)
   useEffect(() => {
     if (initialCustomer?.email?.trim()) return;
-    loadConversations();
+    if (chatAdminInboxCache && chatAdminInboxCache.length > 0) {
+      setConversations(mergeConversationAvatarsByEmail([...chatAdminInboxCache]));
+      setLoading(false);
+      void loadConversations("silent");
+    } else {
+      void loadConversations("initial");
+    }
   }, [initialCustomer]);
 
   // Super admin: Customers → Message — open this thread and focus composer
@@ -321,7 +353,9 @@ export function Chat({
           ];
         }
 
-        setConversations(mergeConversationAvatarsByEmail(list as Conversation[]));
+        const mergedHandoff = mergeConversationAvatarsByEmail(list as Conversation[]);
+        chatAdminInboxCache = mergedHandoff;
+        setConversations(mergedHandoff);
         setLoading(false);
         const idToUse = match?.id ?? convId;
         setSelectedConversation(idToUse);
@@ -367,7 +401,7 @@ export function Chat({
     stopPolling(); // Clear any existing interval
     pollingIntervalRef.current = window.setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      loadConversations();
+      void loadConversations("silent");
       if (selectedConversation) {
         loadMessages(selectedConversation, true); // Silent refresh — fallback if Realtime off
       }
@@ -408,7 +442,9 @@ export function Chat({
 
       console.log(`✅ Chat history cleared:`, data);
       
-      // Clear local state
+      // Clear local state + session caches (matches server delete)
+      chatAdminInboxCache = null;
+      chatAdminMessagesCache.clear();
       setConversations([]);
       setMessages([]);
       setSelectedConversation(null);
@@ -450,7 +486,11 @@ export function Chat({
 
       if (response.success && response.message) {
         // Add message to local state immediately
-        setMessages(prev => [...prev, response.message]);
+        setMessages((prev) => {
+          const next = [...prev, response.message];
+          chatAdminMessagesCache.set(selectedConversation, next);
+          return next;
+        });
         setMessageInput("");
         setSelectedImage(null);
         toast.success("Message sent!");
@@ -471,7 +511,11 @@ export function Chat({
               : c
           );
 
-        setConversations((prev) => mergeConversationAvatarsByEmail(patchCustomer(prev)));
+        setConversations((prev) => {
+          const next = mergeConversationAvatarsByEmail(patchCustomer(prev));
+          chatAdminInboxCache = next;
+          return next;
+        });
 
         void broadcastConversationMessage(selectedConversation, response.message);
         void broadcastInboxPing();
@@ -630,7 +674,7 @@ export function Chat({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => loadConversations()}
+              onClick={() => void loadConversations("refresh")}
               className="gap-2"
             >
               <RefreshCw className="w-4 h-4" />
