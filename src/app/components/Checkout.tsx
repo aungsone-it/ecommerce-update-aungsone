@@ -1,5 +1,5 @@
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   ChevronLeft,
   CreditCard,
@@ -21,6 +21,7 @@ import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { QRCodeCanvas } from "qrcode.react";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
@@ -29,6 +30,8 @@ import {
   buildMerchantOrderId,
   createKPayQrSession,
   fetchKPaySessionStatus,
+  startKPayPwa,
+  KPAY_PWA_PENDING_STORAGE_KEY,
 } from "../utils/kpayClient";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
@@ -227,7 +230,8 @@ export function Checkout({
   // Order Note
   const [orderNote, setOrderNote] = useState("");
 
-  const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "BankTransfer">("Card");
+  const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "KPay-PWA" | "BankTransfer">("Card");
+  const [kpayPwaLoading, setKpayPwaLoading] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState({
     cardNumber: "",
     cardName: "",
@@ -236,11 +240,64 @@ export function Checkout({
   });
   const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
+  // True only after KBZ has actually confirmed the payment via webhook
+  // (delivered to the public `kpay-webhook` Edge Function and pushed to us
+  // through Supabase Realtime). Until then the "I've Completed Payment"
+  // button stays disabled.
+  const [kpayWebhookConfirmed, setKpayWebhookConfirmed] = useState(false);
   const hasNativeKPayQr = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent);
   const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasNativeKPayQr);
   const kpayQrDisplayUrl = kpaySession?.qrImageUrl
     ? kpaySession.qrImageUrl
     : "";
+
+  // Reset webhook confirmation whenever a new QR is generated (different order id).
+  useEffect(() => {
+    setKpayWebhookConfirmed(false);
+  }, [kpaySession?.merchantOrderId]);
+
+  // Subscribe to Supabase Realtime for the kv row that the public webhook updates.
+  //
+  // Flow when KBZ pays:
+  //   1. KBZ POSTs the success notification to our public `kpay-webhook` Edge Function
+  //      (that function is deployed with --no-verify-jwt so KBZ can reach it without
+  //      a Supabase auth header).
+  //   2. The webhook handler upserts kv_store_16010b6f.value at key
+  //      `kpay_txn:{merchantOrderId}` with status="paid".
+  //   3. Postgres broadcasts the UPDATE through the supabase_realtime publication.
+  //   4. This subscription receives the new row, parses status, and flips
+  //      `kpayWebhookConfirmed` to true — which enables the submit button below.
+  //
+  // No HTTP polling. The subscription is idle until KBZ actually pays.
+  useEffect(() => {
+    const orderId = kpaySession?.merchantOrderId;
+    if (!orderId) return;
+    const key = `kpay_txn:${orderId}`;
+
+    const channel = supabase
+      .channel(`kpay-txn-${orderId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: `key=eq.${key}`,
+        },
+        (payload: any) => {
+          const value = payload?.new?.value;
+          const status = typeof value === "object" && value !== null ? value.status : undefined;
+          if (status === "paid") {
+            setKpayWebhookConfirmed(true);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [kpaySession?.merchantOrderId]);
 
   // Coupon State with localStorage persistence
   const [couponCode, setCouponCode] = useState("");
@@ -339,6 +396,59 @@ export function Checkout({
   const resolveOrderEmail = () =>
     (shippingInfo.email?.trim() || effectiveUser?.email?.trim() || "");
 
+  // PWA flow: precreate with trade_type=PWAAPP and redirect the customer's mobile
+  // browser to KBZ's PWA page. KBZ then opens the KBZPay app on the phone for payment
+  // and finally redirects back to our /kpay/return page with prepay_id + merch_order_id.
+  // The current route + cart context is persisted to localStorage so the return page
+  // can finish placing the order once payment is confirmed.
+  const handleStartKPayPwa = async () => {
+    try {
+      if (finalTotal <= 0) {
+        toast.error("Invalid amount for KPay payment");
+        return;
+      }
+      setKpayPwaLoading(true);
+      const merchantOrderId = buildMerchantOrderId("ORD");
+      const pwaSession = await startKPayPwa({
+        projectId,
+        publicAnonKey,
+        merchantOrderId,
+        amount: finalTotal,
+        currency: "MMK",
+        title: `Order ${merchantOrderId}`,
+      });
+      // Persist enough context for the /kpay/return route to finalize the order.
+      try {
+        localStorage.setItem(
+          KPAY_PWA_PENDING_STORAGE_KEY,
+          JSON.stringify({
+            merchantOrderId: pwaSession.merchantOrderId,
+            prepayId: pwaSession.prepayId,
+            amount: finalTotal,
+            currency: "MMK",
+            redirectedAt: new Date().toISOString(),
+            originPath: typeof window !== "undefined" ? window.location.pathname + window.location.search : "",
+          }),
+        );
+      } catch {
+        // localStorage might be blocked in private mode — non-fatal; the user can
+        // still complete the payment, they'll just lose the auto-finalize affordance.
+      }
+      if (!pwaSession.redirectUrl) {
+        toast.error("KBZ did not return a redirect URL");
+        return;
+      }
+      // Hand off to KBZ. This URL must be opened on a mobile browser with KBZPay
+      // installed; on desktop, KBZ's intermediate page will not be able to launch
+      // the app and the payment cannot proceed.
+      window.location.href = pwaSession.redirectUrl;
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to start KPay PWA payment");
+    } finally {
+      setKpayPwaLoading(false);
+    }
+  };
+
   const handleGenerateKPayQr = async () => {
     try {
       if (finalTotal <= 0) {
@@ -374,19 +484,11 @@ export function Checkout({
     }
   };
 
-  const refreshKPayStatus = async () => {
-    if (!kpaySession?.merchantOrderId) return;
-    try {
-      const session = await fetchKPaySessionStatus({
-        projectId,
-        publicAnonKey,
-        merchantOrderId: kpaySession.merchantOrderId,
-      });
-      setKpaySession((prev) => (prev ? { ...prev, ...session } : prev));
-    } catch {
-      // keep existing UI state; status will refresh again
-    }
-  };
+  // No background polling, no auto-status reconciliation: KBZ's UAT relay does not
+  // expose `queryorder` (returns 404 on every documented path) and does not deliver
+  // webhooks, so any client-side polling is wasted noise. The user simply pays in
+  // the KBZPay app and clicks "I've Completed Payment" — the order is created with
+  // `paymentStatus: "pending_verification"` for admin reconciliation.
 
   const waitForKPayPayload = async (merchantOrderId: string) => {
     const maxAttempts = 12;
@@ -463,24 +565,14 @@ export function Checkout({
         setLoading(false);
         return;
       }
-      try {
-        const refreshedSession = await fetchKPaySessionStatus({
-          projectId,
-          publicAnonKey,
-          merchantOrderId: kpaySession!.merchantOrderId,
-        });
-        latestKpaySession = { ...(kpaySession || refreshedSession), ...refreshedSession };
-        setKpaySession((prev) => (prev ? { ...prev, ...refreshedSession } : refreshedSession));
-      } catch {
-        toast.error("Unable to verify KPay status. Please try again.");
+      if (!kpayWebhookConfirmed) {
+        toast.error("Payment not confirmed yet. Please complete the payment in KBZPay first.");
         setLoading(false);
         return;
       }
-      if (latestKpaySession?.status !== "paid") {
-        toast.error("Payment is not confirmed yet. Please complete payment in KBZPay and check status.");
-        setLoading(false);
-        return;
-      }
+      // Webhook from KBZ has confirmed the payment via Supabase Realtime,
+      // so we can place the order with paymentStatus: "paid".
+      latestKpaySession = { ...(kpaySession || {}), status: "paid" } as any;
     } else {
       toast.info("🚀 Coming Soon! This payment method will be available soon.", { duration: 3000 });
       setLoading(false);
@@ -513,7 +605,11 @@ export function Checkout({
         status: paymentMethod === "KPay" ? "pending_payment" : "pending",
         paymentStatus:
           paymentMethod === "KPay"
-            ? (latestKpaySession?.status === "paid" ? "paid" : "pending")
+            ? (
+                latestKpaySession?.providerStatus === "manual_confirm"
+                  ? "pending_verification"
+                  : (latestKpaySession?.status === "paid" ? "paid" : "pending")
+              )
             : "paid",
         paymentMethod:
           paymentMethod === "Card"
@@ -1117,8 +1213,33 @@ export function Checkout({
                         >
                           {paymentMethod === "KPay" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
                         </div>
-                        <span className="text-sm font-medium text-slate-700">KPay</span>
+                        <span className="text-sm font-medium text-slate-700">KPay (Scan QR)</span>
                       </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("KPay-PWA")}
+                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                      paymentMethod === "KPay-PWA"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border-2 bg-white ${
+                            paymentMethod === "KPay-PWA" ? "border-slate-900" : "border-slate-200"
+                          }`}
+                        >
+                          {paymentMethod === "KPay-PWA" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                        </div>
+                        <span className="text-sm font-medium text-slate-700">KPay (Mobile Browser)</span>
+                      </div>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                        Recommended
+                      </span>
                     </div>
                   </button>
                   <button
@@ -1232,24 +1353,52 @@ export function Checkout({
                   </div>
                 )}
 
+                {paymentMethod === "KPay-PWA" && (
+                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
+                    <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-sm font-semibold text-emerald-900">📱 KPay (Mobile Browser)</p>
+                      <p className="mt-1 text-xs text-emerald-800">
+                        Tapping the button below opens KBZPay's hosted payment page on this device. After
+                        you authorize the payment in the KBZPay app, KBZ redirects you back here with
+                        your order status. Open this page on a phone with KBZPay installed.
+                      </p>
+                    </div>
+                    <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600">
+                      <li>Tap <span className="font-semibold">Pay with KPay</span> below.</li>
+                      <li>KBZ's PWA page launches the KBZPay app on your phone.</li>
+                      <li>Confirm the payment inside KBZPay.</li>
+                      <li>You'll be redirected back here automatically.</li>
+                    </ol>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        onClick={handleStartKPayPwa}
+                        disabled={kpayPwaLoading || finalTotal <= 0}
+                        className="bg-emerald-600 text-white hover:bg-emerald-700"
+                      >
+                        {kpayPwaLoading ? "Redirecting to KBZPay…" : `Pay with KPay · ${finalTotal.toLocaleString()} MMK`}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] leading-snug text-slate-500">
+                      Note: this method only works on a mobile device. On desktop, KBZ's intermediate page
+                      cannot launch the KBZPay app and the payment will not proceed.
+                    </p>
+                  </div>
+                )}
+
                 {paymentMethod === "KPay" && (
                   <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
                     <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                      <p className="text-sm font-semibold text-emerald-900">💳 KPay Payment</p>
+                      <p className="text-sm font-semibold text-emerald-900">💳 KPay Payment (QR)</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button type="button" variant="outline" onClick={handleGenerateKPayQr} disabled={kpayLoading}>
                         {kpayLoading ? "Generating..." : kpaySession?.merchantOrderId ? "Regenerate KPay QR" : "Generate KPay QR"}
                       </Button>
-                      {kpaySession?.merchantOrderId && kpaySession?.status !== "failed" && (
-                        <Button type="button" variant="outline" onClick={refreshKPayStatus}>
-                          Check Payment Status
-                        </Button>
-                      )}
                     </div>
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                       <div className="mb-4 flex justify-center">
-                        <div className="flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
+                        <div className="relative flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
                           {kpayQrDisplayUrl ? (
                             <img src={kpayQrDisplayUrl} alt="KPay QR Code" className="h-full w-full object-contain" />
                           ) : kpaySession?.qrContent ? (
@@ -1280,41 +1429,38 @@ export function Checkout({
                           <span className="text-slate-600">Amount to Pay:</span>
                           <span className="font-semibold text-emerald-700">{finalTotal.toFixed(0)} MMK</span>
                         </div>
-                        {!!kpaySession?.payUrl && (
-                          <div className="py-1 border-b border-slate-200">
-                            <a
-                              href={kpaySession.payUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
-                            >
-                              Open KPay payment link
-                            </a>
+                        {kpaySession?.qrContent && !kpaySession?.qrImageUrl && (
+                          <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                            Open KBZPay app → tap <span className="font-medium">Scan QR</span> → point at the code above. Once paid, click <span className="font-medium">I've Completed Payment</span>.
                           </div>
                         )}
-                        {kpaySession?.status && (
-                          <div className="flex justify-between py-1">
-                            <span className="text-slate-600">Payment Status:</span>
-                            <span className="font-semibold uppercase text-slate-900">{kpaySession.status}</span>
-                          </div>
-                        )}
-                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
-                          <div className="text-xs text-amber-700">
-                            KPay native QR was not returned by provider. Please confirm precreate response contract with KPay team.
-                          </div>
-                        )}
-                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
-                          <details className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">
-                            <summary className="cursor-pointer font-medium text-slate-800">KPay debug details</summary>
+                        {kpaySession?.merchantOrderId && (
+                          <details
+                            className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700"
+                            open
+                          >
+                            <summary className="cursor-pointer font-medium text-slate-800">
+                              KPay debug details
+                            </summary>
                             <div className="mt-2 space-y-1 break-all">
+                              <div>webhookConfirmed: <span className={kpayWebhookConfirmed ? "font-semibold text-emerald-700" : "text-slate-700"}>{String(kpayWebhookConfirmed)}</span></div>
+                              <div>realtimeChannel: kpay-txn-{kpaySession.merchantOrderId}</div>
+                              <div>kvKey: kpay_txn:{kpaySession.merchantOrderId}</div>
+                              <div>uiStatus: {kpaySession?.status || "pending"}</div>
+                              <div>stale: {String(kpaySession?.stale ?? false)}</div>
                               <div>endpointUsed: {kpaySession?.debug?.endpointUsed || "-"}</div>
                               <div>queryEndpointUsed: {kpaySession?.debug?.queryEndpointUsed || "-"}</div>
+                              <div>httpStatus: {kpaySession?.debug?.httpStatus ?? "-"}</div>
+                              <div>networkError: {kpaySession?.debug?.networkError || "-"}</div>
                               <div>wrapRequest: {String(kpaySession?.debug?.wrapRequest ?? false)}</div>
                               <div>providerStatus: {kpaySession?.providerStatus || "-"}</div>
                               <div>providerCode: {kpaySession?.debug?.providerCode || "-"}</div>
                               <div>providerMessage: {kpaySession?.debug?.providerMessage || "-"}</div>
                               <div>topLevelKeys: {(kpaySession?.debug?.providerTopLevelKeys || []).join(", ") || "-"}</div>
                               <div>nestedKeys: {(kpaySession?.debug?.providerNestedKeys || []).join(", ") || "-"}</div>
+                              <div>attemptedEndpoints: {(kpaySession?.debug?.attemptedEndpoints || []).join(", ") || "-"}</div>
+                              <div className="pt-1 font-medium text-slate-800">rawResponse (KBZ queryorder):</div>
+                              <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700 max-h-72 overflow-auto">{JSON.stringify(kpaySession?.debug?.rawResponse || {}, null, 2)}</pre>
                               <div className="pt-1 font-medium text-slate-800">signSource:</div>
                               <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700">{kpaySession?.debug?.signSource || "-"}</pre>
                               <div>sign: <code>{kpaySession?.debug?.sign || "-"}</code></div>
@@ -1325,11 +1471,18 @@ export function Checkout({
                                 className="mt-1 inline-flex items-center rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
                                 onClick={() => {
                                   try {
-                                    const blob = JSON.stringify({
-                                      merchantOrderId: kpaySession?.merchantOrderId,
-                                      providerStatus: kpaySession?.providerStatus,
-                                      debug: kpaySession?.debug,
-                                    }, null, 2);
+                                    const blob = JSON.stringify(
+                                      {
+                                        merchantOrderId: kpaySession?.merchantOrderId,
+                                        webhookConfirmed: kpayWebhookConfirmed,
+                                        uiStatus: kpaySession?.status,
+                                        providerStatus: kpaySession?.providerStatus,
+                                        stale: kpaySession?.stale,
+                                        debug: kpaySession?.debug,
+                                      },
+                                      null,
+                                      2,
+                                    );
                                     navigator.clipboard?.writeText(blob);
                                     toast.success("KPay debug copied to clipboard");
                                   } catch {
@@ -1341,11 +1494,6 @@ export function Checkout({
                               </button>
                             </div>
                           </details>
-                        )}
-                        {kpaySession?.qrContent && !kpaySession?.qrImageUrl && (
-                          <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-                            Open KBZPay app → tap <span className="font-medium">Scan QR</span> → point at the code above.
-                          </div>
                         )}
                       </div>
                     </div>
@@ -1494,20 +1642,39 @@ export function Checkout({
 
               <Button
                 type="button"
-                className="mt-4 flex h-11 w-full shrink-0 items-center justify-center rounded-xl border-2 border-orange-500 bg-transparent text-sm font-semibold leading-normal text-slate-900 transition-all duration-300 hover:border-green-600 hover:bg-green-600 hover:text-white"
+                className="mt-4 flex h-11 w-full shrink-0 items-center justify-center rounded-xl border-2 border-orange-500 bg-transparent text-sm font-semibold leading-normal text-slate-900 transition-all duration-300 hover:border-green-600 hover:bg-green-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-orange-500 disabled:hover:bg-transparent disabled:hover:text-slate-900"
                 size="lg"
-                onClick={() => void handlePlaceOrder()}
-                disabled={loading || (paymentMethod === "KPay" && !canSubmitKPayOrder)}
+                onClick={
+                  paymentMethod === "KPay-PWA"
+                    ? () => void handleStartKPayPwa()
+                    : () => void handlePlaceOrder()
+                }
+                disabled={
+                  loading ||
+                  kpayPwaLoading ||
+                  (paymentMethod === "KPay" && (!canSubmitKPayOrder || !kpayWebhookConfirmed))
+                }
               >
-                {loading ? (
+                {loading || kpayPwaLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
+                    {kpayPwaLoading ? "Redirecting to KBZPay…" : "Processing..."}
                   </>
+                ) : paymentMethod === "KPay" ? (
+                  kpayWebhookConfirmed ? "Place Order (Payment Confirmed)" : "I've Completed Payment"
+                ) : paymentMethod === "KPay-PWA" ? (
+                  `Pay with KPay · ${finalTotal.toFixed(0)} MMK`
                 ) : (
-                  paymentMethod === "KPay" ? "I've Completed Payment" : `Pay ${finalTotal.toFixed(0)} MMK`
+                  `Pay ${finalTotal.toFixed(0)} MMK`
                 )}
               </Button>
+              <style>{`
+                @keyframes kpayConfettiBurst {
+                  0% { transform: translate(-50%, -50%) scale(0.6) rotate(0deg); opacity: 0; }
+                  10% { opacity: 1; }
+                  100% { transform: translate(-50%, -150px) scale(1) rotate(240deg); opacity: 0; }
+                }
+              `}</style>
             </div>
           </div>
         </div>

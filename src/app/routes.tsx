@@ -73,6 +73,9 @@ const SetupPage = lazy(() =>
 const VendorAuthPage = lazy(() =>
   import("./pages/VendorAuthPage").then((m) => ({ default: m.VendorAuthPage })),
 );
+const KPayReturnPage = lazy(() =>
+  import("./pages/KPayReturnPage").then((m) => ({ default: m.KPayReturnPage })),
+);
 
 function VendorSubdomainIndexOrLanding() {
   const sub = resolveVendorSubdomainStoreSlug();
@@ -196,6 +199,12 @@ export const router = createBrowserRouter([
           {
             path: "checkout",
             element: <HostAwareCheckoutRoute />,
+          },
+          {
+            // Customer landing page after KBZ PWA payment.
+            // KBZ redirects here with `?prepay_id=...&merch_order_id=...`.
+            path: "kpay/return",
+            element: <KPayReturnPage />,
           },
           {
             path: "checkout/success",

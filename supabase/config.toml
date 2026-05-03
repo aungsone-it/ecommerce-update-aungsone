@@ -1,0 +1,15 @@
+# Supabase project config for Edge Functions.
+#
+# By default, Supabase Edge Functions require a valid JWT in the `Authorization`
+# header and reject any request without one with HTTP 401 BEFORE the handler runs.
+# That is correct for our main `make-server-16010b6f` API (the React app sends a
+# valid anon-key JWT on every request), but it makes our app unreachable for
+# third-party webhook callers like KBZPay, who post unauthenticated payloads.
+#
+# The `kpay-webhook` function below is intentionally JWT-free so KBZ can actually
+# deliver payment callbacks. The handler still validates KBZ's SHA256 signature
+# against KPAY_SIGN_KEY, so unsigned/tampered requests are rejected with 401 at
+# the application layer.
+
+[functions.kpay-webhook]
+verify_jwt = false

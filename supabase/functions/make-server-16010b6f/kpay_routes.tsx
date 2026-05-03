@@ -5,7 +5,7 @@ type AnyRecord = Record<string, unknown>;
 type PaymentStatus = "pending" | "paid" | "failed";
 
 const DEFAULT_CREATE_PATH = "/pgw/uat/order/make";
-const DEFAULT_QUERY_PATH = "/pgw/uat/order/query";
+const DEFAULT_QUERY_PATH = "/payment/gateway/uat/queryorder";
 const CREATE_PATH_CANDIDATES = [
   "/pgw/uat/order/make",
   "/pgw/uat/precreate",
@@ -14,8 +14,12 @@ const CREATE_PATH_CANDIDATES = [
   "/pgw-api/v1/payment/qr/create",
 ];
 const QUERY_PATH_CANDIDATES = [
+  "/payment/gateway/uat/queryorder",
+  "/queryorder",
+  "/pgw/uat/queryorder",
   "/pgw/uat/order/query",
   "/payment/gateway/uat/order/query",
+  "/payment/gateway/uat/orderquery",
   "/pgw-api/v1/payment/order/query",
 ];
 
@@ -162,30 +166,97 @@ async function postJson(
 function mapProviderStatus(rawStatus: unknown): PaymentStatus {
   const value = String(rawStatus ?? "").trim().toUpperCase();
   if (!value) return "pending";
-  if (["PAID", "SUCCESS", "PAY_SUCCESS", "TRADE_SUCCESS", "COMPLETED", "PAY_SUCCESSS"].includes(value)) return "paid";
-  if (["FAILED", "FAIL", "CLOSED", "EXPIRED", "TRADE_CLOSED", "CANCELLED", "PAY_FAILED", "ORDER_EXPIRED", "ORDER_CLOSED"].includes(value)) return "failed";
+  if ([
+    "PAID",
+    "SUCCESS",
+    "PAY_SUCCESS",
+    "TRADE_SUCCESS",
+    "COMPLETED",
+    "PAY_SUCCESSS",
+    "PAYED",
+    "TRANSACTION_SUCCESS",
+  ].includes(value)) return "paid";
+  if ([
+    "FAILED",
+    "FAIL",
+    "CLOSED",
+    "EXPIRED",
+    "TRADE_CLOSED",
+    "CANCELLED",
+    "PAY_FAILED",
+    "ORDER_EXPIRED",
+    "ORDER_CLOSED",
+    "TRANSACTION_FAILED",
+    "TRADE_FAIL",
+  ].includes(value)) return "failed";
   return "pending";
 }
 
 function providerStatusFrom(payload: AnyRecord): string {
   const nested = providerData(payload);
-  return String(
-    nested.status ||
-      nested.tradeStatus ||
-      nested.trade_status ||
-      nested.orderStatus ||
-      nested.code ||
-      nested.resultCode ||
-      payload.status ||
-      payload.tradeStatus ||
-      payload.orderStatus ||
-      payload.code ||
-      payload.resultCode ||
-      asRecord(payload.Response).status ||
-      asRecord(payload.Response).code ||
-      payload.code ||
-      "",
-  ).trim();
+  const wrapped = asRecord(payload.Response);
+
+  const paymentCandidates = [
+    nested.tradeStatus,
+    nested.trade_status,
+    nested.orderStatus,
+    nested.order_status,
+    nested.payStatus,
+    nested.pay_status,
+    nested.paymentStatus,
+    nested.payment_status,
+    nested.status,
+    wrapped.tradeStatus,
+    wrapped.trade_status,
+    wrapped.orderStatus,
+    wrapped.order_status,
+    wrapped.payStatus,
+    wrapped.pay_status,
+    wrapped.paymentStatus,
+    wrapped.payment_status,
+    wrapped.status,
+    payload.tradeStatus,
+    payload.trade_status,
+    payload.orderStatus,
+    payload.order_status,
+    payload.payStatus,
+    payload.pay_status,
+    payload.paymentStatus,
+    payload.payment_status,
+    payload.status,
+  ];
+
+  // Many KBZ responses include generic success code values (e.g. "0")
+  // in `status`/`code`; ignore those and prefer trade/payment status fields.
+  for (const candidate of paymentCandidates) {
+    const v = String(candidate ?? "").trim();
+    if (!v) continue;
+    if (["0", "00", "000", "0000"].includes(v)) continue;
+    return v;
+  }
+
+  const codeFallbacks = [
+    nested.code,
+    nested.resultCode,
+    nested.result_code,
+    nested.respCode,
+    nested.resp_code,
+    wrapped.code,
+    wrapped.resultCode,
+    wrapped.result_code,
+    wrapped.respCode,
+    wrapped.resp_code,
+    payload.code,
+    payload.resultCode,
+    payload.result_code,
+    payload.respCode,
+    payload.resp_code,
+  ];
+  for (const candidate of codeFallbacks) {
+    const v = String(candidate ?? "").trim();
+    if (v) return v;
+  }
+  return "";
 }
 
 function extractQrPayload(payload: AnyRecord): { qrContent: string; qrImageUrl: string; payUrl: string } {
@@ -284,8 +355,10 @@ function kpayConfig() {
   const merchCode = resolveEnv("KPAY_MERCH_CODE", "KPAY_MERCHANT_ID");
   const signKey = resolveEnv("KPAY_SIGN_KEY", "KPAY_SECRET");
   const notifyUrl = resolveEnv("KPAY_NOTIFY_URL");
-  const createPath = resolveEnv("KPAY_PATH_CREATE_QR", "KPAY_CREATE_QR_PATH") || DEFAULT_CREATE_PATH;
-  const queryPath = resolveEnv("KPAY_PATH_QUERY_ORDER", "KPAY_QUERY_ORDER_PATH") || DEFAULT_QUERY_PATH;
+  const createPathFromEnv = resolveEnv("KPAY_PATH_CREATE_QR", "KPAY_CREATE_QR_PATH");
+  const queryPathFromEnv = resolveEnv("KPAY_PATH_QUERY_ORDER", "KPAY_QUERY_ORDER_PATH");
+  const createPath = createPathFromEnv || DEFAULT_CREATE_PATH;
+  const queryPath = queryPathFromEnv || DEFAULT_QUERY_PATH;
   const apiKey = resolveEnv("KPAY_API_KEY");
   const timeoutMs = Math.max(4000, Number(resolveEnv("KPAY_TIMEOUT_MS")) || 12000);
   const autoDiscover = resolveEnv("KPAY_AUTO_DISCOVER") === "1";
@@ -302,6 +375,8 @@ function kpayConfig() {
   const proxyAuthToken = resolveEnv("KPAY_PROXY_AUTH_TOKEN");
   return {
     baseUrl, appId, merchCode, signKey, notifyUrl, createPath, queryPath,
+    createPathConfigured: Boolean(text(createPathFromEnv)),
+    queryPathConfigured: Boolean(text(queryPathFromEnv)),
     apiKey, timeoutMs, autoDiscover, strictProtocol, wrapRequest,
     proxyAuthHeader, proxyAuthScheme, proxyAuthToken,
   };
@@ -325,7 +400,14 @@ function buildProviderHeaders(cfg: ReturnType<typeof kpayConfig>): Record<string
 //   - signCollection: the FLATTENED key/value map used to compute `sign` (stringA).
 //   - requestBody:    what actually goes on the wire. `biz_content` here is an OBJECT,
 //                     not a stringified JSON, per the KBZ reference clients.
-type PayloadPair = { signCollection: AnyRecord; requestBody: AnyRecord };
+type PayloadPair = {
+  signCollection: AnyRecord;
+  requestBody: AnyRecord;
+  // Optional context the PWA flow needs to build the redirect URL signature.
+  // These mirror the same `nonce_str` and `timestamp` already inside signCollection.
+  nonce?: string;
+  timestamp?: string;
+};
 
 async function signedProviderRequest(
   endpoint: string,
@@ -343,6 +425,14 @@ async function signedProviderRequest(
   return { ...response, signSource, sign, signedPayload: payload };
 }
 
+// Public KBZ UAT base — used as a fallback host for `queryorder` because some UAT
+// IP relays (e.g. 150.109.123.187) only expose `precreate` and return 404 for every
+// documented `queryorder` path. The public hostname behind the docs at
+// https://wap.kbzpay.com/pgw/uat/api/ is the canonical place where queryorder lives.
+const PUBLIC_KBZ_UAT_BASE = "https://wap.kbzpay.com/pgw/uat/api/";
+// Keep this list short to avoid blowing up polling latency if the public host is slow.
+const PUBLIC_QUERY_PATHS = ["/pgw/uat/api/queryorder", "queryorder", "orderquery"];
+
 function endpointCandidates(
   baseUrl: string,
   primaryPath: string,
@@ -350,19 +440,43 @@ function endpointCandidates(
   strictPrimaryOnly: boolean,
 ): string[] {
   const pathCandidates = kind === "create" ? CREATE_PATH_CANDIDATES : QUERY_PATH_CANDIDATES;
-  const unique = new Set<string>();
+  const resolved: string[] = [];
+  const seen = new Set<string>();
 
-  if (text(primaryPath)) unique.add(primaryPath);
-  if (!strictPrimaryOnly) {
-    for (const path of pathCandidates) unique.add(path);
+  // 1) Configured proxy/base URL with primary + (optionally) all candidate paths.
+  if (text(baseUrl)) {
+    const uniquePaths = new Set<string>();
+    if (text(primaryPath)) uniquePaths.add(primaryPath);
+    if (!strictPrimaryOnly) {
+      for (const path of pathCandidates) uniquePaths.add(path);
+    }
+    for (const path of uniquePaths) {
+      try {
+        const url = new URL(path, baseUrl).toString();
+        if (!seen.has(url)) {
+          seen.add(url);
+          resolved.push(url);
+        }
+      } catch {
+        // ignore malformed path
+      }
+    }
   }
 
-  const resolved: string[] = [];
-  for (const path of unique) {
-    try {
-      resolved.push(new URL(path, baseUrl).toString());
-    } catch {
-      // ignore malformed path and continue
+  // 2) For `query` only: also try the public KBZ UAT hostname for the canonical
+  // queryorder paths. Many UAT relays only expose `precreate` and 404 on queryorder,
+  // so the public host is the fallback that can actually return live status.
+  if (kind === "query" && !resolved.some((u) => u.includes("wap.kbzpay.com"))) {
+    for (const path of PUBLIC_QUERY_PATHS) {
+      try {
+        const url = new URL(path, PUBLIC_KBZ_UAT_BASE).toString();
+        if (!seen.has(url)) {
+          seen.add(url);
+          resolved.push(url);
+        }
+      } catch {
+        // ignore malformed path
+      }
     }
   }
   return resolved;
@@ -421,6 +535,74 @@ function createPayloadCandidates(params: {
   }
 
   return [{ signCollection, requestBody }];
+}
+
+// KBZ PGW `precreate` for the PWA (Progressive Web App) payment scenario.
+// Per https://wap.kbzpay.com/pgw/uat/api/#/en/docs/PWA/scenes-PWA-en the only
+// differences from QR Pay are:
+//   - trade_type = "PWAAPP" (vs "PAY_BY_QRCODE")
+//   - `title` is included in biz_content (offering name shown in KBZPay)
+// Everything else (signing rule, version "1.0", method, common params) is
+// identical to the standard precreate flow.
+function createPwaPayloadCandidates(params: {
+  appId: string;
+  merchCode: string;
+  merchantOrderId: string;
+  amount: string;
+  currency: string;
+  notifyUrl: string;
+  title: string;
+  callbackInfo?: string;
+}): PayloadPair[] {
+  const nonce = crypto.randomUUID().replaceAll("-", "");
+  const ts = String(Math.floor(Date.now() / 1000));
+
+  const bizContent: AnyRecord = {
+    appid: params.appId,
+    merch_code: params.merchCode,
+    merch_order_id: params.merchantOrderId,
+    title: params.title,
+    total_amount: params.amount,
+    trans_currency: params.currency,
+    trade_type: "PWAAPP",
+  };
+  if (text(params.callbackInfo)) {
+    bizContent.callback_info = params.callbackInfo;
+  }
+
+  const signCollection: AnyRecord = {
+    appid: params.appId,
+    merch_code: params.merchCode,
+    merch_order_id: params.merchantOrderId,
+    method: "kbz.payment.precreate",
+    nonce_str: nonce,
+    timestamp: ts,
+    title: params.title,
+    total_amount: params.amount,
+    trade_type: "PWAAPP",
+    trans_currency: params.currency,
+    version: "1.0",
+  };
+  if (text(params.notifyUrl)) {
+    signCollection.notify_url = params.notifyUrl;
+  }
+  if (text(params.callbackInfo)) {
+    signCollection.callback_info = params.callbackInfo;
+  }
+
+  const requestBody: AnyRecord = {
+    timestamp: ts,
+    method: "kbz.payment.precreate",
+    nonce_str: nonce,
+    sign_type: "SHA256",
+    version: "1.0",
+    biz_content: bizContent,
+  };
+  if (text(params.notifyUrl)) {
+    requestBody.notify_url = params.notifyUrl;
+  }
+
+  return [{ signCollection, requestBody, nonce, timestamp: ts } as PayloadPair];
 }
 
 // KBZ PGW `queryorder` uses version "3.0" per the PGW reference.
@@ -527,7 +709,9 @@ export async function createKPayQr(c: Context) {
     const currency = text(body.currency || "MMK") || "MMK";
     const notifyUrl = text(body.notifyUrl) || cfg.notifyUrl;
 
-    const strictPrimaryOnly = cfg.strictProtocol ? true : !cfg.autoDiscover;
+    // In strict mode, keep create endpoint fixed only when explicitly configured.
+    // Otherwise, allow fallback candidates to support provider variants.
+    const strictPrimaryOnly = cfg.strictProtocol ? cfg.createPathConfigured : !cfg.autoDiscover;
     const endpoints = endpointCandidates(cfg.baseUrl, cfg.createPath, "create", strictPrimaryOnly);
     const payloads = createPayloadCandidates({
       appId: cfg.appId,
@@ -613,6 +797,241 @@ export async function createKPayQr(c: Context) {
   }
 }
 
+// PWA-flow base hosts where the customer's mobile browser is redirected.
+// Per https://wap.kbzpay.com/pgw/uat/api/#/en/docs/PWA/scenes-PWA-en
+//   - Production: https://wap.kbzpay.com/pgw/pwa/#/
+//   - UAT:        https://static.kbzpay.com/pgw/uat/pwa/#/
+const PWA_REDIRECT_BASE_PROD = "https://wap.kbzpay.com/pgw/pwa/#/";
+const PWA_REDIRECT_BASE_UAT = "https://static.kbzpay.com/pgw/uat/pwa/#/";
+
+function isUatEnvironment(cfg: ReturnType<typeof kpayConfig>): boolean {
+  const explicit = text(Deno.env.get("KPAY_ENV")).toLowerCase();
+  if (explicit === "prod" || explicit === "production") return false;
+  if (explicit === "uat" || explicit === "test" || explicit === "sandbox") return true;
+  // Heuristic fallback: configured base URL contains "uat".
+  return /uat/i.test(cfg.baseUrl || "");
+}
+
+// Build the orderinfo signature for the PWA redirect URL.
+// Per the docs, only these 5 fields are signed:
+//   appid, merch_code, nonce_str, prepay_id, timestamp
+// Fields are sorted lexicographically, joined as `k=v&k=v...`, then `&key={appkey}` is
+// appended and SHA256-uppercased to produce the final `sign`.
+async function buildPwaOrderInfoSignature(args: {
+  appId: string;
+  merchCode: string;
+  prepayId: string;
+  timestamp: string;
+  nonce: string;
+  signKey: string;
+}): Promise<string> {
+  const collection: AnyRecord = {
+    appid: args.appId,
+    merch_code: args.merchCode,
+    nonce_str: args.nonce,
+    prepay_id: args.prepayId,
+    timestamp: args.timestamp,
+  };
+  const stringA = buildSignSource(collection);
+  return await sha256Upper(`${stringA}&key=${args.signKey}`);
+}
+
+// POST /kpay/pwa/start
+// Body: { merchantOrderId: string, amount: number, title?: string, callbackInfo?: string }
+// Returns: { success, merchantOrderId, prepayId, redirectUrl, ... }
+//
+// The redirectUrl is an absolute KBZ URL that the customer's browser must visit on a
+// mobile device. KBZ's PWA page validates the referer URL and signature, then opens
+// the KBZPay app. After payment, KBZ redirects the user to our registered `return_url`
+// with `prepay_id` and `merch_order_id` query params (handled by /kpay/pwa/return below).
+export async function startKPayPwa(c: Context) {
+  try {
+    const cfg = kpayConfig();
+    if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
+      return c.json({
+        error: "KPay gateway is not configured",
+        missing: [
+          !cfg.baseUrl ? "KPAY_PROXY_BASE_URL" : null,
+          !cfg.appId ? "KPAY_APPID" : null,
+          !cfg.merchCode ? "KPAY_MERCH_CODE" : null,
+          !cfg.signKey ? "KPAY_SIGN_KEY" : null,
+        ].filter(Boolean),
+      }, 500);
+    }
+
+    const body = (await c.req.json()) as AnyRecord;
+    const merchantOrderId = text(body.merchantOrderId);
+    if (!merchantOrderId) return c.json({ error: "merchantOrderId is required" }, 400);
+
+    const amount = normalizeAmountMMK(body.amount);
+    const currency = text(body.currency || "MMK") || "MMK";
+    const notifyUrl = text(body.notifyUrl) || cfg.notifyUrl;
+    const title = text(body.title) || "Order";
+    const callbackInfo = text(body.callbackInfo);
+
+    const strictPrimaryOnly = cfg.strictProtocol ? cfg.createPathConfigured : !cfg.autoDiscover;
+    const endpoints = endpointCandidates(cfg.baseUrl, cfg.createPath, "create", strictPrimaryOnly);
+    const payloads = createPwaPayloadCandidates({
+      appId: cfg.appId,
+      merchCode: cfg.merchCode,
+      merchantOrderId,
+      amount,
+      currency,
+      notifyUrl,
+      title,
+      callbackInfo: callbackInfo || undefined,
+    });
+
+    const provider = await tryProviderVariants({
+      endpoints,
+      payloads,
+      signKey: cfg.signKey,
+      timeoutMs: cfg.timeoutMs,
+      wrapRequest: cfg.wrapRequest,
+      extraHeaders: buildProviderHeaders(cfg),
+    });
+    if (!provider.success) {
+      const last = provider.attempts[provider.attempts.length - 1];
+      return c.json(
+        {
+          error: "kpay-pwa-start-failed",
+          status: last?.status || 502,
+          details: last?.details || {},
+          networkError: last?.networkError || undefined,
+          endpoint: last?.endpoint || "",
+          wrapRequest: cfg.wrapRequest,
+          signSource: last?.signSource || "",
+          sign: last?.sign || "",
+          signedPayload: last?.signedPayload || {},
+          attemptedEndpoints: Array.from(new Set(provider.attempts.map((a) => a.endpoint))),
+        },
+        502,
+      );
+    }
+
+    // Extract prepay_id from the precreate response. KBZ wraps it under "Response".
+    const respWrapped = asRecord((provider.body as AnyRecord).Response);
+    const respFlat = Object.keys(respWrapped).length > 0 ? respWrapped : (provider.body as AnyRecord);
+    const prepayId = text(respFlat.prepay_id) || text(respFlat.prepayId) || text(respFlat.prepay);
+    if (!prepayId) {
+      return c.json({
+        error: "kpay-pwa-no-prepay-id",
+        message: "KBZ precreate succeeded but did not return prepay_id.",
+        rawResponse: provider.body,
+        signSource: provider.signSource || "",
+        sign: provider.sign || "",
+      }, 502);
+    }
+
+    // The signCollection passed into tryProviderVariants is the FIRST payload — re-derive
+    // the same nonce/timestamp from it so the redirect URL signature matches.
+    const usedPair = payloads[0];
+    const ts = text(usedPair.timestamp) || text(usedPair.signCollection.timestamp);
+    const nonce = text(usedPair.nonce) || text(usedPair.signCollection.nonce_str);
+
+    const orderInfoSign = await buildPwaOrderInfoSignature({
+      appId: cfg.appId,
+      merchCode: cfg.merchCode,
+      prepayId,
+      timestamp: ts,
+      nonce,
+      signKey: cfg.signKey,
+    });
+
+    const isUat = isUatEnvironment(cfg);
+    const base = isUat ? PWA_REDIRECT_BASE_UAT : PWA_REDIRECT_BASE_PROD;
+    const params = new URLSearchParams({
+      appid: cfg.appId,
+      merch_code: cfg.merchCode,
+      nonce_str: nonce,
+      prepay_id: prepayId,
+      timestamp: ts,
+      sign: orderInfoSign,
+    });
+    // KBZ uses hash-routed query params; the docs example puts ?... after the # so the
+    // params live in the hash fragment, not the search string.
+    const redirectUrl = `${base}?${params.toString()}`;
+
+    const providerStatus = providerStatusFrom(provider.body);
+    const ts2 = nowIso();
+    await kv.set(`kpay_txn:${merchantOrderId}`, {
+      merchantOrderId,
+      amount,
+      currency,
+      title,
+      method: "pwa",
+      prepayId,
+      status: "pending" as PaymentStatus,
+      providerStatus,
+      redirectUrl,
+      createdAt: ts2,
+      updatedAt: ts2,
+      rawCreateResponse: provider.body,
+      endpointUsed: provider.endpoint,
+      wrapRequest: cfg.wrapRequest,
+    });
+
+    return c.json({
+      success: true,
+      merchantOrderId,
+      prepayId,
+      redirectUrl,
+      pwaBase: base,
+      isUat,
+      endpointUsed: provider.endpoint,
+      wrapRequest: cfg.wrapRequest,
+      debug: {
+        wrapRequest: cfg.wrapRequest,
+        signSource: provider.signSource || "",
+        sign: provider.sign || "",
+        signedPayload: provider.signedPayload || {},
+        orderInfoSignSource: buildSignSource({
+          appid: cfg.appId,
+          merch_code: cfg.merchCode,
+          nonce_str: nonce,
+          prepay_id: prepayId,
+          timestamp: ts,
+        }),
+        orderInfoSign,
+        providerTopLevelKeys: topLevelKeys(provider.body),
+        providerNestedKeys: nestedKeys(provider.body),
+      },
+    });
+  } catch (error: any) {
+    console.error("startKPayPwa error", error);
+    return c.json({ error: "Failed to start KPay PWA", message: String(error?.message || error) }, 500);
+  }
+}
+
+// GET /kpay/pwa/return?prepay_id=...&merch_order_id=...
+// Customer-facing return endpoint. KBZ redirects the user's browser here AFTER the
+// PWA payment is completed (success or cancelled). We optionally call queryorder to
+// confirm the trade_status, then redirect the user to the SPA route that shows the
+// final result UI.
+export async function handleKPayPwaReturn(c: Context) {
+  const url = new URL(c.req.url);
+  const prepayId = text(url.searchParams.get("prepay_id"));
+  const merchantOrderId = text(url.searchParams.get("merch_order_id")) || text(url.searchParams.get("merchOrderId"));
+  const callbackInfo = text(url.searchParams.get("callback_info"));
+
+  // Where to send the customer in the SPA. Prefer the explicit env var if set; otherwise
+  // fall back to a query-string append on the current request's referer.
+  const spaReturnBase = text(Deno.env.get("KPAY_PWA_FRONTEND_RETURN_URL"));
+  if (!spaReturnBase) {
+    return c.json({
+      error: "KPAY_PWA_FRONTEND_RETURN_URL is not configured",
+      received: { prepayId, merchantOrderId, callbackInfo },
+    }, 500);
+  }
+
+  const target = new URL(spaReturnBase);
+  if (prepayId) target.searchParams.set("prepay_id", prepayId);
+  if (merchantOrderId) target.searchParams.set("merch_order_id", merchantOrderId);
+  if (callbackInfo) target.searchParams.set("callback_info", callbackInfo);
+
+  return c.redirect(target.toString(), 302);
+}
+
 export async function getKPayStatus(c: Context) {
   try {
     const cfg = kpayConfig();
@@ -634,7 +1053,11 @@ export async function getKPayStatus(c: Context) {
       });
     }
 
-    const strictPrimaryOnly = cfg.strictProtocol ? true : !cfg.autoDiscover;
+    // Query endpoint paths vary a lot across KBZ relays AND env vars are easy to misconfigure
+    // (e.g. KPAY_PATH_QUERY_ORDER set to "/orderquery" returns HTTP 404 on most relays).
+    // For the *read-only* queryorder call, always try every known candidate so a bad env
+    // var or relay quirk does not permanently block status updates.
+    const strictPrimaryOnly = false;
     const endpoints = endpointCandidates(cfg.baseUrl, cfg.queryPath, "query", strictPrimaryOnly);
     const payloads = queryPayloadCandidates({
       appId: cfg.appId,
@@ -669,6 +1092,10 @@ export async function getKPayStatus(c: Context) {
           502,
         );
       }
+      const lastDetails = (last?.details && typeof last.details === "object")
+        ? (last.details as AnyRecord)
+        : {};
+      const lastNested = providerData(lastDetails);
       return c.json({
         success: true,
         merchantOrderId,
@@ -682,6 +1109,22 @@ export async function getKPayStatus(c: Context) {
         wrapRequest: cfg.wrapRequest,
         updatedAt: existing.updatedAt,
         stale: true,
+        message: String(lastDetails.message || lastNested.message || last?.networkError || ""),
+        debug: {
+          wrapRequest: cfg.wrapRequest,
+          stale: true,
+          httpStatus: last?.status || 0,
+          networkError: last?.networkError || "",
+          attemptedEndpoints: Array.from(new Set(provider.attempts.map((a) => a.endpoint))),
+          signSource: last?.signSource || "",
+          sign: last?.sign || "",
+          signedPayload: last?.signedPayload || {},
+          providerTopLevelKeys: topLevelKeys(lastDetails),
+          providerNestedKeys: nestedKeys(lastDetails),
+          providerCode: String(lastDetails.code || lastNested.code || lastDetails.resultCode || lastNested.resultCode || ""),
+          providerMessage: String(lastDetails.message || lastNested.message || lastDetails.msg || lastNested.msg || ""),
+          rawResponse: lastDetails,
+        },
       });
     }
 
@@ -733,6 +1176,9 @@ export async function getKPayStatus(c: Context) {
         signedPayload: provider.signedPayload || {},
         providerTopLevelKeys: topLevelKeys(provider.body),
         providerNestedKeys: nestedKeys(provider.body),
+        providerCode: String((provider.body as AnyRecord).code || providerData(provider.body).code || (provider.body as AnyRecord).resultCode || providerData(provider.body).resultCode || ""),
+        providerMessage: String((provider.body as AnyRecord).message || providerData(provider.body).message || (provider.body as AnyRecord).msg || providerData(provider.body).msg || ""),
+        rawResponse: provider.body,
       },
     });
   } catch (error: any) {
@@ -746,19 +1192,54 @@ export async function handleKPayWebhook(c: Context) {
     const cfg = kpayConfig();
     if (!cfg.signKey) return c.json({ error: "KPAY_SIGN_KEY is required" }, 500);
 
-    const body = (await c.req.json()) as AnyRecord;
-    const merchantOrderId = text(body.merchantOrderId || body.merch_order_id || body.outTradeNo);
+    const rawBody = (await c.req.json()) as AnyRecord;
+    const wrappedBody = asRecord(rawBody.Request);
+    const body = Object.keys(wrappedBody).length > 0 ? wrappedBody : rawBody;
+    const bizContent = asRecord(body.biz_content);
+    const merchantOrderId = text(
+      body.merchantOrderId ||
+        body.merch_order_id ||
+        body.outTradeNo ||
+        bizContent.merch_order_id ||
+        bizContent.merchOrderId ||
+        bizContent.outTradeNo,
+    );
+
+    // Persist EVERY incoming webhook for diagnostics, even if it fails validation,
+    // so we can confirm KBZ is actually delivering callbacks for this relay.
+    const debugKey = `kpay_webhook_log:${nowIso()}:${merchantOrderId || "unknown"}`;
+    try {
+      await kv.set(debugKey, {
+        receivedAt: nowIso(),
+        headers: Object.fromEntries(
+          ["content-type", "x-kpay-signature", "x-signature", "user-agent"]
+            .map((h) => [h, c.req.header(h) || ""]),
+        ),
+        rawBody,
+      });
+    } catch (logErr) {
+      console.warn("kpay_webhook_log write failed", logErr);
+    }
+    console.log("KPay webhook received", { merchantOrderId, rawBody });
+
     if (!merchantOrderId) return c.json({ error: "merchantOrderId missing" }, 400);
 
     const providedSign = text(
       c.req.header("x-kpay-signature") ||
         c.req.header("x-signature") ||
+        rawBody.sign ||
+        rawBody.signature ||
         body.sign ||
         body.signature,
     ).toUpperCase();
     const source = buildSignSource(body);
     const expectedSign = await sha256Upper(`${source}&key=${cfg.signKey}`);
     if (!providedSign || providedSign !== expectedSign) {
+      console.warn("KPay webhook signature mismatch", {
+        merchantOrderId,
+        providedSign,
+        expectedSign,
+      });
       return c.json({ error: "Invalid signature" }, 401);
     }
 

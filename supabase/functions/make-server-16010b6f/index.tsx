@@ -7,7 +7,7 @@ import blogEngagementApp from "./blog_engagement_routes.tsx";
 import customerApp from "./customer_routes.tsx";
 import userApp from "./user_routes.tsx";
 import { createPaymentIntent, verifyPayment } from "./stripe_routes.tsx";
-import { createKPayQr, getKPayStatus, handleKPayWebhook } from "./kpay_routes.tsx";
+import { createKPayQr, getKPayStatus, handleKPayWebhook, startKPayPwa, handleKPayPwaReturn } from "./kpay_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import {
   collectProductImageRefs,
@@ -748,6 +748,8 @@ app.get("/make-server-16010b6f/verify-payment/:paymentIntentId", verifyPayment);
 app.post("/make-server-16010b6f/kpay/create-qr", createKPayQr);
 app.get("/make-server-16010b6f/kpay/status/:merchantOrderId", getKPayStatus);
 app.post("/make-server-16010b6f/kpay/webhook", handleKPayWebhook);
+app.post("/make-server-16010b6f/kpay/pwa/start", startKPayPwa);
+app.get("/make-server-16010b6f/kpay/pwa/return", handleKPayPwaReturn);
 
 // Retry wrapper for database operations with exponential backoff
 async function withRetry<T>(

@@ -8,9 +8,9 @@
     "dev": "vite",
     "test": "vitest run",
     "test:watch": "vitest",
-    "deploy:edge": "npx supabase functions deploy make-server-16010b6f",
+    "deploy:edge": "npx supabase functions deploy make-server-16010b6f && npx supabase functions deploy kpay-webhook --no-verify-jwt",
     "db:push": "npx supabase db push --linked",
-    "deploy:supabase": "npx supabase db push --linked && npx supabase functions deploy make-server-16010b6f"
+    "deploy:supabase": "npx supabase db push --linked && npx supabase functions deploy make-server-16010b6f && npx supabase functions deploy kpay-webhook --no-verify-jwt"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

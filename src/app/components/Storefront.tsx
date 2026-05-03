@@ -1117,10 +1117,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   });
   const [kpaySession, setKpaySession] = useState<KPaySession | null>(null);
   const [kpayLoading, setKpayLoading] = useState(false);
+  const [kpayRefreshing, setKpayRefreshing] = useState(false);
+  const [kpayAutoPolling, setKpayAutoPolling] = useState(false);
+  const [showKpayConfetti, setShowKpayConfetti] = useState(false);
+  const kpayRefreshInFlightRef = useRef(false);
+  const prevKpayStatusRef = useRef<"pending" | "paid" | "failed">("pending");
   const hasKPayPayload = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent || kpaySession?.payUrl);
   const hasNativeKPayQr = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent);
   const hasLinkOnlyKPay = Boolean(!hasNativeKPayQr && kpaySession?.payUrl);
   const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasKPayPayload);
+  const kpayStatus = kpaySession?.status || "pending";
+  const isKpayPaid = kpayStatus === "paid";
   // Only the rare hosted-image case uses an <img>. For native EMV QR strings
   // (the common case) we render with QRCodeCanvas locally — no third-party
   // QR rendering service required, no remote dependency, no privacy leak of
@@ -1129,6 +1136,19 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const kpayQrCanvasValue = !kpayQrDisplayUrl
     ? (kpaySession?.qrContent || kpaySession?.payUrl || "")
     : "";
+
+  useEffect(() => {
+    const previous = prevKpayStatusRef.current;
+    if (kpayStatus === "paid" && previous !== "paid") {
+      setShowKpayConfetti(true);
+      const timerId = window.setTimeout(() => {
+        setShowKpayConfetti(false);
+      }, 1400);
+      prevKpayStatusRef.current = kpayStatus;
+      return () => window.clearTimeout(timerId);
+    }
+    prevKpayStatusRef.current = kpayStatus;
+  }, [kpayStatus]);
 
   // Profile page states
   const [orderCount, setOrderCount] = useState(0);
@@ -3160,9 +3180,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
   };
 
-  const refreshKPayStatus = async () => {
+  const refreshKPayStatus = async (options?: { silent?: boolean }) => {
     if (!kpaySession?.merchantOrderId) return;
+    if (kpayRefreshInFlightRef.current) return;
+    const silent = options?.silent === true;
     try {
+      kpayRefreshInFlightRef.current = true;
+      if (!silent) setKpayRefreshing(true);
       const session = await fetchKPaySessionStatus({
         projectId,
         publicAnonKey,
@@ -3171,8 +3195,32 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setKpaySession((prev) => (prev ? { ...prev, ...session } : prev));
     } catch (error) {
       console.warn("Unable to refresh KPay status", error);
+    } finally {
+      kpayRefreshInFlightRef.current = false;
+      if (!silent) setKpayRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    if (paymentMethod !== "KPay" || !kpaySession?.merchantOrderId) {
+      setKpayAutoPolling(false);
+      return;
+    }
+    if (kpaySession.status === "paid" || kpaySession.status === "failed") {
+      setKpayAutoPolling(false);
+      return;
+    }
+
+    setKpayAutoPolling(true);
+    void refreshKPayStatus({ silent: true });
+    const intervalId = window.setInterval(() => {
+      void refreshKPayStatus({ silent: true });
+    }, 2000);
+    return () => {
+      window.clearInterval(intervalId);
+      setKpayAutoPolling(false);
+    };
+  }, [paymentMethod, kpaySession?.merchantOrderId, kpaySession?.status]);
 
   const waitForKPayPayload = async (merchantOrderId: string) => {
     const maxAttempts = 12;
@@ -3213,7 +3261,20 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         toast.error("KPay QR payload is missing. Please regenerate QR and try again.");
         return;
       }
-      await refreshKPayStatus();
+      const refreshedSession = await fetchKPaySessionStatus({
+        projectId,
+        publicAnonKey,
+        merchantOrderId: kpaySession!.merchantOrderId,
+      }).catch(() => null);
+      if (!refreshedSession) {
+        toast.error("Unable to verify KPay status. Please try again.");
+        return;
+      }
+      setKpaySession((prev) => (prev ? { ...prev, ...refreshedSession } : refreshedSession));
+      if (refreshedSession.status !== "paid") {
+        toast.error("Payment is not confirmed yet. Please complete payment in KBZPay and wait for status to turn PAID.");
+        return;
+      }
     }
 
     // 💳 TEST CARD PAYMENT PROCESSING (Stripe-style)
@@ -6414,22 +6475,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       >
                         {kpayLoading ? "Generating..." : kpaySession?.merchantOrderId ? "Regenerate KPay QR" : "Generate KPay QR"}
                       </Button>
-                      {kpaySession?.merchantOrderId && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={refreshKPayStatus}
-                        >
-                          Check Payment Status
-                        </Button>
-                      )}
                     </div>
 
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-6">
                       <h3 className="font-bold text-slate-900 mb-4">Scan QR Code to Pay</h3>
                       
                       <div className="flex justify-center mb-6">
-                        <div className="w-48 h-48 bg-white rounded-lg overflow-hidden flex items-center justify-center border-2 border-slate-200">
+                        <div className="relative w-48 h-48 bg-white rounded-lg overflow-hidden flex items-center justify-center border-2 border-slate-200">
                           {kpayQrDisplayUrl ? (
                             <img
                               src={kpayQrDisplayUrl}
@@ -6453,6 +6505,32 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                               </p>
                             </div>
                           )}
+                          {isKpayPaid && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-emerald-900/45 backdrop-blur-[1px]">
+                              <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-emerald-200 bg-emerald-600 text-white shadow-lg">
+                                <Check className="w-9 h-9" strokeWidth={3.2} />
+                              </div>
+                              <div className="rounded-full border border-emerald-200/80 bg-emerald-700/85 px-3 py-1 text-xs font-extrabold tracking-[0.2em] text-white shadow">
+                                PAID
+                              </div>
+                            </div>
+                          )}
+                          {showKpayConfetti && (
+                            <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
+                              {Array.from({ length: 18 }).map((_, i) => (
+                                <span
+                                  key={`kpay-confetti-${i}`}
+                                  className="absolute top-1/2 h-2 w-2 rounded-sm animate-bounce opacity-90"
+                                  style={{
+                                    left: `${8 + (i % 6) * 16}%`,
+                                    backgroundColor: ["#10B981", "#22C55E", "#FACC15", "#60A5FA", "#FB7185"][i % 5],
+                                    animationDelay: `${Math.floor(i / 6) * 70}ms`,
+                                    animationDuration: "450ms",
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -6467,7 +6545,28 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         {kpaySession?.status && (
                           <div className="flex justify-between py-2 border-b border-slate-200">
                             <span className="text-slate-600">Payment Status:</span>
-                            <span className="font-semibold text-slate-900 uppercase">{kpaySession.status}</span>
+                            <span
+                              className={`rounded px-2 py-0.5 text-xs font-semibold uppercase ${
+                                kpayStatus === "paid"
+                                  ? "text-emerald-700"
+                                  : kpayStatus === "failed"
+                                    ? "text-red-700"
+                                    : "text-amber-700"
+                              }`}
+                            >
+                              {kpayStatus === "paid" ? "PAID" : kpayStatus === "failed" ? "FAILED" : "PENDING"}
+                            </span>
+                          </div>
+                        )}
+                        {kpayAutoPolling && kpayStatus === "pending" && (
+                          <div className="flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Waiting for payment confirmation...
+                          </div>
+                        )}
+                        {isKpayPaid && (
+                          <div className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-800">
+                            Payment confirmed. You can place your order now.
                           </div>
                         )}
                         <div className="flex justify-between py-2">
@@ -6491,18 +6590,25 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                             KPay returned pending order without QR payload. Please confirm endpoint contract with KPay team.
                           </div>
                         )}
-                        {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && (
-                          <details className="py-2 border-t border-slate-200 rounded text-xs text-slate-700">
-                            <summary className="cursor-pointer font-medium text-slate-800">KPay debug details</summary>
+                        {kpaySession?.merchantOrderId && (
+                          <details className="py-2 border-t border-slate-200 rounded text-xs text-slate-700" open={kpayStatus === "pending"}>
+                            <summary className="cursor-pointer font-medium text-slate-800">KPay debug details {kpaySession?.stale ? "(stale - queryorder failed)" : ""}</summary>
                             <div className="mt-2 space-y-1 break-all">
+                              <div>uiStatus: {kpayStatus}</div>
+                              <div>stale: {String(kpaySession?.stale ?? false)}</div>
                               <div>endpointUsed: {kpaySession?.debug?.endpointUsed || "-"}</div>
                               <div>queryEndpointUsed: {kpaySession?.debug?.queryEndpointUsed || "-"}</div>
+                              <div>httpStatus: {kpaySession?.debug?.httpStatus ?? "-"}</div>
+                              <div>networkError: {kpaySession?.debug?.networkError || "-"}</div>
                               <div>wrapRequest: {String(kpaySession?.debug?.wrapRequest ?? false)}</div>
                               <div>providerStatus: {kpaySession?.providerStatus || "-"}</div>
                               <div>providerCode: {kpaySession?.debug?.providerCode || "-"}</div>
                               <div>providerMessage: {kpaySession?.debug?.providerMessage || "-"}</div>
                               <div>topLevelKeys: {(kpaySession?.debug?.providerTopLevelKeys || []).join(", ") || "-"}</div>
                               <div>nestedKeys: {(kpaySession?.debug?.providerNestedKeys || []).join(", ") || "-"}</div>
+                              <div>attemptedEndpoints: {(kpaySession?.debug?.attemptedEndpoints || []).join(", ") || "-"}</div>
+                              <div className="pt-1 font-medium text-slate-800">rawResponse (KBZ queryorder):</div>
+                              <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700 max-h-72 overflow-auto">{JSON.stringify(kpaySession?.debug?.rawResponse || {}, null, 2)}</pre>
                               <div className="pt-1 font-medium text-slate-800">signSource:</div>
                               <pre className="whitespace-pre-wrap rounded bg-white p-2 text-[11px] text-slate-700">{kpaySession?.debug?.signSource || "-"}</pre>
                               <div>sign: <code>{kpaySession?.debug?.sign || "-"}</code></div>
@@ -6515,7 +6621,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                                   try {
                                     const blob = JSON.stringify({
                                       merchantOrderId: kpaySession?.merchantOrderId,
+                                      uiStatus: kpayStatus,
                                       providerStatus: kpaySession?.providerStatus,
+                                      stale: kpaySession?.stale,
                                       debug: kpaySession?.debug,
                                     }, null, 2);
                                     navigator.clipboard?.writeText(blob);

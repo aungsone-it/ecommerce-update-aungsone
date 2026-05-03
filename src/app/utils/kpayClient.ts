@@ -5,6 +5,7 @@ export type KPaySession = {
   qrContent?: string;
   qrImageUrl?: string;
   payUrl?: string;
+  stale?: boolean;
   debug?: {
     endpointUsed?: string;
     queryEndpointUsed?: string;
@@ -17,6 +18,11 @@ export type KPaySession = {
     providerNestedKeys?: string[];
     providerCode?: string;
     providerMessage?: string;
+    networkError?: string;
+    httpStatus?: number;
+    attemptedEndpoints?: string[];
+    rawResponse?: Record<string, unknown>;
+    stale?: boolean;
   };
 };
 
@@ -38,6 +44,49 @@ type CreateKPayQrParams = KPayBaseParams & {
   title?: string;
   notifyUrl?: string;
 };
+
+function deriveUiStatus(rawStatus: unknown, rawProviderStatus: unknown): "pending" | "paid" | "failed" {
+  const normalize = (value: unknown) => String(value ?? "").trim().toUpperCase();
+  const status = normalize(rawStatus);
+  const provider = normalize(rawProviderStatus);
+  const merged = [status, provider];
+
+  if (
+    merged.some((v) =>
+      [
+        "PAID",
+        "SUCCESS",
+        "PAY_SUCCESS",
+        "TRADE_SUCCESS",
+        "COMPLETED",
+        "PAYED",
+        "TRANSACTION_SUCCESS",
+        "00",
+      ].includes(v),
+    )
+  ) {
+    return "paid";
+  }
+  if (
+    merged.some((v) =>
+      [
+        "FAILED",
+        "FAIL",
+        "PAY_FAILED",
+        "TRADE_FAIL",
+        "TRADE_CLOSED",
+        "ORDER_CLOSED",
+        "ORDER_EXPIRED",
+        "EXPIRED",
+        "CANCELLED",
+        "TRANSACTION_FAILED",
+      ].includes(v),
+    )
+  ) {
+    return "failed";
+  }
+  return "pending";
+}
 
 function isLikelyImageUrl(value: string): boolean {
   const v = value.trim().toLowerCase();
@@ -176,13 +225,20 @@ function normalizeSession(data: Record<string, any>, fallbackOrderId: string): K
       : typeof data.wrapRequest === "boolean"
         ? data.wrapRequest
         : false;
+  const providerStatus = String(
+    data.providerStatus ||
+      extracted.providerStatus ||
+      (data.debug && typeof data.debug === "object" ? (data.debug as Record<string, unknown>).providerCode : "") ||
+      "",
+  ).trim();
   return {
     merchantOrderId: String(data.merchantOrderId || extracted.merchantOrderId || fallbackOrderId),
-    status: data.status === "paid" ? "paid" : data.status === "failed" ? "failed" : "pending",
-    providerStatus: String(data.providerStatus || extracted.providerStatus || ""),
+    status: deriveUiStatus(data.status, providerStatus),
+    providerStatus,
     qrContent,
     qrImageUrl,
     payUrl,
+    stale: Boolean(data.stale ?? debugPayload.stale ?? false),
     debug: {
       endpointUsed: String(debugPayload.endpointUsed || data.endpointUsed || ""),
       queryEndpointUsed: String(debugPayload.queryEndpointUsed || data.queryEndpointUsed || ""),
@@ -198,8 +254,16 @@ function normalizeSession(data: Record<string, any>, fallbackOrderId: string): K
             : undefined,
       providerTopLevelKeys: topLevelKeys,
       providerNestedKeys: nestedKeys,
-      providerCode: String(data.providerStatus || ""),
-      providerMessage: String(data.message || debugPayload.message || ""),
+      providerCode: String(debugPayload.providerCode || data.providerStatus || ""),
+      providerMessage: String(debugPayload.providerMessage || data.message || debugPayload.message || ""),
+      networkError: String(debugPayload.networkError || ""),
+      httpStatus: typeof debugPayload.httpStatus === "number" ? debugPayload.httpStatus : undefined,
+      attemptedEndpoints: Array.isArray(debugPayload.attemptedEndpoints) ? debugPayload.attemptedEndpoints : [],
+      rawResponse:
+        (debugPayload.rawResponse && typeof debugPayload.rawResponse === "object")
+          ? (debugPayload.rawResponse as Record<string, unknown>)
+          : undefined,
+      stale: Boolean(debugPayload.stale ?? data.stale ?? false),
     },
   };
 }
@@ -351,4 +415,96 @@ export async function fetchKPaySessionStatus(
     console.warn("KPay status returned no QR payload", data);
   }
   return normalized;
+}
+
+/* -------------------------------------------------------------------------- */
+/* PWA flow                                                                   */
+/* -------------------------------------------------------------------------- */
+// Keys used to persist the in-flight PWA session across the KBZ redirect, so the
+// /kpay/return SPA route can recover the merchantOrderId and the customer's cart
+// once they come back from KBZPay.
+export const KPAY_PWA_PENDING_STORAGE_KEY = "kpay_pwa_pending_order";
+
+export type StartKPayPwaParams = KPayBaseParams & {
+  amount: number;
+  merchantOrderId?: string;
+  currency?: string;
+  /** Offering name shown to the user in the KBZPay app (PWA `biz_content.title`). */
+  title?: string;
+  notifyUrl?: string;
+  /** Optional URL-encoded business hint that KBZ echoes back in the webhook. */
+  callbackInfo?: string;
+};
+
+export type KPayPwaSession = {
+  merchantOrderId: string;
+  prepayId: string;
+  /** Absolute KBZ PWA URL the customer's mobile browser must visit. */
+  redirectUrl: string;
+  pwaBase: string;
+  isUat: boolean;
+  endpointUsed?: string;
+  debug?: {
+    signSource?: string;
+    sign?: string;
+    signedPayload?: Record<string, unknown>;
+    orderInfoSignSource?: string;
+    orderInfoSign?: string;
+    providerTopLevelKeys?: string[];
+    providerNestedKeys?: string[];
+  };
+};
+
+/**
+ * Calls our backend to:
+ *   1. precreate the order against KBZ with `trade_type=PWAAPP`
+ *   2. build the SHA256 PWA orderinfo signature
+ *   3. return a ready-to-redirect URL pointing at KBZ's PWA page
+ *
+ * The caller is responsible for performing the actual `window.location` redirect on
+ * a mobile browser. The returned URL only works on a phone with KBZPay installed.
+ */
+export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaSession> {
+  const {
+    projectId,
+    publicAnonKey,
+    amount,
+    merchantOrderId = buildMerchantOrderId(),
+    currency = "MMK",
+    title,
+    notifyUrl,
+    callbackInfo,
+  } = params;
+
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/pwa/start`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${publicAnonKey}`,
+      },
+      body: JSON.stringify({
+        merchantOrderId,
+        amount,
+        currency,
+        title,
+        notifyUrl,
+        callbackInfo,
+      }),
+    },
+  );
+  const data = (await response.json().catch(() => ({}))) as Record<string, any>;
+  if (!response.ok || !data?.success) {
+    throw new Error(String(data?.error || data?.message || "Failed to start KPay PWA"));
+  }
+  return {
+    merchantOrderId: String(data.merchantOrderId || merchantOrderId),
+    prepayId: String(data.prepayId || ""),
+    redirectUrl: String(data.redirectUrl || ""),
+    pwaBase: String(data.pwaBase || ""),
+    isUat: Boolean(data.isUat),
+    endpointUsed: typeof data.endpointUsed === "string" ? data.endpointUsed : undefined,
+    debug: data.debug as KPayPwaSession["debug"],
+  };
 }
