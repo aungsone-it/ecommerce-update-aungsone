@@ -53,6 +53,7 @@ import {
   isMainMarketplaceVendorName,
 } from "../../utils/orderInventoryCacheSync";
 import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
+import { adminOrdersUpdatedStorageKey } from "../../utils/adminOrdersRealtime";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -229,6 +230,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false);
   const [serverTotalOrders, setServerTotalOrders] = useState(0);
+  const [ordersRefreshTick, setOrdersRefreshTick] = useState(0);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -244,6 +246,26 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
     orderDateRange?.from?.getTime(),
     orderDateRange?.to?.getTime(),
   ]);
+
+  useEffect(() => {
+    if (ordersRefreshTick === 0) return;
+    void loadOrders(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordersRefreshTick]);
+
+  useEffect(() => {
+    const bump = () => setOrdersRefreshTick((n) => n + 1);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== adminOrdersUpdatedStorageKey()) return;
+      bump();
+    };
+    window.addEventListener("adminOrdersUpdated", bump);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("adminOrdersUpdated", bump);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   const loadOrders = async (forceRefresh = false) => {
     setListRefreshing(forceRefresh);

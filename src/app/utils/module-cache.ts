@@ -29,6 +29,10 @@ import {
   removePersistedKeysPrefix,
   removePersistedKey,
 } from './persistedLocalCache';
+import {
+  getCanonicalSubdomainLabelIfSlugForm,
+  parseSubdomainSlugMap,
+} from './subdomainSlugMap';
 
 interface CacheEntry<T> {
   data: T;
@@ -1009,6 +1013,25 @@ export type VendorStorefrontProductsResult = {
   hasMore: boolean;
 };
 
+function vendorIdentifierCandidates(vendorId: string): string[] {
+  const raw = String(vendorId || "").trim();
+  if (!raw) return [];
+  const out = new Set<string>([raw]);
+  const lower = raw.toLowerCase();
+  const slugMap = parseSubdomainSlugMap();
+
+  const canonicalLabel = getCanonicalSubdomainLabelIfSlugForm(raw);
+  if (canonicalLabel) out.add(canonicalLabel);
+
+  if (slugMap[lower]) out.add(String(slugMap[lower]).trim());
+  for (const [label, slug] of Object.entries(slugMap)) {
+    if (String(slug).toLowerCase() === lower) out.add(String(label).trim());
+  }
+
+  if (raw.includes("-")) out.add(raw.replace(/-/g, ""));
+  return Array.from(out).filter(Boolean);
+}
+
 /** Public vendor storefront catalog — server-paginated (page / pageSize / q / category / resolveSlug). */
 export async function fetchVendorProducts(
   vendorId: string,
@@ -1026,15 +1049,21 @@ export async function fetchVendorProducts(
   if (opts?.q && opts.q.trim()) sp.set("q", opts.q.trim());
   if (opts?.category && opts.category.toLowerCase() !== "all") sp.set("category", opts.category);
   if (opts?.resolveSlug) sp.set("resolveSlug", encodeURIComponent(opts.resolveSlug));
-  const response = await fetch(
-    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products/${encodeURIComponent(vendorId)}?${sp.toString()}`,
-    {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-    }
-  );
+  const candidates = vendorIdentifierCandidates(vendorId);
+  let response: Response | null = null;
+  for (const candidate of candidates) {
+    response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products/${encodeURIComponent(candidate)}?${sp.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      }
+    );
+    if (response.ok) break;
+  }
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch vendor products: ${response.status}`);
+  if (!response || !response.ok) {
+    const status = response?.status ?? 0;
+    throw new Error(`Failed to fetch vendor products: ${status}`);
   }
 
   const data = await response.json();
@@ -1063,15 +1092,21 @@ export async function fetchVendorProducts(
 
 // Fetch vendor categories (vendor admin/storefront)
 export async function fetchVendorCategories(vendorId: string) {
-  const response = await fetch(
-    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/categories-details/${vendorId}`,
-    {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-    }
-  );
+  const candidates = vendorIdentifierCandidates(vendorId);
+  let response: Response | null = null;
+  for (const candidate of candidates) {
+    response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/categories-details/${encodeURIComponent(candidate)}`,
+      {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      }
+    );
+    if (response.ok) break;
+  }
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch vendor categories: ${response.status}`);
+  if (!response || !response.ok) {
+    const status = response?.status ?? 0;
+    throw new Error(`Failed to fetch vendor categories: ${status}`);
   }
 
   const data = await response.json();

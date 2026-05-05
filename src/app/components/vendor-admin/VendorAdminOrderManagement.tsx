@@ -73,6 +73,7 @@ import {
   normalizeShippingBadgeStatus,
 } from "../../utils/normalizeOrderBadgeStatus";
 import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
+import { adminOrdersUpdatedStorageKey } from "../../utils/adminOrdersRealtime";
 
 function formatMmk(n: number): string {
   return `${Math.round(n).toLocaleString()} MMK`;
@@ -301,6 +302,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
   const [ordersListPage, setOrdersListPage] = useState(1);
   const [ordersListPageSize, setOrdersListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [serverTotalOrders, setServerTotalOrders] = useState(0);
+  const [ordersRefreshTick, setOrdersRefreshTick] = useState(0);
   const [statDateFilters, setStatDateFilters] = useState({
     revenue: "Last 30 days",
     commission: "Last 30 days",
@@ -324,6 +326,26 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     orderDateRange?.from?.getTime(),
     orderDateRange?.to?.getTime(),
   ]);
+
+  useEffect(() => {
+    if (ordersRefreshTick === 0) return;
+    void loadOrders(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordersRefreshTick]);
+
+  useEffect(() => {
+    const bump = () => setOrdersRefreshTick((n) => n + 1);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== adminOrdersUpdatedStorageKey()) return;
+      bump();
+    };
+    window.addEventListener("adminOrdersUpdated", bump);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("adminOrdersUpdated", bump);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

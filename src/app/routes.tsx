@@ -317,6 +317,14 @@ export const appRouteObjects: RouteObject[] = [
                   </LazyBoundary>
                 ),
               },
+              {
+                path: ":section/*",
+                element: (
+                  <LazyBoundary>
+                    <VendorAdminPage />
+                  </LazyBoundary>
+                ),
+              },
             ],
           },
           {
@@ -341,6 +349,14 @@ export const appRouteObjects: RouteObject[] = [
               },
               {
                 path: ":section",
+                element: (
+                  <LazyBoundary>
+                    <VendorAdminPage />
+                  </LazyBoundary>
+                ),
+              },
+              {
+                path: ":section/*",
                 element: (
                   <LazyBoundary>
                     <VendorAdminPage />
