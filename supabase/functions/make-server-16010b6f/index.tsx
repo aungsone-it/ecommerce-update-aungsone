@@ -8072,6 +8072,87 @@ function mergeLatestAvatarAcrossConversationsByEmail(conversations: any[]): any[
   });
 }
 
+function normalizeChatEmail(email: unknown): string {
+  return String(email || "").trim().toLowerCase();
+}
+
+function sanitizeChatToken(input: unknown): string {
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-");
+}
+
+function normalizeChatVendorThreadToken(vendorId: unknown, vendorSource?: unknown): string {
+  const rawId = String(vendorId || "").trim();
+  const lowerId = rawId.toLowerCase();
+  const looksTechnical =
+    /^vendor[_-]vendor_/i.test(rawId) ||
+    /^vendor-vendor_/i.test(rawId) ||
+    /^vendor_\d/i.test(rawId);
+
+  const sourceToken = sanitizeChatToken(vendorSource);
+  const idToken = sanitizeChatToken(rawId);
+
+  if (rawId && !looksTechnical && idToken) return idToken;
+  if (sourceToken && sourceToken !== "secure") return sourceToken;
+  if (lowerId === "secure" || sourceToken === "secure") return "secure";
+  return idToken || sourceToken || "secure";
+}
+
+function canonicalConversationIdFor(email: unknown, vendorId: unknown, vendorSource?: unknown): string | null {
+  const normalizedEmail = normalizeChatEmail(email);
+  if (!normalizedEmail) return null;
+  const emailToken = sanitizeChatToken(normalizedEmail);
+  if (!emailToken) return null;
+  const vendorToken = normalizeChatVendorThreadToken(vendorId, vendorSource);
+  if (!vendorToken || vendorToken === "secure") return `conv-${emailToken}`;
+  return `conv-vendor-${vendorToken}-${emailToken}`;
+}
+
+function conversationBucketKeyFor(conv: any): string {
+  const normalizedEmail = normalizeChatEmail(conv?.customerEmail);
+  if (!normalizedEmail) return `conv-id:${String(conv?.id || "")}`;
+  const vendorToken = normalizeChatVendorThreadToken(conv?.vendorId, conv?.vendorSource);
+  return `${normalizedEmail}::${vendorToken || "secure"}`;
+}
+
+function mergeConversationsByCustomerVendor(conversations: any[]): any[] {
+  const grouped = new Map<string, any>();
+
+  for (const conv of conversations || []) {
+    const key = conversationBucketKeyFor(conv);
+    const current = grouped.get(key);
+    const ts = Date.parse(String(conv?.timestamp || "")) || 0;
+    const unread = Number(conv?.unread) || 0;
+
+    if (!current) {
+      grouped.set(key, { ...conv, unread, __ts: ts, __ids: [String(conv?.id || "")] });
+      continue;
+    }
+
+    const currentTs = Number(current.__ts) || 0;
+    const nextIds = Array.from(new Set([...(current.__ids || []), String(conv?.id || "")]));
+    const merged = ts >= currentTs ? { ...current, ...conv } : { ...conv, ...current };
+    merged.unread = (Number(current.unread) || 0) + unread;
+    merged.starred = Boolean(current?.starred) || Boolean(conv?.starred);
+    merged.__ts = Math.max(currentTs, ts);
+    merged.__ids = nextIds;
+    // Keep newest conversation id as canonical open target.
+    if (ts >= currentTs) merged.id = conv?.id;
+    grouped.set(key, merged);
+  }
+
+  return Array.from(grouped.values())
+    .sort((a, b) => (Number(b.__ts) || 0) - (Number(a.__ts) || 0))
+    .map(({ __ts, __ids, ...rest }) => ({
+      ...rest,
+      aliasConversationIds: Array.isArray(__ids) ? __ids.filter(Boolean) : undefined,
+    }));
+}
+
 // Get all chat conversations
 app.get("/make-server-16010b6f/chat/conversations", async (c) => {
   try {
@@ -8109,9 +8190,10 @@ app.get("/make-server-16010b6f/chat/conversations", async (c) => {
     );
 
     const enriched = mergeLatestAvatarAcrossConversationsByEmail(enrichedRaw);
+    const deduped = mergeConversationsByCustomerVendor(enriched);
 
-    console.log(`📨 Retrieved ${enriched.length} conversations`);
-    return c.json({ conversations: enriched });
+    console.log(`📨 Retrieved ${enriched.length} conversations (${deduped.length} after dedupe)`);
+    return c.json({ conversations: deduped });
   } catch (error: any) {
     console.error("❌ Failed to get conversations:", error);
     return c.json({ error: error.message, conversations: [] }, 500);
@@ -8133,8 +8215,43 @@ app.get("/make-server-16010b6f/chat/messages/:conversationId", async (c) => {
       return c.json({ messages: [], cached: false });
     }
     
-    console.log(`📨 Retrieved ${messages.length} messages for conversation ${conversationId}`);
-    return c.json({ messages });
+    const conversation = await withTimeout(
+      kv.get(`chat:conversation:${conversationId}`),
+      5000
+    ).catch(() => null) as any;
+
+    // Merge alias conversation streams for the same customer+vendor bucket
+    // so duplicated historic ids still appear as one continuous thread.
+    if (conversation?.customerEmail) {
+      const allConversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 10000).catch(() => []);
+      const bucket = conversationBucketKeyFor(conversation);
+      const aliasIds = (allConversations || [])
+        .filter((conv: any) => String(conv?.id || "") !== conversationId)
+        .filter((conv: any) => conversationBucketKeyFor(conv) === bucket)
+        .map((conv: any) => String(conv?.id || ""))
+        .filter(Boolean);
+
+      for (const aliasId of aliasIds) {
+        const aliasMessages = await withTimeout(
+          kv.getByPrefix(`chat:message:${aliasId}:`),
+          8000
+        ).catch(() => []);
+        if (Array.isArray(aliasMessages) && aliasMessages.length > 0) {
+          messages = [...messages, ...aliasMessages];
+        }
+      }
+    }
+
+    const dedupedMessages = Array.from(
+      new Map((messages || []).map((m: any) => [String(m?.id || `${m?.timestamp}-${Math.random()}`), m])).values()
+    ).sort((a: any, b: any) => {
+      const ta = Date.parse(String(a?.timestamp || "")) || 0;
+      const tb = Date.parse(String(b?.timestamp || "")) || 0;
+      return ta - tb;
+    });
+
+    console.log(`📨 Retrieved ${dedupedMessages.length} messages for conversation ${conversationId}`);
+    return c.json({ messages: dedupedMessages });
   } catch (error: any) {
     console.error("❌ Failed to get messages:", error);
     // Return empty array instead of error to allow localStorage fallback
@@ -8154,23 +8271,6 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
 
     const messageId = `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     const timestamp = new Date().toISOString();
-
-    // Store message
-    const message = {
-      id: messageId,
-      conversationId: conversationId || `conv-${customerEmail || Date.now()}`,
-      text,
-      sender,
-      senderName,
-      timestamp,
-      status: "sent",
-      imageUrl: imageUrl || undefined,
-    };
-
-    await withTimeout(
-      kv.set(`chat:message:${message.conversationId}:${messageId}`, message),
-      5000
-    );
 
     // Determine vendor source name (never persist raw technical ids as the display label)
     const looksLikeTechnicalVendorId = (s: string) =>
@@ -8216,6 +8316,27 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
         vendorSource = looksLikeTechnicalVendorId(vid) ? "Vendor store" : vid;
       }
     }
+
+    const canonicalConversationId =
+      canonicalConversationIdFor(customerEmail, vendorId, vendorSource) ||
+      conversationId ||
+      `conv-${sanitizeChatToken(customerEmail || Date.now())}`;
+
+    const message = {
+      id: messageId,
+      conversationId: canonicalConversationId,
+      text,
+      sender,
+      senderName,
+      timestamp,
+      status: "sent",
+      imageUrl: imageUrl || undefined,
+    };
+
+    await withTimeout(
+      kv.set(`chat:message:${message.conversationId}:${messageId}`, message),
+      5000
+    );
 
     // Preserve customer identity — do not overwrite with admin's senderName ("Admin")
     const existingConv = await withTimeout(
@@ -8277,7 +8398,8 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
       unread: nextUnread,
       status: "online",
       vendorSource: vendorSource, // Add vendor source
-      vendorId: vendorId || null // Store vendorId for reference
+      vendorId: vendorId || null, // Store vendorId for reference
+      starred: Boolean(existingConv?.starred),
     };
 
     await withTimeout(
@@ -8309,6 +8431,56 @@ app.put("/make-server-16010b6f/chat/messages/:conversationId/read", async (c) =>
     return c.json({ success: true });
   } catch (error: any) {
     console.error("❌ Failed to mark as read:", error);
+    return c.json({ error: error.message, success: false }, 500);
+  }
+});
+
+// Star / unstar one conversation
+app.put("/make-server-16010b6f/chat/conversations/:conversationId/star", async (c) => {
+  try {
+    const conversationId = c.req.param("conversationId");
+    const body = await c.req.json().catch(() => ({}));
+    const starred = Boolean((body as { starred?: unknown }).starred);
+
+    const conversation = await withTimeout(
+      kv.get(`chat:conversation:${conversationId}`),
+      5000
+    );
+    if (!conversation) {
+      return c.json({ error: "Conversation not found", success: false }, 404);
+    }
+
+    const next = { ...conversation, starred };
+    await withTimeout(kv.set(`chat:conversation:${conversationId}`, next), 5000);
+    return c.json({ success: true, conversation: next });
+  } catch (error: any) {
+    console.error("❌ Failed to update conversation star:", error);
+    return c.json({ error: error.message, success: false }, 500);
+  }
+});
+
+// Delete one conversation and all its messages
+app.delete("/make-server-16010b6f/chat/conversations/:conversationId", async (c) => {
+  try {
+    const conversationId = c.req.param("conversationId");
+    const messageRows = await withTimeout(
+      kv.getByPrefix(`chat:message:${conversationId}:`),
+      15000
+    ).catch(() => []);
+
+    let messagesDeleted = 0;
+    for (const row of messageRows || []) {
+      const msg = row as { id?: unknown };
+      const id = String(msg?.id || "").trim();
+      if (!id) continue;
+      await withTimeout(kv.del(`chat:message:${conversationId}:${id}`), 5000).catch(() => undefined);
+      messagesDeleted += 1;
+    }
+
+    await withTimeout(kv.del(`chat:conversation:${conversationId}`), 5000);
+    return c.json({ success: true, conversationDeleted: 1, messagesDeleted });
+  } catch (error: any) {
+    console.error("❌ Failed to delete conversation:", error);
     return c.json({ error: error.message, success: false }, 500);
   }
 });

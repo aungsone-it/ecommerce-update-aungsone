@@ -777,18 +777,20 @@ export function AdminPage() {
             />
             
             <main className="flex-1 overflow-auto pt-16 scrollbar-custom">
-              <div className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm px-4 sm:px-8 py-2">
-                <AdminBreadcrumb
-                  currentPage={currentPage}
-                  onNavigate={(page) => {
-                    setCurrentPage(page as AdminPage);
-                    setSidebarOpen(false);
-                  }}
-                  listingCount={
-                    currentPage === ADMIN_PAGES.PRODUCT ? productListingBreadcrumbCount : null
-                  }
-                />
-              </div>
+              {currentPage !== ADMIN_PAGES.CHAT && (
+                <div className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm px-4 sm:px-8 py-2">
+                  <AdminBreadcrumb
+                    currentPage={currentPage}
+                    onNavigate={(page) => {
+                      setCurrentPage(page as AdminPage);
+                      setSidebarOpen(false);
+                    }}
+                    listingCount={
+                      currentPage === ADMIN_PAGES.PRODUCT ? productListingBreadcrumbCount : null
+                    }
+                  />
+                </div>
+              )}
               {renderContent()}
             </main>
           </div>

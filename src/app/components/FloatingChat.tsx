@@ -64,6 +64,13 @@ interface FloatingChatProps {
   isAuthenticated?: boolean; // NEW: Check if user is logged in
 }
 
+function sanitizeChatEmailToken(email: string): string {
+  return String(email || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "-");
+}
+
 export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false }: FloatingChatProps) {
   const docVisible = useDocumentVisible();
   const chatBrandLabel = vendorId ? "this store" : "SECURE";
@@ -94,10 +101,13 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   // Animation trigger state for first load
   const [isMounted, setIsMounted] = useState(false);
   
-  const [conversationId] = useState(() => {
+  const conversationStorageKey = vendorId
+    ? `migoo-chat-conversationId-vendor-${vendorId}`
+    : "migoo-chat-conversationId";
+
+  const [conversationId, setConversationId] = useState(() => {
     // Try to load existing conversation ID first
-    const storageKey = vendorId ? `migoo-chat-conversationId-vendor-${vendorId}` : "migoo-chat-conversationId";
-    const savedConvId = localStorage.getItem(storageKey);
+    const savedConvId = localStorage.getItem(conversationStorageKey);
     if (savedConvId) {
       return savedConvId;
     }
@@ -107,23 +117,37 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     if (vendorId) {
       // Vendor-specific conversation
       if (customerEmail) {
-        newConvId = `conv-vendor-${vendorId}-${customerEmail.replace(/[^a-zA-Z0-9]/g, '-')}`;
+        newConvId = `conv-vendor-${String(vendorId).trim().toLowerCase()}-${sanitizeChatEmailToken(customerEmail)}`;
       } else {
         newConvId = `conv-vendor-${vendorId}-guest-${Date.now()}`;
       }
     } else {
       // Main SECURE store conversation
       if (customerEmail) {
-        newConvId = `conv-${customerEmail.replace(/[^a-zA-Z0-9]/g, '-')}`;
+        newConvId = `conv-${sanitizeChatEmailToken(customerEmail)}`;
       } else {
         newConvId = `conv-guest-${Date.now()}`;
       }
     }
     
     // Save to localStorage
-    localStorage.setItem(storageKey, newConvId);
+    localStorage.setItem(conversationStorageKey, newConvId);
     return newConvId;
   });
+
+  const adoptConversationId = (nextId: unknown) => {
+    const normalized = String(nextId || "").trim();
+    if (!normalized) return;
+    setConversationId((prev) => {
+      if (prev === normalized) return prev;
+      try {
+        localStorage.setItem(conversationStorageKey, normalized);
+      } catch {
+        /* ignore storage failures */
+      }
+      return normalized;
+    });
+  };
   
   const [messages, setMessages] = useState<Message[]>(() => {
     // Try to load messages from localStorage first (vendor-specific)
@@ -199,6 +223,10 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
           (a: Message, b: Message) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         );
+        if (sortedMessages.length > 0) {
+          const canonicalConversationId = (sortedMessages[0] as { conversationId?: unknown }).conversationId;
+          adoptConversationId(canonicalConversationId);
+        }
         
         if (sortedMessages.length === 0) {
           // No messages from server - keep welcome message
@@ -482,6 +510,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       })) as { success?: boolean; message?: Message };
 
       if (response?.message) {
+        adoptConversationId((response.message as { conversationId?: unknown }).conversationId);
         setMessages((prev) => {
           const without = prev.filter((m) => m.id !== newMessage.id);
           const merged = [...without, response.message!];

@@ -295,10 +295,14 @@ export function SideNav({
             ) : null}
             {/* Default text-based logo fallback */}
             <div 
-              className="w-10 h-10 bg-gradient-to-br from-slate-700 to-slate-900 rounded-md flex items-center justify-center text-white font-bold text-lg"
+              className="w-10 h-10 rounded-md bg-white border border-slate-200 flex items-center justify-center overflow-hidden"
               style={{ display: storeLogo ? 'none' : 'flex' }}
             >
-              M
+              <img
+                src="/favicon.svg"
+                alt="SECURE Logo"
+                className="w-8 h-8 object-contain"
+              />
             </div>
           </div>
           <div className="flex flex-col">

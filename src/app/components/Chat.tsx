@@ -6,11 +6,7 @@ import {
   Search,
   Send,
   Paperclip,
-  MoreVertical,
-  Phone,
-  Video,
   Star,
-  Archive,
   Trash2,
   Image as ImageIcon,
   Smile,
@@ -72,6 +68,8 @@ interface Conversation {
   status: "online" | "offline";
   vendorSource?: string; // Where the customer came from
   vendorId?: string; // Vendor ID if from vendor store
+  starred?: boolean;
+  aliasConversationIds?: string[];
 }
 
 export interface ChatInitialCustomer {
@@ -118,6 +116,7 @@ function mergeConversationAvatarsByEmail(conversations: Conversation[]): Convers
 /** Inbox survives super-admin section switches (Chat unmounts off `AdminPage` when you leave). */
 let chatAdminInboxCache: Conversation[] | null = null;
 const chatAdminMessagesCache = new Map<string, Message[]>();
+let chatAdminSelectedConversationCache: string | null = null;
 
 type ChatInboxLoadMode = "initial" | "refresh" | "silent";
 
@@ -129,8 +128,10 @@ export function Chat({
   onInitialCustomerHandled?: () => void;
 } = {}) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortOrder, setSortOrder] = useState<"new-old" | "old-new">("new-old");
-  const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<"new-old" | "old-new" | "starred">("new-old");
+  const [selectedConversation, setSelectedConversation] = useState<string | null>(
+    () => chatAdminSelectedConversationCache
+  );
   const [messageInput, setMessageInput] = useState("");
   const [conversations, setConversations] = useState<Conversation[]>(() =>
     chatAdminInboxCache?.length
@@ -212,8 +213,10 @@ export function Chat({
       const cached = chatAdminMessagesCache.get(conversationId);
       if (cached && cached.length > 0) {
         setMessages(cached);
+        setLoadingMessages(false);
+      } else {
+        setLoadingMessages(true);
       }
-      setLoadingMessages(true);
     }
     try {
       const response = await chatApi.getMessages(conversationId);
@@ -311,6 +314,20 @@ export function Chat({
       void loadConversations("initial");
     }
   }, [initialCustomer]);
+
+  // Restore last open conversation instantly when revisiting Chat tab.
+  useEffect(() => {
+    if (!selectedConversation) return;
+    if (!conversations.some((c) => c.id === selectedConversation)) return;
+    const cached = chatAdminMessagesCache.get(selectedConversation);
+    if (cached && cached.length > 0) {
+      setMessages(cached);
+      setLoadingMessages(false);
+      void loadMessages(selectedConversation, true);
+      return;
+    }
+    void loadMessages(selectedConversation, false);
+  }, [conversations, selectedConversation, loadMessages]);
 
   // Super admin: Customers → Message — open this thread and focus composer
   useEffect(() => {
@@ -461,8 +478,10 @@ export function Chat({
   };
 
   const handleSelectConversation = (conversationId: string) => {
+    chatAdminSelectedConversationCache = conversationId;
     setSelectedConversation(conversationId);
-    loadMessages(conversationId);
+    const hasCached = !!chatAdminMessagesCache.get(conversationId)?.length;
+    void loadMessages(conversationId, hasCached);
   };
 
   const handleSendMessage = async () => {
@@ -637,6 +656,14 @@ export function Chat({
 
   // Apply sorting
   const sortedConversations = [...filteredConversations].sort((a, b) => {
+    if (sortOrder === "starred") {
+      const sa = a.starred ? 1 : 0;
+      const sb = b.starred ? 1 : 0;
+      if (sa !== sb) return sb - sa;
+      const ta = new Date(a.timestamp).getTime();
+      const tb = new Date(b.timestamp).getTime();
+      return tb - ta;
+    }
     const timeA = new Date(a.timestamp).getTime();
     const timeB = new Date(b.timestamp).getTime();
     
@@ -649,13 +676,71 @@ export function Chat({
     : null;
   const totalUnread = conversations.reduce((sum, conv) => sum + conv.unread, 0);
 
+  useEffect(() => {
+    chatAdminSelectedConversationCache = selectedConversation;
+  }, [selectedConversation]);
+
   const handleEmojiClick = (emoji: EmojiClickData) => {
     setMessageInput((prev) => prev + emoji.emoji);
     setShowEmojiPicker(false);
   };
 
+  const applyConversationPatch = (ids: string[], patch: Partial<Conversation>) => {
+    const idSet = new Set(ids.filter(Boolean));
+    setConversations((prev) => {
+      const next = prev.map((c) => (idSet.has(c.id) ? { ...c, ...patch } : c));
+      chatAdminInboxCache = next;
+      return next;
+    });
+  };
+
+  const handleToggleStarConversation = async () => {
+    if (!selectedConv) return;
+    const aliasIds = selectedConv.aliasConversationIds?.filter(Boolean) || [];
+    const allIds = Array.from(new Set([selectedConv.id, ...aliasIds]));
+    const nextStarred = !selectedConv.starred;
+    applyConversationPatch(allIds, { starred: nextStarred });
+    try {
+      await Promise.all(allIds.map((id) => chatApi.setStarred(id, nextStarred)));
+      toast.success(nextStarred ? "Conversation starred" : "Conversation unstarred");
+    } catch {
+      applyConversationPatch(allIds, { starred: !nextStarred });
+      toast.error("Failed to update star status");
+    }
+  };
+
+  const handleDeleteConversation = async () => {
+    if (!selectedConv) return;
+    if (!confirm("Delete this conversation and all its messages?")) return;
+    const aliasIds = selectedConv.aliasConversationIds?.filter(Boolean) || [];
+    const allIds = Array.from(new Set([selectedConv.id, ...aliasIds]));
+    const backupConversations = [...conversations];
+    const backupMessages = [...messages];
+    const backupSelected = selectedConversation;
+    setConversations((prev) => {
+      const remove = new Set(allIds);
+      const next = prev.filter((c) => !remove.has(c.id));
+      chatAdminInboxCache = next;
+      return next;
+    });
+    for (const id of allIds) chatAdminMessagesCache.delete(id);
+    setMessages([]);
+    setSelectedConversation(null);
+    try {
+      await Promise.all(allIds.map((id) => chatApi.deleteConversation(id)));
+      toast.success("Conversation deleted");
+      void loadConversations("silent");
+    } catch {
+      setConversations(backupConversations);
+      chatAdminInboxCache = backupConversations;
+      setMessages(backupMessages);
+      setSelectedConversation(backupSelected);
+      toast.error("Failed to delete conversation");
+    }
+  };
+
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <div className="h-[calc(100dvh-4rem)] min-h-0 flex flex-col bg-white overflow-hidden">
       {/* Header */}
       <div className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -694,9 +779,9 @@ export function Chat({
       </div>
 
       {/* Chat Container */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 min-h-0 flex overflow-hidden">
         {/* Conversations List */}
-        <div className="w-80 border-r border-slate-200 flex flex-col bg-slate-50">
+        <div className="w-80 h-full min-h-0 border-r border-slate-200 flex flex-col bg-slate-50">
           {/* Search */}
           <div className="p-4 border-b border-slate-200 bg-white space-y-2">
             <div className="relative">
@@ -720,10 +805,15 @@ export function Chat({
                         <ArrowDown className="w-3 h-3" />
                         Newest First
                       </>
-                    ) : (
+                    ) : sortOrder === "old-new" ? (
                       <>
                         <ArrowUp className="w-3 h-3" />
                         Oldest First
+                      </>
+                    ) : (
+                      <>
+                        <Star className="w-3 h-3" />
+                        Starred
                       </>
                     )}
                   </Button>
@@ -737,13 +827,17 @@ export function Chat({
                     <ArrowUp className="w-4 h-4 mr-2" />
                     Oldest First
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setSortOrder("starred")}>
+                    <Star className="w-4 h-4 mr-2" />
+                    Starred
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
 
           {/* Conversation List */}
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {loading ? (
               <div className="space-y-1 p-2">
                 {Array.from({ length: 6 }).map((_, index) => (
@@ -802,24 +896,26 @@ export function Chat({
                     </div>
                     <div className="flex-1 min-w-0 text-left">
                       <div className="flex items-center justify-between mb-1">
-                        <h3 className="text-sm font-semibold text-slate-900 truncate">
-                          {conv.customerName}
-                        </h3>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3 className="text-sm font-semibold text-slate-900 truncate">
+                            {conv.customerName}
+                          </h3>
+                          {conv.starred && (
+                            <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400 flex-shrink-0" />
+                          )}
+                        </div>
                         <span className="text-xs text-slate-500 flex-shrink-0 ml-2">
                           {formatTime(conv.timestamp)}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 truncate mb-1">
-                        {conv.customerEmail}
-                      </p>
-                      {vendorBadgeLabel && (
-                        <Badge variant="outline" className="text-xs mb-1 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700">
-                          🏪 From: {vendorBadgeLabel}
-                        </Badge>
-                      )}
                       <p className="text-sm text-slate-600 truncate">
                         {conv.lastMessage}
                       </p>
+                      {vendorBadgeLabel && (
+                        <Badge variant="outline" className="text-xs mt-1 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700">
+                          🏪 From: {vendorBadgeLabel}
+                        </Badge>
+                      )}
                     </div>
                     {conv.unread > 0 && (
                       <div className="flex-shrink-0">
@@ -837,7 +933,7 @@ export function Chat({
 
         {/* Chat Area */}
         {selectedConv ? (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 min-h-0 flex flex-col">
             {/* Chat Header */}
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-white">
               <div className="flex items-center gap-3">
@@ -875,38 +971,28 @@ export function Chat({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" title="Call">
-                  <Phone className="w-5 h-5" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={selectedConv?.starred ? "Unstar conversation" : "Star conversation"}
+                  onClick={handleToggleStarConversation}
+                >
+                  <Star className={`w-5 h-5 ${selectedConv?.starred ? "fill-amber-400 text-amber-500" : ""}`} />
                 </Button>
-                <Button variant="ghost" size="icon" title="Video call">
-                  <Video className="w-5 h-5" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title="Delete conversation"
+                  onClick={handleDeleteConversation}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="w-5 h-5" />
                 </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon">
-                      <MoreVertical className="w-5 h-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
-                      <Star className="w-4 h-4 mr-2" />
-                      Star conversation
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Archive className="w-4 h-4 mr-2" />
-                      Archive
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="text-red-600">
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-50 min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-4 bg-slate-50">
               {loadingMessages ? (
                 <div className="flex flex-col items-center justify-center min-h-[200px] gap-3">
                   <Loader2 className="w-10 h-10 text-slate-400 animate-spin" />
@@ -941,11 +1027,6 @@ export function Chat({
                               : "bg-white text-slate-900 border border-slate-200"
                           }`}
                         >
-                          {message.sender === "customer" && (
-                            <p className="text-xs font-semibold mb-1 text-blue-600">
-                              {message.senderName}
-                            </p>
-                          )}
                           {message.imageUrl && (
                             <img
                               src={message.imageUrl}
@@ -987,7 +1068,7 @@ export function Chat({
             </div>
 
             {/* Message Input */}
-            <div className="px-6 py-4 border-t border-slate-200 bg-white">
+            <div className="sticky bottom-0 z-10 shrink-0 px-6 py-4 border-t border-slate-200 bg-white">
               {/* Hidden file input */}
               <input
                 ref={fileInputRef}

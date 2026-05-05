@@ -566,6 +566,20 @@ export const chatApi = {
   },
 
   /**
+   * Star / unstar a conversation
+   */
+  setStarred: async (conversationId: string, starred: boolean) => {
+    return apiClient.put(`/chat/conversations/${conversationId}/star`, { starred });
+  },
+
+  /**
+   * Delete a single conversation (and its messages)
+   */
+  deleteConversation: async (conversationId: string) => {
+    return apiClient.delete(`/chat/conversations/${conversationId}`);
+  },
+
+  /**
    * Upload image for chat
    */
   uploadImage: async (imageData: string, fileName: string, conversationId?: string) => {

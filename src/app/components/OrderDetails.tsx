@@ -77,6 +77,26 @@ const getStatusBadge = (status: OrderStatus) => {
   return <Badge className={`${config.className} border`}>{config.label}</Badge>;
 };
 
+function normalizeOrderStatus(status: unknown): OrderStatus {
+  const s = String(status || "").trim().toLowerCase().replace(/\s+/g, "-");
+  if (s === "pending" || s === "processing" || s === "fulfilled" || s === "cancelled" || s === "ready-to-ship") {
+    return s;
+  }
+  return "pending";
+}
+
+function normalizePaymentStatus(status: unknown): PaymentStatus {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "paid" || s === "unpaid" || s === "refunded") return s;
+  return "unpaid";
+}
+
+function normalizeShippingStatus(status: unknown): ShippingStatus {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "pending" || s === "shipped" || s === "delivered") return s;
+  return "pending";
+}
+
 const getPaymentBadge = (status: PaymentStatus) => {
   const statusConfig = {
     paid: { label: "Paid", className: "bg-green-100 text-green-700 border-green-300" },
@@ -99,19 +119,27 @@ const getShippingBadge = (status: ShippingStatus) => {
 
 export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProps) {
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
-  const [orderStatus, setOrderStatus] = useState<OrderStatus>(order.status);
+  const [orderStatus, setOrderStatus] = useState<OrderStatus>(normalizeOrderStatus(order.status));
   const [statusSaving, setStatusSaving] = useState(false);
+  const orderProducts = (Array.isArray(order.products) ? order.products : []).filter(
+    (p): p is Product => !!p && typeof p === "object"
+  );
+  const orderTimeline = (Array.isArray(order.timeline) ? order.timeline : []).filter(
+    (e): e is { status: string; date: string; time: string } => !!e && typeof e === "object"
+  );
+  const paymentBadgeStatus = normalizePaymentStatus(order.paymentStatus);
+  const shippingBadgeStatus = normalizeShippingStatus(order.shippingStatus);
 
   useEffect(() => {
-    setOrderStatus(order.status);
+    setOrderStatus(normalizeOrderStatus(order.status));
   }, [order.id, order.status]);
 
   // Calculate actual product total from individual product prices with safety checks
   const calculateProductTotal = () => {
-    if (!order.products || !Array.isArray(order.products) || order.products.length === 0) {
+    if (orderProducts.length === 0) {
       return order.subtotal || order.total || 0;
     }
-    return order.products.reduce((sum, product) => {
+    return orderProducts.reduce((sum, product) => {
       const price = typeof product.price === 'number' ? product.price : parseFloat(product.price) || 0;
       const quantity = typeof product.quantity === 'number' ? product.quantity : parseInt(product.quantity) || 0;
       return sum + (price * quantity);
@@ -132,7 +160,7 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
       status: orderStatus,
       inventoryDeducted: order.inventoryDeducted,
       vendor: typeof order.vendor === "string" ? order.vendor : undefined,
-      products: order.products.map((p) => ({
+      products: orderProducts.map((p) => ({
         id: normalizeOrderLineParentProductId(p.id),
         quantity: p.quantity,
         sku: p.sku,
@@ -236,11 +264,11 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
                     </div>
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Payment Status</p>
-                      {getPaymentBadge(order.paymentStatus)}
+                      {getPaymentBadge(paymentBadgeStatus)}
                     </div>
                     <div>
                       <p className="text-sm text-slate-500 mb-2">Shipping Status</p>
-                      {getShippingBadge(order.shippingStatus)}
+                      {getShippingBadge(shippingBadgeStatus)}
                     </div>
                   </div>
                   {order.deliveryService && (
@@ -273,10 +301,10 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
                 <CardContent className="p-6">
                   <h3 className="text-lg font-semibold text-slate-900 mb-4 flex items-center gap-2">
                     <ShoppingCart className="w-5 h-5" />
-                    Products ({order.products.length})
+                    Products ({orderProducts.length})
                   </h3>
                   <div className="space-y-3">
-                    {order.products.map((product) => (
+                    {orderProducts.map((product) => (
                       <div key={product.id} className="flex items-center gap-4 p-4 bg-slate-50 rounded-lg">
                         <img 
                           src={product.image} 
@@ -328,11 +356,11 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
                     Order Timeline
                   </h3>
                   <div className="space-y-4">
-                    {order.timeline.map((event, index) => (
+                    {orderTimeline.map((event, index) => (
                       <div key={index} className="flex items-start gap-4">
                         <div className="relative">
                           <div className="w-3 h-3 bg-blue-600 rounded-full mt-1"></div>
-                          {index !== order.timeline.length - 1 && (
+                          {index !== orderTimeline.length - 1 && (
                             <div className="absolute left-1/2 top-4 w-0.5 h-8 bg-slate-200 -translate-x-1/2"></div>
                           )}
                         </div>
@@ -448,7 +476,7 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
                     </div>
                     <div>
                       <p className="text-sm text-slate-500 mb-1">Status</p>
-                      {getPaymentBadge(order.paymentStatus)}
+                      {getPaymentBadge(paymentBadgeStatus)}
                     </div>
                   </div>
                 </CardContent>
