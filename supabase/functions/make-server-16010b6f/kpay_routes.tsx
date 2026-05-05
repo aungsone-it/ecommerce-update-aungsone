@@ -408,6 +408,38 @@ function kpayConfig() {
   };
 }
 
+// PWA can be provisioned with a different merchant app/keys than QR.
+// These overrides are PWA-only and never affect QR routes.
+function kpayPwaConfig(base: ReturnType<typeof kpayConfig>) {
+  const appId = resolveEnv("KPAY_PWA_APPID", "KPAY_PWA_APP_ID") || base.appId;
+  const merchCode = resolveEnv("KPAY_PWA_MERCH_CODE", "KPAY_PWA_MERCHANT_ID") || base.merchCode;
+  const signKey = resolveEnv("KPAY_PWA_SIGN_KEY", "KPAY_PWA_SECRET") || base.signKey;
+  const subMerchCode =
+    resolveEnv("KPAY_PWA_SUB_MERCH_CODE", "KPAY_PWA_SUB_MERCHANT_CODE") || base.subMerchCode;
+  const subAppid = resolveEnv("KPAY_PWA_SUB_APPID", "KPAY_PWA_SUB_APP_ID") || base.subAppid;
+  const isvTransType =
+    resolveEnv("KPAY_PWA_ISV_TRANS_TYPE", "KPAY_PWA_TRANS_TYPE") || base.isvTransType;
+  const wrapRequestRaw = resolveEnv("KPAY_PWA_WRAP_REQUEST");
+  const wrapRequest =
+    wrapRequestRaw === ""
+      ? base.wrapRequest
+      : wrapRequestRaw === "0"
+        ? false
+        : wrapRequestRaw === "1"
+          ? true
+          : base.wrapRequest;
+  return {
+    ...base,
+    appId,
+    merchCode,
+    signKey,
+    subMerchCode,
+    subAppid,
+    isvTransType,
+    wrapRequest,
+  };
+}
+
 // Build the set of headers the KBZ proxy expects on every call.
 // `x-api-key` covers gateways that take a key on that header.
 // `KPAY_PROXY_AUTH_*` covers gateways that take a custom header (often Authorization).
@@ -965,15 +997,15 @@ async function buildPwaOrderInfoSignature(args: {
 // with `prepay_id` and `merch_order_id` query params (handled by /kpay/pwa/return below).
 export async function startKPayPwa(c: Context) {
   try {
-    const cfg = kpayConfig();
+    const cfg = kpayPwaConfig(kpayConfig());
     if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
       return c.json({
         error: "KPay gateway is not configured",
         missing: [
           !cfg.baseUrl ? "KPAY_PROXY_BASE_URL" : null,
-          !cfg.appId ? "KPAY_APPID" : null,
-          !cfg.merchCode ? "KPAY_MERCH_CODE" : null,
-          !cfg.signKey ? "KPAY_SIGN_KEY" : null,
+          !cfg.appId ? "KPAY_PWA_APPID (or KPAY_APPID)" : null,
+          !cfg.merchCode ? "KPAY_PWA_MERCH_CODE (or KPAY_MERCH_CODE)" : null,
+          !cfg.signKey ? "KPAY_PWA_SIGN_KEY (or KPAY_SIGN_KEY)" : null,
         ].filter(Boolean),
       }, 500);
     }
