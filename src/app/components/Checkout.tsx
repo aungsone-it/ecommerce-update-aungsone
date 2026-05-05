@@ -470,10 +470,29 @@ export function Checkout({
         toast.error("KBZ did not return a redirect URL");
         return;
       }
-      // Hand off to KBZ. This URL must be opened on a mobile browser with KBZPay
-      // installed; on desktop, KBZ's intermediate page will not be able to launch
-      // the app and the payment cannot proceed.
-      window.location.href = pwaSession.redirectUrl;
+      // App-first handoff (tel:-like behavior): on Android, try an intent:// launch
+      // so KBZPay app can be opened directly when available, then fall back to the
+      // hosted PWA URL. iOS/others use the hosted URL directly.
+      const redirectUrl = pwaSession.redirectUrl;
+      const ua = typeof navigator !== "undefined" ? navigator.userAgent.toLowerCase() : "";
+      const isAndroid = /android/.test(ua);
+      if (isAndroid) {
+        try {
+          const parsed = new URL(redirectUrl);
+          const intentUrl = `intent://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}#Intent;scheme=${parsed.protocol.replace(":", "")};package=com.kbzbank.kpaycustomer;end`;
+          window.location.href = intentUrl;
+          // If app open fails, browser stays visible — fall back quickly to KBZ PWA page.
+          window.setTimeout(() => {
+            if (document.visibilityState === "visible") {
+              window.location.href = redirectUrl;
+            }
+          }, 550);
+          return;
+        } catch {
+          // Bad URL parse should never block payment — fall back to hosted URL.
+        }
+      }
+      window.location.href = redirectUrl;
     } catch (error: any) {
       toast.error(error?.message || "Failed to start KPay PWA payment");
     } finally {

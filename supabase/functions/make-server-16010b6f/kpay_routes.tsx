@@ -690,6 +690,40 @@ function createPwaPayloadCandidates(
   return out;
 }
 
+function stripPwaIsvFields(pair: PayloadPair): PayloadPair {
+  const signCollection = { ...(pair.signCollection || {}) } as AnyRecord;
+  const requestBody = { ...(pair.requestBody || {}) } as AnyRecord;
+  const biz = asRecord(requestBody.biz_content);
+  const nextBiz = { ...biz } as AnyRecord;
+  delete signCollection.sub_merch_code;
+  delete signCollection.sub_appid;
+  delete signCollection.trans_type;
+  delete nextBiz.sub_merch_code;
+  delete nextBiz.sub_appid;
+  delete nextBiz.trans_type;
+  return {
+    ...pair,
+    signCollection,
+    requestBody: {
+      ...requestBody,
+      biz_content: nextBiz,
+    },
+  };
+}
+
+function hasPwaIsvFields(pair: PayloadPair): boolean {
+  const sign = asRecord(pair.signCollection);
+  const biz = asRecord(asRecord(pair.requestBody).biz_content);
+  return Boolean(
+    text(sign.sub_merch_code) ||
+      text(sign.sub_appid) ||
+      text(sign.trans_type) ||
+      text(biz.sub_merch_code) ||
+      text(biz.sub_appid) ||
+      text(biz.trans_type)
+  );
+}
+
 // KBZ PGW `queryorder` uses version "3.0" per the PGW reference.
 function queryPayloadCandidates(params: {
   appId: string;
@@ -975,22 +1009,88 @@ export async function startKPayPwa(c: Context) {
       callbackInfo: callbackInfo || undefined,
     }, cfg);
 
-    const provider = await tryProviderVariants({
-      endpoints,
-      payloads,
-      signKey: cfg.signKey,
-      timeoutMs: cfg.timeoutMs,
-      wrapRequest: cfg.wrapRequest,
-      extraHeaders: buildProviderHeaders(cfg),
-    });
+    const providerHeaders = buildProviderHeaders(cfg);
+    const allAttempts: Array<{
+      endpoint: string;
+      status: number;
+      networkError?: string;
+      details?: AnyRecord;
+      signSource?: string;
+      sign?: string;
+      signedPayload?: AnyRecord;
+    }> = [];
+    const triedPlanKeys = new Set<string>();
+    let provider:
+      | {
+          success: true;
+          endpoint: string;
+          body: AnyRecord;
+          signSource?: string;
+          sign?: string;
+          signedPayload?: AnyRecord;
+        }
+      | {
+          success: false;
+          attempts: Array<{
+            endpoint: string;
+            status: number;
+            networkError?: string;
+            details?: AnyRecord;
+            signSource?: string;
+            sign?: string;
+            signedPayload?: AnyRecord;
+          }>;
+        } = { success: false, attempts: [] };
+    let winningWrapRequest = cfg.wrapRequest;
+
+    const runPlan = async (wrapRequest: boolean, planPayloads: PayloadPair[]) => {
+      const key = `${wrapRequest ? "wrap1" : "wrap0"}::${JSON.stringify(
+        planPayloads.map((p) => p.signCollection)
+      )}`;
+      if (triedPlanKeys.has(key)) return false;
+      triedPlanKeys.add(key);
+      const res = await tryProviderVariants({
+        endpoints,
+        payloads: planPayloads,
+        signKey: cfg.signKey,
+        timeoutMs: cfg.timeoutMs,
+        wrapRequest,
+        extraHeaders: providerHeaders,
+      });
+      if (res.success) {
+        provider = res;
+        winningWrapRequest = wrapRequest;
+        return true;
+      }
+      allAttempts.push(...res.attempts);
+      provider = { success: false, attempts: [...allAttempts] };
+      return false;
+    };
+
+    // 1) current configured mode
+    let ok = await runPlan(cfg.wrapRequest, payloads);
+    // 2) alternate wrap mode (some merchant/proxy setups require opposite payload envelope)
+    if (!ok) {
+      ok = await runPlan(!cfg.wrapRequest, payloads);
+    }
+    // 3) ISV fallback: try without sub-merch fields (PWA-only fallback; QR untouched)
+    const hasIsv = payloads.some(hasPwaIsvFields);
+    if (!ok && hasIsv) {
+      const noIsvPayloads = payloads.map(stripPwaIsvFields);
+      ok = await runPlan(cfg.wrapRequest, noIsvPayloads);
+      if (!ok) {
+        ok = await runPlan(!cfg.wrapRequest, noIsvPayloads);
+      }
+    }
     if (!provider.success) {
-      const last = provider.attempts[provider.attempts.length - 1];
+      const attempts = provider.attempts || allAttempts;
+      const last = attempts[attempts.length - 1];
       const kbz = kbzBizErrorFromBody(asRecord(last?.details || {}));
       // If the last body was empty, scan earlier attempts for a KBZ message.
       let mergedKbz = kbz;
       if (!mergedKbz.code && !mergedKbz.msg) {
-        for (let i = provider.attempts.length - 1; i >= 0; i--) {
-          const row = kbzBizErrorFromBody(asRecord(provider.attempts[i]?.details || {}));
+        for (let i = attempts.length - 1; i >= 0; i--) {
+          const row = kbzBizErrorFromBody(asRecord(attempts[i]?.details || {}));
           if (row.code || row.msg) {
             mergedKbz = row;
             break;
@@ -1009,7 +1109,7 @@ export async function startKPayPwa(c: Context) {
           signSource: last?.signSource || "",
           sign: last?.sign || "",
           signedPayload: last?.signedPayload || {},
-          attemptedEndpoints: Array.from(new Set(provider.attempts.map((a) => a.endpoint))),
+          attemptedEndpoints: Array.from(new Set(attempts.map((a) => a.endpoint))),
         },
         502,
       );
@@ -1080,7 +1180,7 @@ export async function startKPayPwa(c: Context) {
       updatedAt: ts2,
       rawCreateResponse: provider.body,
       endpointUsed: provider.endpoint,
-      wrapRequest: cfg.wrapRequest,
+      wrapRequest: winningWrapRequest,
     });
 
     return c.json({
@@ -1092,9 +1192,9 @@ export async function startKPayPwa(c: Context) {
       isUat,
       tradeTypeUsed,
       endpointUsed: provider.endpoint,
-      wrapRequest: cfg.wrapRequest,
+      wrapRequest: winningWrapRequest,
       debug: {
-        wrapRequest: cfg.wrapRequest,
+        wrapRequest: winningWrapRequest,
         tradeTypeUsed,
         signSource: provider.signSource || "",
         sign: provider.sign || "",
