@@ -60,6 +60,7 @@ import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
 import { normalizeProductForAdminDetailView } from "../utils/adminProductDetailNormalize";
 import { buildVendorDisplayLookup, resolveVendorDisplayLabel } from "../utils/vendorDisplay";
 import { useAuth } from "../contexts/AuthContext";
+import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 
 interface ProductListProps {
   onProductsChanged?: () => void; // 🔥 NEW: Callback when products change
@@ -275,8 +276,18 @@ export function ProductList({
 
   useEffect(() => {
     const h = () => void loadProductPage(true);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== adminOrdersUpdatedStorageKey()) return;
+      h();
+    };
     window.addEventListener("migoo-admin-products-cache-patched", h);
-    return () => window.removeEventListener("migoo-admin-products-cache-patched", h);
+    window.addEventListener("adminOrdersUpdated", h);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("migoo-admin-products-cache-patched", h);
+      window.removeEventListener("adminOrdersUpdated", h);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [loadProductPage]);
 
   const handleSearchInputChange = useCallback(

@@ -36,7 +36,7 @@ import { format, startOfDay, endOfDay } from "date-fns";
 import { PrintInvoice } from "../PrintInvoice";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
-import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import { ordersApi } from "../../../utils/api";
 import {
   getCachedVendorOrders,
   getCachedVendorOrdersPage,
@@ -440,20 +440,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
     try {
       await Promise.all(
         orderIds.map(orderId =>
-          fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${orderId}`,
-            {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${publicAnonKey}`,
-              },
-              body: JSON.stringify({ status: bulkStatus }),
-            }
-          ).then(async (res) => {
-            if (!res.ok) throw new Error(await res.text());
-            return res;
-          })
+          ordersApi.update(orderId, { status: bulkStatus })
         )
       );
       const peeked = moduleCache.peek<unknown[]>(CACHE_KEYS.ADMIN_PRODUCTS);
@@ -531,21 +518,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
     toast.success(`Order status updated to ${newStatus}`);
 
     try {
-      const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${orderId}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({ status: newStatus }),
-        }
-      );
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      const result = (await res.json().catch(() => ({}))) as {
+      const result = (await ordersApi.update(orderId, { status: newStatus })) as {
         order?: { inventoryDeducted?: boolean };
       };
       if (orderBeingUpdated) {

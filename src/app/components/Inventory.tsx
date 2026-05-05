@@ -15,6 +15,7 @@ import {
   ADMIN_PRODUCTS_BROADCAST_CHANNEL,
 } from "../utils/module-cache";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
+import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 
 interface InventoryItem {
   id: string;
@@ -186,7 +187,13 @@ export function Inventory() {
 
   useEffect(() => {
     const refetch = () => void loadInventory(true);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== adminOrdersUpdatedStorageKey()) return;
+      refetch();
+    };
     window.addEventListener("migoo-admin-products-cache-patched", refetch);
+    window.addEventListener("adminOrdersUpdated", refetch);
+    window.addEventListener("storage", onStorage);
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
@@ -196,6 +203,8 @@ export function Inventory() {
     }
     return () => {
       window.removeEventListener("migoo-admin-products-cache-patched", refetch);
+      window.removeEventListener("adminOrdersUpdated", refetch);
+      window.removeEventListener("storage", onStorage);
       bc?.close();
     };
   }, [loadInventory]);

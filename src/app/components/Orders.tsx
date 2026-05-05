@@ -63,6 +63,10 @@ import {
   normalizePaymentBadgeStatus,
   normalizeShippingBadgeStatus,
 } from "../utils/normalizeOrderBadgeStatus";
+import {
+  broadcastOrderStatusUpdate,
+  subscribeOrderStatusUpdates,
+} from "../utils/ordersRealtime";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -116,6 +120,27 @@ interface OrderItem {
   }[];
   /** Mirrors server order payload — false until fulfilled/ready-to-ship deducts stock */
   inventoryDeducted?: boolean;
+}
+
+type PendingOrderStatusDraft = {
+  status: OrderStatus;
+  at: number;
+};
+
+// Keeps just-updated statuses stable across fast section switches/remounts.
+const pendingOrderStatusDrafts = new Map<string, PendingOrderStatusDraft>();
+const PENDING_ORDER_STATUS_TTL_MS = 90_000;
+
+function applyPendingStatusDrafts(rows: OrderItem[]): OrderItem[] {
+  const now = Date.now();
+  for (const [id, draft] of pendingOrderStatusDrafts.entries()) {
+    if (now - draft.at > PENDING_ORDER_STATUS_TTL_MS) pendingOrderStatusDrafts.delete(id);
+  }
+  if (pendingOrderStatusDrafts.size === 0) return rows;
+  return rows.map((row) => {
+    const draft = pendingOrderStatusDrafts.get(row.id);
+    return draft ? { ...row, status: draft.status } : row;
+  });
 }
 
 const orders: OrderItem[] = [
@@ -468,6 +493,7 @@ export function Orders({
   const { t } = useLanguage();
   /** False after unmount when the admin switches to another section — PUT may still be in flight. */
   const ordersSurfaceActiveRef = useRef(true);
+  const hasHydratedOrdersRef = useRef(false);
   useEffect(() => {
     ordersSurfaceActiveRef.current = true;
     return () => {
@@ -505,6 +531,85 @@ export function Orders({
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false); // For printing multiple invoices
+  const [orderSaveState, setOrderSaveState] = useState<Record<string, "saving" | "saved">>({});
+  const savedStateTimersRef = useRef<Record<string, number>>({});
+
+  const clearSavedStateTimer = useCallback((orderId: string) => {
+    const timer = savedStateTimersRef.current[orderId];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete savedStateTimersRef.current[orderId];
+    }
+  }, []);
+
+  const markOrderSaving = useCallback(
+    (orderIds: string[]) => {
+      setOrderSaveState((prev) => {
+        const next = { ...prev };
+        for (const id of orderIds) {
+          clearSavedStateTimer(id);
+          next[id] = "saving";
+        }
+        return next;
+      });
+    },
+    [clearSavedStateTimer]
+  );
+
+  const markOrderSaved = useCallback(
+    (orderIds: string[]) => {
+      const now = Date.now();
+      for (const id of orderIds) {
+        const current = pendingOrderStatusDrafts.get(id);
+        if (current) pendingOrderStatusDrafts.set(id, { ...current, at: now });
+      }
+      setOrderSaveState((prev) => {
+        const next = { ...prev };
+        for (const id of orderIds) {
+          clearSavedStateTimer(id);
+          next[id] = "saved";
+          savedStateTimersRef.current[id] = window.setTimeout(() => {
+            setOrderSaveState((cur) => {
+              if (cur[id] !== "saved") return cur;
+              const copy = { ...cur };
+              delete copy[id];
+              return copy;
+            });
+            delete savedStateTimersRef.current[id];
+          }, 2500);
+        }
+        return next;
+      });
+    },
+    [clearSavedStateTimer]
+  );
+
+  const clearOrderSaveState = useCallback(
+    (orderIds: string[]) => {
+      setOrderSaveState((prev) => {
+        const next = { ...prev };
+        for (const id of orderIds) {
+          clearSavedStateTimer(id);
+          delete next[id];
+        }
+        return next;
+      });
+    },
+    [clearSavedStateTimer]
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.values(savedStateTimersRef.current).forEach((t) => window.clearTimeout(t));
+      savedStateTimersRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    if (orders.length > 0 || ordersTotal > 0) {
+      hasHydratedOrdersRef.current = true;
+    }
+  }, [orders.length, ordersTotal]);
 
   useEffect(() => {
     setOrdersPage(1);
@@ -534,7 +639,10 @@ export function Orders({
   const loadOrders = useCallback(
     async (forceRefresh = false) => {
       let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
-      showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
+      const shouldBlockUi = !forceRefresh && !hasHydratedOrdersRef.current;
+      if (shouldBlockUi) {
+        showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
+      }
       setListRefreshing(forceRefresh);
       try {
         const payload = await getCachedAdminOrdersPage(
@@ -556,7 +664,7 @@ export function Orders({
           toast.warning(payload.warning, { duration: 4000 });
         }
 
-        setOrders(mapApiOrdersToOrderItems(payload.orders || []));
+        setOrders(applyPendingStatusDrafts(mapApiOrdersToOrderItems(payload.orders || [])));
         setOrdersTotal(payload.total);
         setOrdersHasMore(!!payload.hasMore);
         setOrdersAggregates(payload.aggregates);
@@ -578,7 +686,7 @@ export function Orders({
         setOrdersAggregates(undefined);
       } finally {
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
-        setIsLoading(false);
+        if (shouldBlockUi) setIsLoading(false);
         setListRefreshing(false);
       }
     },
@@ -598,6 +706,17 @@ export function Orders({
   useEffect(() => {
     void loadOrders(false);
   }, [loadOrders]);
+
+  useEffect(() => {
+    return subscribeOrderStatusUpdates(({ orderId, status, updatedAt }) => {
+      const normalized = normalizeAdminOrderStatusForBadge(status) as OrderStatus;
+      pendingOrderStatusDrafts.set(orderId, { status: normalized, at: Date.now() });
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, status: normalized, updatedAt: updatedAt || o.updatedAt } : o))
+      );
+      setOrderSaveState((prev) => (prev[orderId] ? prev : { ...prev, [orderId]: "saved" }));
+    });
+  }, []);
 
   /** Refetch when storefront/admin creates or mutates orders (same tab + other tabs via storage). */
   useEffect(() => {
@@ -722,6 +841,8 @@ export function Orders({
     const updatedCount = selectedOrders.length;
     const orderIds = [...selectedOrders];
     setSelectedOrders([]);
+    for (const id of orderIds) pendingOrderStatusDrafts.set(id, { status: bulkStatus, at: Date.now() });
+    markOrderSaving(orderIds);
     
     // Show instant feedback
     toast.success(`${updatedCount} orders updated instantly!`, { duration: 2000 });
@@ -735,22 +856,48 @@ export function Orders({
         )
       );
       console.log(`✅ ${updatedCount} orders synced to server: ${bulkStatus}`);
-      const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
-      const anyVendorShopOrder = orderIds.some((id) => {
-        const o = previousOrders.find((x) => x.id === id);
-        return o && !isMainMarketplaceVendorName(o.vendor);
-      });
-      if (!peeked || !Array.isArray(peeked) || peeked.length === 0) {
-        try {
-          await getCachedAdminAllProducts(true);
-        } catch (e) {
-          console.warn("[inventory] Bulk status: could not refresh admin products", e);
-        }
-      } else if (anyVendorShopOrder) {
-        try {
-          await getCachedAdminAllProducts(true);
-        } catch (e) {
-          console.warn("[inventory] Bulk status: refetch failed; applying in-memory mirror", e);
+      markOrderSaved(orderIds);
+      for (const orderId of orderIds) {
+        void broadcastOrderStatusUpdate({
+          orderId,
+          status: bulkStatus,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      void (async () => {
+        const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
+        const anyVendorShopOrder = orderIds.some((id) => {
+          const o = previousOrders.find((x) => x.id === id);
+          return o && !isMainMarketplaceVendorName(o.vendor);
+        });
+        if (!peeked || !Array.isArray(peeked) || peeked.length === 0) {
+          try {
+            await getCachedAdminAllProducts(true);
+          } catch (e) {
+            console.warn("[inventory] Bulk status: could not refresh admin products", e);
+          }
+        } else if (anyVendorShopOrder) {
+          try {
+            await getCachedAdminAllProducts(true);
+          } catch (e) {
+            console.warn("[inventory] Bulk status: refetch failed; applying in-memory mirror", e);
+            for (const orderId of orderIds) {
+              const o = previousOrders.find((x) => x.id === orderId);
+              if (o) {
+                syncAdminInventoryCacheAfterOrderStatusChange(
+                  {
+                    status: o.status,
+                    inventoryDeducted: o.inventoryDeducted,
+                    vendor: o.vendor,
+                    products: o.products,
+                  },
+                  bulkStatus,
+                  { skipDispatch: true }
+                );
+              }
+            }
+          }
+        } else {
           for (const orderId of orderIds) {
             const o = previousOrders.find((x) => x.id === orderId);
             if (o) {
@@ -767,24 +914,8 @@ export function Orders({
             }
           }
         }
-      } else {
-        for (const orderId of orderIds) {
-          const o = previousOrders.find((x) => x.id === orderId);
-          if (o) {
-            syncAdminInventoryCacheAfterOrderStatusChange(
-              {
-                status: o.status,
-                inventoryDeducted: o.inventoryDeducted,
-                vendor: o.vendor,
-                products: o.products,
-              },
-              bulkStatus,
-              { skipDispatch: true }
-            );
-          }
-        }
-      }
-      dispatchAdminProductsCachePatched();
+        dispatchAdminProductsCachePatched();
+      })();
       invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error
@@ -807,6 +938,8 @@ export function Orders({
           duration: 10000,
         });
       }
+      for (const id of orderIds) pendingOrderStatusDrafts.delete(id);
+      clearOrderSaveState(orderIds);
       onOrderUpdate?.();
     }
   };
@@ -826,6 +959,8 @@ export function Orders({
         order.id === orderId ? { ...order, status: newStatus } : order
       )
     );
+    pendingOrderStatusDrafts.set(orderId, { status: newStatus, at: Date.now() });
+    markOrderSaving([orderId]);
     
     // Show instant feedback with stock restoration notice
     if (wasNotCancelled && isNowCancelled) {
@@ -844,9 +979,14 @@ export function Orders({
         order?: { inventoryDeducted?: boolean };
       };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
+      markOrderSaved([orderId]);
+      void broadcastOrderStatusUpdate({
+        orderId,
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      });
       if (orderBeingUpdated) {
-        try {
-          await refreshAdminInventoryAfterOrderStatusPut(
+        void refreshAdminInventoryAfterOrderStatusPut(
             {
               status: orderBeingUpdated.status,
               inventoryDeducted: orderBeingUpdated.inventoryDeducted,
@@ -854,10 +994,9 @@ export function Orders({
               products: orderBeingUpdated.products,
             },
             newStatus
-          );
-        } catch (invErr) {
-          console.warn("[inventory] post-status cache sync failed:", invErr);
-        }
+          ).catch((invErr) => {
+            console.warn("[inventory] post-status cache sync failed:", invErr);
+          });
       }
       if (result?.order?.inventoryDeducted !== undefined && ordersSurfaceActiveRef.current) {
         setOrders((prev) =>
@@ -892,6 +1031,8 @@ export function Orders({
           duration: 10000,
         });
       }
+      pendingOrderStatusDrafts.delete(orderId);
+      clearOrderSaveState([orderId]);
       onOrderUpdate?.();
     }
   };
@@ -1307,7 +1448,17 @@ export function Orders({
                       </td>
                       <td className="py-3 px-4 text-sm text-slate-600">{order.vendor || "SECURE Store"}</td>
                       <td className="py-3 px-4 text-sm font-semibold text-slate-900">{order.total.toLocaleString()} MMK</td>
-                      <td className="py-3 px-4">{getStatusBadge(order.status)}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col gap-1">
+                          {getStatusBadge(order.status)}
+                          {orderSaveState[order.id] === "saving" && (
+                            <span className="text-[11px] text-amber-600">Updating...</span>
+                          )}
+                          {orderSaveState[order.id] === "saved" && (
+                            <span className="text-[11px] text-emerald-600">Saved</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="py-3 px-4">{getPaymentBadge(order.paymentStatus)}</td>
                       <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
                       <td className="py-3 px-4">

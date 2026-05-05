@@ -1256,7 +1256,7 @@ export function Checkout({
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("KPay-PWA")}
-                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                    className={`w-full rounded-lg border p-4 text-left transition-colors lg:hidden ${
                       paymentMethod === "KPay-PWA"
                         ? "border-slate-900 bg-slate-50"
                         : "border-slate-200 bg-slate-50 hover:bg-slate-100"

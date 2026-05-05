@@ -4371,6 +4371,13 @@ function recomputeParentStockFromVariants(product: any): void {
   product.stock = total;
 }
 
+function isOnlyCatalogLoadFailure(stockIssues: any[]): boolean {
+  if (!Array.isArray(stockIssues) || stockIssues.length === 0) return false;
+  return stockIssues.every((issue: any) =>
+    String(issue?.issue || "").toLowerCase().includes("error loading products")
+  );
+}
+
 async function validateStockForOrderLineItems(
   items: any[]
 ): Promise<{ ok: true } | { ok: false; stockIssues: any[] }> {
@@ -4703,6 +4710,13 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
       console.log(`📉 Deducting stock for order ${existingOrder.orderNumber} (status → ${body.status})...`);
       const chk = await validateStockForOrderLineItems(items);
       if (!chk.ok) {
+        // Keep order-status UX reliable: if catalog read failed transiently,
+        // do not reject the status update itself.
+        if (isOnlyCatalogLoadFailure(chk.stockIssues)) {
+          console.warn(
+            `⚠️ Stock precheck skipped for ${existingOrder.orderNumber}: catalog load failure`
+          );
+        } else {
         return c.json(
           {
             success: false,
@@ -4716,10 +4730,12 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
           },
           400
         );
+        }
+      } else {
+        await applyOrderItemsStockDelta(items, "deduct");
+        inventoryDeducted = true;
+        nextInventoryFlag = true;
       }
-      await applyOrderItemsStockDelta(items, "deduct");
-      inventoryDeducted = true;
-      nextInventoryFlag = true;
     }
 
     if (inventoryRestored) {

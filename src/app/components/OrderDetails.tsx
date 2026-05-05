@@ -13,6 +13,7 @@ import {
   refreshAdminInventoryAfterOrderStatusPut,
   normalizeOrderLineParentProductId,
 } from "../utils/orderInventoryCacheSync";
+import { invalidateAdminOrdersCache } from "../utils/module-cache";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
@@ -175,6 +176,8 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
         console.warn("[inventory] post-status cache sync failed:", invErr);
       }
       setOrderStatus(newStatus);
+      // Keep Orders/Finances views consistent across quick navigation and tabs.
+      invalidateAdminOrdersCache();
       toast.success("Order status updated");
       onOrderUpdated?.();
     } catch (e) {
