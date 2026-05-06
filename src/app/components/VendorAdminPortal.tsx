@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router";
-import { pathnameUnderAdmin, resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import { pathnameUnderAdmin } from "../utils/vendorSubdomainHooks";
 import {
   useVendorAdminRouteParams,
   useVendorHostCleanAdmin,
@@ -10,13 +10,10 @@ import {
   Package, 
   ShoppingCart, 
   Settings, 
-  Store, 
   LogOut, 
   Menu, 
   X, 
-  Eye,
   DollarSign,
-  Tag,
   ChevronDown,
   Bell,
   Search,
@@ -24,6 +21,8 @@ import {
   Check,
   Trash2,
   AlertCircle,
+  User,
+  Edit,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import {
@@ -47,24 +46,41 @@ import { VendorAdminFinances } from "./vendor-admin/VendorAdminFinances";
 import { VendorAdminUsers } from "./vendor-admin/VendorAdminUsers";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
+import { UserProfile } from "./UserProfile";
+import { useVendorAuth, type VendorUser } from "../contexts/VendorAuthContext";
 
 interface Vendor {
   id: string;
   name: string;
   email: string;
   phone: string;
-  location: string;
+  location?: string;
   avatar?: string;
   storeSlug: string;
   /** Public display name from storefront settings (may differ from account `name`). */
   storeName?: string;
   businessType?: string;
+  /** Owner / primary contact name (KV contactName), shown in nav + profile. */
+  contactName?: string;
 }
 
 interface VendorAdminPortalProps {
   vendor: Vendor;
   onLogout: () => void;
   onPreviewStore?: (vendorId: string, storeSlug: string) => void;
+}
+
+/** Stored profile photo URL, or DiceBear pixel avatar (same seed logic as User Profile). */
+function vendorNavAvatarSrc(vendor: Pick<Vendor, "avatar" | "email" | "name">): string {
+  const raw = vendor.avatar?.trim();
+  if (
+    raw &&
+    (raw.startsWith("http://") || raw.startsWith("https://") || raw.startsWith("data:image"))
+  ) {
+    return raw;
+  }
+  const seed = vendor.email || vendor.name || "vendor";
+  return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(seed)}`;
 }
 
 type VendorPage = "dashboard" | "products" | "categories" | "orders" | "settings" | "finances" | "users";
@@ -93,7 +109,44 @@ interface Notification {
   isRead: boolean;
 }
 
+interface StorefrontSnapshotCache {
+  storeName?: string;
+  storeSlug?: string;
+  logo?: string;
+}
+
+function storefrontCacheKey(vendorId: string): string {
+  return `vendor-admin:storefront:${vendorId}`;
+}
+
+function readStorefrontSnapshotCache(vendorId: string): StorefrontSnapshotCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(storefrontCacheKey(vendorId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StorefrontSnapshotCache;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeStorefrontSnapshotCache(vendorId: string, value: StorefrontSnapshotCache): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(storefrontCacheKey(vendorId), JSON.stringify(value));
+  } catch {
+    /* ignore quota/storage failures */
+  }
+}
+
 export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAdminPortalProps) {
+  const { updateVendor, vendor: authVendor } = useVendorAuth();
+  const initialStorefrontCache = useMemo(
+    () => readStorefrontSnapshotCache(vendor.id),
+    [vendor.id]
+  );
   const routeParams = useVendorAdminRouteParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -101,28 +154,95 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     clean: vendorHostCleanAdmin,
     loading: vendorHostCleanAdminLoading,
   } = useVendorHostCleanAdmin();
-  const vendorSubdomainSlug = resolveVendorSubdomainStoreSlug();
   /** Subdomain or custom domain with `/admin/*` URLs (not `/vendor/.../admin`). */
   const onVendorHostCleanAdmin =
     vendorHostCleanAdmin && pathnameUnderAdmin(location.pathname);
   /** /store/<slug>/admin vs legacy /vendor/<slug>/admin (not used on vendor host `/admin`) */
   const adminPathPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
-  const storefrontHomeHref =
-    vendorHostCleanAdmin || vendorSubdomainSlug ? "/" : "/store";
   const [currentPage, setCurrentPage] = useState<VendorPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [vendorLogo, setVendorLogo] = useState<string>("");
+  const [vendorLogo, setVendorLogo] = useState<string>(
+    () => initialStorefrontCache?.logo || vendor.avatar || ""
+  );
   /** Canonical storefront label + slug from KV (drives sidebar + URLs after rename). */
   const [storefrontSnapshot, setStorefrontSnapshot] = useState<{
     storeName: string;
     storeSlug: string;
-  } | null>(null);
+  } | null>(() => {
+    if (
+      initialStorefrontCache?.storeName &&
+      typeof initialStorefrontCache.storeName === "string"
+    ) {
+      return {
+        storeName: initialStorefrontCache.storeName,
+        storeSlug:
+          typeof initialStorefrontCache.storeSlug === "string"
+            ? initialStorefrontCache.storeSlug
+            : vendor.storeSlug || "",
+      };
+    }
+    return null;
+  });
   /** Header search — synced with Products screen (client filter; no API per keystroke). */
   const [vendorHeaderProductSearch, setVendorHeaderProductSearch] = useState("");
   const [mountedPages, setMountedPages] = useState<VendorPage[]>(["dashboard"]);
+  const [vendorProfileOpen, setVendorProfileOpen] = useState(false);
+  const [vendorProfileInitialEdit, setVendorProfileInitialEdit] = useState(false);
+  /** Snapshot for rolling back optimistic session updates if vendor profile PUT fails. */
+  const vendorSessionBeforeOptimisticRef = useRef<VendorUser | null>(null);
+
+  const vendorProfileSeed = useMemo(
+    () => ({
+      id: vendor.id,
+      name: vendor.name,
+      contactName: vendor.contactName?.trim() || vendor.name,
+      email: vendor.email,
+      phone: vendor.phone || "",
+      role: "vendor-admin",
+      status: "active" as const,
+      location: vendor.location || "",
+      avatar: vendor.avatar,
+    }),
+    [vendor]
+  );
+
+  /** Keep query string in sync so the address bar matches the account overlay (and browser Back works better). */
+  const closeVendorProfile = useCallback(() => {
+    setVendorProfileOpen(false);
+    const params = new URLSearchParams(location.search);
+    if (params.get("account") === "profile") {
+      params.delete("account");
+      params.delete("edit");
+      const qs = params.toString();
+      navigate({ pathname: location.pathname, search: qs ? `?${qs}` : "" }, { replace: true });
+    }
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    if (!vendorProfileOpen) return;
+    const params = new URLSearchParams(location.search);
+    let needNav = false;
+    if (params.get("account") !== "profile") {
+      params.set("account", "profile");
+      needNav = true;
+    }
+    if (vendorProfileInitialEdit) {
+      if (params.get("edit") !== "1") {
+        params.set("edit", "1");
+        needNav = true;
+      }
+    } else if (params.has("edit")) {
+      params.delete("edit");
+      needNav = true;
+    }
+    if (needNav) {
+      const qs = params.toString();
+      navigate({ pathname: location.pathname, search: qs ? `?${qs}` : "" }, { replace: true });
+    }
+  }, [vendorProfileOpen, vendorProfileInitialEdit, location.pathname, location.search, navigate]);
 
   const loadStorefrontSnapshot = useCallback(async () => {
     try {
@@ -145,7 +265,13 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         storeName: String(s.storeName || vendor.storeName || vendor.name || "Vendor Store"),
         storeSlug: String(s.storeSlug || vendor.storeSlug || ""),
       });
-      setVendorLogo(typeof s.logo === "string" ? s.logo : "");
+      const nextLogo = typeof s.logo === "string" ? s.logo : "";
+      setVendorLogo(nextLogo);
+      writeStorefrontSnapshotCache(vendor.id, {
+        storeName: String(s.storeName || vendor.storeName || vendor.name || "Vendor Store"),
+        storeSlug: String(s.storeSlug || vendor.storeSlug || ""),
+        logo: nextLogo,
+      });
     } catch (error) {
       console.error("Failed to load vendor storefront snapshot:", error);
     }
@@ -204,12 +330,25 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       if (d?.vendorId !== vendor.id) return;
       if (typeof d.logo === "string") {
         setVendorLogo(d.logo);
+        writeStorefrontSnapshotCache(vendor.id, {
+          storeName: storefrontSnapshot?.storeName || vendor.storeName || vendor.name,
+          storeSlug: storefrontSnapshot?.storeSlug || vendor.storeSlug || "",
+          logo: d.logo,
+        });
       }
       void loadStorefrontSnapshot();
     };
     window.addEventListener("vendorLogoUpdated", onLogo as EventListener);
     return () => window.removeEventListener("vendorLogoUpdated", onLogo as EventListener);
-  }, [vendor.id, loadStorefrontSnapshot]);
+  }, [
+    vendor.id,
+    loadStorefrontSnapshot,
+    storefrontSnapshot?.storeName,
+    storefrontSnapshot?.storeSlug,
+    vendor.storeName,
+    vendor.name,
+    vendor.storeSlug,
+  ]);
 
   // 🔗 URL SYNCHRONIZATION: Initialize from URL
   useEffect(() => {
@@ -496,7 +635,13 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
           />
         );
       case "categories":
-        return <VendorAdminCategories vendorId={vendor.id} vendorName={vendor.name} />;
+        return (
+          <VendorAdminCategories
+            vendorId={vendor.id}
+            vendorName={vendor.name}
+            reportLoadErrors={currentPage === "categories"}
+          />
+        );
       case "orders":
         return (
           <VendorAdminOrderManagement
@@ -528,6 +673,49 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     }
   };
 
+  if (vendorProfileOpen) {
+    return (
+      <UserProfile
+        variant="vendor"
+        user={vendorProfileSeed}
+        initialEditMode={vendorProfileInitialEdit}
+        backLabel="Back"
+        onBack={closeVendorProfile}
+        onVendorSessionOptimistic={(patch: Partial<VendorUser>) => {
+          if (authVendor) vendorSessionBeforeOptimisticRef.current = { ...authVendor };
+          updateVendor(patch);
+        }}
+        onVendorSessionRollback={() => {
+          const snap = vendorSessionBeforeOptimisticRef.current;
+          vendorSessionBeforeOptimisticRef.current = null;
+          if (snap) updateVendor(snap);
+        }}
+        onSave={(updated: Record<string, unknown>) => {
+          vendorSessionBeforeOptimisticRef.current = null;
+          const avatarUrl =
+            typeof updated.profileImageUrl === "string" && updated.profileImageUrl.startsWith("http")
+              ? updated.profileImageUrl
+              : typeof updated.avatar === "string" && updated.avatar.startsWith("http")
+                ? updated.avatar
+                : undefined;
+          updateVendor({
+            name: String(updated.name ?? vendor.name),
+            contactName:
+              typeof updated.contactName === "string"
+                ? updated.contactName
+                : vendor.contactName,
+            email: String(updated.email ?? vendor.email),
+            phone: String(updated.phone ?? vendor.phone ?? ""),
+            businessName: String(updated.businessName ?? vendor.name),
+            avatar: avatarUrl,
+            location: typeof updated.location === "string" ? updated.location : undefined,
+          });
+          setVendorProfileInitialEdit(false);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Mobile Overlay */}
@@ -550,7 +738,8 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
           <button
             type="button"
             onClick={() => {
-              window.location.href = storefrontHomeHref;
+              setCurrentPage("dashboard");
+              setSidebarOpen(false);
             }}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
           >
@@ -773,46 +962,50 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="flex items-center gap-2 hover:bg-slate-50 rounded-lg px-2 py-1.5 transition-colors">
-                    {vendor.avatar ? (
-                      <img 
-                        src={vendor.avatar} 
-                        alt={vendor.name}
-                        className="w-8 h-8 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-blue-700 rounded-full flex items-center justify-center">
-                        <span className="text-white font-semibold text-sm">
-                          {vendor.name.substring(0, 1).toUpperCase()}
-                        </span>
-                      </div>
-                    )}
+                    <img
+                      src={vendorNavAvatarSrc(vendor)}
+                      alt={vendor.name}
+                      className="w-8 h-8 rounded-full object-cover bg-slate-100 ring-1 ring-slate-200"
+                    />
                     <div className="hidden md:block text-left">
-                      <p className="text-sm font-semibold text-slate-900 leading-tight">{vendor.name}</p>
-                      <p className="text-xs text-slate-500">product manager</p>
+                      <p className="text-sm font-semibold text-slate-900 leading-tight">
+                        {vendor.contactName?.trim() || vendor.name}
+                      </p>
+                      <p className="text-xs text-blue-600 font-medium">Vendor admin</p>
                     </div>
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <div className="px-3 py-2 border-b border-slate-100">
-                    <p className="text-sm font-semibold text-slate-900">{vendor.name}</p>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {vendor.contactName?.trim() || vendor.name}
+                    </p>
                     <p className="text-xs text-slate-500">{vendor.email}</p>
                   </div>
-                  <DropdownMenuItem onClick={() => setCurrentPage('settings')}>
-                    <Settings className="w-4 h-4 mr-2" />
-                    Store Settings
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setVendorProfileInitialEdit(false);
+                      setVendorProfileOpen(true);
+                    }}
+                  >
+                    <User className="w-4 h-4 mr-2" />
+                    View Profile
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() =>
-                      onPreviewStore &&
-                      routeStoreSlug &&
-                      onPreviewStore(vendor.id, routeStoreSlug)
-                    }
+                    onClick={() => {
+                      setVendorProfileInitialEdit(true);
+                      setVendorProfileOpen(true);
+                      setSidebarOpen(false);
+                    }}
                   >
-                    <Eye className="w-4 h-4 mr-2" />
-                    View Storefront
+                    <Edit className="w-4 h-4 mr-2" />
+                    Edit Profile
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={onLogout} className="text-red-600">
+                  <DropdownMenuItem
+                    onClick={onLogout}
+                    className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                  >
                     <LogOut className="w-4 h-4 mr-2" />
                     Sign Out
                   </DropdownMenuItem>

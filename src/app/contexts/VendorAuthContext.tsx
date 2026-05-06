@@ -1,12 +1,36 @@
 // Vendor Auth Context - Vendor authentication management
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { storeSlugFromBusinessName } from '../../utils/storeSlug';
 import {
   setVendorAuthSessionCookie,
   readVendorAuthSessionCookie,
   clearVendorAuthSessionCookie,
+  type VendorAuthCookieVendor,
 } from '../utils/vendorAuthCookie';
+
+/** Signed URL from KV profile image after upload (same endpoint as User Profile). */
+async function fetchVendorProfileAvatarUrl(vendorId: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(vendorId)}`,
+      { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+    );
+    if (!res.ok) return undefined;
+    const data = (await res.json()) as { user?: { profileImageUrl?: string; avatar?: string } };
+    const u = data.user;
+    if (!u) return undefined;
+    if (typeof u.profileImageUrl === "string" && u.profileImageUrl.startsWith("http")) {
+      return u.profileImageUrl;
+    }
+    if (typeof u.avatar === "string" && u.avatar.startsWith("http")) {
+      return u.avatar;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface VendorUser {
   id: string;
@@ -17,6 +41,11 @@ export interface VendorUser {
   vendorId: string;
   storeName?: string;
   storeSlug?: string;
+  /** Profile photo URL when available (vendor KV profile image). */
+  avatar?: string;
+  location?: string;
+  /** Primary contact / owner name (KV `contactName`); distinct from store `name`. */
+  contactName?: string;
 }
 
 interface VendorAuthContextType {
@@ -25,6 +54,8 @@ interface VendorAuthContextType {
   login: (email: string, password: string, rememberMe?: boolean) => Promise<{ success: boolean; error?: string; needsSetup?: boolean }>;
   logout: () => void;
   isAuthenticated: boolean;
+  /** Merge updates after profile save; persists to localStorage and apex cookie when present. */
+  updateVendor: (updates: Partial<VendorUser>) => void;
 }
 
 const VendorAuthContext = createContext<VendorAuthContextType | undefined>(undefined);
@@ -116,6 +147,13 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
           /* keep login API slug */
         }
 
+        const v = data.vendor as Record<string, unknown>;
+        const owner =
+          typeof v.contactName === "string" && v.contactName.trim()
+            ? v.contactName.trim()
+            : typeof v.name === "string"
+              ? v.name
+              : "";
         const vendorData: VendorUser = {
           id: data.vendor.id,
           email: data.vendor.email,
@@ -125,6 +163,12 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
           vendorId: data.vendor.id,
           storeName: data.vendor.storeName,
           storeSlug: storeSlug,
+          location: typeof data.vendor.location === "string" ? data.vendor.location : undefined,
+          contactName: owner || undefined,
+          avatar:
+            typeof data.vendor.avatar === "string" && data.vendor.avatar.startsWith("http")
+              ? data.vendor.avatar
+              : undefined,
         };
 
         setVendor(vendorData);
@@ -153,12 +197,50 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
     console.log('✅ [VendorAuth] Logout successful');
   };
 
+  const updateVendor = useCallback((updates: Partial<VendorUser>) => {
+    setVendor((prev) => {
+      if (!prev) return prev;
+      const next: VendorUser = { ...prev, ...updates };
+      try {
+        localStorage.setItem('vendorAuth', JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      const fromCookie = readVendorAuthSessionCookie();
+      if (fromCookie) {
+        const mergedCookie: VendorAuthCookieVendor = {
+          ...fromCookie.vendor,
+          ...updates,
+          id: next.id,
+          vendorId: next.vendorId,
+        };
+        setVendorAuthSessionCookie(mergedCookie, fromCookie.rememberMe);
+      }
+      return next;
+    });
+  }, []);
+
+  /** Fill session.avatar from stored profile photo (login payload omits signed URLs). */
+  useEffect(() => {
+    if (loading || !vendor?.vendorId) return;
+    let cancelled = false;
+    (async () => {
+      const url = await fetchVendorProfileAvatarUrl(vendor.vendorId);
+      if (cancelled || !url) return;
+      updateVendor({ avatar: url });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, vendor?.vendorId, updateVendor]);
+
   const value = {
     vendor,
     loading,
     login,
     logout,
     isAuthenticated: !!vendor,
+    updateVendor,
   };
 
   return (

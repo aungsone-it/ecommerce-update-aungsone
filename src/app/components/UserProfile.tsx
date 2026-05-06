@@ -3,6 +3,7 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { toast } from "sonner";
 import { compressImage } from "../../utils/imageCompression";
 import { useAuth } from "../contexts/AuthContext";
+import type { VendorUser } from "../contexts/VendorAuthContext";
 import {
   ArrowLeft,
   Save,
@@ -125,6 +126,12 @@ interface UserProfileProps {
   initialEditMode?: boolean;
   /** e.g. "Back" for your own admin profile, "Back to Users" when managing staff */
   backLabel?: string;
+  /** Vendor admin portal — loads/saves via `/vendor-auth/profile/:vendorId`. */
+  variant?: "staff" | "vendor";
+  /** Before vendor PUT: snapshot session and apply patch (instant header / nav). */
+  onVendorSessionOptimistic?: (patch: Partial<VendorUser>) => void;
+  /** After failed vendor PUT when optimistic was applied. */
+  onVendorSessionRollback?: () => void;
 }
 
 export function UserProfile({
@@ -133,10 +140,14 @@ export function UserProfile({
   onSave,
   initialEditMode = false,
   backLabel = "Back to Users",
+  variant = "staff",
+  onVendorSessionOptimistic,
+  onVendorSessionRollback,
 }: UserProfileProps) {
   const { user: sessionUser } = useAuth();
   const isSelfProfile = Boolean(
-    sessionUser?.id && user?.id && String(sessionUser.id) === String(user.id)
+    variant === "vendor" ||
+      (sessionUser?.id && user?.id && String(sessionUser.id) === String(user.id))
   );
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(!!initialEditMode);
@@ -159,6 +170,60 @@ export function UserProfile({
     setAvatarPreview(displayAvatarUrl(user));
     setAvatarFile(null);
     setAvatarMarkedForRemoval(false);
+
+    if (variant === "vendor") {
+      let cancelled = false;
+      setStaffAuditEvents([]);
+      setLoadingProfile(true);
+      (async () => {
+        try {
+          const profileRes = await fetch(
+            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(user.id)}`,
+            { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+          );
+          if (cancelled) return;
+          if (profileRes.ok) {
+            const data = await profileRes.json();
+            const u = data.user;
+            if (u && !cancelled) {
+              setEditedUser((prev: any) => ({ ...prev, ...u }));
+              setAvatarPreview(displayAvatarUrl({ ...user, ...u }));
+            }
+          } else {
+            let payload: { error?: string; message?: string } = {};
+            try {
+              payload = await profileRes.json();
+            } catch {
+              /* non-JSON error body */
+            }
+            const detail =
+              typeof payload.error === "string"
+                ? payload.error
+                : typeof payload.message === "string"
+                  ? payload.message
+                  : profileRes.statusText || "Unknown error";
+
+            // 404 = route not deployed yet or unknown path — Supabase often returns `{ error: "Not found" }`.
+            // Session seed still fills name/email/phone; avoid a noisy toast for this expected dev/prod gap.
+            if (profileRes.status === 404) {
+              console.warn(
+                "[Vendor profile] Detail endpoint unavailable (404). Using basic session fields only:",
+                detail
+              );
+            } else {
+              toast.error(detail || "Could not load vendor profile");
+            }
+          }
+        } catch (e) {
+          console.warn("Vendor profile refresh skipped:", e);
+        } finally {
+          if (!cancelled) setLoadingProfile(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
 
     if (!isAuthStaffUserId(user?.id)) {
       setStaffAuditEvents([]);
@@ -216,7 +281,7 @@ export function UserProfile({
     return () => {
       cancelled = true;
     };
-  }, [user?.id, user?.profileImageUrl, user?.avatar, user?.email]);
+  }, [user?.id, user?.profileImageUrl, user?.avatar, user?.email, variant]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -365,10 +430,113 @@ export function UserProfile({
     return merged;
   };
 
+  const saveVendorProfile = async () => {
+    const payload: Record<string, unknown> = {
+      contactName: editedUser.contactName ?? "",
+      name: editedUser.name,
+      email: editedUser.email,
+      phone: editedUser.phone ?? "",
+      location: editedUser.location ?? "",
+      addressLine1: editedUser.addressLine1 ?? "",
+      addressLine2: editedUser.addressLine2 ?? "",
+      city: editedUser.city ?? "",
+      region: editedUser.region ?? "",
+      postalCode: editedUser.postalCode ?? "",
+      country: editedUser.country ?? "",
+      bio: editedUser.bio ?? "",
+    };
+    if (avatarFile) {
+      payload.profileImage = avatarFile;
+    } else if (avatarMarkedForRemoval) {
+      payload.removeProfileImage = true;
+    }
+
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(user.id)}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const detail =
+        typeof (errorData as { error?: string }).error === "string"
+          ? (errorData as { error: string }).error
+          : typeof (errorData as { message?: string }).message === "string"
+            ? (errorData as { message: string }).message
+            : response.statusText;
+      if (response.status === 404) {
+        throw new Error(
+          "Profile API not found (404). Deploy the Edge Function that includes PUT /vendor-auth/profile, or run Supabase Functions locally."
+        );
+      }
+      throw new Error(detail || `Failed to update profile (${response.status})`);
+    }
+
+    const result = await response.json();
+    const updated = result.user;
+    if (!updated) throw new Error("Invalid server response");
+
+    const merged = {
+      ...editedUser,
+      ...updated,
+      avatar: updated.profileImageUrl || displayAvatarUrl(updated),
+      profileImageUrl: updated.profileImageUrl,
+    };
+    setEditedUser(merged);
+    setAvatarPreview(displayAvatarUrl(merged));
+    setAvatarFile(null);
+    setAvatarMarkedForRemoval(false);
+    setIsEditing(false);
+    return merged;
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
       console.log(`💾 Saving user profile: ${user.id}`, editedUser);
+      if (variant === "vendor") {
+        let optimisticApplied = false;
+        try {
+          const sessionPatch: Partial<VendorUser> = {
+            name: String(editedUser.name ?? user.name ?? ""),
+            email: String(editedUser.email ?? user.email ?? ""),
+            phone: String(editedUser.phone ?? user.phone ?? ""),
+            businessName: String(
+              (editedUser as { businessName?: string }).businessName ??
+                editedUser.name ??
+                user.name ??
+                ""
+            ),
+          };
+          const contactNameOpt =
+            typeof editedUser.contactName === "string"
+              ? editedUser.contactName
+              : typeof user.contactName === "string"
+                ? user.contactName
+                : undefined;
+          if (contactNameOpt !== undefined) sessionPatch.contactName = contactNameOpt;
+          if (typeof editedUser.location === "string") sessionPatch.location = editedUser.location;
+          if (onVendorSessionOptimistic) {
+            onVendorSessionOptimistic(sessionPatch);
+            optimisticApplied = true;
+          }
+          const merged = await saveVendorProfile();
+          toast.success("Profile updated successfully!");
+          setIsSaving(false);
+          onSave(merged);
+          return;
+        } catch (vendorErr) {
+          if (optimisticApplied) onVendorSessionRollback?.();
+          throw vendorErr;
+        }
+      }
       if (isAuthStaffUserId(user.id)) {
         await saveAuthStaffProfile();
       } else {
@@ -378,8 +546,11 @@ export function UserProfile({
     } catch (error: any) {
       console.error("❌ Error saving user profile:", error);
       toast.error(`Failed to save profile: ${error.message}`);
-    } finally {
       setIsSaving(false);
+    } finally {
+      if (variant !== "vendor") {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -475,6 +646,56 @@ export function UserProfile({
     editedUser.lastSignInAt || editedUser.updatedAt || editedUser.lastActive;
 
   const accountTimeline = useMemo(() => {
+    if (variant === "vendor") {
+      type VRow = {
+        id: string;
+        action: string;
+        target: string;
+        at: number;
+        status: "success" | "neutral";
+      };
+      const rows: VRow[] = [];
+      const created = editedUser.createdAt || editedUser.authCreatedAt;
+      const cMs = parseDateMs(created);
+      if (cMs != null) {
+        rows.push({
+          id: "created",
+          action: "Account created",
+          target: "Vendor account",
+          at: cMs,
+          status: "success",
+        });
+      }
+      const sMs = parseDateMs(editedUser.lastSignInAt);
+      if (sMs != null) {
+        rows.push({
+          id: "signin",
+          action: "Last sign-in",
+          target: "Vendor portal (most recent session)",
+          at: sMs,
+          status: "success",
+        });
+      }
+      const uMs = parseDateMs(editedUser.updatedAt);
+      if (uMs != null && uMs !== cMs) {
+        rows.push({
+          id: "profile",
+          action: "Profile updated",
+          target: "Saved changes to this profile",
+          at: uMs,
+          status: "neutral",
+        });
+      }
+      rows.sort((a, b) => b.at - a.at);
+      return rows.map((r) => ({
+        id: r.id,
+        action: r.action,
+        target: r.target,
+        timestamp: formatDateTime(r.at),
+        status: r.status,
+      }));
+    }
+
     type Row = {
       id: string;
       action: string;
@@ -536,6 +757,7 @@ export function UserProfile({
       status: r.status,
     }));
   }, [
+    variant,
     staffAuditEvents,
     editedUser.createdAt,
     editedUser.authCreatedAt,
@@ -582,7 +804,7 @@ export function UserProfile({
                 <Button
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                   onClick={handleSave}
-                  disabled={isSaving || loadingProfile}
+                  disabled={isSaving || (variant !== "vendor" && loadingProfile)}
                 >
                   <Save className="w-4 h-4 mr-2" />
                   {isSaving ? "Saving..." : "Save changes"}
@@ -592,7 +814,7 @@ export function UserProfile({
               <Button
                 className="bg-slate-900 hover:bg-slate-800 text-white"
                 onClick={() => setIsEditing(true)}
-                disabled={loadingProfile}
+                disabled={variant !== "vendor" && loadingProfile}
               >
                 <Edit className="w-4 h-4 mr-2" />
                 Edit profile
@@ -622,7 +844,7 @@ export function UserProfile({
                         className="hidden"
                         onChange={handleImageUpload}
                       />
-                      {isEditing && isAuthStaffUserId(user?.id) && (
+                      {isEditing && (isAuthStaffUserId(user?.id) || variant === "vendor") && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
@@ -662,14 +884,18 @@ export function UserProfile({
                         </DropdownMenu>
                       )}
                     </div>
-                    {isEditing && isAuthStaffUserId(user?.id) && (
+                    {isEditing && (isAuthStaffUserId(user?.id) || variant === "vendor") && (
                       <p className="text-[10px] text-slate-400 leading-tight mt-2 max-w-[120px] mx-auto">
                         Max 500 KB per image.
                       </p>
                     )}
                   </div>
 
-                  <h2 className="text-xl font-semibold text-slate-900 mb-1">{editedUser.name}</h2>
+                  <h2 className="text-xl font-semibold text-slate-900 mb-1">
+                    {variant === "vendor"
+                      ? String(editedUser.contactName || editedUser.name || "").trim() || "—"
+                      : editedUser.name}
+                  </h2>
 
                   <div
                     className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${roleInfo.color} mb-3`}
@@ -842,6 +1068,18 @@ export function UserProfile({
                       </div>
                     </>
                   )}
+                  {editedUser.role === "vendor-admin" && (
+                    <>
+                      <div className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span>Manage your storefront, products, categories, and settings</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                        <span>View analytics, orders, finances, and customers for your store</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -850,108 +1088,254 @@ export function UserProfile({
               <div className="bg-white rounded-lg border border-slate-200 p-6">
                 <h3 className="text-lg font-semibold text-slate-900 mb-4">Personal Information</h3>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label
-                        htmlFor="name"
-                        className="text-sm font-medium text-slate-900 mb-2 block"
-                      >
-                        Full Name
-                      </Label>
-                      {isEditing ? (
-                        <Input
-                          id="name"
-                          value={editedUser.name}
-                          onChange={(e) => setEditedUser({ ...editedUser, name: e.target.value })}
-                          className="h-10"
-                        />
-                      ) : (
-                        <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
-                          <span className="text-sm text-slate-700">{editedUser.name}</span>
+                  {variant === "vendor" ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor="contactName"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Owner full name
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="contactName"
+                              value={editedUser.contactName || ""}
+                              onChange={(e) =>
+                                setEditedUser({ ...editedUser, contactName: e.target.value })
+                              }
+                              className="h-10 bg-white border-slate-300"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <span className="text-sm text-slate-700">
+                                {editedUser.contactName || "—"}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    <div>
-                      <Label
-                        htmlFor="email"
-                        className="text-sm font-medium text-slate-900 mb-2 block"
-                      >
-                        Email Address
-                      </Label>
-                      {isEditing ? (
-                        <Input
-                          id="email"
-                          type="email"
-                          value={editedUser.email}
-                          onChange={(e) => setEditedUser({ ...editedUser, email: e.target.value })}
-                          className="h-10"
-                        />
-                      ) : (
-                        <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
-                          <Mail className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm text-slate-700">{editedUser.email}</span>
+                        <div>
+                          <Label
+                            htmlFor="email"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Email Address
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="email"
+                              type="email"
+                              value={editedUser.email}
+                              onChange={(e) =>
+                                setEditedUser({ ...editedUser, email: e.target.value })
+                              }
+                              className="h-10 bg-white border-slate-300"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <Mail className="w-4 h-4 text-slate-400" />
+                              <span className="text-sm text-slate-700">{editedUser.email}</span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label
-                        htmlFor="phone"
-                        className="text-sm font-medium text-slate-900 mb-2 block"
-                      >
-                        Phone Number
-                      </Label>
-                      {isEditing ? (
-                        <Input
-                          id="phone"
-                          value={editedUser.phone || ""}
-                          onChange={(e) => setEditedUser({ ...editedUser, phone: e.target.value })}
-                          placeholder="+1 (555) 123-4567"
-                          className="h-10"
-                        />
-                      ) : (
-                        <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
-                          <Phone className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm text-slate-700">
-                            {editedUser.phone || "Not provided"}
-                          </span>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor="vendor-store-name"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Store / business name
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="vendor-store-name"
+                              value={editedUser.name}
+                              onChange={(e) =>
+                                setEditedUser({ ...editedUser, name: e.target.value })
+                              }
+                              className="h-10 bg-white border-slate-300"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <span className="text-sm text-slate-700">{editedUser.name}</span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
 
-                    <div>
-                      <Label
-                        htmlFor="location-short"
-                        className="text-sm font-medium text-slate-900 mb-2 block"
-                      >
-                        Short location (optional)
-                      </Label>
-                      {isEditing ? (
-                        <Input
-                          id="location-short"
-                          value={editedUser.location || ""}
-                          onChange={(e) =>
-                            setEditedUser({
-                              ...editedUser,
-                              location: e.target.value,
-                            })
-                          }
-                          placeholder="e.g. Yangon, Myanmar"
-                          className="h-10"
-                        />
-                      ) : (
-                        <div className="flex items-center gap-2 min-h-10 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
-                          <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-                          <span className="text-sm text-slate-700 whitespace-pre-line">
-                            {editedUser.location || "Not provided"}
-                          </span>
+                        <div>
+                          <Label
+                            htmlFor="phone"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Phone Number
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="phone"
+                              value={editedUser.phone || ""}
+                              onChange={(e) =>
+                                setEditedUser({ ...editedUser, phone: e.target.value })
+                              }
+                              placeholder="+1 (555) 123-4567"
+                              className="h-10 bg-white border-slate-300"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <Phone className="w-4 h-4 text-slate-400" />
+                              <span className="text-sm text-slate-700">
+                                {editedUser.phone || "Not provided"}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </div>
+
+                      <div>
+                        <Label
+                          htmlFor="location-short"
+                          className="text-sm font-medium text-slate-900 mb-2 block"
+                        >
+                          Short location (optional)
+                        </Label>
+                        {isEditing ? (
+                          <Input
+                            id="location-short"
+                            value={editedUser.location || ""}
+                            onChange={(e) =>
+                              setEditedUser({
+                                ...editedUser,
+                                location: e.target.value,
+                              })
+                            }
+                            placeholder="e.g. Yangon, Myanmar"
+                            className="h-10 max-w-full bg-white border-slate-300"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-2 min-h-10 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                            <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                            <span className="text-sm text-slate-700 whitespace-pre-line">
+                              {editedUser.location || "Not provided"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor="name"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Full Name
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="name"
+                              value={editedUser.name}
+                              onChange={(e) =>
+                                setEditedUser({ ...editedUser, name: e.target.value })
+                              }
+                              className="h-10"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <span className="text-sm text-slate-700">{editedUser.name}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <Label
+                            htmlFor="email"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Email Address
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="email"
+                              type="email"
+                              value={editedUser.email}
+                              onChange={(e) =>
+                                setEditedUser({ ...editedUser, email: e.target.value })
+                              }
+                              className="h-10"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <Mail className="w-4 h-4 text-slate-400" />
+                              <span className="text-sm text-slate-700">{editedUser.email}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label
+                            htmlFor="phone"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Phone Number
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="phone"
+                              value={editedUser.phone || ""}
+                              onChange={(e) =>
+                                setEditedUser({ ...editedUser, phone: e.target.value })
+                              }
+                              placeholder="+1 (555) 123-4567"
+                              className="h-10"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
+                              <Phone className="w-4 h-4 text-slate-400" />
+                              <span className="text-sm text-slate-700">
+                                {editedUser.phone || "Not provided"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <Label
+                            htmlFor="location-short"
+                            className="text-sm font-medium text-slate-900 mb-2 block"
+                          >
+                            Short location (optional)
+                          </Label>
+                          {isEditing ? (
+                            <Input
+                              id="location-short"
+                              value={editedUser.location || ""}
+                              onChange={(e) =>
+                                setEditedUser({
+                                  ...editedUser,
+                                  location: e.target.value,
+                                })
+                              }
+                              placeholder="e.g. Yangon, Myanmar"
+                              className="h-10"
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2 min-h-10 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                              <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                              <span className="text-sm text-slate-700 whitespace-pre-line">
+                                {editedUser.location || "Not provided"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
 
                   <div className="pt-2 border-t border-slate-100">
                     <h4 className="text-sm font-medium text-slate-800 mb-3">Mailing address</h4>
@@ -1105,8 +1489,9 @@ export function UserProfile({
                 <div className="space-y-4">
                   {isSelfProfile && isEditing && (
                     <p className="text-xs text-slate-500 -mt-1 mb-1">
-                      Role and account status are managed by an administrator. You can update your
-                      personal details above.
+                      {variant === "vendor"
+                        ? "Your vendor role and account status are set when your store is onboarded. You can update your personal details above."
+                        : "Role and account status are managed by an administrator. You can update your personal details above."}
                     </p>
                   )}
                   <div className="grid grid-cols-2 gap-4">
@@ -1215,14 +1600,15 @@ export function UserProfile({
                   <Activity className="w-5 h-5 text-slate-400" />
                 </div>
                 <p className="text-xs text-slate-500 mb-4">
-                  Profile and sign-in from your staff record and Supabase Auth. Product changes made from
-                  the admin (create, update, delete) are listed here with timestamps. Order history is not
-                  included.
+                  {variant === "vendor"
+                    ? "Account milestones from your vendor profile: when the account was created, recent vendor portal sign-ins, and saved profile updates."
+                    : "Profile and sign-in from your staff record and Supabase Auth. Product changes made from the admin (create, update, delete) are listed here with timestamps. Order history is not included."}
                 </p>
                 {accountTimeline.length === 0 ? (
                   <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-lg">
-                    No timeline data yet. Open this profile again after the account is saved or the user
-                    signs in.
+                    {variant === "vendor"
+                      ? "No timeline data yet. Save your profile or sign in again to see activity."
+                      : "No timeline data yet. Open this profile again after the account is saved or the user signs in."}
                   </p>
                 ) : (
                   <div className="space-y-3">

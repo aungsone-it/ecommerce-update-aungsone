@@ -12,6 +12,9 @@ export type VendorAuthCookieVendor = {
   vendorId: string;
   storeName?: string;
   storeSlug?: string;
+  avatar?: string;
+  location?: string;
+  contactName?: string;
 };
 
 type Packed = { v: VendorAuthCookieVendor; rm: boolean };

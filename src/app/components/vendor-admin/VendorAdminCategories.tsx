@@ -41,6 +41,8 @@ interface CategoryInfo {
 interface VendorAdminCategoriesProps {
   vendorId: string;
   vendorName: string;
+  /** When false, load failures are logged only (avoids toasts while this tab is hidden / preloaded). */
+  reportLoadErrors?: boolean;
 }
 
 function buildCategoryInfosFromProducts(products: Product[]): CategoryInfo[] {
@@ -66,7 +68,11 @@ function buildCategoryInfosFromProducts(products: Product[]): CategoryInfo[] {
   return categoriesArray;
 }
 
-export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCategoriesProps) {
+export function VendorAdminCategories({
+  vendorId,
+  vendorName,
+  reportLoadErrors = true,
+}: VendorAdminCategoriesProps) {
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [loading, setLoading] = useState(
     () => !moduleCache.peek(CACHE_KEYS.vendorProductsAdmin(vendorId))
@@ -125,6 +131,7 @@ export function VendorAdminCategories({ vendorId, vendorName }: VendorAdminCateg
       console.log(`✅ Derived ${products.length} products into categories for vendor ${vendorId}`);
     } catch (error: any) {
       console.error("Failed to load categories:", error);
+      if (!reportLoadErrors) return;
       if (error.name === "AbortError") {
         toast.error("Request timed out.");
       } else {

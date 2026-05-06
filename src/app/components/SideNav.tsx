@@ -14,6 +14,35 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 // Use placeholder images for production deployment
 const spidermanAvatar = "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix";
 
+interface AdminBrandingCache {
+  storeLogo?: string;
+  storeName?: string;
+}
+
+const ADMIN_BRANDING_CACHE_KEY = "admin:branding:v1";
+
+function readAdminBrandingCache(): AdminBrandingCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(ADMIN_BRANDING_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AdminBrandingCache;
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeAdminBrandingCache(data: AdminBrandingCache): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(ADMIN_BRANDING_CACHE_KEY, JSON.stringify(data));
+  } catch {
+    /* ignore storage/quota errors */
+  }
+}
+
 /** When set, only these nav labels are shown (must match item.label / subItem.label). */
 export type SideNavAllowedLabels = Set<string>;
 
@@ -57,8 +86,12 @@ export function SideNav({
 }: SideNavProps) {
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const { t } = useLanguage();
-  const [storeLogo, setStoreLogo] = useState<string>("");
-  const [storeName, setStoreName] = useState<string>("SECURE");
+  const [storeLogo, setStoreLogo] = useState<string>(
+    () => readAdminBrandingCache()?.storeLogo || ""
+  );
+  const [storeName, setStoreName] = useState<string>(
+    () => readAdminBrandingCache()?.storeName || "SECURE"
+  );
   
   // 🔥 Fetch store logo and name on mount
   useEffect(() => {
@@ -82,12 +115,17 @@ export function SideNav({
         
         if (response.ok) {
           const data = await response.json();
-          if (data.storeLogo) {
-            setStoreLogo(data.storeLogo);
-          }
-          if (data.storeName) {
-            setStoreName(data.storeName);
-          }
+          const nextLogo = typeof data.storeLogo === "string" ? data.storeLogo : "";
+          const nextName =
+            typeof data.storeName === "string" && data.storeName.trim()
+              ? data.storeName
+              : "SECURE";
+          setStoreLogo(nextLogo);
+          setStoreName(nextName);
+          writeAdminBrandingCache({
+            storeLogo: nextLogo,
+            storeName: nextName,
+          });
         } else {
           console.warn('⚠️ Settings API returned non-OK status:', response.status);
         }
@@ -105,12 +143,19 @@ export function SideNav({
     // 🔥 Listen for logo updates from Settings component
     const handleLogoUpdate = (event: CustomEvent) => {
       console.log('🔄 Logo/Name updated via event:', event.detail);
-      if (event.detail.logoUrl) {
-        setStoreLogo(event.detail.logoUrl);
-      }
-      if (event.detail.storeName) {
-        setStoreName(event.detail.storeName);
-      }
+      const prev = readAdminBrandingCache() || {};
+      const nextLogo =
+        typeof event.detail.logoUrl === "string" ? event.detail.logoUrl : (prev.storeLogo || "");
+      const nextName =
+        typeof event.detail.storeName === "string" && event.detail.storeName.trim()
+          ? event.detail.storeName
+          : (prev.storeName || "SECURE");
+      setStoreLogo(nextLogo);
+      setStoreName(nextName);
+      writeAdminBrandingCache({
+        storeLogo: nextLogo,
+        storeName: nextName,
+      });
     };
     
     window.addEventListener('logoUpdated', handleLogoUpdate as EventListener);

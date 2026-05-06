@@ -1,5 +1,3 @@
-import { Loader2 } from "lucide-react";
-
 /** Lightweight full-width placeholder for lazy route chunks (marketplace, admin, vendor). */
 export function RouteLoadingFallback() {
   return (
@@ -9,8 +7,9 @@ export function RouteLoadingFallback() {
       aria-live="polite"
       aria-label="Loading page"
     >
-      <Loader2 className="h-9 w-9 sm:h-10 sm:w-10 animate-spin text-amber-600" />
-      <span className="text-sm text-slate-500">Loading…</span>
+      <div className="h-2.5 w-40 rounded-full bg-slate-200 animate-pulse" />
+      <div className="h-2.5 w-28 rounded-full bg-slate-100 animate-pulse" />
+      <span className="text-sm text-slate-500">Preparing page…</span>
     </div>
   );
 }

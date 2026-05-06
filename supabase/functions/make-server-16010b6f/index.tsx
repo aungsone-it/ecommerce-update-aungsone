@@ -950,6 +950,14 @@ async function uploadProfileImage(userId: string, imageDataUrl: string): Promise
       bytes[i] = binaryString.charCodeAt(i);
     }
 
+    const MAX_PROFILE_BYTES = 524288; // 512 KiB bucket limit; matches client 500KB policy + margin
+    if (bytes.length > MAX_PROFILE_BYTES) {
+      console.error(
+        `❌ Profile image too large after decode: ${bytes.length} bytes (max ${MAX_PROFILE_BYTES})`
+      );
+      return null;
+    }
+
     // Generate unique filename
     const filename = `${userId}_${Date.now()}.${imageType === 'jpg' ? 'jpeg' : imageType}`;
     const filePath = `profile-images/${filename}`;
@@ -2292,6 +2300,22 @@ app.post("/make-server-16010b6f/vendor-auth/login", async (c) => {
     }
     
     console.log(`✅ [VendorAuth] Login successful for: ${email}`);
+
+    try {
+      const fullVendor = await withTimeout(kv.get(`vendor:${vendor.id}`), 5000);
+      if (fullVendor && typeof fullVendor === "object") {
+        await withTimeout(
+          kv.set(`vendor:${vendor.id}`, {
+            ...(fullVendor as object),
+            lastLoginAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }),
+          5000
+        );
+      }
+    } catch (e) {
+      console.warn("[VendorAuth] Could not persist lastLoginAt:", e);
+    }
     
     // Store label + slug: prefer storefront settings (Store Settings UI), then legacy vendor_settings
     const [vendorSettings, storefrontSettings] = await Promise.all([
@@ -2468,6 +2492,176 @@ app.post("/make-server-16010b6f/vendor-auth/setup-credentials", async (c) => {
   } catch (error) {
     console.error("❌ [VendorAuth] Error setting up credentials:", error);
     return c.json({ error: "Failed to set up credentials", details: String(error) }, 500);
+  }
+});
+
+/** Signed URL + UI fields for vendor admin User Profile (mirrors staff auth profile shape). */
+async function buildVendorAuthProfileUser(vendorRaw: Record<string, unknown>) {
+  const rest = { ...vendorRaw };
+  delete (rest as { password?: string }).password;
+
+  let profileImageUrl = "";
+  const pi = rest.profileImage;
+  if (typeof pi === "string" && pi.trim()) {
+    const su = await getSignedImageUrl(pi.trim());
+    if (su) profileImageUrl = su;
+  } else if (typeof rest.avatar === "string" && rest.avatar.startsWith("http")) {
+    profileImageUrl = rest.avatar;
+  }
+
+  const created = (rest.createdAt || rest.joinedDate) as string | undefined;
+  const id = String(rest.id || "");
+  /** Owner / primary contact (from application). Legacy vendors may only have `name` (store). */
+  const ownerFromKv =
+    (typeof rest.contactName === "string" && rest.contactName.trim()) ||
+    (typeof rest.contact_name === "string" && rest.contact_name.trim()) ||
+    "";
+
+  return {
+    id,
+    name: String(rest.name || ""),
+    contactName: ownerFromKv || String(rest.name || ""),
+    email: String(rest.email || ""),
+    phone: String(rest.phone || ""),
+    businessName: String(rest.businessName || rest.name || ""),
+    role: "vendor-admin",
+    status: rest.status === "active" ? "active" : "inactive",
+    location: String(rest.location || ""),
+    addressLine1: String(rest.addressLine1 || ""),
+    addressLine2: String(rest.addressLine2 || ""),
+    city: String(rest.city || ""),
+    region: String(rest.region || ""),
+    postalCode: String(rest.postalCode || ""),
+    country: String(rest.country || ""),
+    bio: String(rest.bio || ""),
+    profileImage: typeof pi === "string" ? pi : "",
+    profileImageUrl: profileImageUrl || undefined,
+    avatar: profileImageUrl || (typeof rest.avatar === "string" ? rest.avatar : ""),
+    createdAt: created,
+    authCreatedAt: created,
+    lastSignInAt: (rest.lastLoginAt || rest.lastSignInAt || rest.updatedAt) as string | undefined,
+    updatedAt: rest.updatedAt as string | undefined,
+  };
+}
+
+// Vendor self-service profile (KV vendor:{id}) — same anon-key pattern as other vendor routes
+app.get("/make-server-16010b6f/vendor-auth/profile/:vendorId", async (c) => {
+  try {
+    const vendorId = c.req.param("vendorId");
+    if (!vendorId?.trim()) {
+      return c.json({ error: "vendorId required" }, 400);
+    }
+    const vendor = await withTimeout(kv.get(`vendor:${vendorId}`), 5000);
+    if (!vendor || typeof vendor !== "object") {
+      return c.json({ error: "Vendor not found" }, 404);
+    }
+    const user = await buildVendorAuthProfileUser(vendor as Record<string, unknown>);
+    return c.json({ user });
+  } catch (error: any) {
+    console.error("❌ [VendorAuth] GET profile:", error);
+    return c.json({ error: "Failed to load profile", details: String(error) }, 500);
+  }
+});
+
+app.put("/make-server-16010b6f/vendor-auth/profile/:vendorId", async (c) => {
+  try {
+    const vendorId = c.req.param("vendorId");
+    if (!vendorId?.trim()) {
+      return c.json({ error: "vendorId required" }, 400);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const existing = await withTimeout(kv.get(`vendor:${vendorId}`), 5000);
+    if (!existing || typeof existing !== "object") {
+      return c.json({ error: "Vendor not found" }, 404);
+    }
+
+    const ev = existing as Record<string, unknown>;
+    const pwd = ev.password;
+
+    const emailIn = typeof body.email === "string" ? body.email.trim().toLowerCase() : String(ev.email || "").toLowerCase();
+    if (emailIn && emailIn !== String(ev.email || "").toLowerCase()) {
+      const others = await kv.getVendorProfiles();
+      const dup = others.find(
+        (v: any) =>
+          v?.id !== vendorId &&
+          String(v?.email || "").toLowerCase() === emailIn
+      );
+      if (dup) {
+        return c.json({ error: "That email is already in use" }, 409);
+      }
+    }
+
+    const prevProfileImg =
+      typeof ev.profileImage === "string" ? String(ev.profileImage).trim() : "";
+
+    let profileImagePath = prevProfileImg;
+
+    if (body.removeProfileImage) {
+      profileImagePath = "";
+      if (prevProfileImg) {
+        await deleteOwnedStorageRefs(supabase, [prevProfileImg]);
+      }
+    } else if (typeof body.profileImage === "string" && body.profileImage.length > 0) {
+      const uploaded = await uploadProfileImage(vendorId, body.profileImage);
+      if (uploaded) {
+        profileImagePath = uploaded;
+        if (prevProfileImg && prevProfileImg !== uploaded) {
+          await deleteOwnedStorageRefs(supabase, [prevProfileImg]);
+        }
+      } else {
+        return c.json(
+          {
+            error:
+              "Could not upload profile image. Use a JPG or PNG under 500 KB and try again.",
+          },
+          400
+        );
+      }
+    }
+
+    const next: Record<string, unknown> = {
+      ...ev,
+      contactName:
+        typeof body.contactName === "string"
+          ? body.contactName.trim()
+          : ev.contactName ?? "",
+      name: typeof body.name === "string" ? body.name.trim() : ev.name,
+      email: typeof body.email === "string" ? body.email.trim() : ev.email,
+      phone: typeof body.phone === "string" ? body.phone : ev.phone ?? "",
+      location: typeof body.location === "string" ? body.location : ev.location ?? "",
+      addressLine1: typeof body.addressLine1 === "string" ? body.addressLine1 : ev.addressLine1 ?? "",
+      addressLine2: typeof body.addressLine2 === "string" ? body.addressLine2 : ev.addressLine2 ?? "",
+      city: typeof body.city === "string" ? body.city : ev.city ?? "",
+      region: typeof body.region === "string" ? body.region : ev.region ?? "",
+      postalCode: typeof body.postalCode === "string" ? body.postalCode : ev.postalCode ?? "",
+      country: typeof body.country === "string" ? body.country : ev.country ?? "",
+      bio: typeof body.bio === "string" ? body.bio : ev.bio ?? "",
+      profileImage: profileImagePath,
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (pwd !== undefined) next.password = pwd;
+
+    if (body.removeProfileImage) {
+      const label =
+        typeof next.contactName === "string" && String(next.contactName).trim().length >= 2
+          ? String(next.contactName).trim()
+          : typeof next.name === "string" && String(next.name).trim().length >= 2
+            ? String(next.name).trim()
+            : "VN";
+      next.avatar = label.substring(0, 2).toUpperCase();
+    } else if (profileImagePath && typeof next.avatar === "string" && next.avatar.startsWith("http")) {
+      /* keep */
+    }
+
+    await withTimeout(kv.set(`vendor:${vendorId}`, next), 5000);
+
+    const user = await buildVendorAuthProfileUser(next);
+    return c.json({ success: true, user });
+  } catch (error: any) {
+    console.error("❌ [VendorAuth] PUT profile:", error);
+    return c.json({ error: "Failed to update profile", details: String(error) }, 500);
   }
 });
 

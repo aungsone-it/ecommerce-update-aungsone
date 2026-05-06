@@ -28,10 +28,11 @@ export function VendorAdminPage() {
     email: vendor.email,
     phone: vendor.phone || "",
     status: "active" as const,
-    location: "",
-    avatar: undefined as string | undefined,
+    location: vendor.location || "",
+    avatar: vendor.avatar,
     storeSlug: vendor.storeSlug,
     storeName: vendor.storeName ?? vendor.name,
+    contactName: vendor.contactName?.trim() || vendor.name,
   };
 
   return (
