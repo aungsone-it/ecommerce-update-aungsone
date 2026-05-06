@@ -163,6 +163,16 @@ export function Checkout({
     () => `checkout-summary:${summaryPath}`,
     [summaryPath]
   );
+  const summaryQueryOrderId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return (
+      params.get("merch_order_id") ||
+      params.get("merchOrderId") ||
+      params.get("order") ||
+      params.get("orderNumber") ||
+      ""
+    ).trim();
+  }, [location.search]);
 
   // Shipping Form State - Pre-fill from saved addresses
   const [shippingInfo, setShippingInfo] = useState({
@@ -419,6 +429,93 @@ export function Checkout({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, summarySnapshotStorageKey]);
+
+  useEffect(() => {
+    const onSummaryRoute = /\/summary$/.test(location.pathname);
+    if (!onSummaryRoute || !summaryQueryOrderId) return;
+    if (step === "success" && confirmedItems.length > 0 && orderNumber) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(
+          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(summaryQueryOrderId)}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+        );
+        if (!response.ok) return;
+        const data = (await response.json()) as { order?: any };
+        const o = data?.order;
+        if (!o || cancelled) return;
+        const itemsFromOrder = Array.isArray(o.items)
+          ? o.items.map((it: any, idx: number) => ({
+              id: String(it?.id ?? idx),
+              sku: String(it?.sku ?? it?.name ?? "Item"),
+              quantity: Number(it?.quantity ?? 1) || 1,
+              price: Number(it?.price ?? 0) || 0,
+              image: typeof it?.image === "string" ? it.image : "",
+            }))
+          : [];
+        if (!itemsFromOrder.length) return;
+        const total = Number(o?.total ?? 0) || 0;
+        const discount = Number(o?.discount ?? 0) || 0;
+        const coupon =
+          typeof o?.couponCode === "string" && o.couponCode.trim()
+            ? { campaign: { code: o.couponCode } }
+            : null;
+        const shipping = {
+          fullName: String(o?.customerName ?? o?.customer ?? shippingInfo.fullName ?? ""),
+          email: String(o?.email ?? shippingInfo.email ?? ""),
+          phone: String(o?.phone ?? shippingInfo.phone ?? ""),
+          address: String(o?.address ?? shippingInfo.address ?? ""),
+          city: String(o?.city ?? shippingInfo.city ?? ""),
+          zipCode: String(o?.zipCode ?? shippingInfo.zipCode ?? ""),
+          country: String(o?.country ?? shippingInfo.country ?? ""),
+        };
+        setOrderNumber(String(o?.orderNumber ?? summaryQueryOrderId));
+        setConfirmedItems(itemsFromOrder);
+        setConfirmedTotal(total);
+        setConfirmedOrderNote(String(o?.notes ?? ""));
+        setConfirmedCoupon(coupon);
+        setConfirmedDiscount(discount);
+        setShippingInfo(shipping);
+        setStep("success");
+        setLoading(false);
+        try {
+          const snapshot: CheckoutSummarySnapshot = {
+            orderNumber: String(o?.orderNumber ?? summaryQueryOrderId),
+            items: itemsFromOrder,
+            total,
+            orderNote: String(o?.notes ?? ""),
+            coupon,
+            discount,
+            shippingInfo: shipping,
+            paymentMethod:
+              o?.paymentMethod === "KPay"
+                ? "KPay"
+                : o?.paymentMethod === "Bank Transfer"
+                  ? "BankTransfer"
+                  : "Card",
+            savedAt: new Date().toISOString(),
+          };
+          localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
+        } catch {
+          /* ignore snapshot write failure */
+        }
+      } catch {
+        // leave checkout as-is when server read fails
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    location.pathname,
+    summaryQueryOrderId,
+    step,
+    confirmedItems.length,
+    orderNumber,
+    shippingInfo,
+    summarySnapshotStorageKey,
+  ]);
 
   // Apply coupon code
   const handleApplyCoupon = async () => {
