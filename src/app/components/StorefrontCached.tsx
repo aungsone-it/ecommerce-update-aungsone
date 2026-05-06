@@ -79,7 +79,6 @@ export async function loadProductsCached(isBackgroundRefresh = false) {
 
 export async function loadCategoriesCached() {
   try {
-    console.log("Loading categories...");
     const fromLs = readPersistedJson<any[]>(LS_STOREFRONT_CATEGORIES, PERSISTED_CATALOG_TTL_MS);
     let allCategories: any[];
     if (fromLs && Array.isArray(fromLs)) {
@@ -93,7 +92,6 @@ export async function loadCategoriesCached() {
     }
 
     const activeCategories = (allCategories || []).filter((c: any) => c.status === "active");
-    console.log(`[STOREFRONT CACHED] Loaded ${activeCategories.length} active categories`);
     return activeCategories;
   } catch (error) {
     console.error("Failed to load categories:", error);
@@ -103,7 +101,6 @@ export async function loadCategoriesCached() {
 
 export async function loadSiteSettingsCached() {
   try {
-    console.log("Loading site settings...");
     const fromLs = readPersistedJson<any>(LS_STOREFRONT_SETTINGS, PERSISTED_CATALOG_TTL_MS);
     let settings: any;
     if (fromLs != null && typeof fromLs === "object") {
@@ -115,7 +112,6 @@ export async function loadSiteSettingsCached() {
         writePersistedJson(LS_STOREFRONT_SETTINGS, settings);
       }
     }
-    console.log("[STOREFRONT CACHED] Loaded site settings");
     return settings;
   } catch (error) {
     console.warn("Could not load site settings, using defaults");

@@ -182,7 +182,6 @@ export function VendorStorefrontPage() {
   const handleBack = () => {
     const vendorAdminPath =
       subdomainSlug || customHostSlug ? "/admin" : `/store/${storeName}/admin`;
-    console.log("Back button clicked - navigating to:", vendorAdminPath);
     navigate(vendorAdminPath);
   };
 

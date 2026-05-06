@@ -782,7 +782,6 @@ export function VendorStoreView({
   /** Option name → value; mirrors main marketplace variant picker */
   const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
   const [vendorProductImageIndex, setVendorProductImageIndex] = useState(0);
-  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   useEffect(() => {
     const isCheckoutRoute =
@@ -2996,7 +2995,6 @@ export function VendorStoreView({
   // 🚀 Categories + server-paginated product grid (module cache per page / filters).
   // Categories and page-1 catalog run in parallel — sequential awaits were doubling time-to-interactive on Vercel.
   const loadVendorData = async (forceRefresh: boolean = false) => {
-    console.log(`🚀 [VENDOR STORE] Loading data for vendorId: ${vendorId}`);
 
     try {
       const loadCategories = async (): Promise<any[]> => {
@@ -3036,7 +3034,6 @@ export function VendorStoreView({
 
       setVendorCategories(categoriesData);
       setServerStatus("healthy");
-      console.log(`✅ [VENDOR STORE] Loaded ${categoriesData?.length || 0} categories`);
     } catch (error) {
       console.error("❌ [VENDOR STORE] Error loading vendor data:", error);
       if (productsRef.current.length > 0) setServerStatus("healthy");

@@ -68,7 +68,6 @@ import {
 import { BlogPostDetail } from "./BlogPostDetail";
 import { AuthModal } from "./AuthModal";
 import { OrderDetailView } from "./OrderDetailView";
-import { CacheDebugPanel } from "./CacheDebugPanel";
 import {
   fetchCatalogPage,
   fetchProductsByIds,
@@ -594,14 +593,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // �� MODULE-CACHE: Load from module-level cache (survives unmount/remount)
   const [products, setProducts] = useState<Product[]>(() => {
     if (cachedProducts.length > 0) {
-      console.log(`⚡ INSTANT LOAD: Restored ${cachedProducts.length} products from module cache`);
     }
     return cachedProducts;
   });
   // 🚀 MODULE-CACHE: Load categories from module-level cache
   const [allCategories, setAllCategories] = useState<any[]>(() => {
     if (cachedCategories.length > 0) {
-      console.log(`⚡ INSTANT LOAD: Restored ${cachedCategories.length} categories from module cache`);
     }
     return cachedCategories;
   });
@@ -641,18 +638,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     const isCurrentlyLoading = serverStatus === 'checking' || !isDataReady;
     setIsLoading(isCurrentlyLoading);
   }, [serverStatus, isDataReady, setIsLoading, hasCachedData]);
-
-  // Toggle cache debug panel with Ctrl+Shift+D
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-        e.preventDefault();
-        setShowCacheDebug(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
 
   // 🎯 Navbar scroll behavior: sticky on scroll up, natural scroll on scroll down
   const [isNavbarSticky, setIsNavbarSticky] = useState(false);
@@ -707,9 +692,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // Featured campaigns state (for promotional section on home page)
   const [featuredCampaigns, setFeaturedCampaigns] = useState<any[]>([]);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
-
-  // Cache debug panel state
-  const [showCacheDebug, setShowCacheDebug] = useState(false);
   
   // Appearance settings state (for promo section on home page)
   const [appearanceSettings, setAppearanceSettings] = useState<{
@@ -797,7 +779,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   
   // Debug homeViewType changes
   useEffect(() => {
-    console.log("homeViewType state changed to:", homeViewType);
   }, [homeViewType]);
   const [sortBy, setSortBy] = useState("featured");
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
@@ -816,7 +797,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   useEffect(() => {
     // Skip URL sync if we're in the middle of navigation
     if (isNavigatingAwayRef.current) {
-      console.log('⏭️ Skipping URL sync - navigation in progress');
       return;
     }
     
@@ -824,7 +804,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     const searchParams = new URLSearchParams(location.search);
     const categoryParam = searchParams.get('category');
     
-    console.log('🌐 URL changed to:', path, 'Category:', categoryParam);
 
     // Drop product detail state whenever the URL is not a /product/... route (browser back, etc.).
     // Prevents stale selectedProduct + async fetchProductDetails from reopening detail after navigate away.
@@ -839,7 +818,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     
     // Handle category parameter
     if (categoryParam) {
-      console.log('📂 Setting category from URL:', categoryParam);
       setSelectedCategory(categoryParam);
       setViewMode("all-products");
     }
@@ -886,8 +864,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     } else if (path.startsWith("/profile/orders/")) {
       // Order detail page
       const orderId = path.replace("/profile/orders/", "");
-      console.log('📄 Order detail route detected:', orderId);
-      console.log('🔄 Current path:', path);
       setViewMode("order-detail");
       // The order will be loaded from userOrders when the view renders
     } else if (path === "/profile/addresses") {
@@ -928,7 +904,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     
     // Skip if we're in the middle of navigation to prevent race conditions
     if (isNavigatingAwayRef.current) {
-      console.log('⏭️ Skipping viewMode → URL sync - navigation in progress');
       return;
     }
     
@@ -1425,7 +1400,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               body: JSON.stringify({ cart }),
             }
           );
-          console.log(`🛒 Cart synced to database for user ${orderApiUserId}`);
         } catch (error) {
           console.error('Failed to sync cart to database:', error);
         }
@@ -1464,11 +1438,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const appInitialized = sessionStorage.getItem('migoo-initialized');
       
       if (appInitialized === 'true' && serverStatus === 'healthy' && cachedProducts.length > 0) {
-        console.log('⚡ App already initialized with cached data, skipping loading screen...');
-        console.log(`📦 Using cached data: ${cachedProducts.length} products, ${cachedCategories.length} categories`);
         setInitialCatalogFetchDone(true);
         if (shouldSkipCatalogBackgroundRefresh()) {
-          console.log('⏭️ Skipping catalog background refresh (throttled)');
           return;
         }
         Promise.all([loadProducts(true), loadCategories(), loadSiteSettings()])
@@ -1479,9 +1450,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         return;
       }
       
-      console.log('🔍 Starting SECURE (first load)...');
-      console.log(`📡 Server URL: https://${projectId}.supabase.co/functions/v1/make-server-16010b6f`);
-      console.log('��� Note: First load may take 30-60 seconds (Edge Function cold start)');
       
       // Check server health first
       if (!isMounted) return;
@@ -1490,7 +1458,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       
       if (!isMounted) return;
       if (healthCheck.isHealthy) {
-        console.log('✅ Server is healthy, loading data...');
         // Wait for both products and categories to load before marking as healthy
         await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
         if (!isMounted) return;
@@ -1498,14 +1465,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         updateServerStatus('healthy');
         sessionStorage.setItem('migoo-initialized', 'true');
         markCatalogBackgroundRefreshed();
-        console.log('✅ All data loaded, app ready!');
       } else {
         setServerStatus('unhealthy');
-        console.log('❌ Server is not responding, will auto-retry...');
         // Auto-retry #1 after 5 seconds
         retry1TimeoutId = setTimeout(async () => {
           if (!isMounted) return;
-          console.log('🔄 Auto-retry #1: Checking server connection...');
           setServerStatus('checking');
           const retryCheck = await checkServerHealth(15000);
           if (!isMounted) return;
@@ -1522,7 +1486,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             // Auto-retry #2 after another 10 seconds
             retry2TimeoutId = setTimeout(async () => {
               if (!isMounted) return;
-              console.log('🔄 Auto-retry #2: Checking server connection...');
               setServerStatus('checking');
               const retry2Check = await checkServerHealth(20000);
               if (!isMounted) return;
@@ -1539,7 +1502,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 // Auto-retry #3 after another 15 seconds
                 retry3TimeoutId = setTimeout(async () => {
                   if (!isMounted) return;
-                  console.log('🔄 Auto-retry #3: Final attempt to connect...');
                   setServerStatus('checking');
                   const retry3Check = await checkServerHealth(30000);
                   if (!isMounted) return;
@@ -1606,7 +1568,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   const loadBanners = useCallback(async () => {
     try {
-      console.log('🎨 Loading banners...');
       const bannersData = await moduleCache.get(
         CACHE_KEYS.STOREFRONT_BANNERS,
         fetchBannersApi,
@@ -1614,7 +1575,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       );
       if (Array.isArray(bannersData) && bannersData.length > 0) {
         setBanners(bannersData);
-        console.log(`✅ Loaded ${bannersData.length} banners`);
       }
     } catch (error) {
       console.warn("⚠️ Could not load banners from server, using defaults");
@@ -1625,7 +1585,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const loadFeaturedCampaigns = useCallback(async () => {
     try {
       setCampaignsLoading(true);
-      console.log('🎯 Loading featured campaigns...');
       const data = await moduleCache.get(
         CACHE_KEYS.STOREFRONT_FEATURED_CAMPAIGNS,
         fetchFeaturedCampaignsApi,
@@ -1633,9 +1592,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       );
       if (Array.isArray(data.campaigns) && data.campaigns.length > 0) {
         setFeaturedCampaigns(data.campaigns);
-        console.log(`✅ Loaded ${data.campaigns.length} featured campaigns`);
       } else {
-        console.log('ℹ️ No featured campaigns available');
         setFeaturedCampaigns([]);
       }
     } catch (error) {
@@ -1834,7 +1791,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         // Only show published posts on storefront
         const publishedPosts = response.data.filter((post: any) => post.status === "published");
         setBlogPosts(publishedPosts);
-        console.log(`✅ Loaded ${publishedPosts.length} published blog posts for storefront`);
       }
     } catch (error) {
       console.error("❌ Failed to load blog posts:", error);
@@ -2007,11 +1963,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const handleProductSelect = useCallback(async (product: Product) => {
     // Guard: Don't allow product selection if we're navigating away
     if (isNavigatingAwayRef.current) {
-      console.log('⏭️ Skipping product selection - navigation in progress');
       return;
     }
     
-    console.log(`📦 Product selected:`, product.id);
     
     // 🚀 INSTANT TRANSITION: Show skeleton immediately and scroll to top
     setIsLoadingProductDetail(true);
@@ -2047,7 +2001,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       }
       
       if (fullProduct) {
-        console.log(`✅ Full product fetched, updating with complete data...`);
         // Update with full product data
         setSelectedProduct(fullProduct);
         initializeVariantSelections(fullProduct);
@@ -2066,7 +2019,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // 🆕 RACE CONDITION FIX: Safe navigation away from product detail
   // This prevents state mismatch when navigating between pages
   const navigateAwayFromProduct = useCallback((targetPath: string, targetViewMode: ViewMode, category?: string) => {
-    console.log(`🚀 Safe navigation to: ${targetPath}, viewMode: ${targetViewMode}`);
     
     // Set flag to prevent other effects from interfering
     isNavigatingAwayRef.current = true;
@@ -2119,7 +2071,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     }
     const run = (async () => {
       try {
-        console.log(`🛒 Loading cart from database for user: ${userId}`);
         const response = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${userId}/cart`,
           {
@@ -2144,9 +2095,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             }
           });
 
-          console.log(
-            `✅ Cart loaded: ${dbCart.length} items from DB, ${guestCart.length} guest items, ${mergedCart.length} total`
-          );
           setCart(mergedCart);
 
           if (guestCart.length > 0) {
@@ -2317,7 +2265,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     const protectedPages: ViewMode[] = ["view-profile", "edit-profile", "order-history", "order-detail", "shipping-addresses", "security-settings"];
     const hasSession = !!resolveOrderApiUserId(user);
     if (protectedPages.includes(viewMode) && !hasSession) {
-      console.log('🔒 Protected page access denied, opening auth modal');
       toast.error("Please log in to access this page");
       setViewMode("home");
       setShowAuthModal(true);
@@ -2354,7 +2301,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           const parsed = JSON.parse(cachedAddresses);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setShippingAddresses(parsed);
-            console.log(`⚡ Loaded ${parsed.length} addresses from localStorage (cache)`);
           }
         }
       } catch (e) {
@@ -2380,7 +2326,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             
             // 🔥 Sync to localStorage for next refresh
             localStorage.setItem(storageKey, JSON.stringify(addresses));
-            console.log(`✅ Loaded ${addresses.length} addresses from database`);
           }
         } catch (error) {
           console.error('Failed to load addresses from database:', error);
@@ -2453,9 +2398,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     const uid = orderApiUserId;
     const syncWishlist = async () => {
       try {
-        console.log(`💝 [Storefront] Syncing wishlist for user ${uid}:`, wishlist);
         await wishlistApi.update(uid, wishlist);
-        console.log("✅ Wishlist synced to database");
       } catch (error) {
         console.error("Failed to sync wishlist to database:", error);
       }
@@ -2594,7 +2537,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             body: JSON.stringify({ cart: mergedCart }),
           }
         );
-        console.log('✅ Cart synced to database after login');
       } catch (error) {
         console.error('Failed to sync cart to database:', error);
       }
@@ -2711,10 +2653,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       return;
     }
 
-    console.log('🔍 Current user object:', user);
-    console.log('🔍 User ID:', user.id);
-    console.log('🔍 User email:', user.email);
-
     setSaving(true);
     try {
       const payload: any = {
@@ -2727,10 +2665,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         payload.profileImage = profileForm.profileImage;
         // Log the size of the image being sent
         const imageSizeKB = Math.round((profileForm.profileImage.length * 3) / 4 / 1024);
-        console.log(`📤 Uploading profile image: ${imageSizeKB}KB`);
       }
-
-      console.log('📤 Sending profile update payload:', { ...payload, profileImage: payload.profileImage ? `[${Math.round((payload.profileImage.length * 3) / 4 / 1024)}KB image]` : undefined });
 
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/profile/${user.id}`,
@@ -2952,7 +2887,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         };
       });
       
-      console.log(`🎫 Validating coupon code: "${code}" (original: "${couponCode.trim()}")`);
 
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/validate`,
@@ -2970,7 +2904,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         }
       );
       
-      console.log('🎫 Response status:', response.status, response.statusText);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -2986,7 +2919,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         throw new Error('Invalid response from server');
       }
       
-      console.log('🎫 Coupon validation response:', data); // DEBUG
+// DEBUG
       
       if (data.valid && data.campaign) {
         setAppliedCoupon(data.campaign);
@@ -3056,7 +2989,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             const data = await response.json();
             const addresses = data.addresses || [];
             defaultAddress = addresses.find((addr: any) => addr.isDefault) || addresses[0];
-            console.log("📦 Auto-filling checkout with saved address from database:", defaultAddress);
           }
         } catch (error) {
           console.error("Failed to load addresses from database:", error);
@@ -3074,7 +3006,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           country: "Myanmar",
           notes: ""
         });
-        console.log("✅ Checkout form auto-filled");
       }
     };
     
@@ -3347,7 +3278,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       if (!testCards.success.includes(cardNumberClean) && !testCards.success.includes(paymentInfo.cardNumber)) {
         // For demo purposes, accept any other card number as successful
         // In production, you'd integrate with real payment gateway here
-        console.log("⚠️ Using non-test card number - accepting for demo");
       }
 
       // ✅ Payment successful!
@@ -3423,9 +3353,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       // 🎫 Track coupon usage if a coupon was applied
       if (appliedCoupon?.id) {
         try {
-          console.log(`🎫 Incrementing coupon usage for: ${appliedCoupon.code}`);
-          console.log(`🎫 Campaign ID: ${appliedCoupon.id}`);
-          console.log(`🎫 Discount amount (revenue): ${appliedCoupon.discountAmount} MMK`);
           
           const incrementResponse = await fetch(
             `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/${appliedCoupon.id}/increment`,
@@ -3441,12 +3368,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             }
           );
           
-          console.log(`🎫 Increment response status: ${incrementResponse.status}`);
           
           if (incrementResponse.ok) {
             const incrementData = await incrementResponse.json();
-            console.log(`✅ Coupon usage tracked successfully!`);
-            console.log(`📊 Updated metrics:`, incrementData);
           } else {
             const errorText = await incrementResponse.text();
             console.error(`❌ Failed to track coupon usage:`, errorText);
@@ -3455,7 +3379,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           console.error(`❌ Error tracking coupon usage:`, incrementError);
         }
       } else {
-        console.log('ℹ️ No coupon applied for this order');
       }
       
       // 🔥 INSTANT BADGE UPDATE - Notify admin panel immediately!
@@ -3481,7 +3404,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         } catch (error: any) {
           // ✅ Silently ignore "customer already exists" error - it's not a problem
           if (error?.message?.includes('already exists')) {
-            console.log(`ℹ️ Customer already exists for ${user.email} - no action needed`);
           } else {
             console.error("Failed to create customer record:", error);
           }
@@ -3537,7 +3459,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 body: JSON.stringify({ cart: [] }),
               }
             );
-            console.log('🛒 Cart cleared from database after order');
           } catch (error) {
             console.error('Failed to clear cart from database:', error);
           }
@@ -4019,7 +3940,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               <button 
                 type="button"
                 onClick={() => {
-                  console.log('🔍 All Products clicked, Current product:', selectedProduct?.name);
                   setSelectedProduct(null);
                   setSelectedCategory("all");
                   setUserAppliedFilters(false);
@@ -4040,7 +3960,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   type="button"
                   key={category.id}
                   onClick={() => {
-                    console.log('🔍 Category clicked:', category.name, 'Current product:', selectedProduct?.name);
                     setSelectedProduct(null);
                     setSelectedCategory(category.name);
                     setUserAppliedFilters(false);
@@ -5316,11 +5235,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           variant="outline"
                           className="w-full sm:w-auto"
                           onClick={() => {
-                            console.log('🔍 View Details clicked for order:', order.id);
-                            console.log('📦 Order data:', order);
                             setSelectedOrder(order);
                             // Don't set viewMode here - let the URL handler do it
-                            console.log('🧭 Navigating to:', `/profile/orders/${order.id}`);
                             navigate(`/profile/orders/${order.id}`);
                           }}
                         >
@@ -5525,7 +5441,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       // 🚀 SYNC TO LOCALSTORAGE IMMEDIATELY (FOR PERSISTENCE ON REFRESH)
                       if (user?.id) {
                         localStorage.setItem(`migoo-shipping-addresses-${user.id}`, JSON.stringify(updatedAddresses));
-                        console.log('⚡ Addresses synced to localStorage');
                       }
                       
                       // ��� SAVE TO BACKEND if user is logged in
@@ -5544,7 +5459,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                               body: JSON.stringify({ addresses: updatedAddresses }),
                             }
                           );
-                          console.log('✅ Addresses saved to backend');
                         } catch (error) {
                           console.error('Failed to save addresses to backend:', error);
                         }
@@ -5665,7 +5579,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                             // 🚀 SYNC TO LOCALSTORAGE IMMEDIATELY (FOR PERSISTENCE ON REFRESH)
                             if (user?.id) {
                               localStorage.setItem(`migoo-shipping-addresses-${user.id}`, JSON.stringify(updatedAddresses));
-                              console.log('⚡ Addresses synced to localStorage');
                             }
                             
                             // 🔥 SAVE TO BACKEND if user is logged in
@@ -5684,7 +5597,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                                     body: JSON.stringify({ addresses: updatedAddresses }),
                                   }
                                 );
-                                console.log('✅ Address deletion saved to backend');
                               } catch (error) {
                                 console.error('Failed to save address deletion to backend:', error);
                               }
@@ -5768,7 +5680,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     return;
                   }
                   
-                  console.log('🔐 [NEW CODE v2] Changing password via backend API for:', user.email);
                   
                   const response = await authApi.changePassword(
                     user.email,
@@ -5776,7 +5687,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     securityForm.newPassword
                   );
                   
-                  console.log('🔐 [NEW CODE v2] Backend response:', response);
                   
                   if (!response.success) {
                     console.error('❌ [NEW CODE v2] Password change failed:', response.error);
@@ -5784,7 +5694,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     return;
                   }
                   
-                  console.log('✅ [NEW CODE v2] Password changed successfully');
                   toast.success('Password changed successfully! Please use your new password next time you log in.');
                   setSecurityForm({
                     currentPassword: '',
@@ -6053,17 +5962,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // Order Detail View
   if (viewMode === "order-detail") {
-    console.log('🎯 Rendering Order Detail View');
-    console.log('📍 Current URL:', location.pathname);
-    console.log('🆔 Order ID from URL:', location.pathname.replace("/profile/orders/", ""));
-    console.log('📚 Available orders:', userOrders);
     
     // Find the order from URL parameter
     const orderId = location.pathname.replace("/profile/orders/", "");
     const order = userOrders.find(o => o.id === orderId);
     
-    console.log('🔍 Found order:', order);
-    console.log('📋 Selected order:', selectedOrder);
     
     // Update selectedOrder if it's not set yet
     if (order && !selectedOrder) {
@@ -6825,7 +6728,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           // Use ONLY unique variant images - first variant image becomes the main cover
           const uniqueVariantImages = [...new Set(variantImages)];
           productImages = uniqueVariantImages;
-          console.log('✅ Variant thumbnails loaded:', uniqueVariantImages.length, 'unique images from', variantImages.length, 'variants');
         }
       } else if (selectedProduct.images && Array.isArray(selectedProduct.images) && selectedProduct.images.length > 0) {
         // Fallback to images array if no variants
@@ -6841,14 +6743,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     const effectiveVariantOptions = getEffectiveVariantOptions(selectedProduct);
     
     // 🔍 DEBUG: Log product data to see variant structure
-    console.log('🔍 Selected Product Data:', {
-      hasVariants: selectedProduct.hasVariants,
-      variantOptions: selectedProduct.variantOptions,
-      effectiveVariantOptions,
-      variants: selectedProduct.variants,
-      productImages: productImages,
-      fullProduct: selectedProduct
-    });
     
     // Calculate current variant price based on selected options
     let displayPrice = selectedProduct.price;
@@ -7796,7 +7690,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // Blog Detail View
   if (viewMode === "blog-detail" && selectedBlogPost) {
-    console.log('Rendering blog detail view for:', selectedBlogPost);
     // Prepare blog post with default values for missing properties
     const blogPostForDetail = {
       ...selectedBlogPost,
@@ -7806,7 +7699,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       authorAvatar: selectedBlogPost.authorAvatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedBlogPost.author || 'author'}`,
       coverImage: selectedBlogPost.coverImage || 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=800',
     };
-    console.log('Blog post prepared for detail:', blogPostForDetail);
 
     return (
       <div className="min-h-screen bg-slate-50">
@@ -7936,7 +7828,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   key={post.id}
                   className="overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group animate-scale-in"
                   onClick={() => {
-                    console.log('Grid blog post clicked:', post);
                     setSelectedBlogPost(post);
                     setViewMode("blog-detail");
                   }}
@@ -8005,7 +7896,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   key={post.id}
                   className="overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group animate-slide-up"
                   onClick={() => {
-                    console.log('List blog post clicked:', post);
                     setSelectedBlogPost(post);
                     setViewMode("blog-detail");
                   }}
@@ -8478,7 +8368,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   <button
                     type="button"
                     onClick={() => {
-                      console.log("[HOME TOGGLE] Switching to grid view, current:", homeViewType);
                       setHomeViewType("grid");
                     }}
                     className={`p-1.5 sm:p-2 rounded transition-colors ${
@@ -8493,7 +8382,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   <button
                     type="button"
                     onClick={() => {
-                      console.log("[HOME TOGGLE] Switching to list view, current:", homeViewType);
                       setHomeViewType("list");
                     }}
                     className={`p-1.5 sm:p-2 rounded transition-colors ${
@@ -9355,9 +9243,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           </div>
         </div>
       )}
-
-      {/* Cache Debug Panel - Toggle with Ctrl+Shift+D */}
-      {showCacheDebug && <CacheDebugPanel onClose={() => setShowCacheDebug(false)} />}
       
     </div>
   );

@@ -288,7 +288,6 @@ export function Checkout({
 
   // Pre-fill from cached addresses (same key as VendorStoreView) + API — matches main marketplace behavior
   useEffect(() => {
-    console.log("🔍 User data in Checkout:", effectiveUser);
 
     const applyAddress = (
       addr: any,
@@ -311,7 +310,6 @@ export function Checkout({
     const loadUserAddresses = async () => {
       const eu = effectiveUser;
       if (!eu?.id) {
-        console.log("⚠️ No user logged in, skipping address load");
         return;
       }
 
@@ -323,7 +321,6 @@ export function Checkout({
           if (Array.isArray(parsed) && parsed.length > 0) {
             const defaultAddress = parsed.find((a: any) => a?.isDefault) || parsed[0];
             applyAddress(defaultAddress, eu);
-            console.log("✅ Checkout pre-filled from migoo address cache");
           }
         }
       } catch (e) {
@@ -351,9 +348,7 @@ export function Checkout({
               /* ignore quota */
             }
             const defaultAddress = addresses.find((addr: any) => addr.isDefault) || addresses[0];
-            console.log("📦 Found saved address from database:", defaultAddress);
             applyAddress(defaultAddress, eu);
-            console.log("✅ Auto-filled checkout form with saved address from database");
             return;
           }
         }
@@ -759,7 +754,6 @@ export function Checkout({
 
     try {
       const code = couponCode.trim().toUpperCase();
-      console.log(`🎫 Validating coupon code: "${code}" (original: "${couponCode.trim()}")`);
       
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/validate`,
@@ -783,14 +777,10 @@ export function Checkout({
       );
 
       const data = await response.json();
-      console.log('🎫 Coupon validation response:', data);
 
       if (data.valid) {
         setAppliedCoupon(data);
         setCouponError("");
-        console.log("✅ Coupon applied:", data);
-        console.log("✅ Campaign ID being stored:", data?.campaign?.id);
-        console.log("✅ Full campaign object:", data?.campaign);
       } else {
         console.error('❌ Coupon validation failed:', data.error);
         setCouponError(data.error || "Invalid coupon code");
@@ -1177,13 +1167,11 @@ export function Checkout({
         return; // Stop order process
       }
 
-      console.log("✅ Order saved to backend:", orderNum);
       notifyAdminOrdersUpdated("storefront-checkout-order-created");
       
       // 🔥 Save shipping address to database for future use
       if (effectiveUser?.id) {
         try {
-          console.log(`📍 Saving shipping address for user ${effectiveUser.id}`);
           
           // Create address object
           const newAddress = {
@@ -1236,9 +1224,7 @@ export function Checkout({
               }
             );
             
-            console.log('✅ Shipping address saved to database');
           } else {
-            console.log('ℹ️ Address already exists, skipping save');
           }
         } catch (addressError) {
           console.error('❌ Failed to save address:', addressError);
@@ -1247,15 +1233,9 @@ export function Checkout({
       }
       
       // 🎫 Track coupon usage if a coupon was applied
-      console.log('🔍 Checking appliedCoupon:', appliedCoupon);
-      console.log('🔍 appliedCoupon?.campaign:', appliedCoupon?.campaign);
-      console.log('🔍 appliedCoupon?.campaign?.id:', appliedCoupon?.campaign?.id);
       
       if (appliedCoupon?.campaign?.id) {
         try {
-          console.log(`🎫 Incrementing coupon usage for: ${appliedCoupon.campaign.code}`);
-          console.log(`🎫 Campaign ID: ${appliedCoupon.campaign.id}`);
-          console.log(`🎫 Discount amount (revenue): ${discountAmount} MMK`);
           
           const incrementResponse = await fetch(
             `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/${appliedCoupon.campaign.id}/increment`,
@@ -1271,15 +1251,9 @@ export function Checkout({
             }
           );
           
-          console.log(`🎫 Increment response status: ${incrementResponse.status}`);
           
           if (incrementResponse.ok) {
             const incrementData = await incrementResponse.json();
-            console.log(`✅ Coupon usage tracked successfully!`);
-            console.log(`📊 Updated metrics:`, incrementData.campaign);
-            console.log(`   - Usage: ${incrementData.campaign?.usageCount}/${appliedCoupon.campaign.usageLimit}`);
-            console.log(`   - Revenue: ${incrementData.campaign?.revenue} MMK`);
-            console.log(`   - Conversions: ${incrementData.campaign?.conversions}`);
           } else {
             const errorText = await incrementResponse.text();
             console.error('❌ Failed to track coupon usage:', errorText);
@@ -1289,7 +1263,6 @@ export function Checkout({
           // Don't fail the order if coupon tracking fails
         }
       } else {
-        console.log('⚠️ No coupon applied or campaign ID missing:', appliedCoupon);
       }
     } catch (error) {
       console.error("❌ Failed to save order:", error);
