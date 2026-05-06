@@ -102,6 +102,12 @@ type CheckoutSummarySnapshot = {
   savedAt: string;
 };
 
+type CheckoutMiniSummaryCache = {
+  items: any[];
+  total: number;
+  savedAt: string;
+};
+
 type KPayPwaPendingContext = {
   merchantOrderId?: string;
   prepayId?: string;
@@ -147,6 +153,23 @@ type KPayPwaPendingContext = {
 
 const CHECKOUT_LATEST_SUMMARY_KEY = "checkout-summary:latest";
 
+function readCheckoutMiniSummaryCache(key: string): CheckoutMiniSummaryCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CheckoutMiniSummaryCache;
+    if (!parsed || !Array.isArray(parsed.items)) return null;
+    return {
+      items: parsed.items,
+      total: Number(parsed.total || 0),
+      savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function readCheckoutSummarySnapshot(key: string): CheckoutSummarySnapshot | null {
   if (typeof window === "undefined") return null;
   try {
@@ -190,6 +213,14 @@ export function Checkout({
   const navigate = useNavigate();
   const location = useLocation();
   const { items, totalPrice, clearCart } = useCart();
+  const checkoutMiniCacheKey = useMemo(
+    () => `checkout-mini-summary:${location.pathname}`,
+    [location.pathname]
+  );
+  const initialMiniSummaryCache = useMemo(
+    () => readCheckoutMiniSummaryCache(checkoutMiniCacheKey),
+    [checkoutMiniCacheKey]
+  );
   const { user: authUser } = useAuth();
   const migoo = getMigooCustomerFromStorage();
 
@@ -389,6 +420,7 @@ export function Checkout({
   // through Supabase Realtime). Until then the "I've Completed Payment"
   // button stays disabled.
   const [kpayWebhookConfirmed, setKpayWebhookConfirmed] = useState(false);
+  const kpayAutoGenerateTriggeredRef = useRef(false);
   const hasNativeKPayQr = Boolean(kpaySession?.qrImageUrl || kpaySession?.qrContent);
   const canSubmitKPayOrder = Boolean(kpaySession?.merchantOrderId && hasNativeKPayQr);
   const kpayQrDisplayUrl = kpaySession?.qrImageUrl
@@ -450,7 +482,7 @@ export function Checkout({
 
     pollTimer = setInterval(() => {
       void refreshFromServer();
-    }, 4000);
+    }, 1500);
 
     const channel = supabase
       .channel(`kpay-txn-${orderId}`)
@@ -503,6 +535,34 @@ export function Checkout({
   const [confirmedOrderNote, setConfirmedOrderNote] = useState(initialSummarySnapshot?.orderNote || "");
   const [confirmedCoupon, setConfirmedCoupon] = useState<any>(initialSummarySnapshot?.coupon || null);
   const [confirmedDiscount, setConfirmedDiscount] = useState(initialSummarySnapshot?.discount || 0);
+  const [miniSummaryItems, setMiniSummaryItems] = useState<any[]>(
+    () => (Array.isArray(initialMiniSummaryCache?.items) ? initialMiniSummaryCache!.items : [])
+  );
+  const [miniSummaryTotal, setMiniSummaryTotal] = useState<number>(
+    () => Number(initialMiniSummaryCache?.total || 0)
+  );
+
+  useEffect(() => {
+    if (Array.isArray(items) && items.length > 0) {
+      setMiniSummaryItems(items);
+      setMiniSummaryTotal(Number(totalPrice || 0));
+      try {
+        localStorage.setItem(
+          checkoutMiniCacheKey,
+          JSON.stringify({
+            items,
+            total: Number(totalPrice || 0),
+            savedAt: new Date().toISOString(),
+          } satisfies CheckoutMiniSummaryCache),
+        );
+      } catch {
+        /* ignore localStorage quota/private mode issues */
+      }
+    }
+  }, [items, totalPrice, checkoutMiniCacheKey]);
+
+  const summaryDisplayItems = items.length > 0 ? items : miniSummaryItems;
+  const summaryDisplayTotal = items.length > 0 ? totalPrice : miniSummaryTotal;
 
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
@@ -818,6 +878,24 @@ export function Checkout({
     return missingFields;
   };
 
+  const handleSelectKPayQr = () => {
+    const missingFields = getMissingRequiredFields();
+    if (missingFields.length > 0) {
+      toast.error(`Please fill all required fields first: ${missingFields.join(", ")}`);
+      return;
+    }
+    setPaymentMethod("KPay");
+  };
+
+  const handleSelectKPayPwa = () => {
+    const missingFields = getMissingRequiredFields();
+    if (missingFields.length > 0) {
+      toast.error(`Please fill all required fields first: ${missingFields.join(", ")}`);
+      return;
+    }
+    setPaymentMethod("KPay-PWA");
+  };
+
   // PWA flow: precreate with trade_type=PWAAPP and redirect the customer's mobile
   // browser to KBZ's PWA page. KBZ then opens the KBZPay app on the phone for payment
   // and finally redirects back to our /kpay/return page with prepay_id + merch_order_id.
@@ -954,6 +1032,30 @@ export function Checkout({
     }
   };
 
+  useEffect(() => {
+    if (paymentMethod !== "KPay") {
+      kpayAutoGenerateTriggeredRef.current = false;
+      return;
+    }
+    if (kpayAutoGenerateTriggeredRef.current) return;
+    if (kpayLoading || kpayWebhookConfirmed || kpaySession?.status === "paid" || kpaySession?.merchantOrderId) return;
+    if (finalTotal <= 0) return;
+    if (getMissingRequiredFields().length > 0) return;
+
+    kpayAutoGenerateTriggeredRef.current = true;
+    void handleGenerateKPayQr();
+  }, [
+    paymentMethod,
+    kpayLoading,
+    kpayWebhookConfirmed,
+    kpaySession?.status,
+    kpaySession?.merchantOrderId,
+    finalTotal,
+    shippingInfo,
+    orderNote,
+    effectiveUser?.email,
+  ]);
+
   // After a QR is issued, payment completion is written to KV by the public `kpay-webhook`
   // (and optionally refreshed via `queryorder` in `getKPayStatus`). We still subscribe to
   // Realtime, but we also poll `fetchKPaySessionStatus` because: (a) the webhook can land
@@ -961,7 +1063,7 @@ export function Checkout({
   // plan limits), and (c) polling reads the same KV row the webhook updates.
 
   const waitForKPayPayload = async (merchantOrderId: string) => {
-    const maxAttempts = 12;
+    const maxAttempts = 24;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const session = await fetchKPaySessionStatus({
@@ -977,7 +1079,7 @@ export function Checkout({
       } catch {
         // Ignore transient provider/API errors while polling.
       }
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   };
 
@@ -1671,7 +1773,7 @@ export function Checkout({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod("KPay")}
+                    onClick={handleSelectKPayQr}
                     className={`w-full rounded-lg border p-4 text-left transition-colors ${
                       paymentMethod === "KPay"
                         ? "border-slate-900 bg-slate-50"
@@ -1691,193 +1793,11 @@ export function Checkout({
                       </div>
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("KPay-PWA")}
-                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                      paymentMethod === "KPay-PWA"
-                        ? "border-slate-900 bg-slate-50"
-                        : "border-slate-200 bg-slate-50 hover:bg-slate-100"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`flex h-4 w-4 items-center justify-center rounded-full border-2 bg-white ${
-                            paymentMethod === "KPay-PWA" ? "border-slate-900" : "border-slate-200"
-                          }`}
-                        >
-                          {paymentMethod === "KPay-PWA" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
-                        </div>
-                        <span className="text-sm font-medium text-slate-700">KPay (Mobile Browser)</span>
-                      </div>
-                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                        Recommended
-                      </span>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toast.info("🚀 Coming Soon! This payment method will be available soon.", {
-                        duration: 4000,
-                      })
-                    }
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:bg-slate-100"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-200 bg-white" />
-                        <span className="text-sm font-medium text-slate-600">Bank Transfer</span>
-                      </div>
-                      <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                        Coming soon
-                      </span>
-                    </div>
-                  </button>
-                </div>
-
-                {paymentMethod === "Card" && (
-                <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
-                    <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                      <p className="text-sm font-semibold text-blue-900">💳 Credit / Debit Card Payment</p>
-                    </div>
-                    <div className="mb-4 rounded-lg border border-amber-300 bg-gradient-to-r from-amber-50 to-yellow-50 p-4">
-                      <div className="flex items-start gap-2">
-                        <div className="flex-shrink-0">
-                          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500">
-                            <span className="text-xs font-bold text-white">T</span>
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <p className="mb-2 text-sm font-bold text-amber-900">🧪 Test Mode - Use These Cards:</p>
-                          <div className="space-y-1.5 text-xs text-amber-800">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded border border-amber-200 bg-white px-2 py-0.5 font-mono">4242 4242 4242 4242</span>
-                              <span>→ ✅ Success</span>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded border border-amber-200 bg-white px-2 py-0.5 font-mono">4000 0000 0000 0002</span>
-                              <span>→ ❌ Card Declined</span>
-                            </div>
-                            <p className="mt-2 italic text-amber-700">Use any future expiry (e.g. 12/28) and any 3-digit CVV</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700">Card Number *</label>
-                      <Input
-                        placeholder="1234 5678 9012 3456"
-                        maxLength={19}
-                        value={paymentInfo.cardNumber}
-                        onChange={(e) => {
-                          const value = e.target.value
-                            .replace(/\s/g, "")
-                            .replace(/(\d{4})/g, "$1 ")
-                            .trim();
-                          setPaymentInfo({ ...paymentInfo, cardNumber: value });
-                        }}
-                        className={`${checkoutInputClass} border-slate-300`}
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-semibold text-slate-700">Cardholder Name *</label>
-                      <Input
-                        placeholder="JOHN DOE"
-                        value={paymentInfo.cardName}
-                        onChange={(e) => setPaymentInfo({ ...paymentInfo, cardName: e.target.value.toUpperCase() })}
-                        className={`${checkoutInputClass} border-slate-300`}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-slate-700">Expiry Date *</label>
-                        <Input
-                          placeholder="MM/YY"
-                          maxLength={5}
-                          value={paymentInfo.expiryDate}
-                          onChange={(e) => {
-                            let value = e.target.value.replace(/\D/g, "");
-                            if (value.length >= 2) {
-                              value = value.slice(0, 2) + "/" + value.slice(2, 4);
-                            }
-                            setPaymentInfo({ ...paymentInfo, expiryDate: value });
-                          }}
-                          className={`${checkoutInputClass} border-slate-300`}
-                        />
-                      </div>
-                      <div>
-                        <label className="mb-2 block text-sm font-semibold text-slate-700">CVV *</label>
-                        <Input
-                          type="password"
-                          placeholder="123"
-                          maxLength={4}
-                          value={paymentInfo.cvv}
-                          onChange={(e) =>
-                            setPaymentInfo({ ...paymentInfo, cvv: e.target.value.replace(/\D/g, "") })
-                          }
-                          className={`${checkoutInputClass} border-slate-300`}
-                        />
-                      </div>
-                    </div>
-                    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                      <p className="text-sm text-blue-900">🔒 Your payment information is encrypted and secure</p>
-                    </div>
-                  </div>
-                )}
-
-                {paymentMethod === "KPay-PWA" && (
-                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
-                    <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                      <p className="text-sm font-semibold text-emerald-900">📱 KPay (Mobile Browser)</p>
-                      <p className="mt-1 text-xs text-emerald-800">
-                        Tapping the button below opens KBZPay's hosted payment page on this device. After
-                        you authorize the payment in the KBZPay app, KBZ redirects you back here with
-                        your order status. Open this page on a phone with KBZPay installed.
-                      </p>
-                    </div>
-                    <ol className="list-decimal space-y-1 pl-5 text-xs text-slate-600">
-                      <li>Tap <span className="font-semibold">Pay with KPay</span> below.</li>
-                      <li>KBZ's PWA page launches the KBZPay app on your phone.</li>
-                      <li>Confirm the payment inside KBZPay.</li>
-                      <li>You'll be redirected back here automatically.</li>
-                    </ol>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        onClick={handleStartKPayPwa}
-                        disabled={kpayPwaLoading || finalTotal <= 0}
-                        className="bg-emerald-600 text-white hover:bg-emerald-700"
-                      >
-                        {kpayPwaLoading ? "Redirecting to KBZPay…" : `Pay with KPay · ${finalTotal.toLocaleString()} MMK`}
-                      </Button>
-                    </div>
-                    <p className="text-[11px] leading-snug text-slate-500">
-                      Note: this method only works on a mobile device. On desktop, KBZ's intermediate page
-                      cannot launch the KBZPay app and the payment will not proceed.
-                    </p>
-                  </div>
-                )}
-
-                {paymentMethod === "KPay" && (
-                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
-                    <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                      <p className="text-sm font-semibold text-emerald-900">💳 KPay Payment (QR)</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleGenerateKPayQr}
-                        disabled={
-                          kpayLoading || kpayWebhookConfirmed || kpaySession?.status === "paid"
-                        }
-                      >
-                        {kpayLoading ? "Generating..." : kpaySession?.merchantOrderId ? "Regenerate KPay QR" : "Generate KPay QR"}
-                      </Button>
-                    </div>
+                  {paymentMethod === "KPay" && (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      {kpayLoading && (
+                        <p className="mb-3 text-xs text-slate-500">Generating KPay QR automatically...</p>
+                      )}
                       <div className="mb-4 flex justify-center">
                         <div className="relative flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
                           {kpayQrDisplayUrl ? (
@@ -1894,7 +1814,7 @@ export function Checkout({
                             <div className="px-4 text-center text-sm text-slate-500">
                               {kpaySession?.merchantOrderId
                                 ? "QR not returned by provider for this order"
-                                : "Generate KPay QR to scan and pay"}
+                                : "Preparing KPay QR for scan and pay..."}
                             </div>
                           )}
                           {(kpayWebhookConfirmed || kpaySession?.status === "paid") && (
@@ -1942,15 +1862,60 @@ export function Checkout({
                         )}
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSelectKPayPwa}
+                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                      paymentMethod === "KPay-PWA"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border-2 bg-white ${
+                            paymentMethod === "KPay-PWA" ? "border-slate-900" : "border-slate-200"
+                          }`}
+                        >
+                          {paymentMethod === "KPay-PWA" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                        </div>
+                        <span className="text-sm font-medium text-slate-700">KPay (Mobile Browser)</span>
+                      </div>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                        Recommended
+                      </span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toast.info("🚀 Coming Soon! This payment method will be available soon.", {
+                        duration: 4000,
+                      })
+                    }
+                    className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:bg-slate-100"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-200 bg-white" />
+                        <span className="text-sm font-medium text-slate-600">Bank Transfer</span>
+                      </div>
+                      <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                        Coming soon
+                      </span>
+                    </div>
+                  </button>
+                </div>
+
               </div>
             </div>
           </div>
 
           {/* Order Summary — 2/5 width, sticky (main marketplace layout) */}
           <div className="lg:col-span-2">
-            <div className="sticky top-24 flex max-h-[calc(100vh-1.75rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-6 shadow-md">
+            <div className="sticky top-24 flex flex-col overflow-visible rounded-xl border border-slate-200 bg-white p-6 shadow-md">
               <div className="mb-5 flex-shrink-0">
                 <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
                   Order Summary
@@ -1958,9 +1923,9 @@ export function Checkout({
                 <p className="mt-0.5 text-xs text-slate-500">{storeName}</p>
               </div>
 
-              <div className="scrollbar-thin mb-4 flex-1 space-y-4 overflow-y-auto">
+              <div className="mb-4 space-y-4">
               <div className="space-y-3 pb-4">
-                {items.map((item) => (
+                {summaryDisplayItems.map((item) => (
                   <div key={item.id} className="flex gap-3 border-b border-slate-200 pb-3">
                     <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-white">
                       {item.image ? (
@@ -2003,11 +1968,11 @@ export function Checkout({
                           if (e.key === "Enter") handleApplyCoupon();
                         }}
                         disabled={couponLoading}
-                        className={`${checkoutInputClass} flex-1 uppercase`}
+                        className={`${checkoutInputClass} h-10.5 flex-1 uppercase`}
                       />
                       <Button
                         type="button"
-                        className="shrink-0 bg-slate-200 px-5 font-medium text-slate-800 hover:bg-slate-300"
+                        className="h-10.5 shrink-0 bg-slate-200 px-5 font-medium text-slate-800 hover:bg-slate-300"
                         onClick={handleApplyCoupon}
                         disabled={couponLoading || !couponCode.trim()}
                       >
@@ -2063,7 +2028,7 @@ export function Checkout({
               <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Subtotal</span>
-                  <span className="font-semibold text-slate-900">{totalPrice.toFixed(0)} MMK</span>
+                  <span className="font-semibold text-slate-900">{summaryDisplayTotal.toFixed(0)} MMK</span>
                 </div>
                 
                 {appliedCoupon && discountAmount > 0 && (

@@ -538,9 +538,9 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
             .join(" ")
         : "Vendor");
     const pageName = currentPage.charAt(0).toUpperCase() + currentPage.slice(1);
-    document.title = `${pageName} - ${titleBase}`;
+    document.title = `${titleBase} - ${pageName} | Vendor Admin`;
     return () => {
-      document.title = titleBase;
+      document.title = `${titleBase} | Vendor Admin`;
     };
   }, [currentPage, vendor.storeSlug, vendor.storeName, vendor.name, storefrontSnapshot?.storeName]);
 

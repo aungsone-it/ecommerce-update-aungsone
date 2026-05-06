@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../contexts/AuthContext';
 
 export interface CartItem {
   id: string;
@@ -29,6 +30,15 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+function normalizeCartPayload(value: unknown): CartItem[] {
+  if (!Array.isArray(value)) return [];
+  return value as CartItem[];
+}
+
+function cartCacheKey(userId: string): string {
+  return `migoo-user-cart:${userId}`;
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth(); // 🔥 Connect to AuthContext for automatic user detection
   const [items, setItems] = useState<CartItem[]>(() => {
@@ -45,6 +55,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
   
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const loadedUserRef = useRef<string | null>(null); // Track which user's cart we loaded
+  const cartSignatureRef = useRef<string>("[]");
+  const suppressNextSyncRef = useRef(false);
   /** Throttle cart GET from tab focus/visibility (each call hits the Edge Function + KV). */
   const lastAmbientCartFetchRef = useRef<number>(0);
 
@@ -62,7 +74,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify({ cart }),
         }
       );
-      console.log(`🛒 Cart synced to database for user ${userId}`);
+      try {
+        localStorage.setItem(cartCacheKey(userId), JSON.stringify(cart));
+      } catch {
+        /* ignore quota/private mode */
+      }
+      cartSignatureRef.current = JSON.stringify(cart);
     } catch (error) {
       console.error('Failed to sync cart to database:', error);
     }
@@ -107,7 +124,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
         });
         
         console.log(`✅ Cart loaded: ${dbCart.length} items from DB, ${guestCart.length} guest items, ${mergedCart.length} total`);
+        suppressNextSyncRef.current = true;
         setItems(mergedCart);
+        cartSignatureRef.current = JSON.stringify(mergedCart);
+        try {
+          localStorage.setItem(cartCacheKey(userId), JSON.stringify(mergedCart));
+        } catch {
+          /* ignore quota/private mode */
+        }
         
         // Clear guest cart after merging
         localStorage.removeItem('migoo-guest-cart');
@@ -128,6 +152,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (user?.id && loadedUserRef.current !== user.id) {
       console.log(`🔄 User logged in, loading cart from database for: ${user.id}`);
       loadedUserRef.current = user.id;
+      try {
+        const cached = localStorage.getItem(cartCacheKey(user.id));
+        if (cached) {
+          const parsed = normalizeCartPayload(JSON.parse(cached));
+          suppressNextSyncRef.current = true;
+          setItems(parsed);
+          cartSignatureRef.current = JSON.stringify(parsed);
+        }
+      } catch {
+        /* ignore parse/storage failures */
+      }
       loadCartFromDatabase(user.id);
     } else if (!user?.id && loadedUserRef.current !== null) {
       // User logged out - clear cart and reset
@@ -137,6 +172,42 @@ export function CartProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('migoo-guest-cart');
     }
   }, [user?.id, loadCartFromDatabase]);
+
+  // 🔥 Realtime cart sync (cross-device, low API usage): subscribe to KV row updates.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    const key = `customer:${uid}:cart`;
+    const channel = supabase
+      .channel(`cart-sync-${uid}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: `key=eq.${key}`,
+        },
+        (payload: any) => {
+          const next = normalizeCartPayload(payload?.new?.value);
+          const nextSig = JSON.stringify(next);
+          if (nextSig === cartSignatureRef.current) return;
+          cartSignatureRef.current = nextSig;
+          suppressNextSyncRef.current = true;
+          setItems(next);
+          try {
+            localStorage.setItem(cartCacheKey(uid), nextSig);
+          } catch {
+            /* ignore quota/private mode */
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   // 🔥 AUTO-REFRESH cart when tab becomes visible — throttled to avoid spamming the API
   useEffect(() => {
@@ -182,6 +253,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
     
     if (user?.id) {
+      const nextSig = JSON.stringify(items);
+      if (nextSig === cartSignatureRef.current) return;
+      if (suppressNextSyncRef.current) {
+        suppressNextSyncRef.current = false;
+        return;
+      }
       // Logged-in user → Save to DATABASE ONLY (debounced to avoid spam)
       syncTimeoutRef.current = setTimeout(() => {
         syncCartToDatabase(user.id, items);

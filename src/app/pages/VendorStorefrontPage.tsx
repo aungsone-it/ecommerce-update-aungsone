@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
+import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
@@ -111,6 +112,37 @@ function vendorCategorySlugFromPathname(pathname: string, storeName: string): st
   return decodeURIComponent(seg);
 }
 
+function readCachedVendorLogoBySlug(slug: string | undefined): string {
+  if (typeof window === "undefined") return "";
+  const keySlug = String(slug || "").trim().toLowerCase();
+  if (!keySlug) return "";
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw || (raw[0] !== "{" && raw[0] !== "[")) continue;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      const candidates = Array.isArray(parsed) ? parsed : [parsed];
+      for (const c of candidates) {
+        if (!c || typeof c !== "object") continue;
+        const cSlug = String(c.storeSlug || c.slug || "").trim().toLowerCase();
+        if (cSlug !== keySlug) continue;
+        const logo = typeof c.logo === "string" ? c.logo : typeof c.storeLogo === "string" ? c.storeLogo : "";
+        if (logo.trim()) return logo.trim();
+      }
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
 export function VendorStorefrontPage() {
   const params = useParams();
   const location = useLocation();
@@ -118,6 +150,16 @@ export function VendorStorefrontPage() {
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
   const storeName = params.storeName ?? vendorDash?.storeName ?? subdomainSlug ?? customHostSlug ?? undefined;
+  const instantTitleBase = useMemo(() => {
+    const raw = (storeName || "").trim();
+    if (!raw) return "Vendor Store";
+    return decodeURIComponent(raw)
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }, [storeName]);
+  const instantFavicon = useMemo(() => readCachedVendorLogoBySlug(storeName), [storeName]);
   const productSlug =
     (typeof params.productSlug === "string" && params.productSlug) ||
     (typeof (params as { sku?: string }).sku === "string" && (params as { sku?: string }).sku) ||
@@ -151,6 +193,15 @@ export function VendorStorefrontPage() {
     if (!storeName) return null;
     return vendorCategorySlugFromPathname(location.pathname, storeName);
   }, [storeName, location.pathname]);
+
+  useLayoutEffect(() => {
+    document.title = instantTitleBase;
+    if (instantFavicon) {
+      applyDocumentFavicon(instantFavicon);
+    } else {
+      resetDocumentFavicon();
+    }
+  }, [instantTitleBase]);
 
   if (customHostLoading && !params.storeName && !subdomainSlug) {
     return <VendorStorefrontFullSkeleton />;

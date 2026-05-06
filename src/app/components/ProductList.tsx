@@ -60,6 +60,7 @@ import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
 import { normalizeProductForAdminDetailView } from "../utils/adminProductDetailNormalize";
 import { buildVendorDisplayLookup, resolveVendorDisplayLabel } from "../utils/vendorDisplay";
 import { useAuth } from "../contexts/AuthContext";
+import { supabase } from "../contexts/AuthContext";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 
 interface ProductListProps {
@@ -287,6 +288,34 @@ export function ProductList({
       window.removeEventListener("migoo-admin-products-cache-patched", h);
       window.removeEventListener("adminOrdersUpdated", h);
       window.removeEventListener("storage", onStorage);
+    };
+  }, [loadProductPage]);
+
+  // Realtime bridge: product pool updates from any admin/session via Supabase websocket.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        void loadProductPage(true);
+      }, 280);
+    };
+    const channel = supabase
+      .channel("admin-products-kv-realtime")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: "key=like.product:%",
+        },
+        schedule
+      )
+      .subscribe();
+    return () => {
+      window.clearTimeout(debounce);
+      void supabase.removeChannel(channel);
     };
   }, [loadProductPage]);
 

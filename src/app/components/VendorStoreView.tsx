@@ -108,6 +108,8 @@ import {
 import { toast } from "sonner";
 import { getEffectiveVariantOptions } from "./ProductVariantChips";
 import { useLoading } from "../contexts/LoadingContext";
+import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
+import { supabase } from "../contexts/AuthContext";
 
 interface Product {
   id: string;
@@ -193,6 +195,16 @@ function resolveUserIdFromRecord(u: unknown): string | null {
   if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
   if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
   return null;
+}
+
+function normalizeWishlistFromKvValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((x): x is string => typeof x === "string");
+  }
+  if (value && typeof value === "object" && Array.isArray((value as { productIds?: unknown[] }).productIds)) {
+    return (value as { productIds: unknown[] }).productIds.filter((x): x is string => typeof x === "string");
+  }
+  return [];
 }
 
 /**
@@ -799,6 +811,23 @@ export function VendorStoreView({
   }, [location.pathname, storeBase]);
 
   const { addToCart, totalItems, clearCart } = useCart();
+
+  useEffect(() => {
+    const base = (storeName || "Vendor Store").trim();
+    const productTitle = selectedProduct?.name?.trim();
+    const title = productTitle ? `${productTitle} - ${base}` : base;
+    document.title = title;
+
+    if (typeof storeLogo === "string" && storeLogo.trim()) {
+      applyDocumentFavicon(storeLogo);
+    } else {
+      resetDocumentFavicon();
+    }
+
+    return () => {
+      resetDocumentFavicon();
+    };
+  }, [storeName, storeLogo, selectedProduct?.name]);
 
   // Product description gallery lightbox (full-screen overlay + prev/next)
   const [descLightboxOpen, setDescLightboxOpen] = useState(false);
@@ -2950,6 +2979,34 @@ export function VendorStoreView({
     };
   }, [vendorId, savedPage, refetchVendorCatalogPage1]);
 
+  // Realtime bridge: vendor storefront listens product pool websocket updates.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefetch = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        void refetchVendorCatalogPage1(true);
+      }, 320);
+    };
+    const channel = supabase
+      .channel(`vendor-storefront-products-kv-${vendorId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: "key=like.product:%",
+        },
+        scheduleRefetch
+      )
+      .subscribe();
+    return () => {
+      window.clearTimeout(debounce);
+      void supabase.removeChannel(channel);
+    };
+  }, [vendorId, refetchVendorCatalogPage1]);
+
   const loadMoreVendorCatalog = useCallback(async () => {
     if (savedPage || !vendorCatalogHasMore || vendorCatalogLoadingMore) return;
     setVendorCatalogLoadingMore(true);
@@ -3501,6 +3558,51 @@ export function VendorStoreView({
       });
     return () => {
       cancelled = true;
+    };
+  }, [wishlistUserId]);
+
+  // Cross-device realtime wishlist sync via KV row updates.
+  useEffect(() => {
+    if (!wishlistUserId) return;
+    const primaryKey = `wishlist:${wishlistUserId}`;
+    const compatKey = `customer:${wishlistUserId}:wishlist`;
+    const onWishlistChange = (payload: any) => {
+      const ids = normalizeWishlistFromKvValue(payload?.new?.value);
+      const nextSnap = JSON.stringify([...ids].sort());
+      if (nextSnap === wishlistServerSnapshotRef.current) return;
+      wishlistServerSnapshotRef.current = nextSnap;
+      setWishlist(ids);
+    };
+
+    const primary = supabase
+      .channel(`vendor-wishlist-sync-primary-${wishlistUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: `key=eq.${primaryKey}`,
+        },
+        onWishlistChange,
+      )
+      .subscribe();
+    const compat = supabase
+      .channel(`vendor-wishlist-sync-compat-${wishlistUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: `key=eq.${compatKey}`,
+        },
+        onWishlistChange,
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(primary);
+      void supabase.removeChannel(compat);
     };
   }, [wishlistUserId]);
 

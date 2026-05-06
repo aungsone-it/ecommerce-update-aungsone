@@ -39,6 +39,7 @@ import {
   invalidateAdminAllProductsCache,
 } from "../../utils/module-cache";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import { supabase } from "../../contexts/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -177,6 +178,35 @@ export function VendorAdminProductsCRUD({
 
   useEffect(() => {
     loadProducts(false);
+  }, [vendorId]);
+
+  // Realtime bridge: keep vendor product pool in sync across devices/admin sessions.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        invalidateVendorProductsAdminCache(vendorId);
+        void loadProducts(true);
+      }, 320);
+    };
+    const channel = supabase
+      .channel(`vendor-admin-products-kv-${vendorId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: "key=like.product:%",
+        },
+        schedule
+      )
+      .subscribe();
+    return () => {
+      window.clearTimeout(debounce);
+      void supabase.removeChannel(channel);
+    };
   }, [vendorId]);
 
   useEffect(() => {

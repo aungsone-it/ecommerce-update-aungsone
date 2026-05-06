@@ -47,6 +47,7 @@ import { useDebounce } from "../hooks/useDebounce";
 import { useScrollAnimation } from "../hooks/useScrollAnimation";
 import { useFaviconLoader } from "../hooks/useFaviconLoader";
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { supabase } from "../contexts/AuthContext";
 import { ProductGridSkeleton, ProductListSkeleton, BannerSkeleton } from "./SkeletonLoader";
 import { LazyImage } from "./LazyImage";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
@@ -257,6 +258,24 @@ function resolveOrderApiUserId(user: User | null): string | null {
   const fromState = resolveUserIdFromRecord(user);
   if (fromState) return fromState;
   return resolveUserIdFromRecord(readMigooUserFromStorage());
+}
+
+function storefrontCartCacheKey(userId: string): string {
+  return `migoo-user-cart:${userId}`;
+}
+
+function storefrontWishlistCacheKey(userId: string): string {
+  return `migoo-user-wishlist:${userId}`;
+}
+
+function normalizeWishlistFromKvValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((x): x is string => typeof x === "string");
+  }
+  if (value && typeof value === "object" && Array.isArray((value as { productIds?: unknown[] }).productIds)) {
+    return (value as { productIds: unknown[] }).productIds.filter((x): x is string => typeof x === "string");
+  }
+  return [];
 }
 
 interface CartItem extends Product {
@@ -709,8 +728,41 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   /** Debounced query for server catalog (avoids spamming edge; client filter stays instant on loaded rows). */
   const [debouncedStoreSearch, setDebouncedStoreSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [wishlist, setWishlist] = useState<string[]>([]);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    const cachedUser = readMigooUserFromStorage();
+    const uid = resolveUserIdFromRecord(cachedUser);
+    if (uid) {
+      try {
+        const raw = localStorage.getItem(storefrontCartCacheKey(uid));
+        if (raw) return JSON.parse(raw);
+      } catch {
+        /* ignore parse/storage failures */
+      }
+    }
+    return [];
+  });
+  const [wishlist, setWishlist] = useState<string[]>(() => {
+    const cachedUser = readMigooUserFromStorage();
+    const uid = resolveUserIdFromRecord(cachedUser);
+    if (uid) {
+      try {
+        const raw = localStorage.getItem(storefrontWishlistCacheKey(uid));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            return parsed.filter((x): x is string => typeof x === "string");
+          }
+        }
+      } catch {
+        /* ignore parse/storage failures */
+      }
+    }
+    return [];
+  });
+  const cartSignatureRef = useRef<string>("[]");
+  const suppressCartSyncRef = useRef(false);
+  const wishlistSignatureRef = useRef<string>("[]");
+  const suppressWishlistSyncRef = useRef(false);
   /** Server-backed catalog (paginated); home sections loaded via bootstrap. */
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogPage, setCatalogPage] = useState(1);
@@ -1369,6 +1421,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   }, [viewMode, selectedProduct, stableStoreName, siteSettings?.storeLogo]);
 
   useEffect(() => {
+    cartSignatureRef.current = JSON.stringify(cart);
+    wishlistSignatureRef.current = JSON.stringify([...wishlist].sort());
+    // initialize signatures from cache-hydrated state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (!user) {
       const savedGuestCart = localStorage.getItem("migoo-guest-cart");
       if (savedGuestCart) {
@@ -1386,6 +1445,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   // 🔥 DATABASE-FIRST: Save cart to database for logged-in users, localStorage for guests ONLY
   useEffect(() => {
     if (orderApiUserId) {
+      const nextSig = JSON.stringify(cart);
+      if (nextSig === cartSignatureRef.current) return;
+      if (suppressCartSyncRef.current) {
+        suppressCartSyncRef.current = false;
+        return;
+      }
       // Logged-in user → Save to DATABASE ONLY (debounced to avoid spam)
       const syncCartToDB = async () => {
         try {
@@ -1400,6 +1465,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               body: JSON.stringify({ cart }),
             }
           );
+          cartSignatureRef.current = nextSig;
+          try {
+            localStorage.setItem(storefrontCartCacheKey(orderApiUserId), nextSig);
+          } catch {
+            /* ignore quota/private mode */
+          }
         } catch (error) {
           console.error('Failed to sync cart to database:', error);
         }
@@ -2054,7 +2125,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const loadUserWishlist = async (userId: string) => {
     try {
       const response = await wishlistApi.get(userId);
-      setWishlist(response.productIds || []);
+      const ids = response.productIds || [];
+      suppressWishlistSyncRef.current = true;
+      setWishlist(ids);
+      wishlistSignatureRef.current = JSON.stringify([...ids].sort());
+      try {
+        localStorage.setItem(storefrontWishlistCacheKey(userId), JSON.stringify(ids));
+      } catch {
+        /* ignore quota/private mode */
+      }
       // Clear localStorage wishlist since we're using DB now
       localStorage.removeItem("migoo-wishlist");
     } catch (error) {
@@ -2095,7 +2174,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             }
           });
 
+          suppressCartSyncRef.current = true;
           setCart(mergedCart);
+          cartSignatureRef.current = JSON.stringify(mergedCart);
+          try {
+            localStorage.setItem(storefrontCartCacheKey(userId), JSON.stringify(mergedCart));
+          } catch {
+            /* ignore quota/private mode */
+          }
 
           if (guestCart.length > 0) {
             localStorage.removeItem("migoo-guest-cart");
@@ -2128,6 +2214,29 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         }
         const normalized = { ...(parsedUser as unknown as User), id: uid };
         setUser(normalized);
+        try {
+          const cachedCart = localStorage.getItem(storefrontCartCacheKey(uid));
+          if (cachedCart) {
+            const parsed = JSON.parse(cachedCart);
+            if (Array.isArray(parsed)) {
+              suppressCartSyncRef.current = true;
+              setCart(parsed as CartItem[]);
+              cartSignatureRef.current = JSON.stringify(parsed);
+            }
+          }
+          const cachedWishlist = localStorage.getItem(storefrontWishlistCacheKey(uid));
+          if (cachedWishlist) {
+            const parsed = JSON.parse(cachedWishlist);
+            if (Array.isArray(parsed)) {
+              const ids = parsed.filter((x): x is string => typeof x === "string");
+              suppressWishlistSyncRef.current = true;
+              setWishlist(ids);
+              wishlistSignatureRef.current = JSON.stringify([...ids].sort());
+            }
+          }
+        } catch {
+          /* ignore cache parse failures */
+        }
         // 🔥 Load user's cart and wishlist from database
         loadUserCart(uid);
         loadUserWishlist(uid);
@@ -2159,6 +2268,90 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       }
     }
   }, []);
+
+  // Realtime cart updates from KV: low API, cross-device instant sync.
+  useEffect(() => {
+    if (!orderApiUserId) return;
+    const key = `customer:${orderApiUserId}:cart`;
+    const channel = supabase
+      .channel(`storefront-cart-sync-${orderApiUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: `key=eq.${key}`,
+        },
+        (payload: any) => {
+          const next = Array.isArray(payload?.new?.value) ? payload.new.value : [];
+          const nextSig = JSON.stringify(next);
+          if (nextSig === cartSignatureRef.current) return;
+          cartSignatureRef.current = nextSig;
+          suppressCartSyncRef.current = true;
+          setCart(next as CartItem[]);
+          try {
+            localStorage.setItem(storefrontCartCacheKey(orderApiUserId), nextSig);
+          } catch {
+            /* ignore quota/private mode */
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [orderApiUserId]);
+
+  // Realtime wishlist updates from KV (supports both `wishlist:*` and `customer:*:wishlist` writes).
+  useEffect(() => {
+    if (!orderApiUserId) return;
+    const primaryKey = `wishlist:${orderApiUserId}`;
+    const compatKey = `customer:${orderApiUserId}:wishlist`;
+    const handleWishlistEvent = (payload: any) => {
+      const ids = normalizeWishlistFromKvValue(payload?.new?.value);
+      const nextSig = JSON.stringify([...ids].sort());
+      if (nextSig === wishlistSignatureRef.current) return;
+      wishlistSignatureRef.current = nextSig;
+      suppressWishlistSyncRef.current = true;
+      setWishlist(ids);
+      try {
+        localStorage.setItem(storefrontWishlistCacheKey(orderApiUserId), JSON.stringify(ids));
+      } catch {
+        /* ignore quota/private mode */
+      }
+    };
+    const primary = supabase
+      .channel(`storefront-wishlist-sync-primary-${orderApiUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: `key=eq.${primaryKey}`,
+        },
+        handleWishlistEvent,
+      )
+      .subscribe();
+    const compat = supabase
+      .channel(`storefront-wishlist-sync-compat-${orderApiUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "kv_store_16010b6f",
+          filter: `key=eq.${compatKey}`,
+        },
+        handleWishlistEvent,
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(primary);
+      void supabase.removeChannel(compat);
+    };
+  }, [orderApiUserId]);
 
   // Update profile form when user changes
   useEffect(() => {
@@ -2396,9 +2589,21 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   useEffect(() => {
     if (!orderApiUserId) return;
     const uid = orderApiUserId;
+    const nextSig = JSON.stringify([...wishlist].sort());
+    if (nextSig === wishlistSignatureRef.current) return;
+    if (suppressWishlistSyncRef.current) {
+      suppressWishlistSyncRef.current = false;
+      return;
+    }
     const syncWishlist = async () => {
       try {
         await wishlistApi.update(uid, wishlist);
+        wishlistSignatureRef.current = nextSig;
+        try {
+          localStorage.setItem(storefrontWishlistCacheKey(uid), JSON.stringify(wishlist));
+        } catch {
+          /* ignore quota/private mode */
+        }
       } catch (error) {
         console.error("Failed to sync wishlist to database:", error);
       }
