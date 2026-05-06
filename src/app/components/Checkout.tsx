@@ -404,7 +404,7 @@ export function Checkout({
   const [orderNote, setOrderNote] = useState("");
 
   const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "KPay-PWA" | "BankTransfer">(
-    initialSummarySnapshot?.paymentMethod || "Card"
+    initialSummarySnapshot?.paymentMethod || "KPay-PWA"
   );
   const [kpayPwaLoading, setKpayPwaLoading] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState({
@@ -426,6 +426,13 @@ export function Checkout({
   const kpayQrDisplayUrl = kpaySession?.qrImageUrl
     ? kpaySession.qrImageUrl
     : "";
+
+  // Temporary: card checkout is hidden, so migrate stale cached "Card" state.
+  useEffect(() => {
+    if (paymentMethod === "Card") {
+      setPaymentMethod("KPay-PWA");
+    }
+  }, [paymentMethod]);
 
   // Reset webhook confirmation whenever a new QR is generated (different order id).
   useEffect(() => {
@@ -1751,26 +1758,6 @@ export function Checkout({
                 </div>
 
                 <div className="space-y-3">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("Card")}
-                    className={`w-full rounded-lg border p-4 text-left ${
-                      paymentMethod === "Card"
-                        ? "border-slate-900 bg-slate-50"
-                        : "border-slate-200 bg-white hover:bg-slate-50"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-4 w-4 items-center justify-center rounded-full border-2 ${
-                          paymentMethod === "Card" ? "border-slate-900" : "border-slate-300"
-                        }`}
-                      >
-                        {paymentMethod === "Card" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
-                      </div>
-                      <span className="text-sm font-medium text-slate-900">Credit / Debit Card</span>
-                    </div>
-                  </button>
                   <button
                     type="button"
                     onClick={handleSelectKPayQr}
