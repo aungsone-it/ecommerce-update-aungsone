@@ -145,6 +145,21 @@ type KPayPwaPendingContext = {
   };
 };
 
+const CHECKOUT_LATEST_SUMMARY_KEY = "checkout-summary:latest";
+
+function readCheckoutSummarySnapshot(key: string): CheckoutSummarySnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CheckoutSummarySnapshot;
+    if (!parsed || !Array.isArray(parsed.items) || !parsed.orderNumber) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function summaryPaymentMethodLabel(
   method: "Card" | "KPay" | "KPay-PWA" | "BankTransfer"
 ): string {
@@ -200,7 +215,19 @@ export function Checkout({
     migoo?.phone,
   ]);
 
-  const [step, setStep] = useState<"checkout" | "success">("checkout");
+  const initialSummarySnapshot = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const path = window.location.pathname;
+    if (!/\/summary$/.test(path)) return null;
+    return (
+      readCheckoutSummarySnapshot(`checkout-summary:${path}`) ||
+      readCheckoutSummarySnapshot(CHECKOUT_LATEST_SUMMARY_KEY)
+    );
+  }, []);
+
+  const [step, setStep] = useState<"checkout" | "success">(
+    initialSummarySnapshot ? "success" : "checkout"
+  );
   const [loading, setLoading] = useState(false);
   const summaryPath = useMemo(() => {
     const path = location.pathname;
@@ -237,13 +264,13 @@ export function Checkout({
 
   // Shipping Form State - Pre-fill from saved addresses
   const [shippingInfo, setShippingInfo] = useState({
-    fullName: "",
-    email: "",
-    phone: "",
-    address: "",
-    city: "",
-    zipCode: "",
-    country: "",
+    fullName: initialSummarySnapshot?.shippingInfo?.fullName || "",
+    email: initialSummarySnapshot?.shippingInfo?.email || "",
+    phone: initialSummarySnapshot?.shippingInfo?.phone || "",
+    address: initialSummarySnapshot?.shippingInfo?.address || "",
+    city: initialSummarySnapshot?.shippingInfo?.city || "",
+    zipCode: initialSummarySnapshot?.shippingInfo?.zipCode || "",
+    country: initialSummarySnapshot?.shippingInfo?.country || "",
   });
 
   // Pre-fill from cached addresses (same key as VendorStoreView) + API — matches main marketplace behavior
@@ -337,7 +364,9 @@ export function Checkout({
   // Order Note
   const [orderNote, setOrderNote] = useState("");
 
-  const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "KPay-PWA" | "BankTransfer">("Card");
+  const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "KPay-PWA" | "BankTransfer">(
+    initialSummarySnapshot?.paymentMethod || "Card"
+  );
   const [kpayPwaLoading, setKpayPwaLoading] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState({
     cardNumber: "",
@@ -460,21 +489,21 @@ export function Checkout({
   const discountAmount = appliedCoupon?.campaign?.discountAmount || 0;
   const finalTotal = Math.max(totalPrice - discountAmount, 0);
 
-  const [orderNumber, setOrderNumber] = useState("");
-  const [confirmedItems, setConfirmedItems] = useState<any[]>([]);
-  const [confirmedTotal, setConfirmedTotal] = useState(0);
-  const [confirmedOrderNote, setConfirmedOrderNote] = useState("");
-  const [confirmedCoupon, setConfirmedCoupon] = useState<any>(null);
-  const [confirmedDiscount, setConfirmedDiscount] = useState(0);
+  const [orderNumber, setOrderNumber] = useState(initialSummarySnapshot?.orderNumber || "");
+  const [confirmedItems, setConfirmedItems] = useState<any[]>(initialSummarySnapshot?.items || []);
+  const [confirmedTotal, setConfirmedTotal] = useState(initialSummarySnapshot?.total || 0);
+  const [confirmedOrderNote, setConfirmedOrderNote] = useState(initialSummarySnapshot?.orderNote || "");
+  const [confirmedCoupon, setConfirmedCoupon] = useState<any>(initialSummarySnapshot?.coupon || null);
+  const [confirmedDiscount, setConfirmedDiscount] = useState(initialSummarySnapshot?.discount || 0);
 
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
     if (!onSummaryRoute) return;
     try {
-      const raw = localStorage.getItem(summarySnapshotStorageKey);
-      if (!raw) return;
-      const snapshot = JSON.parse(raw) as CheckoutSummarySnapshot;
-      if (!snapshot || !Array.isArray(snapshot.items) || !snapshot.orderNumber) return;
+      const snapshot =
+        readCheckoutSummarySnapshot(summarySnapshotStorageKey) ||
+        readCheckoutSummarySnapshot(CHECKOUT_LATEST_SUMMARY_KEY);
+      if (!snapshot) return;
       setOrderNumber(snapshot.orderNumber);
       setConfirmedItems(snapshot.items);
       setConfirmedTotal(Number(snapshot.total) || 0);
@@ -654,6 +683,7 @@ export function Checkout({
             savedAt: new Date().toISOString(),
           };
           localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
+          localStorage.setItem(CHECKOUT_LATEST_SUMMARY_KEY, JSON.stringify(snapshot));
         } catch {
           /* ignore snapshot write failure */
         }
@@ -1246,6 +1276,7 @@ export function Checkout({
         savedAt: new Date().toISOString(),
       };
       localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
+      localStorage.setItem(CHECKOUT_LATEST_SUMMARY_KEY, JSON.stringify(snapshot));
     } catch {
       // non-fatal; summary route can still render in-memory state
     }
@@ -1425,11 +1456,6 @@ export function Checkout({
             <Button
               className="h-11 w-64 rounded-lg bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
               onClick={() => {
-                try {
-                  localStorage.removeItem(summarySnapshotStorageKey);
-                } catch {
-                  /* ignore */
-                }
                 onBack();
               }}
             >
