@@ -102,6 +102,49 @@ type CheckoutSummarySnapshot = {
   savedAt: string;
 };
 
+type KPayPwaPendingContext = {
+  merchantOrderId?: string;
+  prepayId?: string;
+  amount?: number;
+  currency?: string;
+  redirectedAt?: string;
+  originPath?: string;
+  draftOrder?: {
+    userId?: string | null;
+    customerName?: string;
+    email?: string;
+    phone?: string;
+    subtotal?: number;
+    total?: number;
+    discount?: number;
+    couponCode?: string | null;
+    couponId?: string | null;
+    notes?: string;
+    vendor?: string;
+    vendorId?: string;
+    shippingInfo?: {
+      fullName: string;
+      email: string;
+      phone: string;
+      address: string;
+      city: string;
+      zipCode: string;
+      country: string;
+    };
+    items?: Array<{
+      productId?: string;
+      sku?: string;
+      name?: string;
+      quantity?: number;
+      price?: number;
+      image?: string;
+      vendor?: string;
+      vendorId?: string;
+      commissionRate?: number;
+    }>;
+  };
+};
+
 function summaryPaymentMethodLabel(
   method: "Card" | "KPay" | "KPay-PWA" | "BankTransfer"
 ): string {
@@ -182,6 +225,15 @@ export function Checkout({
       ""
     ).trim();
   }, [location.search]);
+  const pwaPendingContext = useMemo(() => {
+    try {
+      const raw = localStorage.getItem(KPAY_PWA_PENDING_STORAGE_KEY);
+      if (!raw) return null;
+      return JSON.parse(raw) as KPayPwaPendingContext;
+    } catch {
+      return null;
+    }
+  }, [location.pathname, location.search]);
 
   // Shipping Form State - Pre-fill from saved addresses
   const [shippingInfo, setShippingInfo] = useState({
@@ -446,22 +498,91 @@ export function Checkout({
     let cancelled = false;
     (async () => {
       try {
-        let orderEndpoint = "";
-        if (summaryQueryOrderId) {
-          orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(summaryQueryOrderId)}`;
+        const orderId =
+          summaryQueryOrderId ||
+          (typeof pwaPendingContext?.merchantOrderId === "string"
+            ? pwaPendingContext.merchantOrderId
+            : "");
+        let response: Response | null = null;
+        if (orderId) {
+          const orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(orderId)}`;
+          response = await fetch(orderEndpoint, {
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+          });
+          if (
+            response.status === 404 &&
+            pwaPendingContext?.merchantOrderId === orderId &&
+            pwaPendingContext?.draftOrder
+          ) {
+            const session = await fetchKPaySessionStatus({
+              projectId,
+              publicAnonKey,
+              merchantOrderId: orderId,
+            });
+            if (session.status === "paid") {
+              const d = pwaPendingContext.draftOrder;
+              const finalizePayload: any = {
+                orderNumber: orderId,
+                userId: d.userId ?? null,
+                customer: d.customerName || d.shippingInfo?.fullName || "",
+                customerName: d.customerName || d.shippingInfo?.fullName || "",
+                email: d.email || "",
+                phone: d.phone || d.shippingInfo?.phone || "",
+                status: "pending",
+                paymentStatus: "paid",
+                paymentMethod: "KPay (PWA)",
+                total: Number(d.total || 0),
+                subtotal: Number(d.subtotal || 0),
+                discount: Number(d.discount || 0),
+                date: new Date().toISOString(),
+                vendor: d.vendor || storeName,
+                couponCode: d.couponCode || null,
+                couponId: d.couponId || null,
+                couponDiscount: Number(d.discount || 0),
+                items: Array.isArray(d.items) ? d.items : [],
+                shippingAddress: [
+                  d.shippingInfo?.address || "",
+                  d.shippingInfo?.city || "",
+                  d.shippingInfo?.zipCode || "",
+                  d.shippingInfo?.country || "",
+                ].filter(Boolean).join(", "),
+                notes: d.notes || "",
+                kpay: {
+                  method: "pwa",
+                  merchantOrderId: orderId,
+                  prepayId: session.prepayId || pwaPendingContext.prepayId || "",
+                  status: "paid",
+                  providerStatus: session.providerStatus || "paid",
+                  payUrl: session.payUrl || "",
+                },
+              };
+              await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${publicAnonKey}`,
+                },
+                body: JSON.stringify(finalizePayload),
+              });
+              response = await fetch(orderEndpoint, {
+                headers: { Authorization: `Bearer ${publicAnonKey}` },
+              });
+            }
+          }
         } else if (effectiveUser?.id) {
           // KBZ app may return to /summary without carrying merch_order_id to SPA.
           // In that case, render the latest order for this signed-in customer.
-          orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${encodeURIComponent(effectiveUser.id)}/orders`;
+          const orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${encodeURIComponent(effectiveUser.id)}/orders`;
+          response = await fetch(orderEndpoint, {
+            headers: { Authorization: `Bearer ${publicAnonKey}` },
+          });
         } else {
           return;
         }
-        const response = await fetch(orderEndpoint, {
-          headers: { Authorization: `Bearer ${publicAnonKey}` },
-        });
+        if (!response) return;
         if (!response.ok) return;
         const data = (await response.json()) as { order?: any; orders?: any[] };
-        const o = summaryQueryOrderId
+        const o = orderId
           ? data?.order
           : Array.isArray(data?.orders) && data.orders.length > 0
             ? data.orders[0]
@@ -495,7 +616,7 @@ export function Checkout({
         setOrderNumber(
           String(
             o?.orderNumber ??
-              summaryQueryOrderId ??
+              orderId ??
               o?.id ??
               ""
           )
@@ -512,7 +633,7 @@ export function Checkout({
           const snapshot: CheckoutSummarySnapshot = {
             orderNumber: String(
               o?.orderNumber ??
-                summaryQueryOrderId ??
+                orderId ??
                 o?.id ??
                 ""
             ),
@@ -546,6 +667,7 @@ export function Checkout({
   }, [
     location.pathname,
     summaryQueryOrderId,
+    pwaPendingContext,
     effectiveUser?.id,
     step,
     confirmedItems.length,
@@ -654,6 +776,35 @@ export function Checkout({
             currency: "MMK",
             redirectedAt: new Date().toISOString(),
             originPath: typeof window !== "undefined" ? window.location.pathname + window.location.search : "",
+            draftOrder: {
+              userId: effectiveUser?.id ?? null,
+              customerName: shippingInfo.fullName,
+              email: orderEmail,
+              phone: shippingInfo.phone,
+              subtotal: totalPrice,
+              total: finalTotal,
+              discount: discountAmount,
+              couponCode: appliedCoupon?.campaign?.code || null,
+              couponId: appliedCoupon?.campaign?.id || null,
+              notes: orderNote,
+              vendor: vendorName || storeName,
+              vendorId: vendorId || undefined,
+              shippingInfo: { ...shippingInfo },
+              items: items.map((item) => ({
+                productId: item.productId || item.id,
+                sku: item.sku,
+                name: item.name || item.sku,
+                quantity: item.quantity,
+                price: item.price,
+                image: item.image,
+                vendor: vendorId || item.vendor || item.vendorId,
+                vendorId: vendorId || item.vendor || item.vendorId,
+                commissionRate:
+                  typeof item.commissionRate === "number" && Number.isFinite(item.commissionRate)
+                    ? item.commissionRate
+                    : undefined,
+              })),
+            },
           }),
         );
       } catch {
