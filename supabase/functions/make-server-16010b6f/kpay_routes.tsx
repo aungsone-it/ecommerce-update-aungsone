@@ -13,6 +13,13 @@ const CREATE_PATH_CANDIDATES = [
   "/payment/gateway/uat/precreate",
   "/pgw-api/v1/payment/qr/create",
 ];
+// PWA should hit precreate-style paths only (not QR-specific make/create paths).
+const PWA_CREATE_PATH_CANDIDATES = [
+  "/payment/gateway/uat/precreate",
+  "/pgw/uat/precreate",
+  "/payment/gateway/precreate",
+  "/pgw/precreate",
+];
 const QUERY_PATH_CANDIDATES = [
   "/payment/gateway/uat/queryorder",
   "/queryorder",
@@ -997,7 +1004,8 @@ async function buildPwaOrderInfoSignature(args: {
 // with `prepay_id` and `merch_order_id` query params (handled by /kpay/pwa/return below).
 export async function startKPayPwa(c: Context) {
   try {
-    const cfg = kpayPwaConfig(kpayConfig());
+    const baseCfg = kpayConfig();
+    let cfg = kpayPwaConfig(baseCfg);
     if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
       return c.json({
         error: "KPay gateway is not configured",
@@ -1028,90 +1036,125 @@ export async function startKPayPwa(c: Context) {
       }, 400);
     }
 
-    const strictPrimaryOnly = cfg.strictProtocol ? cfg.createPathConfigured : !cfg.autoDiscover;
-    const endpoints = endpointCandidates(cfg.baseUrl, cfg.createPath, "create", strictPrimaryOnly);
-    const payloads = createPwaPayloadCandidates({
-      appId: cfg.appId,
-      merchCode: cfg.merchCode,
-      merchantOrderId,
-      amount,
-      currency,
-      notifyUrl,
-      title,
-      callbackInfo: callbackInfo || undefined,
-    }, cfg);
-
-    const providerHeaders = buildProviderHeaders(cfg);
-    const allAttempts: Array<{
-      endpoint: string;
-      status: number;
-      networkError?: string;
-      details?: AnyRecord;
-      signSource?: string;
-      sign?: string;
-      signedPayload?: AnyRecord;
-    }> = [];
-    const triedPlanKeys = new Set<string>();
-    let provider:
-      | {
-          success: true;
-          endpoint: string;
-          body: AnyRecord;
-          signSource?: string;
-          sign?: string;
-          signedPayload?: AnyRecord;
+    const runPwaPrecreate = async (activeCfg: ReturnType<typeof kpayConfig>) => {
+      const endpoints: string[] = [];
+      const seenEndpoints = new Set<string>();
+      const pathCandidates = new Set<string>();
+      if (text(activeCfg.createPath)) pathCandidates.add(activeCfg.createPath);
+      for (const p of PWA_CREATE_PATH_CANDIDATES) pathCandidates.add(p);
+      for (const p of pathCandidates) {
+        try {
+          const url = new URL(p, activeCfg.baseUrl).toString();
+          if (!seenEndpoints.has(url)) {
+            seenEndpoints.add(url);
+            endpoints.push(url);
+          }
+        } catch {
+          // ignore malformed path
         }
-      | {
-          success: false;
-          attempts: Array<{
+      }
+      const payloads = createPwaPayloadCandidates(
+        {
+          appId: activeCfg.appId,
+          merchCode: activeCfg.merchCode,
+          merchantOrderId,
+          amount,
+          currency,
+          notifyUrl,
+          title,
+          callbackInfo: callbackInfo || undefined,
+        },
+        activeCfg,
+      );
+      const providerHeaders = buildProviderHeaders(activeCfg);
+      const allAttempts: Array<{
+        endpoint: string;
+        status: number;
+        networkError?: string;
+        details?: AnyRecord;
+        signSource?: string;
+        sign?: string;
+        signedPayload?: AnyRecord;
+      }> = [];
+      const triedPlanKeys = new Set<string>();
+      let provider:
+        | {
+            success: true;
             endpoint: string;
-            status: number;
-            networkError?: string;
-            details?: AnyRecord;
+            body: AnyRecord;
             signSource?: string;
             sign?: string;
             signedPayload?: AnyRecord;
-          }>;
-        } = { success: false, attempts: [] };
-    let winningWrapRequest = cfg.wrapRequest;
+          }
+        | {
+            success: false;
+            attempts: Array<{
+              endpoint: string;
+              status: number;
+              networkError?: string;
+              details?: AnyRecord;
+              signSource?: string;
+              sign?: string;
+              signedPayload?: AnyRecord;
+            }>;
+          } = { success: false, attempts: [] };
+      let winningWrapRequest = activeCfg.wrapRequest;
 
-    const runPlan = async (wrapRequest: boolean, planPayloads: PayloadPair[]) => {
-      const key = `${wrapRequest ? "wrap1" : "wrap0"}::${JSON.stringify(
-        planPayloads.map((p) => p.signCollection)
-      )}`;
-      if (triedPlanKeys.has(key)) return false;
-      triedPlanKeys.add(key);
-      const res = await tryProviderVariants({
-        endpoints,
-        payloads: planPayloads,
-        signKey: cfg.signKey,
-        timeoutMs: cfg.timeoutMs,
-        wrapRequest,
-        extraHeaders: providerHeaders,
-      });
-      if (res.success) {
-        provider = res;
-        winningWrapRequest = wrapRequest;
-        return true;
+      const runPlan = async (wrapRequest: boolean, planPayloads: PayloadPair[]) => {
+        const key = `${wrapRequest ? "wrap1" : "wrap0"}::${JSON.stringify(
+          planPayloads.map((p) => p.signCollection),
+        )}`;
+        if (triedPlanKeys.has(key)) return false;
+        triedPlanKeys.add(key);
+        const res = await tryProviderVariants({
+          endpoints,
+          payloads: planPayloads,
+          signKey: activeCfg.signKey,
+          timeoutMs: activeCfg.timeoutMs,
+          wrapRequest,
+          extraHeaders: providerHeaders,
+        });
+        if (res.success) {
+          provider = res;
+          winningWrapRequest = wrapRequest;
+          return true;
+        }
+        allAttempts.push(...res.attempts);
+        provider = { success: false, attempts: [...allAttempts] };
+        return false;
+      };
+
+      // 1) current configured mode
+      let ok = await runPlan(activeCfg.wrapRequest, payloads);
+      // 2) alternate wrap mode
+      if (!ok) ok = await runPlan(!activeCfg.wrapRequest, payloads);
+      // 3) ISV fallback: try without sub-merch fields (PWA-only fallback; QR untouched)
+      const hasIsv = payloads.some(hasPwaIsvFields);
+      if (!ok && hasIsv) {
+        const noIsvPayloads = payloads.map(stripPwaIsvFields);
+        ok = await runPlan(activeCfg.wrapRequest, noIsvPayloads);
+        if (!ok) ok = await runPlan(!activeCfg.wrapRequest, noIsvPayloads);
       }
-      allAttempts.push(...res.attempts);
-      provider = { success: false, attempts: [...allAttempts] };
-      return false;
+      return { provider, winningWrapRequest, providerHeaders };
     };
 
-    // 1) current configured mode
-    let ok = await runPlan(cfg.wrapRequest, payloads);
-    // 2) alternate wrap mode (some merchant/proxy setups require opposite payload envelope)
-    if (!ok) {
-      ok = await runPlan(!cfg.wrapRequest, payloads);
-    }
-    // 3) ISV fallback: try without sub-merch fields (PWA-only fallback; QR untouched)
-    const hasIsv = payloads.some(hasPwaIsvFields);
-    if (!ok && hasIsv) {
-      const noIsvPayloads = payloads.map(stripPwaIsvFields);
-      ok = await runPlan(cfg.wrapRequest, noIsvPayloads);
-      if (!ok) {
-        ok = await runPlan(!cfg.wrapRequest, noIsvPayloads);
+    let credentialSource: "pwa" | "base" = "pwa";
+    let { provider, winningWrapRequest, providerHeaders } = await runPwaPrecreate(cfg);
+    const pwaCredsDifferFromBase =
+      cfg.appId !== baseCfg.appId ||
+      cfg.merchCode !== baseCfg.merchCode ||
+      cfg.signKey !== baseCfg.signKey ||
+      cfg.subMerchCode !== baseCfg.subMerchCode ||
+      cfg.subAppid !== baseCfg.subAppid;
+    if (!provider.success && pwaCredsDifferFromBase) {
+      // PWA-only rescue: if dedicated PWA credentials were wrong/stale, retry with base KPay creds.
+      const retried = await runPwaPrecreate(baseCfg);
+      if (retried.provider.success) {
+        provider = retried.provider;
+        winningWrapRequest = retried.winningWrapRequest;
+        providerHeaders = retried.providerHeaders;
+        cfg = baseCfg;
+        credentialSource = "base";
       }
     }
     if (!provider.success) {
@@ -1142,6 +1185,10 @@ export async function startKPayPwa(c: Context) {
           sign: last?.sign || "",
           signedPayload: last?.signedPayload || {},
           attemptedEndpoints: Array.from(new Set(attempts.map((a) => a.endpoint))),
+          credentialSource,
+          appIdUsed: cfg.appId,
+          merchCodeUsed: cfg.merchCode,
+          authHeadersUsed: Object.keys(providerHeaders),
         },
         502,
       );
