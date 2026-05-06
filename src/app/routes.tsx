@@ -212,6 +212,10 @@ export const appRouteObjects: RouteObject[] = [
             element: <HostAwareCheckoutSuccessRoute />,
           },
           {
+            path: "summary",
+            element: <HostAwareCheckoutSuccessRoute />,
+          },
+          {
             path: "store/checkout",
             element: <StorefrontPage />,
           },
@@ -221,6 +225,10 @@ export const appRouteObjects: RouteObject[] = [
           },
           {
             path: "store/checkout/success",
+            element: <StorefrontPage />,
+          },
+          {
+            path: "store/summary",
             element: <StorefrontPage />,
           },
           {
@@ -401,6 +409,11 @@ export const appRouteObjects: RouteObject[] = [
             errorElement: <NotFound />,
           },
           {
+            path: "store/:storeName/summary",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
             path: "store/:storeName",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
@@ -442,6 +455,11 @@ export const appRouteObjects: RouteObject[] = [
           },
           {
             path: "vendor/:storeName/checkout/success",
+            element: <VendorStorefrontPage />,
+            errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/summary",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
           },

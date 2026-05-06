@@ -15,6 +15,7 @@ import {
   Shield,
   Loader2,
 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
@@ -81,6 +82,26 @@ interface CheckoutProps {
   onOrderPlacedSuccess?: (ctx: { userId: string }) => void;
 }
 
+type CheckoutSummarySnapshot = {
+  orderNumber: string;
+  items: any[];
+  total: number;
+  orderNote: string;
+  coupon: any;
+  discount: number;
+  shippingInfo: {
+    fullName: string;
+    email: string;
+    phone: string;
+    address: string;
+    city: string;
+    zipCode: string;
+    country: string;
+  };
+  paymentMethod: "Card" | "KPay" | "KPay-PWA" | "BankTransfer";
+  savedAt: string;
+};
+
 export function Checkout({
   onBack,
   storeName,
@@ -89,6 +110,8 @@ export function Checkout({
   accountUser = null,
   onOrderPlacedSuccess,
 }: CheckoutProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { items, totalPrice, clearCart } = useCart();
   const { user: authUser } = useAuth();
   const migoo = getMigooCustomerFromStorage();
@@ -127,6 +150,19 @@ export function Checkout({
 
   const [step, setStep] = useState<"checkout" | "success">("checkout");
   const [loading, setLoading] = useState(false);
+  const summaryPath = useMemo(() => {
+    const path = location.pathname;
+    if (path.endsWith("/summary") || path === "/summary" || path === "/store/summary") {
+      return path;
+    }
+    if (path === "/checkout") return "/summary";
+    if (path === "/store/checkout") return "/store/summary";
+    return path.replace(/\/checkout(?:\/success)?$/, "/summary");
+  }, [location.pathname]);
+  const summarySnapshotStorageKey = useMemo(
+    () => `checkout-summary:${summaryPath}`,
+    [summaryPath]
+  );
 
   // Shipping Form State - Pre-fill from saved addresses
   const [shippingInfo, setShippingInfo] = useState({
@@ -359,6 +395,30 @@ export function Checkout({
   const [confirmedOrderNote, setConfirmedOrderNote] = useState("");
   const [confirmedCoupon, setConfirmedCoupon] = useState<any>(null);
   const [confirmedDiscount, setConfirmedDiscount] = useState(0);
+
+  useEffect(() => {
+    const onSummaryRoute = /\/summary$/.test(location.pathname);
+    if (!onSummaryRoute) return;
+    try {
+      const raw = localStorage.getItem(summarySnapshotStorageKey);
+      if (!raw) return;
+      const snapshot = JSON.parse(raw) as CheckoutSummarySnapshot;
+      if (!snapshot || !Array.isArray(snapshot.items) || !snapshot.orderNumber) return;
+      setOrderNumber(snapshot.orderNumber);
+      setConfirmedItems(snapshot.items);
+      setConfirmedTotal(Number(snapshot.total) || 0);
+      setConfirmedOrderNote(snapshot.orderNote || "");
+      setConfirmedCoupon(snapshot.coupon || null);
+      setConfirmedDiscount(Number(snapshot.discount) || 0);
+      setShippingInfo(snapshot.shippingInfo || shippingInfo);
+      setPaymentMethod(snapshot.paymentMethod || "Card");
+      setStep("success");
+      setLoading(false);
+    } catch {
+      // ignore corrupted snapshot and fall back to normal checkout
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, summarySnapshotStorageKey]);
 
   // Apply coupon code
   const handleApplyCoupon = async () => {
@@ -886,7 +946,26 @@ export function Checkout({
     await new Promise(resolve => setTimeout(resolve, 2000));
     
     setLoading(false);
+    try {
+      const snapshot: CheckoutSummarySnapshot = {
+        orderNumber: orderNum,
+        items: items,
+        total: finalTotal,
+        orderNote,
+        coupon: appliedCoupon,
+        discount: discountAmount,
+        shippingInfo: { ...shippingInfo },
+        paymentMethod,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
+    } catch {
+      // non-fatal; summary route can still render in-memory state
+    }
     setStep("success");
+    if (location.pathname !== summaryPath) {
+      navigate(summaryPath, { replace: true });
+    }
     
     // Clear cart after successful order
     setTimeout(() => {
@@ -1056,7 +1135,14 @@ export function Checkout({
           <div className="mt-4 flex justify-center">
             <Button
               className="h-11 w-64 rounded-lg bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
-              onClick={onBack}
+              onClick={() => {
+                try {
+                  localStorage.removeItem(summarySnapshotStorageKey);
+                } catch {
+                  /* ignore */
+                }
+                onBack();
+              }}
             >
               Continue Shopping
             </Button>

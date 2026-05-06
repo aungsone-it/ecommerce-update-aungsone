@@ -84,7 +84,7 @@ function vendorCategorySlugFromPathname(pathname: string, storeName: string): st
     const normalized = seg.trim().toLowerCase();
     if (
       normalized &&
-      !["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation"].includes(normalized)
+      !["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation", "summary"].includes(normalized)
     ) {
       return decodeURIComponent(seg);
     }
@@ -105,7 +105,7 @@ function vendorCategorySlugFromPathname(pathname: string, storeName: string): st
   if (!seg) return null;
   const normalized = decodeURIComponent(seg).trim().toLowerCase();
   if (!normalized) return null;
-  if (["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation"].includes(normalized)) {
+  if (["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation", "summary"].includes(normalized)) {
     return null;
   }
   return decodeURIComponent(seg);

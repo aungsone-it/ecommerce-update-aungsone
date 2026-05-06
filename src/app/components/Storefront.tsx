@@ -871,8 +871,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setViewMode("checkout");
     } else if (
       path === "/order-confirmation" ||
+      path === "/summary" ||
       path === "/checkout/success" ||
-      path === "/store/checkout/success"
+      path === "/store/checkout/success" ||
+      path === "/store/summary"
     ) {
       setViewMode("order-confirmation");
     } else if (path === "/profile") {
@@ -950,7 +952,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         targetPath = "/store/checkout";
         break;
       case "order-confirmation":
-        targetPath = "/store/checkout/success";
+        targetPath = "/summary";
         break;
       case "view-profile":
         targetPath = "/profile";

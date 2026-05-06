@@ -787,10 +787,15 @@ export function VendorStoreView({
   useEffect(() => {
     const isCheckoutRoute =
       location.pathname === "/checkout" ||
+      location.pathname === "/summary" ||
       location.pathname === `${storeBase}/checkout` ||
+      location.pathname === `${storeBase}/summary` ||
       matchPath({ path: "/store/:storeName/checkout", end: true }, location.pathname) != null ||
+      matchPath({ path: "/store/:storeName/summary", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/checkout", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null;
+      matchPath({ path: "/vendor-:storeName/summary", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/summary", end: true }, location.pathname) != null;
     setShowCheckout(isCheckoutRoute);
   }, [location.pathname, storeBase]);
 
