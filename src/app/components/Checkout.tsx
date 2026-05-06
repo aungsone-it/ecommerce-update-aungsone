@@ -229,6 +229,9 @@ export function Checkout({
     initialSummarySnapshot ? "success" : "checkout"
   );
   const [loading, setLoading] = useState(false);
+  const [summaryResolving, setSummaryResolving] = useState(
+    () => /\/summary$/.test(location.pathname) && !initialSummarySnapshot
+  );
   const summaryPath = useMemo(() => {
     const path = location.pathname;
     if (path.endsWith("/summary") || path === "/summary" || path === "/store/summary") {
@@ -499,6 +502,7 @@ export function Checkout({
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
     if (!onSummaryRoute) return;
+    setSummaryResolving(true);
     try {
       const snapshot =
         readCheckoutSummarySnapshot(summarySnapshotStorageKey) ||
@@ -516,6 +520,8 @@ export function Checkout({
       setLoading(false);
     } catch {
       // ignore corrupted snapshot and fall back to normal checkout
+    } finally {
+      setSummaryResolving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, summarySnapshotStorageKey]);
@@ -524,6 +530,7 @@ export function Checkout({
     const onSummaryRoute = /\/summary$/.test(location.pathname);
     if (!onSummaryRoute) return;
     if (step === "success" && confirmedItems.length > 0 && orderNumber) return;
+    setSummaryResolving(true);
     let cancelled = false;
     (async () => {
       try {
@@ -689,6 +696,8 @@ export function Checkout({
         }
       } catch {
         // leave checkout as-is when server read fails
+      } finally {
+        if (!cancelled) setSummaryResolving(false);
       }
     })();
     return () => {
@@ -705,6 +714,17 @@ export function Checkout({
     shippingInfo,
     summarySnapshotStorageKey,
   ]);
+
+  if (/\/summary$/.test(location.pathname) && step !== "success" && summaryResolving) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="text-center space-y-3">
+          <Loader2 className="mx-auto h-10 w-10 animate-spin text-slate-600" />
+          <p className="text-sm text-slate-600">Loading latest order summary...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Apply coupon code
   const handleApplyCoupon = async () => {
@@ -783,6 +803,11 @@ export function Checkout({
     try {
       if (finalTotal <= 0) {
         toast.error("Invalid amount for KPay payment");
+        return;
+      }
+      const orderEmail = resolveOrderEmail();
+      if (!orderEmail) {
+        toast.error("Please enter your email address");
         return;
       }
       setKpayPwaLoading(true);
