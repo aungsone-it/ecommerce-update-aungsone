@@ -514,10 +514,19 @@ export function Checkout({
     if (!onSummaryRoute) return;
     setSummaryResolving(true);
     try {
+      const expectedOrderId =
+        summaryQueryOrderId ||
+        (typeof pwaPendingContext?.merchantOrderId === "string"
+          ? pwaPendingContext.merchantOrderId
+          : "");
       const snapshot =
         readCheckoutSummarySnapshot(summarySnapshotStorageKey) ||
         readCheckoutSummarySnapshot(CHECKOUT_LATEST_SUMMARY_KEY);
       if (!snapshot) return;
+      // When returning from a fresh PWA session, never hydrate an old cached order.
+      if (expectedOrderId && String(snapshot.orderNumber || "").trim() !== expectedOrderId) {
+        return;
+      }
       setOrderNumber(snapshot.orderNumber);
       setConfirmedItems(snapshot.items);
       setConfirmedTotal(Number(snapshot.total) || 0);
@@ -534,7 +543,7 @@ export function Checkout({
       setSummaryResolving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, summarySnapshotStorageKey]);
+  }, [location.pathname, summarySnapshotStorageKey, summaryQueryOrderId, pwaPendingContext]);
 
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
@@ -582,10 +591,15 @@ export function Checkout({
                 discount: Number(d.discount || 0),
                 date: new Date().toISOString(),
                 vendor: d.vendor || storeName,
+                vendorId: d.vendorId || undefined,
                 couponCode: d.couponCode || null,
                 couponId: d.couponId || null,
                 couponDiscount: Number(d.discount || 0),
                 items: Array.isArray(d.items) ? d.items : [],
+                address: d.shippingInfo?.address || "",
+                city: d.shippingInfo?.city || "",
+                zipCode: d.shippingInfo?.zipCode || "",
+                country: d.shippingInfo?.country || "",
                 shippingAddress: [
                   d.shippingInfo?.address || "",
                   d.shippingInfo?.city || "",
@@ -602,7 +616,7 @@ export function Checkout({
                   payUrl: session.payUrl || "",
                 },
               };
-              await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`, {
+              const createResponse = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -610,6 +624,9 @@ export function Checkout({
                 },
                 body: JSON.stringify(finalizePayload),
               });
+              if (!createResponse.ok) {
+                throw new Error(`PWA finalize create failed: HTTP ${createResponse.status}`);
+              }
               response = await fetch(orderEndpoint, {
                 headers: { Authorization: `Bearer ${publicAnonKey}` },
               });
@@ -844,6 +861,9 @@ export function Checkout({
       });
       // Persist enough context for the /kpay/return route to finalize the order.
       try {
+        // Fresh PWA flow should not reuse a previous order-summary snapshot.
+        localStorage.removeItem(`checkout-summary:${summaryPath}`);
+        localStorage.removeItem(CHECKOUT_LATEST_SUMMARY_KEY);
         localStorage.setItem(
           KPAY_PWA_PENDING_STORAGE_KEY,
           JSON.stringify({
