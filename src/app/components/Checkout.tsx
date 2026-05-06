@@ -169,6 +169,16 @@ function summaryPaymentMethodLabel(
   return "Credit / Debit Card";
 }
 
+function normalizeCheckoutPaymentMethod(raw: unknown): "Card" | "KPay" | "KPay-PWA" | "BankTransfer" {
+  const txt = String(raw || "").trim().toLowerCase();
+  if (!txt) return "Card";
+  if (txt.includes("pwa") || txt.includes("mobile browser")) return "KPay-PWA";
+  if (txt === "kpay" || txt.includes("kpay qr")) return "KPay";
+  if (txt.includes("bank")) return "BankTransfer";
+  if (txt.includes("credit") || txt.includes("debit") || txt.includes("card")) return "Card";
+  return "Card";
+}
+
 export function Checkout({
   onBack,
   storeName,
@@ -515,7 +525,7 @@ export function Checkout({
       setConfirmedCoupon(snapshot.coupon || null);
       setConfirmedDiscount(Number(snapshot.discount) || 0);
       setShippingInfo(snapshot.shippingInfo || shippingInfo);
-      setPaymentMethod(snapshot.paymentMethod || "Card");
+      setPaymentMethod(normalizeCheckoutPaymentMethod(snapshot.paymentMethod));
       setStep("success");
       setLoading(false);
     } catch {
@@ -663,6 +673,7 @@ export function Checkout({
         setConfirmedCoupon(coupon);
         setConfirmedDiscount(discount);
         setShippingInfo(shipping);
+        setPaymentMethod(normalizeCheckoutPaymentMethod(o?.paymentMethod));
         setStep("success");
         setLoading(false);
         try {
@@ -679,14 +690,7 @@ export function Checkout({
             coupon,
             discount,
             shippingInfo: shipping,
-            paymentMethod:
-              o?.paymentMethod === "KPay"
-                ? "KPay"
-                : o?.paymentMethod === "KPay (PWA)" || o?.paymentMethod === "KPay-PWA"
-                  ? "KPay-PWA"
-                  : o?.paymentMethod === "Bank Transfer"
-                    ? "BankTransfer"
-                    : "Card",
+            paymentMethod: normalizeCheckoutPaymentMethod(o?.paymentMethod),
             savedAt: new Date().toISOString(),
           };
           localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
@@ -794,6 +798,19 @@ export function Checkout({
   const resolveOrderEmail = () =>
     (shippingInfo.email?.trim() || effectiveUser?.email?.trim() || "");
 
+  const getMissingRequiredFields = () => {
+    const missingFields: string[] = [];
+    if (!shippingInfo.fullName.trim()) missingFields.push("Full Name");
+    if (!shippingInfo.phone.trim()) missingFields.push("Phone Number");
+    if (!resolveOrderEmail()) missingFields.push("Email");
+    if (!shippingInfo.address.trim()) missingFields.push("Address");
+    if (!shippingInfo.city.trim()) missingFields.push("City");
+    if (!shippingInfo.zipCode.trim()) missingFields.push("Postal Code");
+    if (!shippingInfo.country.trim()) missingFields.push("Country/Region");
+    if (!orderNote.trim()) missingFields.push("Delivery Notes");
+    return missingFields;
+  };
+
   // PWA flow: precreate with trade_type=PWAAPP and redirect the customer's mobile
   // browser to KBZ's PWA page. KBZ then opens the KBZPay app on the phone for payment
   // and finally redirects back to our /kpay/return page with prepay_id + merch_order_id.
@@ -801,6 +818,11 @@ export function Checkout({
   // can finish placing the order once payment is confirmed.
   const handleStartKPayPwa = async () => {
     try {
+      const missingFields = getMissingRequiredFields();
+      if (missingFields.length > 0) {
+        toast.error(`Please fill all required fields first: ${missingFields.join(", ")}`);
+        return;
+      }
       if (finalTotal <= 0) {
         toast.error("Invalid amount for KPay payment");
         return;
@@ -870,28 +892,10 @@ export function Checkout({
         toast.error("KBZ did not return a redirect URL");
         return;
       }
-      // App-first handoff (tel:-like behavior): on Android, try an intent:// launch
-      // so KBZPay app can be opened directly when available, then fall back to the
-      // hosted PWA URL. iOS/others use the hosted URL directly.
+      // Always open KBZ hosted PWA page first. That page shows the user-facing
+      // "Open KBZPay app" confirmation and avoids browser/package mismatches that
+      // can jump straight to Play Store.
       const redirectUrl = pwaSession.redirectUrl;
-      const ua = typeof navigator !== "undefined" ? navigator.userAgent.toLowerCase() : "";
-      const isAndroid = /android/.test(ua);
-      if (isAndroid) {
-        try {
-          const parsed = new URL(redirectUrl);
-          const intentUrl = `intent://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}#Intent;scheme=${parsed.protocol.replace(":", "")};package=com.kbzbank.kpaycustomer;end`;
-          window.location.href = intentUrl;
-          // If app open fails, browser stays visible — fall back quickly to KBZ PWA page.
-          window.setTimeout(() => {
-            if (document.visibilityState === "visible") {
-              window.location.href = redirectUrl;
-            }
-          }, 550);
-          return;
-        } catch {
-          // Bad URL parse should never block payment — fall back to hosted URL.
-        }
-      }
       window.location.href = redirectUrl;
     } catch (error: any) {
       toast.error(error?.message || "Failed to start KPay PWA payment");
@@ -902,6 +906,11 @@ export function Checkout({
 
   const handleGenerateKPayQr = async () => {
     try {
+      const missingFields = getMissingRequiredFields();
+      if (missingFields.length > 0) {
+        toast.error(`Please fill all required fields first: ${missingFields.join(", ")}`);
+        return;
+      }
       if (finalTotal <= 0) {
         toast.error("Invalid amount for KPay payment");
         return;
@@ -965,19 +974,12 @@ export function Checkout({
   const handlePlaceOrder = async (e?: React.FormEvent | React.MouseEvent) => {
     e?.preventDefault();
 
-    if (!shippingInfo.fullName.trim() || !shippingInfo.phone.trim()) {
-      toast.error("Please enter your full name and phone number");
-      return;
-    }
-    if (!shippingInfo.address.trim() || !shippingInfo.city.trim() || !shippingInfo.country.trim()) {
-      toast.error("Please complete your address, city, and country");
+    const missingFields = getMissingRequiredFields();
+    if (missingFields.length > 0) {
+      toast.error(`Please fill all required fields first: ${missingFields.join(", ")}`);
       return;
     }
     const orderEmail = resolveOrderEmail();
-    if (!orderEmail) {
-      toast.error("Please enter your email address");
-      return;
-    }
 
     setLoading(true);
 
@@ -1596,9 +1598,8 @@ export function Checkout({
                     <div>
                       <div className="mb-1.5 flex items-baseline justify-between">
                         <Label htmlFor="vs-zip" className="text-sm font-normal text-slate-700">
-                          Postal Code
+                          Postal Code *
                         </Label>
-                        <span className="text-xs text-slate-500">(optional)</span>
                       </div>
                       <Input
                         id="vs-zip"
@@ -1624,9 +1625,8 @@ export function Checkout({
                   <div>
                     <div className="mb-1.5 flex items-baseline justify-between">
                       <Label htmlFor="vs-notes" className="text-sm font-normal text-slate-700">
-                        Delivery Notes
+                        Delivery Notes *
                       </Label>
-                      <span className="text-xs text-slate-500">(optional)</span>
                     </div>
                     <Textarea
                       id="vs-notes"
