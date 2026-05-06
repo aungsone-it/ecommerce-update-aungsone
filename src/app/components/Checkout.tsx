@@ -432,18 +432,31 @@ export function Checkout({
 
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
-    if (!onSummaryRoute || !summaryQueryOrderId) return;
+    if (!onSummaryRoute) return;
     if (step === "success" && confirmedItems.length > 0 && orderNumber) return;
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(summaryQueryOrderId)}`,
-          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
-        );
+        let orderEndpoint = "";
+        if (summaryQueryOrderId) {
+          orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(summaryQueryOrderId)}`;
+        } else if (effectiveUser?.id) {
+          // KBZ app may return to /summary without carrying merch_order_id to SPA.
+          // In that case, render the latest order for this signed-in customer.
+          orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/user/${encodeURIComponent(effectiveUser.id)}/orders`;
+        } else {
+          return;
+        }
+        const response = await fetch(orderEndpoint, {
+          headers: { Authorization: `Bearer ${publicAnonKey}` },
+        });
         if (!response.ok) return;
-        const data = (await response.json()) as { order?: any };
-        const o = data?.order;
+        const data = (await response.json()) as { order?: any; orders?: any[] };
+        const o = summaryQueryOrderId
+          ? data?.order
+          : Array.isArray(data?.orders) && data.orders.length > 0
+            ? data.orders[0]
+            : null;
         if (!o || cancelled) return;
         const itemsFromOrder = Array.isArray(o.items)
           ? o.items.map((it: any, idx: number) => ({
@@ -470,7 +483,14 @@ export function Checkout({
           zipCode: String(o?.zipCode ?? shippingInfo.zipCode ?? ""),
           country: String(o?.country ?? shippingInfo.country ?? ""),
         };
-        setOrderNumber(String(o?.orderNumber ?? summaryQueryOrderId));
+        setOrderNumber(
+          String(
+            o?.orderNumber ??
+              summaryQueryOrderId ??
+              o?.id ??
+              ""
+          )
+        );
         setConfirmedItems(itemsFromOrder);
         setConfirmedTotal(total);
         setConfirmedOrderNote(String(o?.notes ?? ""));
@@ -481,7 +501,12 @@ export function Checkout({
         setLoading(false);
         try {
           const snapshot: CheckoutSummarySnapshot = {
-            orderNumber: String(o?.orderNumber ?? summaryQueryOrderId),
+            orderNumber: String(
+              o?.orderNumber ??
+                summaryQueryOrderId ??
+                o?.id ??
+                ""
+            ),
             items: itemsFromOrder,
             total,
             orderNote: String(o?.notes ?? ""),
@@ -491,9 +516,11 @@ export function Checkout({
             paymentMethod:
               o?.paymentMethod === "KPay"
                 ? "KPay"
-                : o?.paymentMethod === "Bank Transfer"
-                  ? "BankTransfer"
-                  : "Card",
+                : o?.paymentMethod === "KPay (PWA)" || o?.paymentMethod === "KPay-PWA"
+                  ? "KPay-PWA"
+                  : o?.paymentMethod === "Bank Transfer"
+                    ? "BankTransfer"
+                    : "Card",
             savedAt: new Date().toISOString(),
           };
           localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
@@ -510,6 +537,7 @@ export function Checkout({
   }, [
     location.pathname,
     summaryQueryOrderId,
+    effectiveUser?.id,
     step,
     confirmedItems.length,
     orderNumber,
