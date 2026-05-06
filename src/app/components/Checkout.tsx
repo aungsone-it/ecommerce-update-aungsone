@@ -102,6 +102,15 @@ type CheckoutSummarySnapshot = {
   savedAt: string;
 };
 
+function summaryPaymentMethodLabel(
+  method: "Card" | "KPay" | "KPay-PWA" | "BankTransfer"
+): string {
+  if (method === "KPay") return "KPay QR Payment";
+  if (method === "KPay-PWA") return "KPay In App Payment";
+  if (method === "BankTransfer") return "Bank Transfer";
+  return "Credit / Debit Card";
+}
+
 export function Checkout({
   onBack,
   storeName,
@@ -852,6 +861,8 @@ export function Checkout({
             ? "Credit/Debit Card"
             : paymentMethod === "KPay"
             ? "KPay"
+            : paymentMethod === "KPay-PWA"
+            ? "KPay (PWA)"
             : "Bank Transfer",
         total: finalTotal,
         subtotal: totalPrice,
@@ -1210,7 +1221,9 @@ export function Checkout({
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
                   <CreditCard className="h-5 w-5 text-slate-600" strokeWidth={2} />
                 </div>
-                <span className="text-sm font-semibold text-slate-900">Credit / Debit Card</span>
+                <span className="text-sm font-semibold text-slate-900">
+                  {summaryPaymentMethodLabel(paymentMethod)}
+                </span>
               </div>
             </div>
 

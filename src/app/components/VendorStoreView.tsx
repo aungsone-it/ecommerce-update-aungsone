@@ -2269,7 +2269,15 @@ export function VendorStoreView({
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-slate-600">
                         <div className="flex items-center gap-1.5">
                           <Clock className="w-4 h-4 shrink-0" />
-                          <span>{new Date(order.createdAt || order.date).toLocaleDateString("en-GB")}</span>
+                          <span>
+                            {new Date(order.createdAt || order.date).toLocaleString("en-GB", {
+                              year: "numeric",
+                              month: "2-digit",
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <Package className="w-4 h-4 shrink-0" />
