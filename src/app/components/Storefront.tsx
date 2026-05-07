@@ -278,6 +278,26 @@ function normalizeWishlistFromKvValue(value: unknown): string[] {
   return [];
 }
 
+function dedupeOrdersByCanonical(rows: any[]): any[] {
+  const map = new Map<string, any>();
+  const score = (o: any) =>
+    Math.max(
+      new Date(o?.updatedAt || 0).getTime() || 0,
+      new Date(o?.createdAt || o?.date || 0).getTime() || 0
+    );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = String(row?.id || row?.orderNumber || "").trim();
+    if (!key) continue;
+    const prev = map.get(key);
+    if (!prev || score(row) >= score(prev)) map.set(key, row);
+  }
+  return [...map.values()].sort(
+    (a, b) =>
+      (new Date(b?.createdAt || b?.date || 0).getTime() || 0) -
+      (new Date(a?.createdAt || a?.date || 0).getTime() || 0)
+  );
+}
+
 interface CartItem extends Product {
   quantity: number;
 }
@@ -2433,7 +2453,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       .get(key, () => fetchCustomerOrdersList(orderApiUserId), true)
       .then((orders) => {
         if (cancelled) return;
-        setUserOrders(orders);
+        setUserOrders(dedupeOrdersByCanonical(orders));
         setOrdersError(null);
       })
       .catch((error) => {
@@ -2452,6 +2472,44 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       cancelled = true;
     };
   }, [orderApiUserId, viewMode, location.pathname]);
+
+  // Realtime sync for customer order history after admin mutations (delete/update).
+  useEffect(() => {
+    if (!orderApiUserId) return;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const refreshOrders = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        const key = CACHE_KEYS.customerOrders(orderApiUserId);
+        void moduleCache
+          .get(key, () => fetchCustomerOrdersList(orderApiUserId), true)
+          .then((orders) => {
+            const next = dedupeOrdersByCanonical(orders);
+            setUserOrders(next);
+            if (selectedOrder) {
+              const sid = String(selectedOrder.id || "").trim();
+              if (sid && !next.some((o: any) => String(o?.id || "").trim() === sid)) {
+                setSelectedOrder(null);
+                if (viewMode === "order-detail") setViewMode("order-history");
+              }
+            }
+          })
+          .catch(() => {});
+      }, 260);
+    };
+    const channel = supabase
+      .channel(`storefront-user-orders-kv-${orderApiUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kv_store_16010b6f", filter: "key=like.order:%" },
+        refreshOrders
+      )
+      .subscribe();
+    return () => {
+      window.clearTimeout(debounce);
+      void supabase.removeChannel(channel);
+    };
+  }, [orderApiUserId, selectedOrder, viewMode]);
 
   // Redirect to auth page if user tries to access protected pages without login
   useEffect(() => {

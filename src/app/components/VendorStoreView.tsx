@@ -207,6 +207,26 @@ function normalizeWishlistFromKvValue(value: unknown): string[] {
   return [];
 }
 
+function dedupeOrdersByCanonical(rows: any[]): any[] {
+  const map = new Map<string, any>();
+  const score = (o: any) =>
+    Math.max(
+      new Date(o?.updatedAt || 0).getTime() || 0,
+      new Date(o?.createdAt || o?.date || 0).getTime() || 0
+    );
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = String(row?.id || row?.orderNumber || "").trim();
+    if (!key) continue;
+    const prev = map.get(key);
+    if (!prev || score(row) >= score(prev)) map.set(key, row);
+  }
+  return [...map.values()].sort(
+    (a, b) =>
+      (new Date(b?.createdAt || b?.date || 0).getTime() || 0) -
+      (new Date(a?.createdAt || a?.date || 0).getTime() || 0)
+  );
+}
+
 /**
  * Storefront URLs often use `vendor-{actualVendorId}` while KV rows use `vendorId` / `selectedVendors`
  * with the inner id (e.g. `vendor_…`). Expanding keys synchronously avoids an empty /saved page on
@@ -1352,7 +1372,7 @@ export function VendorStoreView({
       .get(key, () => fetchCustomerOrdersList(uid), true)
       .then((orders) => {
         if (cancelled) return;
-        setOrderHistory(orders);
+        setOrderHistory(dedupeOrdersByCanonical(orders));
         setOrdersError(null);
       })
       .catch((error) => {
@@ -1375,6 +1395,37 @@ export function VendorStoreView({
       cancelled = true;
     };
   }, [vendorViewMode, profileSegment, profileOrderId, user?.id]);
+
+  // Realtime sync for profile order history: reflects admin delete/update instantly.
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const refreshOrders = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        const key = CACHE_KEYS.customerOrders(uid);
+        void moduleCache
+          .get(key, () => fetchCustomerOrdersList(uid), true)
+          .then((orders) => {
+            setOrderHistory(dedupeOrdersByCanonical(orders));
+          })
+          .catch(() => {});
+      }, 260);
+    };
+    const channel = supabase
+      .channel(`vendor-store-user-orders-kv-${uid}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kv_store_16010b6f", filter: "key=like.order:%" },
+        refreshOrders
+      )
+      .subscribe();
+    return () => {
+      window.clearTimeout(debounce);
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   // 🔐 Authentication Handlers
   const handleLogin = async () => {

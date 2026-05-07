@@ -4407,15 +4407,25 @@ app.get("/make-server-16010b6f/user/:userId/orders", async (c) => {
     
     console.log(`✅ Found ${userOrders.length} orders for user ${userId}`);
     
-    // Sort by date descending (newest first)
-    const sortedOrders = userOrders.sort((a: any) => {
-      const dateA = new Date(a.createdAt || a.date || 0).getTime();
-      const dateB = new Date(a.createdAt || a.date || 0).getTime(); // Note: This sorting logic in original code was slightly off, I'll fix it below
-      return dateB - dateA;
-    });
-
-    // Actually fix the sorting logic correctly
-    const finalSortedOrders = userOrders.sort((a: any, b: any) => {
+    // De-duplicate legacy duplicate rows (same order id/orderNumber under different KV keys).
+    const dedup = new Map<string, any>();
+    const score = (o: any) =>
+      Math.max(
+        new Date(o?.updatedAt || 0).getTime() || 0,
+        new Date(o?.createdAt || o?.date || 0).getTime() || 0
+      );
+    for (const order of userOrders) {
+      const canonical =
+        String(order?.id || "").trim() ||
+        String(order?.orderNumber || "").trim() ||
+        "";
+      if (!canonical) continue;
+      const prev = dedup.get(canonical);
+      if (!prev || score(order) >= score(prev)) {
+        dedup.set(canonical, order);
+      }
+    }
+    const finalSortedOrders = [...dedup.values()].sort((a: any, b: any) => {
       const dateA = new Date(a.createdAt || a.date || 0).getTime();
       const dateB = new Date(b.createdAt || b.date || 0).getTime();
       return dateB - dateA;
@@ -4986,7 +4996,28 @@ app.delete("/make-server-16010b6f/orders/:id", async (c) => {
       console.log(`✅ Stock restoration complete for deleted order ${existingOrder.orderNumber}`);
     }
     
-    await withTimeout(kv.del(storageKey), 5000);
+    // Delete canonical row + any duplicate legacy rows with same id/orderNumber.
+    const deleteKeys = new Set<string>([storageKey]);
+    const canonicalId = String(existingOrder?.id || "").trim();
+    const canonicalOrderNumber = String(existingOrder?.orderNumber || "").trim();
+    try {
+      const rows = await withTimeout(kv.getByPrefixWithKeys("order:"), 10000);
+      for (const row of rows) {
+        const o = row?.value;
+        if (!o || typeof o !== "object") continue;
+        const oid = String((o as any).id || "").trim();
+        const onum = String((o as any).orderNumber || "").trim();
+        if (
+          (canonicalId && oid === canonicalId) ||
+          (canonicalOrderNumber && onum === canonicalOrderNumber)
+        ) {
+          deleteKeys.add(String(row.key));
+        }
+      }
+    } catch {
+      // Fallback to deleting only resolved key if scan fails.
+    }
+    await withTimeout(kv.mdel([...deleteKeys]), 10000);
     
     // Clear cache when order is deleted
     serverCache.delete('orders_minimal');
