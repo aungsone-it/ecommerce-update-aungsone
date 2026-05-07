@@ -251,9 +251,11 @@ export function CustomersEnhanced({
     };
 
     window.addEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, refreshCustomers);
+    window.addEventListener("customersDataUpdated", refreshCustomers as EventListener);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, refreshCustomers);
+      window.removeEventListener("customersDataUpdated", refreshCustomers as EventListener);
       window.removeEventListener("storage", onStorage);
     };
   }, [fetchCustomers]);

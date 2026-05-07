@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback,
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../contexts/AuthContext';
+import { MIGOO_USER_SESSION_CHANGED_EVENT } from "../../constants";
 
 export interface CartItem {
   id: string;
@@ -39,8 +40,26 @@ function cartCacheKey(userId: string): string {
   return `migoo-user-cart:${userId}`;
 }
 
+function readMigooUserIdFromStorage(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("migoo-user");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const id = parsed?.id ?? parsed?.userId;
+    if (typeof id === "string" && id.trim()) return id.trim();
+    if (typeof id === "number" && Number.isFinite(id)) return String(id);
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth(); // 🔥 Connect to AuthContext for automatic user detection
+  const [effectiveUserId, setEffectiveUserId] = useState<string | null>(
+    () => user?.id || readMigooUserIdFromStorage()
+  );
   const [items, setItems] = useState<CartItem[]>(() => {
     // 🔥 DATABASE-FIRST: Load guest cart from localStorage ONLY (logged-in users load from DB)
     // This is temporary cart that gets merged on login
@@ -59,6 +78,17 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const suppressNextSyncRef = useRef(false);
   /** Throttle cart GET from tab focus/visibility (each call hits the Edge Function + KV). */
   const lastAmbientCartFetchRef = useRef<number>(0);
+
+  useEffect(() => {
+    const resolve = () => setEffectiveUserId(user?.id || readMigooUserIdFromStorage());
+    resolve();
+    window.addEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, resolve);
+    window.addEventListener("storage", resolve);
+    return () => {
+      window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, resolve);
+      window.removeEventListener("storage", resolve);
+    };
+  }, [user?.id]);
 
   // 🔥 Sync cart to database (for logged-in users only)
   const syncCartToDatabase = useCallback(async (userId: string, cart: CartItem[]) => {
@@ -149,11 +179,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // 🔥 DATABASE-FIRST: Load cart from database when user logs in
   useEffect(() => {
-    if (user?.id && loadedUserRef.current !== user.id) {
-      console.log(`🔄 User logged in, loading cart from database for: ${user.id}`);
-      loadedUserRef.current = user.id;
+    if (effectiveUserId && loadedUserRef.current !== effectiveUserId) {
+      console.log(`🔄 User logged in, loading cart from database for: ${effectiveUserId}`);
+      loadedUserRef.current = effectiveUserId;
       try {
-        const cached = localStorage.getItem(cartCacheKey(user.id));
+        const cached = localStorage.getItem(cartCacheKey(effectiveUserId));
         if (cached) {
           const parsed = normalizeCartPayload(JSON.parse(cached));
           suppressNextSyncRef.current = true;
@@ -163,19 +193,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
       } catch {
         /* ignore parse/storage failures */
       }
-      loadCartFromDatabase(user.id);
-    } else if (!user?.id && loadedUserRef.current !== null) {
+      loadCartFromDatabase(effectiveUserId);
+    } else if (!effectiveUserId && loadedUserRef.current !== null) {
       // User logged out - clear cart and reset
       console.log(`🔄 User logged out, clearing cart`);
       loadedUserRef.current = null;
       setItems([]);
       localStorage.removeItem('migoo-guest-cart');
     }
-  }, [user?.id, loadCartFromDatabase]);
+  }, [effectiveUserId, loadCartFromDatabase]);
 
   // 🔥 Realtime cart sync (cross-device, low API usage): subscribe to KV row updates.
   useEffect(() => {
-    const uid = user?.id;
+    const uid = effectiveUserId;
     if (!uid) return;
     const key = `customer:${uid}:cart`;
     const channel = supabase
@@ -207,21 +237,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [effectiveUserId]);
 
   // 🔥 AUTO-REFRESH cart when tab becomes visible — throttled to avoid spamming the API
   useEffect(() => {
     const MIN_MS_BETWEEN_AMBIENT_FETCH = 120_000;
 
     const maybeRefresh = (reason: string) => {
-      if (!user?.id) return;
+      if (!effectiveUserId) return;
       const now = Date.now();
       if (now - lastAmbientCartFetchRef.current < MIN_MS_BETWEEN_AMBIENT_FETCH) {
         return;
       }
       lastAmbientCartFetchRef.current = now;
       console.log(`🔄 ${reason}, refreshing cart from database (throttled)...`);
-      loadCartFromDatabase(user.id);
+      loadCartFromDatabase(effectiveUserId);
     };
 
     const handleVisibilityChange = () => {
@@ -234,7 +264,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       maybeRefresh('Window focused');
     };
 
-    if (user?.id) {
+    if (effectiveUserId) {
       document.addEventListener('visibilitychange', handleVisibilityChange);
       window.addEventListener('focus', handleFocus);
 
@@ -243,7 +273,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         window.removeEventListener('focus', handleFocus);
       };
     }
-  }, [user?.id, loadCartFromDatabase]);
+  }, [effectiveUserId, loadCartFromDatabase]);
 
   // 🔥 DATABASE-FIRST: Save to database for logged-in users, localStorage for guests
   useEffect(() => {
@@ -252,7 +282,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clearTimeout(syncTimeoutRef.current);
     }
     
-    if (user?.id) {
+    if (effectiveUserId) {
       const nextSig = JSON.stringify(items);
       if (nextSig === cartSignatureRef.current) return;
       if (suppressNextSyncRef.current) {
@@ -261,7 +291,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       // Logged-in user → Save to DATABASE ONLY (debounced to avoid spam)
       syncTimeoutRef.current = setTimeout(() => {
-        syncCartToDatabase(user.id, items);
+        syncCartToDatabase(effectiveUserId, items);
       }, 2000); // Debounce: fewer Edge Function writes under rapid quantity changes
       
       // Remove guest cart from localStorage (no longer needed)
@@ -280,7 +310,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         clearTimeout(syncTimeoutRef.current);
       }
     };
-  }, [items, user?.id, syncCartToDatabase]);
+  }, [items, effectiveUserId, syncCartToDatabase]);
   
   const addToCart = (item: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
     setItems(prevItems => {

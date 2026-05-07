@@ -194,13 +194,12 @@ export function VendorAdminProductsCRUD({
       .channel(`vendor-admin-products-kv-${vendorId}`)
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "kv_store_16010b6f",
-          filter: "key=like.product:%",
-        },
-        schedule
+        { event: "*", schema: "public", table: "kv_store_16010b6f" },
+        (payload: any) => {
+          const key = String(payload?.new?.key || payload?.old?.key || "");
+          if (!key.startsWith("product:")) return;
+          schedule();
+        }
       )
       .subscribe();
     return () => {

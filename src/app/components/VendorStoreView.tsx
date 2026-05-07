@@ -1417,8 +1417,12 @@ export function VendorStoreView({
       .channel(`vendor-store-user-orders-kv-${uid}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f", filter: "key=like.order:%" },
-        refreshOrders
+        { event: "*", schema: "public", table: "kv_store_16010b6f" },
+        (payload: any) => {
+          const key = String(payload?.new?.key || payload?.old?.key || "");
+          if (!key.startsWith("order:")) return;
+          refreshOrders();
+        }
       )
       .subscribe();
     return () => {
@@ -2324,7 +2328,7 @@ export function VendorStoreView({
                 <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">No Orders Yet</h3>
                 <p className="text-slate-600 mb-6">You haven&apos;t placed any orders yet.</p>
-                <Button onClick={() => goToProfileMode("storefront")} className="bg-amber-600 hover:bg-amber-700">
+                <Button onClick={() => goToProfileMode("storefront")} className="bg-black text-white hover:bg-zinc-900">
                   Start Shopping
                 </Button>
               </CardContent>
@@ -3043,13 +3047,12 @@ export function VendorStoreView({
       .channel(`vendor-storefront-products-kv-${vendorId}`)
       .on(
         "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "kv_store_16010b6f",
-          filter: "key=like.product:%",
-        },
-        scheduleRefetch
+        { event: "*", schema: "public", table: "kv_store_16010b6f" },
+        (payload: any) => {
+          const key = String(payload?.new?.key || payload?.old?.key || "");
+          if (!key.startsWith("product:")) return;
+          scheduleRefetch();
+        }
       )
       .subscribe();
     return () => {

@@ -875,7 +875,7 @@ async function rebuildOrdersCache() {
     
     console.log(`📊 Processing ${validOrders.length} orders...`);
     
-    const minimalOrders = validOrders.map(order => {
+    const minimalOrders = dedupeOrdersByCanonical(validOrders.map(order => {
       try {
         return {
           id: order.id || '',
@@ -894,7 +894,7 @@ async function rebuildOrdersCache() {
         console.error("❌ Error mapping order:", mapError, order);
         return null;
       }
-    }).filter(o => o !== null);
+    }).filter(o => o !== null));
     
     const response = {
       orders: minimalOrders,
@@ -4216,6 +4216,34 @@ function jsonAdminOrdersPage(
   };
 }
 
+function orderCanonicalKey(order: any): string {
+  const byNumber = String(order?.orderNumber || "").trim();
+  if (byNumber) return `num:${byNumber.toLowerCase()}`;
+  const byId = String(order?.id || "").trim();
+  if (byId) return `id:${byId}`;
+  return "";
+}
+
+function orderFreshness(order: any): number {
+  return Math.max(
+    new Date(order?.updatedAt || 0).getTime() || 0,
+    new Date(order?.createdAt || order?.date || 0).getTime() || 0
+  );
+}
+
+function dedupeOrdersByCanonical(rows: any[]): any[] {
+  const out = new Map<string, any>();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = orderCanonicalKey(row);
+    if (!key) continue;
+    const prev = out.get(key);
+    if (!prev || orderFreshness(row) >= orderFreshness(prev)) {
+      out.set(key, row);
+    }
+  }
+  return [...out.values()];
+}
+
 app.get("/make-server-16010b6f/orders", async (c) => {
   try {
     // Check if client is still connected
@@ -4266,7 +4294,7 @@ app.get("/make-server-16010b6f/orders", async (c) => {
       
       console.log(`📊 Found ${validOrders.length} orders in database`);
       
-      const minimalOrders = validOrders.map(order => {
+      const minimalOrders = dedupeOrdersByCanonical(validOrders.map(order => {
         try {
           return {
             id: order.id || '',
@@ -4295,7 +4323,7 @@ app.get("/make-server-16010b6f/orders", async (c) => {
           console.error("❌ Error mapping order:", mapError);
           return null;
         }
-      }).filter(o => o !== null);
+      }).filter(o => o !== null));
       
       const response = {
         orders: minimalOrders,
@@ -4425,7 +4453,7 @@ app.get("/make-server-16010b6f/user/:userId/orders", async (c) => {
         dedup.set(canonical, order);
       }
     }
-    const finalSortedOrders = [...dedup.values()].sort((a: any, b: any) => {
+    const finalSortedOrders = dedupeOrdersByCanonical([...dedup.values()]).sort((a: any, b: any) => {
       const dateA = new Date(a.createdAt || a.date || 0).getTime();
       const dateB = new Date(b.createdAt || b.date || 0).getTime();
       return dateB - dateA;
@@ -4745,7 +4773,10 @@ app.post("/make-server-16010b6f/orders", async (c) => {
       }
     }
 
-    const id = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const deterministicOrderId = requestedOrderNumber
+      ? `order_ref_${encodeURIComponent(requestedOrderNumber)}`
+      : "";
+    const id = deterministicOrderId || `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
     // 🚨 STEP 1: VALIDATE STOCK AVAILABILITY BEFORE ORDER CREATION (variant-aware — same as PUT deduct)
     if (body.items && Array.isArray(body.items)) {

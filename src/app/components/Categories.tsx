@@ -79,8 +79,12 @@ export function Categories() {
       console.log("📣 Vendor data updated, reloading categories...");
       loadCategories(true);
     };
+    const handleCategoryRealtime = () => {
+      loadCategories(true);
+    };
     
     window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
+    window.addEventListener('categoryDataUpdated', handleCategoryRealtime as EventListener);
     
     // Register cache invalidation
     const clearCache = () => {
@@ -93,6 +97,7 @@ export function Categories() {
     
     return () => {
       window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
+      window.removeEventListener('categoryDataUpdated', handleCategoryRealtime as EventListener);
     };
   }, []);
 

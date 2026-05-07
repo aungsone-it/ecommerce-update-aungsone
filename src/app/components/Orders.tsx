@@ -749,8 +749,12 @@ export function Orders({
       .channel("super-admin-orders-kv-realtime")
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f", filter: "key=like.order:%" },
-        schedule
+        { event: "*", schema: "public", table: "kv_store_16010b6f" },
+        (payload: any) => {
+          const key = String(payload?.new?.key || payload?.old?.key || "");
+          if (!key.startsWith("order:")) return;
+          schedule();
+        }
       )
       .subscribe();
     return () => {

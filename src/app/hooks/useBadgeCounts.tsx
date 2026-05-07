@@ -234,6 +234,31 @@ export function useBadgeCounts() {
     return () => window.removeEventListener('admin-chat-unread-updated', onChatUnread);
   }, []);
 
+  /**
+   * Realtime bridge hookup:
+   * - `adminOrdersUpdated` comes from order mutations + Supabase live pulse bridge.
+   * - `vendorDataUpdated` captures vendor application/admin vendor-domain changes.
+   * We debounce force-refresh to avoid request bursts when many row events arrive together.
+   */
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queueForceRefresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void loadBadgeCounts(true);
+      }, 180);
+    };
+
+    window.addEventListener('adminOrdersUpdated', queueForceRefresh as EventListener);
+    window.addEventListener('vendorDataUpdated', queueForceRefresh as EventListener);
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('adminOrdersUpdated', queueForceRefresh as EventListener);
+      window.removeEventListener('vendorDataUpdated', queueForceRefresh as EventListener);
+    };
+  }, [loadBadgeCounts]);
+
   return {
     badgeCounts,
     loading,

@@ -12,6 +12,10 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  private static autoRecoverKey(pathname: string): string {
+    return `migoo-eb-auto-recover:${pathname}`;
+  }
+
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -23,9 +27,33 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: any) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+    try {
+      const pathname = window.location.pathname;
+      const isPaymentReturnPath =
+        /\/summary$/.test(pathname) || pathname === "/kpay/return";
+      if (!isPaymentReturnPath) return;
+      const key = ErrorBoundary.autoRecoverKey(pathname);
+      if (sessionStorage.getItem(key) === "1") return;
+      // One-shot self-heal for transient first-return runtime hiccups after KBZ app handoff.
+      sessionStorage.setItem(key, "1");
+      setTimeout(() => {
+        window.location.reload();
+      }, 120);
+    } catch {
+      /* ignore */
+    }
   }
 
   render() {
+    // Successful render clears one-shot recover marker so future genuine errors still surface.
+    try {
+      const key = ErrorBoundary.autoRecoverKey(window.location.pathname);
+      if (!this.state.hasError) {
+        sessionStorage.removeItem(key);
+      }
+    } catch {
+      /* ignore */
+    }
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center p-4">

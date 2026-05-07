@@ -273,6 +273,7 @@ export function Checkout({
   const [summaryResolving, setSummaryResolving] = useState(
     () => /\/summary$/.test(location.pathname) && !initialSummarySnapshot
   );
+  const pwaFinalizeInFlightRef = useRef<Set<string>>(new Set());
   const summaryPath = useMemo(() => {
     const path = location.pathname;
     if (path.endsWith("/summary") || path === "/summary" || path === "/store/summary") {
@@ -614,12 +615,14 @@ export function Checkout({
     setSummaryResolving(true);
     let cancelled = false;
     (async () => {
+      let currentOrderId = "";
       try {
         const orderId =
           summaryQueryOrderId ||
           (typeof pwaPendingContext?.merchantOrderId === "string"
             ? pwaPendingContext.merchantOrderId
             : "");
+        currentOrderId = orderId;
         let response: Response | null = null;
         if (orderId) {
           const orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(orderId)}`;
@@ -637,6 +640,10 @@ export function Checkout({
               merchantOrderId: orderId,
             });
             if (session.status === "paid") {
+              if (pwaFinalizeInFlightRef.current.has(orderId)) {
+                return;
+              }
+              pwaFinalizeInFlightRef.current.add(orderId);
               const d = pwaPendingContext.draftOrder;
               const finalizePayload: any = {
                 orderNumber: orderId,
@@ -692,6 +699,7 @@ export function Checkout({
               response = await fetch(orderEndpoint, {
                 headers: { Authorization: `Bearer ${publicAnonKey}` },
               });
+              pwaFinalizeInFlightRef.current.delete(orderId);
             }
           }
         } else if (effectiveUser?.id) {
@@ -780,6 +788,9 @@ export function Checkout({
       } catch {
         // leave checkout as-is when server read fails
       } finally {
+        if (currentOrderId) {
+          pwaFinalizeInFlightRef.current.delete(currentOrderId);
+        }
         if (!cancelled) setSummaryResolving(false);
       }
     })();

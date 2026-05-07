@@ -2501,8 +2501,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       .channel(`storefront-user-orders-kv-${orderApiUserId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f", filter: "key=like.order:%" },
-        refreshOrders
+        { event: "*", schema: "public", table: "kv_store_16010b6f" },
+        (payload: any) => {
+          const key = String(payload?.new?.key || payload?.old?.key || "");
+          if (!key.startsWith("order:")) return;
+          refreshOrders();
+        }
       )
       .subscribe();
     return () => {
@@ -5423,7 +5427,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     navigate("/products");
                     setViewMode("all-products");
                   }}
-                  className="bg-amber-600 hover:bg-amber-700"
+                  className="bg-black text-white hover:bg-zinc-900"
                 >
                   Start Shopping
                 </Button>
