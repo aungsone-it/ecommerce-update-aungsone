@@ -1425,8 +1425,15 @@ export function VendorStoreView({
         }
       )
       .subscribe();
+    const onCustomerOrdersUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (String(detail?.userId || "").trim() !== String(uid).trim()) return;
+      refreshOrders();
+    };
+    window.addEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
     return () => {
       window.clearTimeout(debounce);
+      window.removeEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
       void supabase.removeChannel(channel);
     };
   }, [user?.id]);

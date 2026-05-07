@@ -26,6 +26,7 @@ import { supabase } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { QRCodeCanvas } from "qrcode.react";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
+import { invalidateCustomerOrdersCache } from "../utils/module-cache";
 import {
   type KPaySession,
   buildMerchantOrderId,
@@ -150,6 +151,21 @@ type KPayPwaPendingContext = {
     }>;
   };
 };
+
+function notifyCustomerOrdersUpdated(userId: string | null | undefined, reason = "order-created"): void {
+  const uid = typeof userId === "string" ? userId.trim() : "";
+  if (!uid) return;
+  try {
+    invalidateCustomerOrdersCache(uid);
+    window.dispatchEvent(
+      new CustomEvent("customerOrdersUpdated", {
+        detail: { userId: uid, reason, at: Date.now() },
+      })
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
 const CHECKOUT_LATEST_SUMMARY_KEY = "checkout-summary:latest";
 
@@ -649,7 +665,7 @@ export function Checkout({
               const d = pwaPendingContext.draftOrder;
               const finalizePayload: any = {
                 orderNumber: orderId,
-                userId: d.userId ?? null,
+                userId: d.userId ?? effectiveUser?.id ?? null,
                 customer: d.customerName || d.shippingInfo?.fullName || "",
                 customerName: d.customerName || d.shippingInfo?.fullName || "",
                 email: d.email || "",
@@ -763,6 +779,10 @@ export function Checkout({
         setConfirmedDiscount(discount);
         setShippingInfo(shipping);
         setPaymentMethod(normalizeCheckoutPaymentMethod(o?.paymentMethod));
+        notifyCustomerOrdersUpdated(
+          String(o?.userId ?? effectiveUser?.id ?? "").trim() || null,
+          "kpay-return-hydrated"
+        );
         setStep("success");
         setLoading(false);
         try {
@@ -1398,6 +1418,7 @@ export function Checkout({
 
     const placedUserId = resolveUserIdFromRecord(effectiveUser);
     if (placedUserId) {
+      notifyCustomerOrdersUpdated(placedUserId, "checkout-order-created");
       onOrderPlacedSuccess?.({ userId: placedUserId });
     }
 

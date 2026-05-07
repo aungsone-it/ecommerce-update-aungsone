@@ -9,6 +9,27 @@ import {
   type KPaySession,
 } from "../utils/kpayClient";
 
+function resolveSummaryPathFromOrigin(originPath?: string): string {
+  const raw = String(originPath || "").trim();
+  if (!raw) return "/summary";
+  let pathOnly = raw.split("?")[0] || "";
+  // Handle older/stale pending contexts that may store full URLs instead of pathname.
+  if (/^https?:\/\//i.test(pathOnly)) {
+    try {
+      const u = new URL(pathOnly);
+      pathOnly = u.pathname || "";
+    } catch {
+      pathOnly = "";
+    }
+  }
+  if (!pathOnly.startsWith("/")) return "/summary";
+  if (/\/checkout(?:\/success)?$/i.test(pathOnly)) {
+    return pathOnly.replace(/\/checkout(?:\/success)?$/i, "/summary");
+  }
+  if (/\/summary$/i.test(pathOnly)) return pathOnly;
+  return "/summary";
+}
+
 /**
  * KPay PWA return landing page.
  *
@@ -139,6 +160,19 @@ export function KPayReturnPage() {
   const isPaid = state.kind === "ok" && state.session.status === "paid";
   const isFailed = state.kind === "ok" && state.session.status === "failed";
   const isPending = state.kind === "ok" && state.session.status === "pending";
+  const summaryTarget = useMemo(() => {
+    const base = resolveSummaryPathFromOrigin(pendingContext?.originPath);
+    const params = new URLSearchParams();
+    if (merchantOrderId) params.set("merch_order_id", merchantOrderId);
+    if (prepayIdFromUrl) params.set("prepay_id", prepayIdFromUrl);
+    const qs = params.toString();
+    return qs ? `${base}?${qs}` : base;
+  }, [pendingContext?.originPath, merchantOrderId, prepayIdFromUrl]);
+
+  useEffect(() => {
+    if (!isPaid) return;
+    navigate(summaryTarget, { replace: true });
+  }, [isPaid, navigate, summaryTarget]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center p-4">

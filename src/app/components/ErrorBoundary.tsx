@@ -12,6 +12,10 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
+  private static isPaymentReturnPath(pathname: string): boolean {
+    return /\/summary$/.test(pathname) || pathname === "/kpay/return";
+  }
+
   private static autoRecoverKey(pathname: string): string {
     return `migoo-eb-auto-recover:${pathname}`;
   }
@@ -29,8 +33,7 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
     try {
       const pathname = window.location.pathname;
-      const isPaymentReturnPath =
-        /\/summary$/.test(pathname) || pathname === "/kpay/return";
+      const isPaymentReturnPath = ErrorBoundary.isPaymentReturnPath(pathname);
       if (!isPaymentReturnPath) return;
       const key = ErrorBoundary.autoRecoverKey(pathname);
       if (sessionStorage.getItem(key) === "1") return;
@@ -55,6 +58,13 @@ export class ErrorBoundary extends Component<Props, State> {
       /* ignore */
     }
     if (this.state.hasError) {
+      const onPaymentReturnPath =
+        typeof window !== "undefined" &&
+        ErrorBoundary.isPaymentReturnPath(window.location.pathname);
+      if (onPaymentReturnPath) {
+        // Keep payment return UX clean: avoid flashing the generic error card while one-shot auto-recovery reload runs.
+        return <div className="min-h-screen bg-white" />;
+      }
       return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center p-4">
           <div className="max-w-2xl w-full text-center">

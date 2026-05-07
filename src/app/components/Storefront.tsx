@@ -2509,8 +2509,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         }
       )
       .subscribe();
+    const onCustomerOrdersUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string }>).detail;
+      if (String(detail?.userId || "").trim() !== String(orderApiUserId).trim()) return;
+      refreshOrders();
+    };
+    window.addEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
     return () => {
       window.clearTimeout(debounce);
+      window.removeEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
       void supabase.removeChannel(channel);
     };
   }, [orderApiUserId, selectedOrder, viewMode]);
