@@ -4719,6 +4719,32 @@ app.post("/make-server-16010b6f/orders", async (c) => {
   try {
     console.log("📦 Creating new order...");
     const body = await c.req.json();
+    const requestedOrderNumber =
+      String(body?.orderNumber || body?.kpay?.merchantOrderId || "").trim();
+
+    // Idempotency guard: prevent duplicate creates for the same logical order (especially PWA retries).
+    if (requestedOrderNumber) {
+      const mappedId = await withTimeout(kv.get(`order_num:${requestedOrderNumber}`), 5000).catch(() => null);
+      if (typeof mappedId === "string" && mappedId.trim()) {
+        const existingByMap = await withTimeout(kv.get(`order:${mappedId}`), 5000).catch(() => null);
+        if (existingByMap && typeof existingByMap === "object") {
+          return c.json({ success: true, order: existingByMap, duplicateIgnored: true }, 200);
+        }
+      }
+      // Backward-compatible fallback for older rows without order_num mapping
+      const rows = await withTimeout(kv.getByPrefix("order:"), 10000).catch(() => []);
+      const existing = (Array.isArray(rows) ? rows : []).find(
+        (o: any) => String(o?.orderNumber || "").trim() === requestedOrderNumber
+      );
+      if (existing && typeof existing === "object") {
+        const eid = String((existing as any).id || "").trim();
+        if (eid) {
+          await withTimeout(kv.set(`order_num:${requestedOrderNumber}`, eid), 5000).catch(() => {});
+        }
+        return c.json({ success: true, order: existing, duplicateIgnored: true }, 200);
+      }
+    }
+
     const id = `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
     // 🚨 STEP 1: VALIDATE STOCK AVAILABILITY BEFORE ORDER CREATION (variant-aware — same as PUT deduct)
@@ -4838,6 +4864,9 @@ app.post("/make-server-16010b6f/orders", async (c) => {
     console.log(`💾 Saving order ${orderData.orderNumber} with total: ${orderData.total}, discount: ${orderData.discount}, couponCode: ${orderData.couponCode || 'NONE'} (inventory unchanged until ready-to-ship/fulfilled)`);
     
     await withTimeout(kv.set(`order:${id}`, orderData), 5000);
+    if (requestedOrderNumber) {
+      await withTimeout(kv.set(`order_num:${requestedOrderNumber}`, id), 5000).catch(() => {});
+    }
     
     // Clear cache when order is created
     serverCache.delete('orders_minimal');
@@ -5018,6 +5047,9 @@ app.delete("/make-server-16010b6f/orders/:id", async (c) => {
       // Fallback to deleting only resolved key if scan fails.
     }
     await withTimeout(kv.mdel([...deleteKeys]), 10000);
+    if (canonicalOrderNumber) {
+      await withTimeout(kv.del(`order_num:${canonicalOrderNumber}`), 5000).catch(() => {});
+    }
     
     // Clear cache when order is deleted
     serverCache.delete('orders_minimal');

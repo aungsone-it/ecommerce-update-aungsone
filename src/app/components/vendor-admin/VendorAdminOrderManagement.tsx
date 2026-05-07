@@ -75,6 +75,7 @@ import {
 } from "../../utils/normalizeOrderBadgeStatus";
 import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
 import { adminOrdersUpdatedStorageKey } from "../../utils/adminOrdersRealtime";
+import { supabase } from "../../contexts/AuthContext";
 
 function formatMmk(n: number): string {
   return `${Math.round(n).toLocaleString()} MMK`;
@@ -347,6 +348,29 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
       window.removeEventListener("storage", onStorage);
     };
   }, []);
+
+  // Realtime websocket refresh: vendor admin orders table updates instantly on order mutations.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const bump = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        setOrdersRefreshTick((n) => n + 1);
+      }, 240);
+    };
+    const channel = supabase
+      .channel(`vendor-admin-orders-kv-realtime-${vendorId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kv_store_16010b6f", filter: "key=like.order:%" },
+        bump
+      )
+      .subscribe();
+    return () => {
+      window.clearTimeout(debounce);
+      void supabase.removeChannel(channel);
+    };
+  }, [vendorId]);
 
   useEffect(() => {
     let cancelled = false;

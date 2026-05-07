@@ -51,6 +51,7 @@ import {
   type AdminOrdersPagePayload,
 } from "../utils/module-cache";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
+import { supabase } from "../contexts/AuthContext";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
@@ -732,6 +733,29 @@ export function Orders({
     return () => {
       window.removeEventListener("adminOrdersUpdated", bump);
       window.removeEventListener("storage", onStorage);
+    };
+  }, [loadOrders]);
+
+  // Realtime websocket refresh: admin orders table updates instantly on create/update/delete.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        void loadOrders(true);
+      }, 240);
+    };
+    const channel = supabase
+      .channel("super-admin-orders-kv-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kv_store_16010b6f", filter: "key=like.order:%" },
+        schedule
+      )
+      .subscribe();
+    return () => {
+      window.clearTimeout(debounce);
+      void supabase.removeChannel(channel);
     };
   }, [loadOrders]);
 
