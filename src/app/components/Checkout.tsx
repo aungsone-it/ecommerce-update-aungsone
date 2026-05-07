@@ -533,9 +533,9 @@ export function Checkout({
     }
   }, [appliedCoupon]);
   
-  // Calculate final total with discount
+  // Calculate discount first; payable subtotal is computed from the same source as UI summary
+  // so payment amount won't briefly drop to 0 while cart context is rehydrating.
   const discountAmount = appliedCoupon?.campaign?.discountAmount || 0;
-  const finalTotal = Math.max(totalPrice - discountAmount, 0);
 
   const [orderNumber, setOrderNumber] = useState(initialSummarySnapshot?.orderNumber || "");
   const [confirmedItems, setConfirmedItems] = useState<any[]>(initialSummarySnapshot?.items || []);
@@ -571,6 +571,8 @@ export function Checkout({
 
   const summaryDisplayItems = items.length > 0 ? items : miniSummaryItems;
   const summaryDisplayTotal = items.length > 0 ? totalPrice : miniSummaryTotal;
+  const payableSubtotal = Math.max(Number(summaryDisplayTotal || 0), 0);
+  const finalTotal = Math.max(payableSubtotal - discountAmount, 0);
 
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
@@ -964,7 +966,7 @@ export function Checkout({
               customerName: shippingInfo.fullName,
               email: orderEmail,
               phone: shippingInfo.phone,
-              subtotal: totalPrice,
+              subtotal: payableSubtotal,
               total: finalTotal,
               discount: discountAmount,
               couponCode: appliedCoupon?.campaign?.code || null,
@@ -1203,7 +1205,7 @@ export function Checkout({
             ? "KPay (PWA)"
             : "Bank Transfer",
         total: finalTotal,
-        subtotal: totalPrice,
+        subtotal: payableSubtotal,
         discount: discountAmount,
         date: new Date().toISOString(),
         vendor: vendorName || storeName, // 🔥 Add vendor name to order
