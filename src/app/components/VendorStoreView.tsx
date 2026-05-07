@@ -3504,6 +3504,32 @@ export function VendorStoreView({
       );
       setQuantity(1);
       if (overrides?.buyNow) {
+        // Seed checkout mini summary immediately so Buy Now never flashes empty summary
+        // when route remount happens before cart context rehydrates.
+        try {
+          const checkoutPathOnly = String(checkoutPath || "/checkout").split("?")[0] || "/checkout";
+          const miniKey = `checkout-mini-summary:${checkoutPathOnly}`;
+          localStorage.setItem(
+            miniKey,
+            JSON.stringify({
+              items: [
+                {
+                  id: cartId,
+                  sku,
+                  name: product.name,
+                  price: Number(price) || 0,
+                  image: image || "",
+                  quantity: Number(qty) || 1,
+                  productId: product.id,
+                },
+              ],
+              total: (Number(price) || 0) * (Number(qty) || 1),
+              savedAt: new Date().toISOString(),
+            })
+          );
+        } catch {
+          /* ignore localStorage failures */
+        }
         setCartOpen(false);
         navigate(checkoutPath);
       } else if (typeof window !== "undefined" && window.innerWidth >= 768) {
