@@ -109,6 +109,12 @@ type CheckoutMiniSummaryCache = {
   savedAt: string;
 };
 
+type CheckoutBuyNowOverride = {
+  items: any[];
+  total: number;
+  savedAt: string;
+};
+
 type KPayPwaPendingContext = {
   merchantOrderId?: string;
   prepayId?: string;
@@ -168,6 +174,24 @@ function notifyCustomerOrdersUpdated(userId: string | null | undefined, reason =
 }
 
 const CHECKOUT_LATEST_SUMMARY_KEY = "checkout-summary:latest";
+
+function consumeCheckoutBuyNowOverride(key: string): CheckoutBuyNowOverride | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CheckoutBuyNowOverride;
+    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return null;
+    localStorage.removeItem(key); // one-shot; prevents stale override on later normal checkouts
+    return {
+      items: parsed.items,
+      total: Number(parsed.total || 0),
+      savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
 
 function readCheckoutMiniSummaryCache(key: string): CheckoutMiniSummaryCache | null {
   if (typeof window === "undefined") return null;
@@ -231,6 +255,10 @@ export function Checkout({
   const { items, totalPrice, clearCart } = useCart();
   const checkoutMiniCacheKey = useMemo(
     () => `checkout-mini-summary:${location.pathname}`,
+    [location.pathname]
+  );
+  const checkoutBuyNowOverrideKey = useMemo(
+    () => `checkout-buy-now:${location.pathname}`,
     [location.pathname]
   );
   const initialMiniSummaryCache = useMemo(
@@ -565,6 +593,9 @@ export function Checkout({
   const [miniSummaryTotal, setMiniSummaryTotal] = useState<number>(
     () => Number(initialMiniSummaryCache?.total || 0)
   );
+  const [buyNowOverride] = useState<CheckoutBuyNowOverride | null>(
+    () => consumeCheckoutBuyNowOverride(checkoutBuyNowOverrideKey)
+  );
 
   useEffect(() => {
     if (Array.isArray(items) && items.length > 0) {
@@ -585,8 +616,18 @@ export function Checkout({
     }
   }, [items, totalPrice, checkoutMiniCacheKey]);
 
-  const summaryDisplayItems = items.length > 0 ? items : miniSummaryItems;
-  const summaryDisplayTotal = items.length > 0 ? totalPrice : miniSummaryTotal;
+  const checkoutItems = buyNowOverride?.items?.length
+    ? buyNowOverride.items
+    : items.length > 0
+      ? items
+      : miniSummaryItems;
+  const checkoutSubtotal = buyNowOverride?.items?.length
+    ? Number(buyNowOverride.total || 0)
+    : items.length > 0
+      ? totalPrice
+      : miniSummaryTotal;
+  const summaryDisplayItems = checkoutItems;
+  const summaryDisplayTotal = checkoutSubtotal;
   const payableSubtotal = Math.max(Number(summaryDisplayTotal || 0), 0);
   const finalTotal = Math.max(payableSubtotal - discountAmount, 0);
 
@@ -995,7 +1036,7 @@ export function Checkout({
               vendor: vendorName || storeName,
               vendorId: vendorId || undefined,
               shippingInfo: { ...shippingInfo },
-              items: items.map((item) => ({
+              items: checkoutItems.map((item) => ({
                 productId: item.productId || item.id,
                 sku: item.sku,
                 name: item.name || item.sku,
@@ -1185,7 +1226,7 @@ export function Checkout({
     }
 
     // 🔥 SAVE items and total BEFORE clearing cart
-    setConfirmedItems(items);
+    setConfirmedItems(checkoutItems);
     setConfirmedTotal(finalTotal);
     setConfirmedOrderNote(orderNote);
     setConfirmedCoupon(appliedCoupon);
@@ -1233,7 +1274,7 @@ export function Checkout({
         couponCode: appliedCoupon?.campaign?.code || null,
         couponId: appliedCoupon?.campaign?.id || null,
         couponDiscount: discountAmount,
-        items: items.map((item) => ({
+        items: checkoutItems.map((item) => ({
           productId: item.productId || item.id,
           sku: item.sku,
           name: item.name || item.sku,
@@ -1429,7 +1470,7 @@ export function Checkout({
     try {
       const snapshot: CheckoutSummarySnapshot = {
         orderNumber: orderNum,
-        items: items,
+        items: checkoutItems,
         total: finalTotal,
         orderNote,
         coupon: appliedCoupon,

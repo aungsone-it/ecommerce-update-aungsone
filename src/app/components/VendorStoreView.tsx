@@ -3509,24 +3509,27 @@ export function VendorStoreView({
         try {
           const checkoutPathOnly = String(checkoutPath || "/checkout").split("?")[0] || "/checkout";
           const miniKey = `checkout-mini-summary:${checkoutPathOnly}`;
+          const buyNowKey = `checkout-buy-now:${checkoutPathOnly}`;
+          const oneItemPayload = {
+            items: [
+              {
+                id: cartId,
+                sku,
+                name: product.name,
+                price: Number(price) || 0,
+                image: image || "",
+                quantity: Number(qty) || 1,
+                productId: product.id,
+              },
+            ],
+            total: (Number(price) || 0) * (Number(qty) || 1),
+            savedAt: new Date().toISOString(),
+          };
           localStorage.setItem(
             miniKey,
-            JSON.stringify({
-              items: [
-                {
-                  id: cartId,
-                  sku,
-                  name: product.name,
-                  price: Number(price) || 0,
-                  image: image || "",
-                  quantity: Number(qty) || 1,
-                  productId: product.id,
-                },
-              ],
-              total: (Number(price) || 0) * (Number(qty) || 1),
-              savedAt: new Date().toISOString(),
-            })
+            JSON.stringify(oneItemPayload)
           );
+          localStorage.setItem(buyNowKey, JSON.stringify(oneItemPayload));
         } catch {
           /* ignore localStorage failures */
         }
