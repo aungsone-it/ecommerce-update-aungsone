@@ -800,6 +800,290 @@ function queryPayloadCandidates(params: {
   return [{ signCollection, requestBody }];
 }
 
+type KPayRefundResult =
+  | {
+      ok: true;
+      alreadyRefunded: boolean;
+      merchantOrderId: string;
+      refundRequestNo: string;
+      refundAmount: string;
+      refundState: "success" | "processing";
+      providerStatus: string;
+      endpointUsed?: string;
+      rawResponse?: AnyRecord;
+    }
+  | {
+      ok: false;
+      merchantOrderId: string;
+      refundRequestNo: string;
+      refundAmount: string;
+      message: string;
+      status?: number;
+      endpoint?: string;
+      details?: AnyRecord;
+      networkError?: string;
+    };
+
+function refundEndpointCandidates(baseUrl: string): string[] {
+  const primary = text(resolveEnv("KPAY_PATH_REFUND", "KPAY_REFUND_PATH")) || "/payment/gateway/uat/refund";
+  const candidates = [
+    primary,
+    "/payment/gateway/uat/refund",
+    "/pgw/uat/refund",
+    "/payment/gateway/refund",
+    "/pgw/refund",
+    "/payment/gateway/uat/order/refund",
+  ];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  if (text(baseUrl)) {
+    for (const p of candidates) {
+      try {
+        const url = new URL(p, baseUrl).toString();
+        if (!seen.has(url)) {
+          seen.add(url);
+          out.push(url);
+        }
+      } catch {
+        // ignore malformed endpoint candidate
+      }
+    }
+  }
+  // Official KBZ UAT/Prod fallback from docs:
+  // UAT:  https://api-uat.kbzpay.com:18008/payment/gateway/uat/refund
+  // Prod: https://api.kbzpay.com:8008/payment/gateway/refund
+  const official = [
+    "https://api-uat.kbzpay.com:18008/payment/gateway/uat/refund",
+    "https://api.kbzpay.com:8008/payment/gateway/refund",
+  ];
+  for (const url of official) {
+    if (!seen.has(url)) {
+      seen.add(url);
+      out.push(url);
+    }
+  }
+  return out;
+}
+
+function refundPayloadCandidates(params: {
+  appId: string;
+  merchCode: string;
+  merchantOrderId: string;
+  refundAmount: string;
+  refundRequestNo: string;
+  refundReason: string;
+  subType: string;
+  subIdentifierType: string;
+  subIdentifier: string;
+}): PayloadPair[] {
+  const nonce = crypto.randomUUID().replaceAll("-", "");
+  const ts = String(Math.floor(Date.now() / 1000));
+  const methodCandidates = ["kbz.payment.refund"];
+  const pairs: PayloadPair[] = [];
+  for (const method of methodCandidates) {
+    const bizContent: AnyRecord = {
+      appid: params.appId,
+      merch_code: params.merchCode,
+      merch_order_id: params.merchantOrderId,
+      sub_type: params.subType,
+      sub_identifier_type: params.subIdentifierType,
+      sub_identifier: params.subIdentifier,
+      refund_amount: params.refundAmount,
+      refund_request_no: params.refundRequestNo,
+      refund_reason: params.refundReason,
+    };
+    const signCollection: AnyRecord = {
+      appid: params.appId,
+      merch_code: params.merchCode,
+      merch_order_id: params.merchantOrderId,
+      method,
+      sub_type: params.subType,
+      sub_identifier_type: params.subIdentifierType,
+      sub_identifier: params.subIdentifier,
+      nonce_str: nonce,
+      timestamp: ts,
+      refund_amount: params.refundAmount,
+      refund_request_no: params.refundRequestNo,
+      refund_reason: params.refundReason,
+      version: "1.0",
+    };
+    const requestBody: AnyRecord = {
+      timestamp: ts,
+      method,
+      nonce_str: nonce,
+      sign_type: "SHA256",
+      version: "1.0",
+      biz_content: bizContent,
+    };
+    pairs.push({ signCollection, requestBody });
+  }
+  return pairs;
+}
+
+function refundStatusFrom(payload: AnyRecord): string {
+  const data = providerData(payload);
+  const wrapped = asRecord(payload.Response);
+  const status = text(
+    data.refund_status ||
+      data.refundStatus ||
+      wrapped.refund_status ||
+      wrapped.refundStatus ||
+      payload.refund_status ||
+      payload.refundStatus
+  ).toUpperCase();
+  return status;
+}
+
+export async function refundKPayOrder(params: {
+  merchantOrderId: string;
+  amount: unknown;
+  reason?: string;
+  refundRequestNo?: string;
+}): Promise<KPayRefundResult> {
+  const merchantOrderId = text(params.merchantOrderId);
+  if (!merchantOrderId) {
+    return {
+      ok: false,
+      merchantOrderId: "",
+      refundRequestNo: "",
+      refundAmount: "",
+      message: "merchantOrderId is required for refund",
+    };
+  }
+  let refundAmount = "";
+  try {
+    refundAmount = normalizeAmountMMK(params.amount);
+  } catch {
+    return {
+      ok: false,
+      merchantOrderId,
+      refundRequestNo: "",
+      refundAmount: "",
+      message: "Invalid refund amount",
+    };
+  }
+
+  const refundRequestNo = text(params.refundRequestNo) || `RFND-${merchantOrderId}-${Date.now()}`;
+  const cfg = kpayConfig();
+  if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
+    return {
+      ok: false,
+      merchantOrderId,
+      refundRequestNo,
+      refundAmount,
+      message: "KPay gateway is not configured for refund",
+    };
+  }
+
+  const existingTxn = (await kv.get(`kpay_txn:${merchantOrderId}`)) as AnyRecord | null;
+  const previousRefund = asRecord(existingTxn?.refund);
+  if (text(previousRefund.status).toLowerCase() === "success") {
+    return {
+      ok: true,
+      alreadyRefunded: true,
+      merchantOrderId,
+      refundRequestNo: text(previousRefund.refundRequestNo) || refundRequestNo,
+      refundAmount: text(previousRefund.amount) || refundAmount,
+      refundState: "success",
+      providerStatus: text(previousRefund.providerStatus) || "REFUNDED",
+      endpointUsed: text(previousRefund.endpointUsed),
+      rawResponse: asRecord(previousRefund.rawResponse),
+    };
+  }
+
+  const subType = text(resolveEnv("KPAY_REFUND_SUB_TYPE")) || "5000";
+  const subIdentifierType = text(resolveEnv("KPAY_REFUND_SUB_IDENTIFIER_TYPE")) || "04";
+  const subIdentifier = text(resolveEnv("KPAY_REFUND_SUB_IDENTIFIER")) || "20006";
+
+  const endpoints = refundEndpointCandidates(cfg.baseUrl);
+  const payloads = refundPayloadCandidates({
+    appId: cfg.appId,
+    merchCode: cfg.merchCode,
+    merchantOrderId,
+    refundAmount,
+    refundRequestNo,
+    refundReason: text(params.reason) || "Order cancelled by admin",
+    subType,
+    subIdentifierType,
+    subIdentifier,
+  });
+
+  const provider = await tryProviderVariants({
+    endpoints,
+    payloads,
+    signKey: cfg.signKey,
+    timeoutMs: cfg.timeoutMs,
+    wrapRequest: cfg.wrapRequest,
+    extraHeaders: buildProviderHeaders(cfg),
+  });
+
+  if (!provider.success) {
+    const last = provider.attempts[provider.attempts.length - 1];
+    const now = nowIso();
+    await kv.set(`kpay_txn:${merchantOrderId}`, {
+      ...(existingTxn || {}),
+      merchantOrderId,
+      refund: {
+        status: "failed",
+        refundRequestNo,
+        amount: refundAmount,
+        failedAt: now,
+        endpointUsed: last?.endpoint || "",
+        networkError: last?.networkError || "",
+        details: asRecord(last?.details),
+      },
+      updatedAt: now,
+    });
+    return {
+      ok: false,
+      merchantOrderId,
+      refundRequestNo,
+      refundAmount,
+      message: "KPay refund request failed",
+      status: last?.status || 502,
+      endpoint: last?.endpoint || "",
+      details: asRecord(last?.details),
+      networkError: last?.networkError,
+    };
+  }
+
+  const providerStatus = providerStatusFrom(provider.body);
+  const refundGatewayStatus = refundStatusFrom(provider.body);
+  const refundState: "success" | "processing" =
+    refundGatewayStatus === "REFUND_SUCCESS" ? "success" : "processing";
+  const now = nowIso();
+  await kv.set(`kpay_txn:${merchantOrderId}`, {
+    ...(existingTxn || {}),
+    merchantOrderId,
+    status: refundState === "success" ? "refunded" : "pending",
+    providerStatus: providerStatus || text(existingTxn?.providerStatus),
+    refund: {
+      status: refundState,
+      refundRequestNo,
+      amount: refundAmount,
+      refundedAt: refundState === "success" ? now : "",
+      acceptedAt: now,
+      providerStatus,
+      refundStatus: refundGatewayStatus,
+      endpointUsed: provider.endpoint,
+      rawResponse: provider.body,
+    },
+    updatedAt: now,
+  });
+
+  return {
+    ok: true,
+    alreadyRefunded: false,
+    merchantOrderId,
+    refundRequestNo,
+    refundAmount,
+    refundState,
+    providerStatus,
+    endpointUsed: provider.endpoint,
+    rawResponse: provider.body,
+  };
+}
+
 async function tryProviderVariants(args: {
   endpoints: string[];
   payloads: PayloadPair[];

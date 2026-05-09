@@ -7,7 +7,14 @@ import blogEngagementApp from "./blog_engagement_routes.tsx";
 import customerApp from "./customer_routes.tsx";
 import userApp from "./user_routes.tsx";
 import { createPaymentIntent, verifyPayment } from "./stripe_routes.tsx";
-import { createKPayQr, getKPayStatus, handleKPayWebhook, startKPayPwa, handleKPayPwaReturn } from "./kpay_routes.tsx";
+import {
+  createKPayQr,
+  getKPayStatus,
+  handleKPayWebhook,
+  startKPayPwa,
+  handleKPayPwaReturn,
+  refundKPayOrder,
+} from "./kpay_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import {
   collectProductImageRefs,
@@ -4315,6 +4322,10 @@ app.get("/make-server-16010b6f/orders", async (c) => {
             deliveryService: order.deliveryService,
             deliveryServiceLogo: order.deliveryServiceLogo,
             inventoryDeducted: order.inventoryDeducted === true,
+            refundStatus: String(order?.kpay?.refund?.status || "").trim().toLowerCase(),
+            refundRequestNo: String(order?.kpay?.refund?.refundRequestNo || "").trim(),
+            refundAmount: Number(order?.kpay?.refund?.amount || 0) || 0,
+            refundedAt: String(order?.kpay?.refund?.refundedAt || order?.kpay?.refund?.failedAt || "").trim(),
             date: order.date || order.createdAt || new Date().toISOString(),
             createdAt: order.createdAt || new Date().toISOString(),
             updatedAt: order.updatedAt || new Date().toISOString(),
@@ -4373,6 +4384,51 @@ app.get("/make-server-16010b6f/orders/:id", async (c) => {
   } catch (error) {
     console.error("❌ Error fetching order:", error);
     return c.json({ error: "Failed to fetch order" }, 500);
+  }
+});
+
+app.get("/make-server-16010b6f/orders/:id/refund-status", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const resolved = await resolveOrderStorage(id);
+    if (!resolved) {
+      return c.json({ error: "Order not found" }, 404);
+    }
+    const { record, orderKvId } = resolved;
+    const merchantOrderId = String(
+      record?.kpay?.merchantOrderId || record?.orderNumber || orderKvId || ""
+    ).trim();
+    const txn = merchantOrderId
+      ? ((await withTimeout(kv.get(`kpay_txn:${merchantOrderId}`), 5000)) as any)
+      : null;
+    const orderRefund = record?.kpay?.refund || null;
+    const txnRefund = txn?.refund || null;
+    const merged = txnRefund || orderRefund || null;
+    return c.json({
+      success: true,
+      orderId: orderKvId,
+      orderNumber: record?.orderNumber || "",
+      merchantOrderId,
+      paymentMethod: record?.paymentMethod || "",
+      paymentStatus: record?.paymentStatus || "",
+      status: record?.status || "",
+      refund: merged
+        ? {
+            status: String(merged.status || "").toLowerCase() || "unknown",
+            refundRequestNo: merged.refundRequestNo || "",
+            amount: Number(merged.amount || 0) || 0,
+            providerStatus: merged.providerStatus || "",
+            endpointUsed: merged.endpointUsed || "",
+            refundedAt: merged.refundedAt || "",
+            failedAt: merged.failedAt || "",
+            networkError: merged.networkError || "",
+            details: merged.details || {},
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching refund status:", error);
+    return c.json({ error: "Failed to fetch refund status" }, 500);
   }
 });
 
@@ -4935,10 +4991,69 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     const wasCancelled = prevNorm === "cancelled";
     const isNowCancelled = newNorm === "cancelled";
     const items = existingOrder.items && Array.isArray(existingOrder.items) ? existingOrder.items : [];
+    const paymentStatus = String(existingOrder.paymentStatus || "").toLowerCase();
+    const kpayStatus = String(existingOrder?.kpay?.status || "").toLowerCase();
+    const isPaidOrder = paymentStatus === "paid" || kpayStatus === "paid";
+    const isKPayOrder =
+      String(existingOrder.paymentMethod || "").toLowerCase().includes("kpay") ||
+      Boolean(existingOrder?.kpay?.merchantOrderId);
+    let refundResult:
+      | null
+      | {
+          ok: true;
+          alreadyRefunded: boolean;
+          refundState: "success" | "processing";
+          merchantOrderId: string;
+          refundRequestNo: string;
+          refundAmount: string;
+          providerStatus: string;
+          endpointUsed?: string;
+        } = null;
 
     let nextInventoryFlag: boolean | undefined = existingOrder.inventoryDeducted;
     let inventoryRestored = false;
     let inventoryDeducted = false;
+
+    // If admin is cancelling a paid KPay order, force refund first (idempotent).
+    if (!wasCancelled && isNowCancelled && isPaidOrder && isKPayOrder) {
+      const merchantOrderId = String(
+        existingOrder?.kpay?.merchantOrderId || existingOrder.orderNumber || orderKvId || ""
+      ).trim();
+      const refund = await refundKPayOrder({
+        merchantOrderId,
+        amount: existingOrder.total,
+        reason: "Order cancelled by admin",
+      });
+      if (!refund.ok) {
+        return c.json(
+          {
+            success: false,
+            error: "KPay refund failed",
+            message: refund.message,
+            refund: {
+              merchantOrderId: refund.merchantOrderId,
+              refundRequestNo: refund.refundRequestNo,
+              amount: refund.refundAmount,
+              status: refund.status || 502,
+              endpoint: refund.endpoint || "",
+              networkError: refund.networkError || "",
+              details: refund.details || {},
+            },
+          },
+          400
+        );
+      }
+      refundResult = {
+        ok: true,
+        alreadyRefunded: refund.alreadyRefunded,
+        refundState: refund.refundState,
+        merchantOrderId: refund.merchantOrderId,
+        refundRequestNo: refund.refundRequestNo,
+        refundAmount: refund.refundAmount,
+        providerStatus: refund.providerStatus,
+        endpointUsed: refund.endpointUsed,
+      };
+    }
 
     // 1) Cancel → restore only if inventory had already been reduced (legacy checkout deduct or admin commit)
     if (!wasCancelled && isNowCancelled && items.length > 0 && physicallyReducedInventory(existingOrder)) {
@@ -5015,6 +5130,32 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
       id: orderKvId,
       updatedAt: new Date().toISOString(),
       inventoryDeducted: nextInventoryFlag,
+      paymentStatus:
+        refundResult && isNowCancelled && refundResult.refundState === "success"
+          ? "refunded"
+          : (body.paymentStatus ?? existingOrder.paymentStatus),
+      kpay:
+        refundResult && isNowCancelled
+          ? {
+              ...(existingOrder?.kpay || {}),
+              ...(body?.kpay || {}),
+              merchantOrderId: refundResult.merchantOrderId,
+              status: refundResult.refundState === "success" ? "refunded" : "pending_refund",
+              refund: {
+                status: refundResult.alreadyRefunded
+                  ? "already_refunded"
+                  : refundResult.refundState === "success"
+                    ? "success"
+                    : "processing",
+                refundRequestNo: refundResult.refundRequestNo,
+                amount: refundResult.refundAmount,
+                providerStatus: refundResult.providerStatus,
+                endpointUsed: refundResult.endpointUsed || "",
+                refundedAt: refundResult.refundState === "success" ? new Date().toISOString() : "",
+                acceptedAt: new Date().toISOString(),
+              },
+            }
+          : (body?.kpay ?? existingOrder?.kpay),
     };
     
     await withTimeout(kv.set(storageKey, updatedOrder), 5000);

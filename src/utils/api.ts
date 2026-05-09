@@ -137,6 +137,55 @@ export const ordersApi = {
   },
 
   /**
+   * Get normalized refund status/log for an order.
+   */
+  getRefundStatus: async (
+    id: string
+  ): Promise<
+    ApiResponse<{
+      orderId: string;
+      orderNumber: string;
+      merchantOrderId: string;
+      paymentMethod: string;
+      paymentStatus: string;
+      status: string;
+      refund: {
+        status: string;
+        refundRequestNo: string;
+        amount: number;
+        providerStatus: string;
+        endpointUsed: string;
+        refundedAt: string;
+        failedAt: string;
+        networkError: string;
+        details: Record<string, unknown>;
+      } | null;
+    }>
+  > => {
+    return apiClient.getWithRetry<
+      ApiResponse<{
+        orderId: string;
+        orderNumber: string;
+        merchantOrderId: string;
+        paymentMethod: string;
+        paymentStatus: string;
+        status: string;
+        refund: {
+          status: string;
+          refundRequestNo: string;
+          amount: number;
+          providerStatus: string;
+          endpointUsed: string;
+          refundedAt: string;
+          failedAt: string;
+          networkError: string;
+          details: Record<string, unknown>;
+        } | null;
+      }>
+    >(`/orders/${id}/refund-status`);
+  },
+
+  /**
    * Create a new order
    */
   create: async (orderData: Partial<Order>): Promise<ApiResponse<Order>> => {

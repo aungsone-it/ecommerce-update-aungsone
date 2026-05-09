@@ -120,6 +120,10 @@ interface OrderItem {
   }[];
   /** Mirrors server order payload — false until fulfilled/ready-to-ship deducts stock */
   inventoryDeducted?: boolean;
+  refundStatus?: "success" | "already_refunded" | "processing" | "failed" | "";
+  refundRequestNo?: string;
+  refundAmount?: number;
+  refundedAt?: string;
 }
 
 type PendingOrderStatusDraft = {
@@ -417,6 +421,37 @@ const getPaymentBadge = (status: PaymentStatus | string) => {
   );
 };
 
+const getRefundBadge = (status?: string) => {
+  const key = String(status || "").trim().toLowerCase();
+  if (!key) return null;
+  if (key === "success" || key === "already_refunded") {
+    return (
+      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[11px]">
+        {key === "already_refunded" ? "Refund Already Done" : "Refund Success"}
+      </Badge>
+    );
+  }
+  if (key === "failed") {
+    return (
+      <Badge variant="secondary" className="bg-rose-100 text-rose-700 border-rose-200 text-[11px]">
+        Refund Failed
+      </Badge>
+    );
+  }
+  if (key === "processing") {
+    return (
+      <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+        Refund Processing
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-200 text-[11px]">
+      Refund {key}
+    </Badge>
+  );
+};
+
 const getShippingBadge = (status: ShippingStatus | string) => {
   const variants = {
     pending: { color: "bg-slate-100 text-slate-700 border-slate-200" },
@@ -476,6 +511,13 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
       ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
     ],
     inventoryDeducted: order.inventoryDeducted,
+    refundStatus:
+      (String(order.refundStatus || order.kpay?.refund?.status || "")
+        .trim()
+        .toLowerCase() as OrderItem["refundStatus"]) || "",
+    refundRequestNo: order.refundRequestNo || order.kpay?.refund?.refundRequestNo || "",
+    refundAmount: Number(order.refundAmount || order.kpay?.refund?.amount || 0) || 0,
+    refundedAt: order.refundedAt || order.kpay?.refund?.refundedAt || order.kpay?.refund?.failedAt || "",
   }));
 }
 
@@ -1435,7 +1477,12 @@ export function Orders({
                           )}
                         </div>
                       </td>
-                      <td className="py-3 px-4">{getPaymentBadge(order.paymentStatus)}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col gap-1">
+                          {getPaymentBadge(order.paymentStatus)}
+                          {getRefundBadge(order.refundStatus)}
+                        </div>
+                      </td>
                       <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
@@ -1676,6 +1723,14 @@ export function Orders({
                 <div>
                   <p className="text-sm text-slate-500">Payment Status</p>
                   {getPaymentBadge(selectedOrder.paymentStatus)}
+                  {getRefundBadge(selectedOrder.refundStatus)}
+                  {selectedOrder.refundStatus && (
+                    <div className="mt-2 text-xs text-slate-600 space-y-0.5">
+                      {selectedOrder.refundRequestNo && <p>Refund Ref: {selectedOrder.refundRequestNo}</p>}
+                      {!!selectedOrder.refundAmount && <p>Refund Amount: {selectedOrder.refundAmount.toLocaleString()} MMK</p>}
+                      {selectedOrder.refundedAt && <p>Refund Time: {new Date(selectedOrder.refundedAt).toLocaleString()}</p>}
+                    </div>
+                  )}
                 </div>
                 {selectedOrder.deliveryService && (
                   <div className="col-span-2">
