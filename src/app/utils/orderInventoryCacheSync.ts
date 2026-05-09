@@ -10,6 +10,7 @@ import {
   CACHE_KEYS,
   getCachedAdminAllProducts,
   dispatchAdminProductsCachePatched,
+  mergePaginatedAdminProductCachesFromFullProducts,
 } from "./module-cache";
 
 export function normalizeOrderStatus(s: string | undefined): string {
@@ -50,6 +51,65 @@ export type OrderSnapshotForInventory = {
   /** Line ids are parent product ids from checkout; `sku` identifies the variant row when applicable. */
   products: { id: string; quantity: number; sku?: string }[];
 };
+
+/** Normalize line ids for KV/admin cache keys (matches PUT /orders inventory sync). */
+export function toInventorySyncSnapshot(order: {
+  status: string;
+  inventoryDeducted?: boolean;
+  vendor?: string;
+  products?: { id: string; quantity?: number; sku?: string }[];
+}): OrderSnapshotForInventory {
+  return {
+    status: order.status,
+    inventoryDeducted: order.inventoryDeducted,
+    vendor: order.vendor,
+    products: (order.products ?? []).map((p) => ({
+      id: normalizeOrderLineParentProductId(p.id),
+      quantity: p.quantity ?? 1,
+      sku: p.sku,
+    })),
+  };
+}
+
+/** Full refetch + merge + notify — use after order save failure to undo optimistic stock mirrors. */
+export async function refetchAdminProductsInventoryCaches(): Promise<void> {
+  try {
+    await getCachedAdminAllProducts(true);
+  } catch (e) {
+    console.warn("[inventory] refetchAdminProductsInventoryCaches failed:", e);
+  }
+  mergePaginatedAdminProductCachesFromFullProducts();
+  dispatchAdminProductsCachePatched();
+}
+
+/**
+ * After bulk status PUTs succeed — one refetch when cache was empty or any order is non–SECURE vendor;
+ * otherwise merge paginated caches from session full list (optimistic patches already applied).
+ */
+export async function reconcileInventoryAfterBulkOrderStatusSave(
+  snapshots: OrderSnapshotForInventory[],
+  options?: { skipDispatch?: boolean }
+): Promise<void> {
+  const peeked = moduleCache.peek<unknown[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+  const empty = !peeked || !Array.isArray(peeked) || peeked.length === 0;
+  const anyVendor = snapshots.some((o) => !isMainMarketplaceVendorName(o.vendor));
+  if (empty || anyVendor) {
+    try {
+      await getCachedAdminAllProducts(true);
+    } catch (e) {
+      console.warn("[inventory] Bulk order save: full catalog refetch failed:", e);
+    }
+    mergePaginatedAdminProductCachesFromFullProducts();
+    if (!options?.skipDispatch) {
+      dispatchAdminProductsCachePatched();
+    }
+    return;
+  }
+  mergePaginatedAdminProductCachesFromFullProducts();
+  if (!options?.skipDispatch) {
+    dispatchAdminProductsCachePatched();
+  }
+}
 
 /** Main SECURE marketplace — in-memory SKU patch matches server well. Other vendors → refetch `/products`. */
 export function isMainMarketplaceVendorName(vendor: string | undefined): boolean {
@@ -111,12 +171,16 @@ export function syncAdminInventoryCacheAfterOrderStatusChange(
  * - Main marketplace (SECURE): patch session cache only — instant, no full product refetch.
  * - Vendor / other shop: refetch `/products` so variant stock matches server line-item shapes.
  * - Empty admin cache: always refetch once.
+ *
+ * When `optimisticMirrorAlreadyApplied` is true, the client already ran `syncAdminInventoryCacheAfterOrderStatusChange`
+ * before the network returned — do not apply stock deltas again; only merge/dispatch or refetch for vendor/empty cache.
  */
 export async function refreshAdminInventoryAfterOrderStatusPut(
   existingOrder: OrderSnapshotForInventory,
   newStatusRaw: string,
-  options?: { skipDispatch?: boolean }
+  options?: { skipDispatch?: boolean; optimisticMirrorAlreadyApplied?: boolean }
 ): Promise<void> {
+  const already = options?.optimisticMirrorAlreadyApplied === true;
   const peeked = moduleCache.peek<unknown[]>(CACHE_KEYS.ADMIN_PRODUCTS);
   if (!peeked || !Array.isArray(peeked) || peeked.length === 0) {
     try {
@@ -124,6 +188,7 @@ export async function refreshAdminInventoryAfterOrderStatusPut(
     } catch (e) {
       console.warn("[inventory] Admin products refetch after order status update failed:", e);
     }
+    mergePaginatedAdminProductCachesFromFullProducts();
     if (!options?.skipDispatch) {
       dispatchAdminProductsCachePatched();
     }
@@ -138,15 +203,27 @@ export async function refreshAdminInventoryAfterOrderStatusPut(
         "[inventory] Vendor order: refetch failed; applying in-memory mirror",
         e
       );
-      syncAdminInventoryCacheAfterOrderStatusChange(existingOrder, newStatusRaw, {
-        ...options,
-        skipDispatch: true,
-      });
+      if (!already) {
+        syncAdminInventoryCacheAfterOrderStatusChange(existingOrder, newStatusRaw, {
+          ...options,
+          skipDispatch: true,
+        });
+      }
+      mergePaginatedAdminProductCachesFromFullProducts();
       if (!options?.skipDispatch) {
         dispatchAdminProductsCachePatched();
       }
       return;
     }
+    mergePaginatedAdminProductCachesFromFullProducts();
+    if (!options?.skipDispatch) {
+      dispatchAdminProductsCachePatched();
+    }
+    return;
+  }
+
+  if (already) {
+    mergePaginatedAdminProductCachesFromFullProducts();
     if (!options?.skipDispatch) {
       dispatchAdminProductsCachePatched();
     }

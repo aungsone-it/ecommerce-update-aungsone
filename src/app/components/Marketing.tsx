@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import type { DateRange } from "react-day-picker";
 import { useLanguage } from "../contexts/LanguageContext";
-import { Bell, Tag, Percent, Gift, TrendingUp, Plus, Search, Filter, Download, Eye, Edit, Trash2, Copy, Calendar, Users, Target, BarChart3, Clock, CheckCircle, XCircle, Send, Megaphone, Sparkles, AlertCircle, Info, ShoppingCart, Truck, Star, Heart, Zap, Award, Palette, Save, Package, MoreVertical, Upload, Image, ShoppingBag } from "lucide-react";
+import { Bell, Tag, Percent, Gift, TrendingUp, Plus, Filter, Download, Eye, Edit, Trash2, Copy, Calendar, Users, Target, BarChart3, Clock, CheckCircle, XCircle, Send, Megaphone, Sparkles, AlertCircle, Info, ShoppingCart, Truck, Star, Heart, Zap, Award, Palette, Save, Package, MoreVertical, Upload, Image, ShoppingBag } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -1341,13 +1342,12 @@ export function Marketing() {
               
               {/* Filter Row */}
               <div className="flex flex-wrap items-center gap-2">
-                <div className="relative flex-1 min-w-[200px] max-w-[300px]">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
+                <div className="flex-1 min-w-[200px] max-w-[300px]">
+                  <AdminClearableSearchInput
                     placeholder={t('marketing.searchPlaceholder')}
-                    className="pl-10 border-slate-300 h-9"
+                    className="border-slate-300 h-9"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onValueChange={setSearchQuery}
                   />
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>

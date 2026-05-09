@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  Search,
   Filter,
   Download,
   MoreVertical,
@@ -38,6 +37,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
@@ -923,13 +923,12 @@ export function CustomersEnhanced({
           {/* Filters & Search */}
           <div className="bg-white border-b border-slate-200 px-6 py-4 flex-shrink-0">
             <div className="flex items-center gap-3">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input
+              <div className="flex-1">
+                <AdminClearableSearchInput
                   placeholder="Search customers by name, email, or tags..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 bg-slate-50"
+                  onValueChange={setSearchQuery}
+                  className="bg-slate-50"
                 />
               </div>
               <Select value={filterStatus} onValueChange={setFilterStatus}>

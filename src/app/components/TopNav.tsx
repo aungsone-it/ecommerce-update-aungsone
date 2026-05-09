@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { POLLING_INTERVALS_MS } from "../../constants";
-import { Bell, Search, Menu, Check, Clock, Store, Package, Star, ShoppingCart, AlertCircle, User, Edit, Trash2, LogOut, MessageSquare } from "lucide-react";
+import { Bell, Menu, Check, Clock, Store, Package, Star, ShoppingCart, AlertCircle, User, Edit, Trash2, LogOut, MessageSquare } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Input } from "./ui/input";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { ScrollArea } from "./ui/scroll-area";
 import {
@@ -299,22 +299,19 @@ export function TopNav({
         {/* Search - Centered (hidden for restricted staff roles) */}
         <div className="flex-1 flex justify-center max-w-2xl mx-auto">
           {showAdminGlobalSearch ? (
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder="Search… (on Products, press Enter to load matches)"
-                className="pl-10 bg-slate-50 border-slate-200 focus:bg-white w-full"
-                value={adminGlobalSearch ?? ""}
-                onChange={(e) => onAdminGlobalSearchChange?.(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    onAdminGlobalSearchSubmit?.();
-                  }
-                }}
-                aria-label="Search admin portal"
-              />
-            </div>
+            <AdminClearableSearchInput
+              placeholder="Search… (on Products, press Enter to load matches)"
+              className="bg-slate-50 border-slate-200 focus:bg-white w-full"
+              value={adminGlobalSearch ?? ""}
+              onValueChange={(v) => onAdminGlobalSearchChange?.(v)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onAdminGlobalSearchSubmit?.();
+                }
+              }}
+              aria-label="Search admin portal"
+            />
           ) : (
             <div className="w-full" aria-hidden />
           )}

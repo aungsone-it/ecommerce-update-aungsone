@@ -19,11 +19,11 @@ import {
   AlertCircle,
   RefreshCw,
   Plus,
-  Search,
   Check,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -1634,19 +1634,14 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
           </DialogHeader>
           
           {/* Search Box */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              type="text"
-              placeholder="Search products by name, SKU, or category..."
-              value={searchProductQuery}
-              onChange={(e) => {
-                setSearchProductQuery(e.target.value);
-                setAssignPickerPage(1);
-              }}
-              className="pl-10"
-            />
-          </div>
+          <AdminClearableSearchInput
+            placeholder="Search products by name, SKU, or category..."
+            value={searchProductQuery}
+            onValueChange={(v) => {
+              setSearchProductQuery(v);
+              setAssignPickerPage(1);
+            }}
+          />
 
           {/* Products List - Scrollable */}
           <div className="flex-1 overflow-y-auto min-h-0 scrollbar-dark">

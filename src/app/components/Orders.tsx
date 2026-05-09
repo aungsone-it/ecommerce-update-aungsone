@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { DateRange } from "react-day-picker";
-import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -43,11 +44,7 @@ import { useLanguage } from "../contexts/LanguageContext";
 import {
   getCachedAdminOrdersPage,
   invalidateAdminOrdersCache,
-  dispatchAdminProductsCachePatched,
-  getCachedAdminAllProducts,
   ADMIN_ORDERS_PAGE_DEFAULT,
-  moduleCache,
-  CACHE_KEYS as MODULE_CACHE_KEYS,
   type AdminOrdersPagePayload,
 } from "../utils/module-cache";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
@@ -57,7 +54,9 @@ import {
   refreshAdminInventoryAfterOrderStatusPut,
   syncAdminInventoryCacheAfterOrderStatusChange,
   normalizeOrderLineParentProductId,
-  isMainMarketplaceVendorName,
+  toInventorySyncSnapshot,
+  refetchAdminProductsInventoryCaches,
+  reconcileInventoryAfterBulkOrderStatusSave,
 } from "../utils/orderInventoryCacheSync";
 import {
   normalizeAdminOrderStatusForBadge,
@@ -532,7 +531,7 @@ export function Orders({
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false); // For printing multiple invoices
-  const [orderSaveState, setOrderSaveState] = useState<Record<string, "saving" | "saved">>({});
+  const [orderSaveState, setOrderSaveState] = useState<Record<string, "saved">>({});
   const savedStateTimersRef = useRef<Record<string, number>>({});
 
   const clearSavedStateTimer = useCallback((orderId: string) => {
@@ -542,20 +541,6 @@ export function Orders({
       delete savedStateTimersRef.current[orderId];
     }
   }, []);
-
-  const markOrderSaving = useCallback(
-    (orderIds: string[]) => {
-      setOrderSaveState((prev) => {
-        const next = { ...prev };
-        for (const id of orderIds) {
-          clearSavedStateTimer(id);
-          next[id] = "saving";
-        }
-        return next;
-      });
-    },
-    [clearSavedStateTimer]
-  );
 
   const markOrderSaved = useCallback(
     (orderIds: string[]) => {
@@ -870,12 +855,23 @@ export function Orders({
     const orderIds = [...selectedOrders];
     setSelectedOrders([]);
     for (const id of orderIds) pendingOrderStatusDrafts.set(id, { status: bulkStatus, at: Date.now() });
-    markOrderSaving(orderIds);
-    
+    markOrderSaved(orderIds);
+
     // Show instant feedback
     toast.success(`${updatedCount} orders updated instantly!`, { duration: 2000 });
     onOrderUpdate?.();
-    
+
+    // Instant inventory / Products + Inventory pages — mirror stock before network completes
+    for (const oid of orderIds) {
+      const o = previousOrders.find((x) => x.id === oid);
+      if (o) {
+        syncAdminInventoryCacheAfterOrderStatusChange(toInventorySyncSnapshot(o), bulkStatus, {
+          skipDispatch: true,
+        });
+      }
+    }
+    dispatchAdminProductsCachePatched();
+
     // Sync with server in background
     try {
       await Promise.all(
@@ -884,7 +880,6 @@ export function Orders({
         )
       );
       console.log(`✅ ${updatedCount} orders synced to server: ${bulkStatus}`);
-      markOrderSaved(orderIds);
       for (const orderId of orderIds) {
         void broadcastOrderStatusUpdate({
           orderId,
@@ -892,58 +887,13 @@ export function Orders({
           updatedAt: new Date().toISOString(),
         });
       }
-      void (async () => {
-        const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
-        const anyVendorShopOrder = orderIds.some((id) => {
-          const o = previousOrders.find((x) => x.id === id);
-          return o && !isMainMarketplaceVendorName(o.vendor);
-        });
-        if (!peeked || !Array.isArray(peeked) || peeked.length === 0) {
-          try {
-            await getCachedAdminAllProducts(true);
-          } catch (e) {
-            console.warn("[inventory] Bulk status: could not refresh admin products", e);
-          }
-        } else if (anyVendorShopOrder) {
-          try {
-            await getCachedAdminAllProducts(true);
-          } catch (e) {
-            console.warn("[inventory] Bulk status: refetch failed; applying in-memory mirror", e);
-            for (const orderId of orderIds) {
-              const o = previousOrders.find((x) => x.id === orderId);
-              if (o) {
-                syncAdminInventoryCacheAfterOrderStatusChange(
-                  {
-                    status: o.status,
-                    inventoryDeducted: o.inventoryDeducted,
-                    vendor: o.vendor,
-                    products: o.products,
-                  },
-                  bulkStatus,
-                  { skipDispatch: true }
-                );
-              }
-            }
-          }
-        } else {
-          for (const orderId of orderIds) {
-            const o = previousOrders.find((x) => x.id === orderId);
-            if (o) {
-              syncAdminInventoryCacheAfterOrderStatusChange(
-                {
-                  status: o.status,
-                  inventoryDeducted: o.inventoryDeducted,
-                  vendor: o.vendor,
-                  products: o.products,
-                },
-                bulkStatus,
-                { skipDispatch: true }
-              );
-            }
-          }
-        }
-        dispatchAdminProductsCachePatched();
-      })();
+      const bulkSnapshots = orderIds
+        .map((id) => previousOrders.find((x) => x.id === id))
+        .filter((row): row is (typeof previousOrders)[number] => row != null)
+        .map((row) => toInventorySyncSnapshot(row));
+      void reconcileInventoryAfterBulkOrderStatusSave(bulkSnapshots).catch((e) =>
+        console.warn("[inventory] Bulk reconcile failed:", e)
+      );
       invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error
@@ -956,6 +906,7 @@ export function Orders({
             : "Unknown error";
       if (ordersSurfaceActiveRef.current) {
         setOrders(previousOrders);
+        void refetchAdminProductsInventoryCaches();
         toast.error("Failed to save changes. Updates reverted.", {
           description: detail,
           duration: 8000,
@@ -988,8 +939,9 @@ export function Orders({
       )
     );
     pendingOrderStatusDrafts.set(orderId, { status: newStatus, at: Date.now() });
-    markOrderSaving([orderId]);
-    
+    // Optimistic row feedback: show "Saved" immediately; server sync continues in background.
+    markOrderSaved([orderId]);
+
     // Show instant feedback with stock restoration notice
     if (wasNotCancelled && isNowCancelled) {
       toast.success("Order cancelled! Stock has been restored.", { 
@@ -1000,14 +952,17 @@ export function Orders({
       toast.success("Status updated!", { duration: 1500 });
     }
     onOrderUpdate?.();
-    
+
+    if (orderBeingUpdated) {
+      syncAdminInventoryCacheAfterOrderStatusChange(toInventorySyncSnapshot(orderBeingUpdated), newStatus);
+    }
+
     // Sync with server in background
     try {
       const result = (await ordersApi.update(orderId, { status: newStatus })) as {
         order?: { inventoryDeducted?: boolean };
       };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
-      markOrderSaved([orderId]);
       void broadcastOrderStatusUpdate({
         orderId,
         status: newStatus,
@@ -1015,16 +970,12 @@ export function Orders({
       });
       if (orderBeingUpdated) {
         void refreshAdminInventoryAfterOrderStatusPut(
-            {
-              status: orderBeingUpdated.status,
-              inventoryDeducted: orderBeingUpdated.inventoryDeducted,
-              vendor: orderBeingUpdated.vendor,
-              products: orderBeingUpdated.products,
-            },
-            newStatus
-          ).catch((invErr) => {
-            console.warn("[inventory] post-status cache sync failed:", invErr);
-          });
+          toInventorySyncSnapshot(orderBeingUpdated),
+          newStatus,
+          { optimisticMirrorAlreadyApplied: true }
+        ).catch((invErr) => {
+          console.warn("[inventory] post-status cache sync failed:", invErr);
+        });
       }
       if (result?.order?.inventoryDeducted !== undefined && ordersSurfaceActiveRef.current) {
         setOrders((prev) =>
@@ -1046,6 +997,7 @@ export function Orders({
       const stillHere = ordersSurfaceActiveRef.current;
       if (stillHere) {
         setOrders(previousOrders);
+        void refetchAdminProductsInventoryCaches();
         toast.error("Failed to save status. Changes reverted.", {
           description: detail,
           duration: 8000,
@@ -1291,13 +1243,12 @@ export function Orders({
               </div>
               
               <div className="flex flex-col sm:flex-row gap-3">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <Input
+                <div className="flex-1">
+                  <AdminClearableSearchInput
                     placeholder="Search orders..."
-                    className="pl-10 border-slate-300"
+                    className="border-slate-300"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onValueChange={setSearchQuery}
                   />
                 </div>
                 <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as "newest" | "oldest")}>
@@ -1479,9 +1430,6 @@ export function Orders({
                       <td className="py-3 px-4">
                         <div className="flex flex-col gap-1">
                           {getStatusBadge(order.status)}
-                          {orderSaveState[order.id] === "saving" && (
-                            <span className="text-[11px] text-amber-600">Updating...</span>
-                          )}
                           {orderSaveState[order.id] === "saved" && (
                             <span className="text-[11px] text-emerald-600">Saved</span>
                           )}

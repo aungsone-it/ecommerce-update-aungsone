@@ -13,7 +13,6 @@ import {
 } from "../utils/module-cache";
 import { formatNumber } from "../../utils/formatNumber";
 import {
-  Search,
   Filter,
   Mail,
   Phone,
@@ -32,6 +31,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card } from "./ui/card";
@@ -1138,15 +1138,11 @@ export function Vendor({
         <div className="flex flex-col sm:flex-row gap-4">
           {/* Search */}
           <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder={t('vendor.searchPlaceholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            <AdminClearableSearchInput
+              placeholder={t('vendor.searchPlaceholder')}
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+            />
           </div>
 
           {/* Status Filter */}

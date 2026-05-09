@@ -3,7 +3,6 @@ import { CHAT_SCROLL_DEBOUNCE_MS, POLLING_INTERVALS_MS } from "../../constants";
 import imageCompression from "browser-image-compression";
 import {
   MessageSquare,
-  Search,
   Send,
   Paperclip,
   Star,
@@ -20,6 +19,7 @@ import {
   ArrowUp,
   ArrowDown,
 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Badge } from "./ui/badge";
@@ -784,15 +784,12 @@ export function Chat({
         <div className="w-80 h-full min-h-0 border-r border-slate-200 flex flex-col bg-slate-50">
           {/* Search */}
           <div className="p-4 border-b border-slate-200 bg-white space-y-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder="Search conversations..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 bg-slate-50"
-              />
-            </div>
+            <AdminClearableSearchInput
+              placeholder="Search conversations..."
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+              className="bg-slate-50"
+            />
             <div className="flex items-center justify-between">
               <span className="text-xs text-slate-500">
                 {sortedConversations.length} conversation{sortedConversations.length !== 1 ? 's' : ''}

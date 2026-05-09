@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import {
   MapPin,
   Truck,
-  Search,
   MoreVertical,
   Edit,
   Trash2,
@@ -10,6 +9,7 @@ import {
   Globe,
   Wallet,
 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { Card, CardContent, CardHeader } from "./ui/card";
@@ -237,13 +237,11 @@ export function Logistics() {
       <Card>
         <CardHeader>
           <div className="flex gap-4 flex-col sm:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-              <Input
+            <div className="flex-1">
+              <AdminClearableSearchInput
                 placeholder="Search delivery partners by name..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                onValueChange={setSearchQuery}
               />
             </div>
             <Select value={selectedRegion} onValueChange={setSelectedRegion}>

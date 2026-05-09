@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
-import { Video, VideoOff, Mic, MicOff, MonitorPlay, X, Plus, Eye, Heart, Share2, ShoppingBag, Send, Trash2, UserPlus, Radio, Search, MessageCircle } from "lucide-react";
+import { Video, VideoOff, Mic, MicOff, MonitorPlay, X, Plus, Eye, Heart, Share2, ShoppingBag, Send, Trash2, UserPlus, Radio, MessageCircle } from "lucide-react";
 
 interface Collaborator {
   id: string;
@@ -376,16 +377,12 @@ export function LiveStreamMulti() {
             </Button>
           </div>
           <div className="mb-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                value={collaboratorSearch}
-                onChange={(e) => setCollaboratorSearch(e.target.value)}
-                placeholder="Search collaborators..."
-                className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
+            <AdminClearableSearchInput
+              placeholder="Search collaborators..."
+              value={collaboratorSearch}
+              onValueChange={setCollaboratorSearch}
+              className="border-slate-300 rounded-lg text-sm focus-visible:ring-purple-500"
+            />
           </div>
           <div className="grid grid-cols-3 gap-4">
             {getAvailableCollaborators()

@@ -150,7 +150,10 @@ export const ordersApi = {
     id: string,
     orderData: Partial<Order>
   ): Promise<ApiResponse<Order>> => {
-    return apiClient.putWithRetry<ApiResponse<Order>>(`/orders/${id}`, orderData);
+    return apiClient.putWithRetry<ApiResponse<Order>>(`/orders/${id}`, orderData, {
+      /** Survives tab refresh/navigation so status changes persist server-side. */
+      keepalive: true,
+    });
   },
 
   /**

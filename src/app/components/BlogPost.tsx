@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, MoreVertical, Eye, MessageCircle, Heart, Calendar, Globe, Lock, Loader2 } from "lucide-react";
+import { Plus, MoreVertical, Eye, MessageCircle, Heart, Calendar, Globe, Lock, Loader2 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 import {
   Select,
   SelectContent,
@@ -231,13 +231,12 @@ export function BlogPost() {
         <div className="px-6 py-4">
           <div className="flex flex-col gap-4">
             {/* Search */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
+            <div className="flex-1 max-w-md">
+              <AdminClearableSearchInput
                 placeholder="Search blog posts..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 h-10"
+                onValueChange={setSearchQuery}
+                className="h-10"
               />
             </div>
 

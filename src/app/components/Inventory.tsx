@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { Search, Package, Loader2, RefreshCw, Plus, Minus, Check, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from "react";
+import { Package, Loader2, RefreshCw, Plus, Minus, Check, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card } from "./ui/card";
@@ -14,7 +15,6 @@ import {
   dispatchAdminProductsCachePatched,
   ADMIN_PRODUCTS_BROADCAST_CHANNEL,
 } from "../utils/module-cache";
-import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 
 interface InventoryItem {
@@ -92,13 +92,26 @@ function productsToInventoryItems(products: any[]): InventoryItem[] {
   return inventoryData;
 }
 
-export function Inventory() {
+export type InventoryProps = {
+  /** Draft text in the search box — lifted to AdminPage so it persists across admin navigation. */
+  searchQuery: string;
+  onSearchQueryChange: (value: string) => void;
+  /** Server `q` for `getCachedAdminProductsPage` — set on Enter only (same pattern as ProductList). */
+  committedSearchQuery: string;
+  onCommittedSearchQueryChange: (value: string) => void;
+};
+
+export function Inventory({
+  searchQuery,
+  onSearchQueryChange,
+  committedSearchQuery,
+  onCommittedSearchQueryChange,
+}: InventoryProps) {
   const { t } = useLanguage();
-  const [searchQuery, setSearchQuery] = useState("");
-  const debouncedSearch = useAdminPortalDebouncedSearch(searchQuery);
+  const inventoryEverHydratedRef = useRef(false);
+  const [inventoryHydrated, setInventoryHydrated] = useState(false);
 
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -110,19 +123,35 @@ export function Inventory() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, itemsPerPage]);
+  }, [committedSearchQuery, itemsPerPage]);
+
+  const commitSearchFromInput = useCallback(() => {
+    onCommittedSearchQueryChange(searchQuery.trim());
+  }, [searchQuery, onCommittedSearchQueryChange]);
+
+  const onSearchKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitSearchFromInput();
+      }
+    },
+    [commitSearchFromInput]
+  );
 
   const loadInventory = useCallback(
-    async (forceRefresh = false, retryCount = 0) => {
-      let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
-      showLoadingTimer = setTimeout(() => setLoading(true), 300);
-      setListRefreshing(forceRefresh);
+    async (forceRefresh = false, opts?: { retryCount?: number; silent?: boolean }) => {
+      const retryCount = opts?.retryCount ?? 0;
+      const silent = opts?.silent === true;
+      if (inventoryEverHydratedRef.current && !silent) {
+        setListRefreshing(true);
+      }
       try {
         const payload = await getCachedAdminProductsPage(
           {
             page: currentPage,
             pageSize: itemsPerPage,
-            q: debouncedSearch,
+            q: committedSearchQuery,
             status: "all",
             tab: "all",
             vendor: "all",
@@ -138,7 +167,7 @@ export function Inventory() {
         setHasMoreProducts(!!payload.hasMore);
         if (inventoryData.length === 0 && payload.total === 0) {
           toast.error("No products found! Please create products first in the Products section.");
-        } else if (forceRefresh && retryCount === 0) {
+        } else if (forceRefresh && retryCount === 0 && !silent) {
           toast.success(
             `Showing ${inventoryData.length} stock row(s) from ${products.length} product(s) on this page`
           );
@@ -147,19 +176,17 @@ export function Inventory() {
         console.error("❌ Error loading inventory:", error);
         if (retryCount < 2) {
           await new Promise((r) => setTimeout(r, 1500));
-          if (showLoadingTimer) clearTimeout(showLoadingTimer);
-          setLoading(false);
-          return loadInventory(forceRefresh, retryCount + 1);
+          return loadInventory(forceRefresh, { retryCount: retryCount + 1, silent });
         }
         toast.error("Failed to load inventory. Check console for details.");
         setInventoryItems([]);
       } finally {
-        if (showLoadingTimer) clearTimeout(showLoadingTimer);
-        setLoading(false);
         setListRefreshing(false);
+        inventoryEverHydratedRef.current = true;
+        setInventoryHydrated(true);
       }
     },
-    [currentPage, itemsPerPage, debouncedSearch]
+    [currentPage, itemsPerPage, committedSearchQuery]
   );
 
   useEffect(() => {
@@ -186,24 +213,24 @@ export function Inventory() {
   const goToNextPage = () => setCurrentPage((prev) => Math.min(totalPages, prev + 1));
 
   useEffect(() => {
-    const refetch = () => void loadInventory(true);
+    const softReload = () => void loadInventory(false, { silent: true });
     const onStorage = (e: StorageEvent) => {
       if (e.key !== adminOrdersUpdatedStorageKey()) return;
-      refetch();
+      softReload();
     };
-    window.addEventListener("migoo-admin-products-cache-patched", refetch);
-    window.addEventListener("adminOrdersUpdated", refetch);
+    window.addEventListener("migoo-admin-products-cache-patched", softReload);
+    window.addEventListener("adminOrdersUpdated", softReload);
     window.addEventListener("storage", onStorage);
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
-      bc.onmessage = () => refetch();
+      bc.onmessage = () => softReload();
     } catch {
       /* ignore */
     }
     return () => {
-      window.removeEventListener("migoo-admin-products-cache-patched", refetch);
-      window.removeEventListener("adminOrdersUpdated", refetch);
+      window.removeEventListener("migoo-admin-products-cache-patched", softReload);
+      window.removeEventListener("adminOrdersUpdated", softReload);
       window.removeEventListener("storage", onStorage);
       bc?.close();
     };
@@ -326,7 +353,7 @@ export function Inventory() {
     setEditValue("");
   };
 
-  if (loading) {
+  if (!inventoryHydrated) {
     return (
       <div className="p-8">
         <div className="mb-6">
@@ -394,7 +421,7 @@ export function Inventory() {
           <Button
             onClick={() => loadInventory(true)}
             variant="outline"
-            disabled={loading && !listRefreshing}
+            disabled={listRefreshing}
             className="border-slate-300"
           >
             {listRefreshing ? (
@@ -458,15 +485,13 @@ export function Inventory() {
       {/* Search */}
       <Card className="mb-4">
         <div className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
-              placeholder="Search by product name or SKU..."
-              className="pl-10 border-slate-300"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
+          <AdminClearableSearchInput
+            placeholder="Search by product name or SKU — press Enter to search"
+            className="border-slate-300"
+            value={searchQuery}
+            onValueChange={onSearchQueryChange}
+            onKeyDown={onSearchKeyDown}
+          />
         </div>
       </Card>
 
@@ -490,7 +515,7 @@ export function Inventory() {
             <tbody className="divide-y divide-slate-200">
               {inventoryItems.length > 0 &&
               visibleInventoryItems.length === 0 &&
-              !loading ? (
+              !listRefreshing ? (
                 <tr>
                   <td
                     colSpan={3}
@@ -675,7 +700,7 @@ export function Inventory() {
         )}
 
         {/* Empty State */}
-        {productTotal === 0 && inventoryItems.length === 0 && !loading && (
+        {productTotal === 0 && inventoryItems.length === 0 && inventoryHydrated && (
           <div className="p-12 text-center">
             <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-slate-900 mb-2">

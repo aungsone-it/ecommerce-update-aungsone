@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Search, X, Upload, ImageIcon } from "lucide-react";
+import { ArrowLeft, X, Upload, ImageIcon } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card } from "./ui/card";
@@ -378,13 +379,11 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
             </div>
             
             {/* Product Search */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
+            <div className="mb-4">
+              <AdminClearableSearchInput
                 placeholder="Search products by name or SKU..."
-                className="pl-10"
                 value={productSearchQuery}
-                onChange={(e) => setProductSearchQuery(e.target.value)}
+                onValueChange={setProductSearchQuery}
               />
             </div>
 

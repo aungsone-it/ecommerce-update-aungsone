@@ -10,7 +10,6 @@ import {
   X,
   Clock,
   Eye,
-  Search,
   Download,
   Users,
   Video,
@@ -23,6 +22,7 @@ import {
   XCircle,
   AlertCircle
 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -794,13 +794,11 @@ export function CollaboratorApplications({ onBack }: CollaboratorApplicationsPro
       {/* Filters */}
       <Card className="p-4 border border-slate-200">
         <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <Input
+          <div className="flex-1">
+            <AdminClearableSearchInput
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onValueChange={setSearchQuery}
               placeholder="Search by name, email, or niche..."
-              className="pl-10"
             />
           </div>
           <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>

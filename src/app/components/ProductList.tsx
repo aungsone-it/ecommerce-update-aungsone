@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Plus,
-  Search,
   Edit,
   Trash2,
   Filter,
@@ -41,6 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { ProductFormPage } from "./ProductFormPage";
 import { StorefrontProductDetail } from "./StorefrontProductDetail";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -199,9 +199,12 @@ export function ProductList({
   ]);
 
   const loadProductPage = useCallback(
-    async (forceRefresh: boolean) => {
-      setLoading(true);
-      setListRefreshing(forceRefresh);
+    async (forceRefresh: boolean, opts?: { silent?: boolean }) => {
+      const silent = opts?.silent === true;
+      if (!silent) {
+        setLoading(true);
+        setListRefreshing(forceRefresh);
+      }
       try {
         const payload = await getCachedAdminProductsPage(
           {
@@ -234,8 +237,8 @@ export function ProductList({
           duration: 5000,
         });
       } finally {
-        setLoading(false);
         setListRefreshing(false);
+        if (!silent) setLoading(false);
       }
     },
     [
@@ -276,17 +279,19 @@ export function ProductList({
   }, []);
 
   useEffect(() => {
-    const h = () => void loadProductPage(true);
+    /** Silent = merged session cache; avoids skeleton blink after order-driven stock patches. */
+    const softReload = () => void loadProductPage(false, { silent: true });
+    const hardReload = () => void loadProductPage(true);
     const onStorage = (e: StorageEvent) => {
       if (e.key !== adminOrdersUpdatedStorageKey()) return;
-      h();
+      hardReload();
     };
-    window.addEventListener("migoo-admin-products-cache-patched", h);
-    window.addEventListener("adminOrdersUpdated", h);
+    window.addEventListener("migoo-admin-products-cache-patched", softReload);
+    window.addEventListener("adminOrdersUpdated", softReload);
     window.addEventListener("storage", onStorage);
     return () => {
-      window.removeEventListener("migoo-admin-products-cache-patched", h);
-      window.removeEventListener("adminOrdersUpdated", h);
+      window.removeEventListener("migoo-admin-products-cache-patched", softReload);
+      window.removeEventListener("adminOrdersUpdated", softReload);
       window.removeEventListener("storage", onStorage);
     };
   }, [loadProductPage]);
@@ -809,14 +814,13 @@ export function ProductList({
                   <Card className="p-4">
                     <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
                       {/* Search */}
-                      <div className="flex-1 relative min-w-[280px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <Input
+                      <div className="flex-1 min-w-[280px]">
+                        <AdminClearableSearchInput
                           placeholder="Search by name or SKU — press Enter to search"
-                          className="pl-10"
                           value={searchQuery}
-                          onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onValueChange={handleSearchInputChange}
                           onKeyDown={onSearchKeyDown}
+                          onClear={() => setCommittedSearchQuery("")}
                         />
                       </div>
                       
@@ -865,14 +869,13 @@ export function ProductList({
                   <Card className="p-4">
                     <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
                       {/* Search */}
-                      <div className="flex-1 relative min-w-[280px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <Input
+                      <div className="flex-1 min-w-[280px]">
+                        <AdminClearableSearchInput
                           placeholder="Search by name or SKU — press Enter to search"
-                          className="pl-10"
                           value={searchQuery}
-                          onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onValueChange={handleSearchInputChange}
                           onKeyDown={onSearchKeyDown}
+                          onClear={() => setCommittedSearchQuery("")}
                         />
                       </div>
                       
@@ -936,14 +939,13 @@ export function ProductList({
                   <Card className="p-4">
                     <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
                       {/* Search */}
-                      <div className="flex-1 relative min-w-[280px]">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <Input
+                      <div className="flex-1 min-w-[280px]">
+                        <AdminClearableSearchInput
                           placeholder="Search by name or SKU — press Enter to search"
-                          className="pl-10"
                           value={searchQuery}
-                          onChange={(e) => handleSearchInputChange(e.target.value)}
+                          onValueChange={handleSearchInputChange}
                           onKeyDown={onSearchKeyDown}
+                          onClear={() => setCommittedSearchQuery("")}
                         />
                       </div>
                       

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Edit, Trash2, Folder, RefreshCw } from "lucide-react";
+import { Plus, Edit, Trash2, Folder, RefreshCw } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Card } from "./ui/card";
@@ -624,15 +625,12 @@ export function Categories() {
       <Card className="mb-4">
         <div className="p-4 flex items-center justify-between gap-4">
           <div className="flex-1 max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input
-                placeholder={t('categories.searchPlaceholder')}
-                className="pl-10 border-slate-300"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+            <AdminClearableSearchInput
+              placeholder={t('categories.searchPlaceholder')}
+              className="border-slate-300"
+              value={searchQuery}
+              onValueChange={setSearchQuery}
+            />
           </div>
           <div className="flex items-center gap-2">
             {categories.length > 0 && (

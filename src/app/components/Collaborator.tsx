@@ -4,7 +4,6 @@ import { CollaboratorForm } from "./CollaboratorForm";
 import { useState } from "react";
 import { useLanguage } from "../contexts/LanguageContext";
 import {
-  Search,
   Plus,
   MoreVertical,
   Mail,
@@ -19,6 +18,7 @@ import {
   Circle,
   FileText,
 } from "lucide-react";
+import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -381,14 +381,12 @@ export function Collaborator() {
       {/* Filters and Search */}
       <Card className="p-4 border border-slate-200">
         <div className="flex flex-col md:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
+          <div className="flex-1">
+            <AdminClearableSearchInput
               placeholder={t('collaborators.searchPlaceholder')}
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-900"
+              onValueChange={setSearchQuery}
+              className="border-slate-200 py-2 rounded-lg focus-visible:ring-slate-900"
             />
           </div>
           <div className="flex gap-2">

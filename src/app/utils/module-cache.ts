@@ -22,7 +22,6 @@ import {
   writePersistedJson,
   PERSISTED_CATALOG_TTL_MS,
   lsAdminProductsPage1Key,
-  lsAdminOrdersPage1Key,
   lsAdminCustomersPage1Key,
   LS_ADMIN_FINANCES_ANALYTICS,
   LS_ADMIN_AUTH_USERS,
@@ -174,6 +173,40 @@ class ModuleCache {
       totalRequests,
       hitRate: totalRequests > 0 ? (this.hits / totalRequests) * 100 : 0,
     };
+  }
+
+  /**
+   * Copy inventory/stock/variants from the full admin products list into each cached paginated page.
+   * Keeps Product + Inventory grids aligned after in-memory stock patches without nuking page caches.
+   */
+  mergePaginatedAdminProductsFromFull(fullListKey: string, pageKeyPrefix: string): void {
+    const full = this.peek<any[]>(fullListKey);
+    if (!full || !Array.isArray(full)) return;
+    const byId = new Map<string, any>();
+    for (const p of full) {
+      if (p && p.id != null) byId.set(String(p.id), p);
+    }
+    for (const key of [...this.cache.keys()]) {
+      if (!key.startsWith(pageKeyPrefix)) continue;
+      const entry = this.cache.get(key);
+      const raw = entry?.data as { products?: any[]; [k: string]: unknown } | undefined;
+      if (!raw || !Array.isArray(raw.products)) continue;
+      const products = raw.products.map((row: any) => {
+        const src = byId.get(String(row.id));
+        if (!src) return row;
+        return {
+          ...row,
+          inventory: src.inventory,
+          stock: src.stock ?? src.inventory ?? row.stock,
+          hasVariants: src.hasVariants ?? row.hasVariants,
+          variants: Array.isArray(src.variants) ? src.variants : row.variants,
+        };
+      });
+      this.cache.set(key, {
+        data: { ...raw, products },
+        timestamp: Date.now(),
+      });
+    }
   }
 }
 
@@ -704,25 +737,8 @@ export async function getCachedAdminOrdersPage(
     sort,
   });
 
-  if (!forceRefresh && page === 1) {
-    const fromLs = readPersistedJson<AdminOrdersPagePayload>(
-      lsAdminOrdersPage1Key({
-        pageSize,
-        qNorm,
-        status,
-        payment,
-        vendor,
-        dateFrom,
-        dateTo,
-        sort,
-      }),
-      PERSISTED_CATALOG_TTL_MS
-    );
-    if (fromLs && Array.isArray(fromLs.orders)) {
-      moduleCache.prime(key, fromLs);
-      return fromLs;
-    }
-  }
+  // Intentionally no localStorage read/write for admin orders page-1: order rows change often; persisted
+  // snapshots caused stale status chips after a full browser reload.
 
   const data = await moduleCache.get(key, () =>
     fetchAdminOrdersPage({
@@ -739,22 +755,6 @@ export async function getCachedAdminOrdersPage(
     }),
     forceRefresh
   );
-
-  if (page === 1 && data && Array.isArray(data.orders)) {
-    writePersistedJson(
-      lsAdminOrdersPage1Key({
-        pageSize,
-        qNorm,
-        status,
-        payment,
-        vendor,
-        dateFrom,
-        dateTo,
-        sort,
-      }),
-      data
-    );
-  }
 
   return data;
 }
@@ -1490,7 +1490,27 @@ export async function getCachedAdminAllProducts(forceRefresh = false) {
 
 export function invalidateAdminAllProductsCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_PRODUCTS);
+  invalidateAdminProductsPaginatedCaches();
+}
+
+/**
+ * Paginated admin product lists (`admin-products-page-*`) + persisted page-1 JSON live separately from
+ * `ADMIN_PRODUCTS`. After order-driven stock patches or realtime bumps, drop these so the next
+ * `getCachedAdminProductsPage` forces a fresh fetch (stale ME005 on Inventory vs Products).
+ */
+export function invalidateAdminProductsPaginatedCaches(): void {
   moduleCache.invalidatePrefix(ADMIN_PRODUCTS_PAGE_CACHE_PREFIX);
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix("migoo-ls-admin-p1-");
+  }
+}
+
+/**
+ * After `ADMIN_PRODUCTS` is patched, push inventory/stock into each cached paginated page + clear p1
+ * localStorage snapshots so list UIs stay consistent **without** wiping session keys (avoids full refetch blink).
+ */
+export function mergePaginatedAdminProductCachesFromFullProducts(): void {
+  moduleCache.mergePaginatedAdminProductsFromFull(CACHE_KEYS.ADMIN_PRODUCTS, ADMIN_PRODUCTS_PAGE_CACHE_PREFIX);
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix("migoo-ls-admin-p1-");
   }
@@ -1533,7 +1553,7 @@ export function patchAdminProductInventoryInCache(
 /** Cross-tab: Inventory in other tabs listens on this channel (session cache is not shared between tabs). */
 export const ADMIN_PRODUCTS_BROADCAST_CHANNEL = "migoo-admin-products-cache";
 
-/** Notify listeners (e.g. Inventory) to re-derive rows from patched ADMIN_PRODUCTS — no network. */
+/** Notify listeners that admin product data changed (paginated rows already merged when applicable). */
 export function dispatchAdminProductsCachePatched(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent("migoo-admin-products-cache-patched"));
@@ -1617,6 +1637,7 @@ export function applyOrderLineStockDeltasToAdminCache(
     if (qty <= 0) continue;
     applyLineItemStockDeltaToAdminCache(it.productId, it.sku, sign * qty);
   }
+  mergePaginatedAdminProductCachesFromFullProducts();
   if (!options?.skipDispatch) {
     dispatchAdminProductsCachePatched();
   }

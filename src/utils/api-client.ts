@@ -20,6 +20,11 @@ const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-
 interface ApiRequestOptions extends RequestInit {
   silent?: boolean;
   timeout?: number;
+  /**
+   * Lets the request finish after navigation/refresh (browser default fetch is aborted on unload).
+   * Only for small bodies (≤64KB per Fetch spec). Use for critical mutations like order status PUT.
+   */
+  keepalive?: boolean;
 }
 
 // ============================================
@@ -85,11 +90,13 @@ async function retryWithBackoff<T>(
 // CORE API REQUEST FUNCTION
 // ============================================
 
+const KEEPALIVE_MAX_BYTES = 64 * 1024;
+
 async function apiRequest<T = any>(
   endpoint: string,
   options: ApiRequestOptions = {}
 ): Promise<T> {
-  const { silent = false, timeout, ...fetchOptions } = options;
+  const { silent = false, timeout, keepalive, ...fetchOptions } = options;
   const url = `${API_BASE_URL}${endpoint}`;
 
   // Prepare headers
@@ -118,6 +125,18 @@ async function apiRequest<T = any>(
   }
 
   try {
+    const bodySize =
+      fetchOptions.body != null
+        ? new Blob([fetchOptions.body as BlobPart]).size
+        : 0;
+    const useKeepalive =
+      keepalive === true && bodySize > 0 && bodySize <= KEEPALIVE_MAX_BYTES;
+    if (keepalive === true && bodySize > KEEPALIVE_MAX_BYTES) {
+      console.warn(
+        `[api-client] keepalive not used for ${endpoint}: body ${bodySize}B exceeds ${KEEPALIVE_MAX_BYTES}B`
+      );
+    }
+
     // Create AbortController for timeout
     const controller = new AbortController();
 
@@ -135,6 +154,7 @@ async function apiRequest<T = any>(
       ...fetchOptions,
       headers,
       signal: controller.signal,
+      ...(useKeepalive ? { keepalive: true } : {}),
     });
 
     clearTimeout(timeoutId);

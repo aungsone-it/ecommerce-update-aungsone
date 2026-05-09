@@ -127,7 +127,17 @@ export function AdminPage() {
   /** Prefill list search when jumping from global search */
   const [vendorSearchPrefill, setVendorSearchPrefill] = useState<{ q: string; t: number } | null>(null);
   const [ordersSearchPrefill, setOrdersSearchPrefill] = useState<{ q: string; t: number } | null>(null);
-  
+  /** Inventory tab — draft + server `q` survive switching admin sections (same idea as ProductList + TopNav search). */
+  const [inventorySearchQuery, setInventorySearchQuery] = useState("");
+  const [inventoryCommittedSearchQuery, setInventoryCommittedSearchQuery] = useState("");
+
+  const handleInventorySearchQueryChange = useCallback((value: string) => {
+    setInventorySearchQuery(value);
+    if (value.trim() === "") {
+      setInventoryCommittedSearchQuery("");
+    }
+  }, []);
+
   const { badgeCounts, loadBadgeCounts, incrementOrdersBadge } = useBadgeCounts();
 
   useAdminFavicon();
@@ -568,7 +578,14 @@ export function AdminPage() {
       case ADMIN_PAGES.CATEGORIES:
         return <Categories />;
       case ADMIN_PAGES.INVENTORY:
-        return <Inventory />;
+        return (
+          <Inventory
+            searchQuery={inventorySearchQuery}
+            onSearchQueryChange={handleInventorySearchQueryChange}
+            committedSearchQuery={inventoryCommittedSearchQuery}
+            onCommittedSearchQueryChange={setInventoryCommittedSearchQuery}
+          />
+        );
       case ADMIN_PAGES.ORDERS:
         return (
           <Orders
