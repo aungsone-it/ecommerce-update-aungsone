@@ -64,32 +64,75 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
   const [vendor, setVendor] = useState<VendorUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Check for existing session on mount
-  useEffect(() => {
-    checkSession();
+  const isVendorSessionStillValid = useCallback(async (candidate: VendorUser): Promise<boolean> => {
+    try {
+      if (!candidate?.vendorId || !candidate?.email) return false;
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(candidate.vendorId)}`,
+        { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+      );
+      if (!response.ok) return false;
+      const data = (await response.json()) as { user?: { id?: string; email?: string } };
+      const resolvedId = String(data.user?.id || "").trim();
+      const resolvedEmail = String(data.user?.email || "").trim().toLowerCase();
+      return (
+        resolvedId.length > 0 &&
+        resolvedId === candidate.vendorId &&
+        resolvedEmail.length > 0 &&
+        resolvedEmail === candidate.email.toLowerCase()
+      );
+    } catch {
+      return false;
+    }
   }, []);
 
-  const checkSession = () => {
+  // Check for existing session on mount
+  useEffect(() => {
+    void checkSession();
+  }, [isVendorSessionStillValid]);
+
+  const checkSession = async () => {
     try {
       console.log('🔍 [VendorAuth] Checking for existing vendor session...');
 
-      const storedVendor = localStorage.getItem('vendorAuth');
-      if (storedVendor) {
-        const vendorData = JSON.parse(storedVendor);
-        console.log('✅ [VendorAuth] Found existing session for vendor:', vendorData.email);
-        setVendor(vendorData);
+      let restored: VendorUser | null = null;
+
+      const fromCookie = readVendorAuthSessionCookie();
+      if (fromCookie) {
+        restored = fromCookie.vendor as VendorUser;
+        console.log('ℹ️ [VendorAuth] Found cookie session candidate for:', restored.email);
       } else {
-        const fromCookie = readVendorAuthSessionCookie();
-        if (fromCookie) {
-          console.log('✅ [VendorAuth] Restored session from shared cookie:', fromCookie.vendor.email);
-          setVendor(fromCookie.vendor);
-          if (fromCookie.rememberMe) {
-            localStorage.setItem('vendorAuth', JSON.stringify(fromCookie.vendor));
+        const storedVendor = localStorage.getItem('vendorAuth');
+        if (storedVendor) {
+          try {
+            restored = JSON.parse(storedVendor) as VendorUser;
+            console.log('ℹ️ [VendorAuth] Found local session candidate for:', restored.email);
+          } catch {
+            localStorage.removeItem('vendorAuth');
           }
-        } else {
-          console.log('ℹ️ [VendorAuth] No existing session found');
         }
       }
+
+      if (!restored) {
+        console.log('ℹ️ [VendorAuth] No existing session found');
+        return;
+      }
+
+      const valid = await isVendorSessionStillValid(restored);
+      if (!valid) {
+        console.warn('⚠️ [VendorAuth] Stored session failed server revalidation, clearing local state');
+        setVendor(null);
+        localStorage.removeItem('vendorAuth');
+        clearVendorAuthSessionCookie();
+        return;
+      }
+
+      setVendor(restored);
+      localStorage.setItem('vendorAuth', JSON.stringify(restored));
+      if (fromCookie) {
+        setVendorAuthSessionCookie(restored, fromCookie.rememberMe);
+      }
+      console.log('✅ [VendorAuth] Session restored after server revalidation:', restored.email);
     } catch (error) {
       console.error('❌ [VendorAuth] Session check error:', error);
     } finally {

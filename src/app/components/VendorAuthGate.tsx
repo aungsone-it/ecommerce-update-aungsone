@@ -34,10 +34,25 @@ export function VendorAuthGate({ children }: { children: React.ReactNode }) {
           }
         );
         if (!bySlugRes.ok) return;
-        const data = (await bySlugRes.json()) as { vendor?: { email?: string; password?: string } };
+        const data = (await bySlugRes.json()) as {
+          needsSetup?: boolean;
+          vendor?: {
+            email?: string;
+            needsSetup?: boolean;
+            hasPassword?: boolean;
+            passwordConfigured?: boolean;
+          };
+        };
         const email = String(data.vendor?.email || "").trim();
-        const hasPassword = String(data.vendor?.password || "").trim().length > 0;
-        if (cancelled || hasPassword || !email) return;
+        const setupFlag =
+          data.needsSetup ??
+          data.vendor?.needsSetup ??
+          (typeof data.vendor?.hasPassword === "boolean" ? !data.vendor.hasPassword : undefined) ??
+          (typeof data.vendor?.passwordConfigured === "boolean"
+            ? !data.vendor.passwordConfigured
+            : undefined);
+        const needsSetup = setupFlag === true;
+        if (cancelled || !needsSetup || !email) return;
 
         setSetupRequired(true);
         navigate(`/vendor/setup?email=${encodeURIComponent(email)}`, { replace: true });

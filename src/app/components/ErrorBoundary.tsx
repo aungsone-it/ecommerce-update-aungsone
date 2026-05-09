@@ -97,7 +97,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 Reload Page
               </Button>
               <Button
-                onClick={() => window.location.href = '/store'}
+                onClick={() => window.location.href = '/'}
                 size="lg"
                 variant="outline"
                 className="border-2 border-slate-300 hover:border-slate-400 text-slate-700 hover:text-slate-900 px-8 py-3 text-base font-semibold transition-all"
