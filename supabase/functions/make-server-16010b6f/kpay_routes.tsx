@@ -77,11 +77,18 @@ async function sha256Upper(source: string): Promise<string> {
   return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
 
-async function safeJson(res: Response): Promise<AnyRecord> {
+/** Read response as text first so 4xx HTML/plain errors are not lost as `{}`. */
+function bodyFromResponseText(rawText: string): AnyRecord {
+  const t = String(rawText ?? "").trim();
+  if (!t) return {};
   try {
-    return await res.json();
+    const parsed = JSON.parse(t) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as AnyRecord;
+    }
+    return { _raw: t.slice(0, 8000) };
   } catch {
-    return {};
+    return { _raw: t.slice(0, 8000) };
   }
 }
 
@@ -182,7 +189,12 @@ async function postJson(
         networkError: `KPay endpoint redirected (${response.status}) to ${location || "<unknown>"}. Update KPAY_PROXY_BASE_URL to the redirect target.`,
       };
     }
-    return { ok: response.ok, status: response.status, body: await safeJson(response) };
+    const rawText = await response.text();
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: bodyFromResponseText(rawText),
+    };
   } catch (error: any) {
     return { ok: false, status: 0, body: {}, networkError: String(error?.message || error) };
   } finally {
@@ -826,13 +838,12 @@ type KPayRefundResult =
 
 function refundEndpointCandidates(baseUrl: string): string[] {
   const primary = text(resolveEnv("KPAY_PATH_REFUND", "KPAY_REFUND_PATH")) || "/payment/gateway/uat/refund";
+  const withSlash = primary.endsWith("/") ? primary : `${primary}/`;
   const candidates = [
     primary,
+    withSlash,
     "/payment/gateway/uat/refund",
-    "/pgw/uat/refund",
-    "/payment/gateway/refund",
-    "/pgw/refund",
-    "/payment/gateway/uat/order/refund",
+    "/payment/gateway/uat/refund/",
   ];
   const out: string[] = [];
   const seen = new Set<string>();
@@ -849,35 +860,34 @@ function refundEndpointCandidates(baseUrl: string): string[] {
       }
     }
   }
-  // Official KBZ UAT/Prod fallback from docs:
-  // UAT:  https://api-uat.kbzpay.com:18008/payment/gateway/uat/refund
-  // Prod: https://api.kbzpay.com:8008/payment/gateway/refund
-  const official = [
-    "https://api-uat.kbzpay.com:18008/payment/gateway/uat/refund",
-    "https://api.kbzpay.com:8008/payment/gateway/refund",
-  ];
-  for (const url of official) {
-    if (!seen.has(url)) {
-      seen.add(url);
-      out.push(url);
-    }
-  }
   return out;
 }
 
-function refundPayloadCandidates(params: {
-  appId: string;
-  merchCode: string;
-  merchantOrderId: string;
-  refundAmount: string;
-  refundRequestNo: string;
-  refundReason: string;
-  subType: string;
-  subIdentifierType: string;
-  subIdentifier: string;
-}): PayloadPair[] {
-  const nonce = crypto.randomUUID().replaceAll("-", "");
+/**
+ * KBZ PGW Refund Order — https://wap.kbzpay.com/pgw/uat/api/#/en/docs/QRPay/api-refund-en
+ * - method: kbz.payment.refund
+ * - Common params: timestamp, method, nonce_str, sign_type (SHA256), sign (SHA256 stringA&key=appkey)
+ * - biz_content: JSON object on the wire; stringA = sorted union of common + biz fields (no nested biz_content key)
+ * - Certificate/mTLS may be required between merchant proxy and KBZ (handled on proxy, not in this function)
+ */
+function refundPayloadCandidates(
+  params: {
+    appId: string;
+    merchCode: string;
+    merchantOrderId: string;
+    refundAmount: string;
+    refundRequestNo: string;
+    refundReason: string;
+    subType: string;
+    subIdentifierType: string;
+    subIdentifier: string;
+    transCurrency: string;
+  },
+  cfg: ReturnType<typeof kpayConfig>,
+): PayloadPair[] {
+  const nonce = crypto.randomUUID().replaceAll("-", "").slice(0, 32);
   const ts = String(Math.floor(Date.now() / 1000));
+  const reason = String(params.refundReason || "").trim().slice(0, 128);
   const methodCandidates = ["kbz.payment.refund"];
   const pairs: PayloadPair[] = [];
   for (const method of methodCandidates) {
@@ -890,8 +900,11 @@ function refundPayloadCandidates(params: {
       sub_identifier: params.subIdentifier,
       refund_amount: params.refundAmount,
       refund_request_no: params.refundRequestNo,
-      refund_reason: params.refundReason,
+      refund_reason: reason,
+      trans_currency: params.transCurrency,
     };
+    applyIsvBizFields(bizContent, cfg);
+
     const signCollection: AnyRecord = {
       appid: params.appId,
       merch_code: params.merchCode,
@@ -904,9 +917,12 @@ function refundPayloadCandidates(params: {
       timestamp: ts,
       refund_amount: params.refundAmount,
       refund_request_no: params.refundRequestNo,
-      refund_reason: params.refundReason,
+      refund_reason: reason,
+      trans_currency: params.transCurrency,
       version: "1.0",
     };
+    applyIsvBizFields(signCollection, cfg);
+
     const requestBody: AnyRecord = {
       timestamp: ts,
       method,
@@ -994,19 +1010,24 @@ export async function refundKPayOrder(params: {
   const subType = text(resolveEnv("KPAY_REFUND_SUB_TYPE")) || "5000";
   const subIdentifierType = text(resolveEnv("KPAY_REFUND_SUB_IDENTIFIER_TYPE")) || "04";
   const subIdentifier = text(resolveEnv("KPAY_REFUND_SUB_IDENTIFIER")) || "20006";
+  const transCurrency = text(resolveEnv("KPAY_REFUND_TRANS_CURRENCY")) || "MMK";
 
   const endpoints = refundEndpointCandidates(cfg.baseUrl);
-  const payloads = refundPayloadCandidates({
-    appId: cfg.appId,
-    merchCode: cfg.merchCode,
-    merchantOrderId,
-    refundAmount,
-    refundRequestNo,
-    refundReason: text(params.reason) || "Order cancelled by admin",
-    subType,
-    subIdentifierType,
-    subIdentifier,
-  });
+  const payloads = refundPayloadCandidates(
+    {
+      appId: cfg.appId,
+      merchCode: cfg.merchCode,
+      merchantOrderId,
+      refundAmount,
+      refundRequestNo,
+      refundReason: text(params.reason) || "Order cancelled by admin",
+      subType,
+      subIdentifierType,
+      subIdentifier,
+      transCurrency,
+    },
+    cfg,
+  );
 
   const provider = await tryProviderVariants({
     endpoints,

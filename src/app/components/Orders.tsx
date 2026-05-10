@@ -573,7 +573,7 @@ export function Orders({
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false); // For printing multiple invoices
-  const [orderSaveState, setOrderSaveState] = useState<Record<string, "saved">>({});
+  const [orderSaveState, setOrderSaveState] = useState<Record<string, "saving" | "saved">>({});
   const savedStateTimersRef = useRef<Record<string, number>>({});
 
   const clearSavedStateTimer = useCallback((orderId: string) => {
@@ -605,6 +605,20 @@ export function Orders({
             });
             delete savedStateTimersRef.current[id];
           }, 2500);
+        }
+        return next;
+      });
+    },
+    [clearSavedStateTimer]
+  );
+
+  const markOrderSaving = useCallback(
+    (orderIds: string[]) => {
+      setOrderSaveState((prev) => {
+        const next = { ...prev };
+        for (const id of orderIds) {
+          clearSavedStateTimer(id);
+          next[id] = "saving";
         }
         return next;
       });
@@ -897,10 +911,10 @@ export function Orders({
     const orderIds = [...selectedOrders];
     setSelectedOrders([]);
     for (const id of orderIds) pendingOrderStatusDrafts.set(id, { status: bulkStatus, at: Date.now() });
-    markOrderSaved(orderIds);
+    markOrderSaving(orderIds);
 
-    // Show instant feedback
-    toast.success(`${updatedCount} orders updated instantly!`, { duration: 2000 });
+    // Show instant feedback for optimistic update (server confirmation follows)
+    toast.message(`${updatedCount} orders updating...`, { duration: 1500 });
     onOrderUpdate?.();
 
     // Instant inventory / Products + Inventory pages — mirror stock before network completes
@@ -922,6 +936,7 @@ export function Orders({
         )
       );
       console.log(`✅ ${updatedCount} orders synced to server: ${bulkStatus}`);
+      markOrderSaved(orderIds);
       for (const orderId of orderIds) {
         void broadcastOrderStatusUpdate({
           orderId,
@@ -981,17 +996,17 @@ export function Orders({
       )
     );
     pendingOrderStatusDrafts.set(orderId, { status: newStatus, at: Date.now() });
-    // Optimistic row feedback: show "Saved" immediately; server sync continues in background.
-    markOrderSaved([orderId]);
+    // Optimistic row feedback: show "Saving…" until server confirms.
+    markOrderSaving([orderId]);
 
     // Show instant feedback with stock restoration notice
     if (wasNotCancelled && isNowCancelled) {
-      toast.success("Order cancelled! Stock has been restored.", { 
+      toast.message("Order cancellation is saving…", {
         duration: 3000,
-        description: "Product inventory has been updated automatically."
+        description: "Refund + status update are being confirmed on the server."
       });
     } else {
-      toast.success("Status updated!", { duration: 1500 });
+      toast.message("Status update is saving…", { duration: 1500 });
     }
     onOrderUpdate?.();
 
@@ -1005,6 +1020,8 @@ export function Orders({
         order?: { inventoryDeducted?: boolean };
       };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
+      markOrderSaved([orderId]);
+      toast.success("Status saved");
       void broadcastOrderStatusUpdate({
         orderId,
         status: newStatus,
@@ -1472,6 +1489,9 @@ export function Orders({
                       <td className="py-3 px-4">
                         <div className="flex flex-col gap-1">
                           {getStatusBadge(order.status)}
+                          {orderSaveState[order.id] === "saving" && (
+                            <span className="text-[11px] text-amber-600">Saving...</span>
+                          )}
                           {orderSaveState[order.id] === "saved" && (
                             <span className="text-[11px] text-emerald-600">Saved</span>
                           )}
