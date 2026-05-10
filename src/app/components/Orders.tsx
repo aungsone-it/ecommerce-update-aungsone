@@ -69,7 +69,7 @@ import {
 } from "../utils/ordersRealtime";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
-type PaymentStatus = "paid" | "unpaid" | "refunded";
+type PaymentStatus = "paid" | "unpaid" | "refunded" | "pending_refund";
 type ShippingStatus = "pending" | "shipped" | "delivered";
 function isFinanciallyAccruedOrderStatus(status: string | undefined): boolean {
   const normalized = String(status || "")
@@ -408,15 +408,19 @@ const getStatusBadge = (status: OrderStatus | string) => {
 
 const getPaymentBadge = (status: PaymentStatus | string) => {
   const variants = {
-    paid: { color: "bg-green-100 text-green-700 border-green-200" },
-    unpaid: { color: "bg-amber-100 text-amber-700 border-amber-200" },
-    refunded: { color: "bg-slate-100 text-slate-700 border-slate-200" },
+    paid: { color: "bg-green-100 text-green-700 border-green-200", label: "Paid" },
+    unpaid: { color: "bg-amber-100 text-amber-700 border-amber-200", label: "Unpaid" },
+    refunded: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Refunded" },
+    "pending-refund": {
+      color: "bg-orange-100 text-orange-800 border-orange-200",
+      label: "Refund pending",
+    },
   } as const;
   const key = normalizePaymentBadgeStatus(status);
   const v = variants[key];
   return (
     <Badge variant="secondary" className={`${v.color} hover:${v.color} border text-xs`}>
-      {key.charAt(0).toUpperCase() + key.slice(1)}
+      {v.label}
     </Badge>
   );
 };
@@ -490,7 +494,11 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
     status: order.status || 'pending',
     paymentStatus:
       (order.paymentStatus as PaymentStatus) ||
-      (order.paymentMethod === "Cash on Delivery" ? "unpaid" : "paid"),
+      (order.paymentMethod === "Cash on Delivery"
+        ? "unpaid"
+        : order.status === "cancelled" && order.kpay?.status === "pending_refund"
+          ? "pending_refund"
+          : "paid"),
     shippingStatus: order.status === 'delivered' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
     products: (order.items || []).map((item: any) => ({
       id: normalizeOrderLineParentProductId(item.productId ?? item.id),
@@ -1017,11 +1025,49 @@ export function Orders({
     // Sync with server in background
     try {
       const result = (await ordersApi.update(orderId, { status: newStatus })) as {
-        order?: { inventoryDeducted?: boolean };
+        order?: {
+          inventoryDeducted?: boolean;
+          paymentStatus?: string;
+          kpay?: unknown;
+          refundStatus?: string;
+        };
       };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
       markOrderSaved([orderId]);
-      toast.success("Status saved");
+      const srv = result?.order as
+        | {
+            inventoryDeducted?: boolean;
+            paymentStatus?: string;
+            kpay?: { refund?: { status?: string } };
+          }
+        | undefined;
+      if (srv && ordersSurfaceActiveRef.current) {
+        setOrders((prev) =>
+          prev.map((o) => {
+            if (o.id !== orderId) return o;
+            const row = mapApiOrdersToOrderItems([
+              {
+                ...srv,
+                id: orderId,
+                status: newStatus,
+              },
+            ])[0];
+            return row ? { ...o, ...row, status: newStatus } : o;
+          })
+        );
+      }
+      if (wasNotCancelled && isNowCancelled) {
+        const rf = String(srv?.kpay?.refund?.status || "").toLowerCase();
+        if (rf === "success" || rf === "already_refunded") {
+          toast.success("Cancelled — refund submitted to KPay");
+        } else if (rf === "processing") {
+          toast.success("Cancelled — refund processing at bank");
+        } else {
+          toast.success("Status saved");
+        }
+      } else {
+        toast.success("Status saved");
+      }
       void broadcastOrderStatusUpdate({
         orderId,
         status: newStatus,
@@ -1341,6 +1387,7 @@ export function Orders({
                     <SelectItem value="paid">Paid</SelectItem>
                     <SelectItem value="unpaid">Unpaid</SelectItem>
                     <SelectItem value="refunded">Refunded</SelectItem>
+                    <SelectItem value="pending_refund">Refund pending</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={vendorFilter} onValueChange={setVendorFilter}>

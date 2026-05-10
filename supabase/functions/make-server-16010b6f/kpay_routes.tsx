@@ -158,6 +158,64 @@ function providerIndicatesSuccess(body: AnyRecord): boolean {
   return ["SUCCESS", "OK"].includes(result);
 }
 
+/**
+ * KBZ refund may return HTTP 200 with `refund_status` / biz codes while generic `result`
+ * is missing or still SUCCESS without the same shape as precreate. Accept those responses
+ * so admin cancel → refund does not false-negative while the gateway still credits the wallet.
+ */
+function providerIndicatesRefundAccepted(body: AnyRecord): boolean {
+  if (providerIndicatesSuccess(body)) return true;
+
+  const nested = providerData(body);
+  const wrapped = asRecord(body.Response);
+  const rs = refundStatusFrom(body);
+
+  if (rs) {
+    const fail =
+      rs.includes("FAIL") ||
+      rs === "REFUND_FAILED" ||
+      rs === "REFUND_REJECT" ||
+      rs === "REFUND_REJECTED";
+    if (!fail) {
+      if (
+        rs === "REFUND_SUCCESS" ||
+        rs === "SUCCESS" ||
+        rs === "REFUND_PROCESSING" ||
+        rs === "PROCESSING" ||
+        rs === "REFUND_PENDING" ||
+        rs === "PENDING"
+      ) {
+        return true;
+      }
+      if (rs.startsWith("REFUND_")) return true;
+    }
+  }
+
+  const topResult = String(
+    wrapped.result ?? nested.result ?? body.result ?? "",
+  )
+    .trim()
+    .toUpperCase();
+  if (topResult === "SUCCESS" || topResult === "OK") {
+    const refundSignal =
+      text(nested.refund_status) ||
+      text(nested.refundStatus) ||
+      text(nested.refund_request_no) ||
+      text(nested.refundRequestNo);
+    if (refundSignal || rs) return true;
+  }
+
+  const code = String(nested.code ?? "").trim();
+  if (
+    (code === "0" || code === "0000" || code === "10000") &&
+    (text(nested.refund_request_no) || text(nested.refundRequestNo) || rs)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 async function postJson(
   url: string,
   payload: AnyRecord,
@@ -1036,6 +1094,7 @@ export async function refundKPayOrder(params: {
     timeoutMs: cfg.timeoutMs,
     wrapRequest: cfg.wrapRequest,
     extraHeaders: buildProviderHeaders(cfg),
+    acceptBody: providerIndicatesRefundAccepted,
   });
 
   if (!provider.success) {
@@ -1112,6 +1171,8 @@ async function tryProviderVariants(args: {
   timeoutMs: number;
   wrapRequest: boolean;
   extraHeaders: Record<string, string>;
+  /** Overrides default `providerIndicatesSuccess` (e.g. KBZ refund acceptance patterns). */
+  acceptBody?: (body: AnyRecord) => boolean;
 }) {
   const attempts: Array<{
     endpoint: string;
@@ -1122,6 +1183,7 @@ async function tryProviderVariants(args: {
     sign?: string;
     signedPayload?: AnyRecord;
   }> = [];
+  const acceptBody = args.acceptBody ?? providerIndicatesSuccess;
   for (const endpoint of args.endpoints) {
     for (const pair of args.payloads) {
       const res = await signedProviderRequest(
@@ -1132,7 +1194,7 @@ async function tryProviderVariants(args: {
         args.wrapRequest,
         args.extraHeaders,
       );
-      if (providerIndicatesSuccess(res.body)) {
+      if (acceptBody(res.body)) {
         return { success: true as const, endpoint, body: res.body, signSource: res.signSource, sign: res.sign, signedPayload: res.signedPayload };
       }
       attempts.push({

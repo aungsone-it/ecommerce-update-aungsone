@@ -7,7 +7,7 @@ export type AdminOrderBadgeStatus =
   | "cancelled"
   | "ready-to-ship";
 
-export type AdminPaymentBadgeStatus = "paid" | "unpaid" | "refunded";
+export type AdminPaymentBadgeStatus = "paid" | "unpaid" | "refunded" | "pending-refund";
 
 export type AdminShippingBadgeStatus = "pending" | "shipped" | "delivered";
 
@@ -31,9 +31,10 @@ export function normalizeAdminOrderStatusForBadge(raw: unknown): AdminOrderBadge
 }
 
 export function normalizePaymentBadgeStatus(raw: unknown): AdminPaymentBadgeStatus {
-  const s = String(raw ?? "unpaid").trim().toLowerCase();
+  const s = String(raw ?? "unpaid").trim().toLowerCase().replace(/_/g, "-");
   if (s === "paid" || s === "complete") return "paid";
   if (s === "refunded" || s === "refund") return "refunded";
+  if (s === "pending-refund" || s === "pendingrefund") return "pending-refund";
   return "unpaid";
 }
 
