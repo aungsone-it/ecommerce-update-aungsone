@@ -78,6 +78,7 @@ import {
 import { CustomerProfile } from "./CustomerProfile";
 import { useNavigate } from "react-router";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { getAdminOperationHeaders } from "../../utils/api-client";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
   getCachedAdminCustomersPage,
@@ -645,6 +646,7 @@ export function CustomersEnhanced({
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${publicAnonKey}`,
+            ...getAdminOperationHeaders(),
           },
           body: JSON.stringify({ customerIds: selectedCustomers }),
         }
@@ -708,6 +710,7 @@ export function CustomersEnhanced({
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${publicAnonKey}`,
+            ...getAdminOperationHeaders(),
           },
           body: JSON.stringify({ customerIds: ghostIds }),
         }

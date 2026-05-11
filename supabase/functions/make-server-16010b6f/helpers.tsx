@@ -109,7 +109,8 @@ export async function checkSkuUniqueness(
     const allProducts = await withTimeout(kv.getByPrefix("product:"), 25000);
 
     if (!Array.isArray(allProducts)) {
-      return { isUnique: true };
+      console.error("❌ SKU uniqueness check: could not load products list");
+      return { isUnique: false };
     }
 
     // Check if any product has the same SKU (case-insensitive)
@@ -146,8 +147,7 @@ export async function checkSkuUniqueness(
     return { isUnique: true };
   } catch (error) {
     console.error("❌ Error checking SKU uniqueness:", error);
-    // In case of error, allow the operation (fail open)
-    return { isUnique: true };
+    return { isUnique: false };
   }
 }
 

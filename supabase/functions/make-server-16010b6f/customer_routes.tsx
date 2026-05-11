@@ -3,6 +3,7 @@ import * as kv from "./kv_store.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
+import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
 
 const customerApp = new Hono();
 
@@ -444,6 +445,22 @@ customerApp.post("/customers", async (c) => {
   }
 });
 
+/** Fields clients may update via PUT (prevents mass-assignment of totals, ids, internal keys). */
+const CUSTOMER_UPDATABLE_FIELDS = new Set([
+  "name",
+  "email",
+  "phone",
+  "address",
+  "city",
+  "region",
+  "status",
+  "tier",
+  "avatar",
+  "tags",
+  "notes",
+  "preferences",
+]);
+
 // Update customer
 customerApp.put("/customers/:customerId", async (c) => {
   try {
@@ -458,11 +475,20 @@ customerApp.put("/customers/:customerId", async (c) => {
     if (!existingCustomer) {
       return c.json({ error: "Customer not found" }, 404);
     }
+
+    const patches: Record<string, unknown> = {};
+    if (body && typeof body === "object") {
+      for (const key of Object.keys(body as object)) {
+        if (CUSTOMER_UPDATABLE_FIELDS.has(key)) {
+          patches[key] = (body as Record<string, unknown>)[key];
+        }
+      }
+    }
     
-    // Merge with existing data
+    // Merge with existing data (only allowed fields from body)
     const updatedCustomer = {
       ...existingCustomer,
-      ...body,
+      ...patches,
       id: customerId, // Ensure ID doesn't change
       updatedAt: new Date().toISOString(),
     };
@@ -569,6 +595,8 @@ customerApp.delete("/customers/:customerId", async (c) => {
 
 // Bulk delete customers
 customerApp.post("/customers/bulk-delete", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     const body = await c.req.json();
     const { customerIds } = body;

@@ -819,7 +819,6 @@ authApp.post("/send-email-otp", async (c) => {
 
     if (!user) {
       console.log(`❌ No user found with email: ${email}`);
-      console.log(`📊 Available emails in system:`, authUsers.users.map(u => u.email));
       return c.json({ 
         error: "This email is not registered in the system. Please contact your administrator or use the email you registered with.",
       }, 404);
@@ -839,7 +838,7 @@ authApp.post("/send-email-otp", async (c) => {
       createdAt: new Date().toISOString(),
     });
 
-    console.log(`📧 OTP CODE for ${email}: ${otp} (expires in 10 minutes)`);
+    console.log(`📧 OTP stored for ${email} (expires in 10 minutes)`);
 
     // Send REAL email via Resend (debug OTP is opt-in via ALLOW_DEBUG_OTP=true)
     try {
@@ -1004,7 +1003,7 @@ authApp.post("/verify-otp-and-reset", async (c) => {
 
     // Verify OTP
     if (storedOtpData.code !== otp) {
-      console.log(`❌ Invalid OTP. Expected: ${storedOtpData.code}, Got: ${otp}`);
+      console.warn(`❌ Invalid OTP attempt for: ${normalizedEmail}`);
       return c.json({ error: "Invalid OTP code. Please check and try again." }, 400);
     }
 

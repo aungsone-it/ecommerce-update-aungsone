@@ -42,6 +42,17 @@ class ApiError extends Error {
   }
 }
 
+/** For Edge routes protected by `assertDestructiveOperationAllowed` — set `VITE_ADMIN_OPERATION_SECRET` to match `EDGE_ADMIN_OPERATION_SECRET`. */
+export function getAdminOperationHeaders(): Record<string, string> {
+  const secret =
+    typeof import.meta !== "undefined" &&
+    import.meta.env &&
+    typeof import.meta.env.VITE_ADMIN_OPERATION_SECRET === "string"
+      ? import.meta.env.VITE_ADMIN_OPERATION_SECRET.trim()
+      : "";
+  return secret ? { "x-admin-operation-secret": secret } : {};
+}
+
 // ============================================
 // RETRY WITH EXPONENTIAL BACKOFF
 // ============================================
@@ -103,6 +114,7 @@ async function apiRequest<T = any>(
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${publicAnonKey}`,
+    ...getAdminOperationHeaders(),
     ...fetchOptions.headers,
   };
 
@@ -267,14 +279,13 @@ async function apiRequest<T = any>(
       console.error(`❌ API Request Failed (${endpoint}):`, error);
     }
 
-    // Handle abort/timeout errors - return empty response during warmup
+    // Never swallow failures as empty success — callers may treat {} as a valid API payload.
     if (error instanceof Error && error.name === 'AbortError') {
-      return {} as T;
+      throw new ApiError(ERROR_MESSAGES.TIMEOUT_ERROR, 408);
     }
 
-    // Handle network errors - return empty response during warmup
     if (error instanceof Error && error.message === 'Failed to fetch') {
-      return {} as T;
+      throw new ApiError(ERROR_MESSAGES.NETWORK_ERROR, 0);
     }
 
     throw error;

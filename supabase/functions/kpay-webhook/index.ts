@@ -221,11 +221,15 @@ Deno.serve(async (req: Request) => {
   const expectedSign = await sha256Upper(`${source}&key=${signKey}`);
   const sigOk = Boolean(providedSign) && providedSign === expectedSign;
 
+  /** NEVER enable in production — allows accepting PAID without signature (UAT debugging only). */
   const insecureTrust = text(Deno.env.get("KPAY_WEBHOOK_UAT_TRUST_NOTIFY")) === "1";
+  const uatMode =
+    /uat|sandbox|test/i.test(text(Deno.env.get("KPAY_ENV"))) ||
+    /uat/i.test(text(Deno.env.get("SUPABASE_URL")));
   const tradeForTrust = text(
     forSign.trade_status || forSign.tradeStatus || body.trade_status || body.tradeStatus,
   ).toUpperCase();
-  const allowInsecurePaid = insecureTrust && tradeForTrust === "PAY_SUCCESS";
+  const allowInsecurePaid = insecureTrust && uatMode && tradeForTrust === "PAY_SUCCESS";
 
   if (!sigOk && !allowInsecurePaid) {
     console.warn("KPay webhook signature mismatch", {
@@ -250,9 +254,10 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!sigOk && allowInsecurePaid) {
-    console.warn("KPay webhook accepting PAY_SUCCESS without signature (KPAY_WEBHOOK_UAT_TRUST_NOTIFY=1)", {
-      merchantOrderId,
-    });
+    console.warn(
+      "KPay webhook accepting PAY_SUCCESS without signature (KPAY_WEBHOOK_UAT_TRUST_NOTIFY=1 + UAT only)",
+      { merchantOrderId },
+    );
   }
 
   const providerStatus = providerStatusFrom(forSign);

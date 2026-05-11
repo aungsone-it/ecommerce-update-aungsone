@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Button } from './ui/button';
 import { Trash2, RefreshCw } from 'lucide-react';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { getAdminOperationHeaders } from '../../utils/api-client';
 
 export function TestDataManager() {
   const [loading, setLoading] = useState(false);
@@ -22,7 +23,8 @@ export function TestDataManager() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
+            'Authorization': `Bearer ${publicAnonKey}`,
+            ...getAdminOperationHeaders(),
           },
           body: JSON.stringify({ confirmDelete: true })
         }

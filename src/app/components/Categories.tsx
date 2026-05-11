@@ -21,6 +21,7 @@ import { categoriesApi } from "../../utils/api";
 import { CategoryForm } from "./CategoryForm";
 import { useLanguage } from "../contexts/LanguageContext";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { getAdminOperationHeaders } from "../../utils/api-client";
 import { cacheManager } from "../utils/cacheManager";
 import {
   getCachedAdminAllCategories,
@@ -180,6 +181,7 @@ export function Categories() {
               headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${publicAnonKey}`,
+                ...getAdminOperationHeaders(),
               },
               body: JSON.stringify({ ids: previousSelected }),
             }
@@ -329,6 +331,7 @@ export function Categories() {
               method: 'DELETE',
               headers: {
                 Authorization: `Bearer ${publicAnonKey}`,
+                ...getAdminOperationHeaders(),
               },
             }
           );
@@ -407,6 +410,7 @@ export function Categories() {
               headers: {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${publicAnonKey}`,
+                ...getAdminOperationHeaders(),
               },
               body: JSON.stringify({ ids: testCategoryIds }),
             }

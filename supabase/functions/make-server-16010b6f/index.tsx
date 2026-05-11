@@ -22,6 +22,7 @@ import {
   refsRemovedSinceUpdate,
 } from "./storage_delete_helpers.tsx";
 import { appendStaffActivity } from "./staff_activity_helpers.tsx";
+import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
 const originalConsoleError = console.error;
@@ -921,6 +922,8 @@ async function rebuildOrdersCache() {
 
 // Endpoint to manually trigger cache rebuild
 app.post("/make-server-16010b6f/rebuild-cache", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   rebuildOrdersCache(); // Don't await - run in background
   return c.json({ 
     success: true, 
@@ -1388,6 +1391,8 @@ app.post("/make-server-16010b6f/auth/validate", async (c) => {
 
 // 🔧 Admin: Clear all test data (customers and users)
 app.post("/make-server-16010b6f/admin/clear-test-data", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     const body = await c.req.json();
     const { confirmDelete } = body;
@@ -5238,6 +5243,8 @@ app.delete("/make-server-16010b6f/orders/:id", async (c) => {
 
 // Delete ALL orders (for testing/cleanup)
 app.delete("/make-server-16010b6f/orders", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     console.log("🗑️ Deleting ALL orders...");
     
@@ -5485,6 +5492,8 @@ app.delete("/make-server-16010b6f/categories/:id", async (c) => {
 
 // Bulk delete categories
 app.post("/make-server-16010b6f/categories/bulk-delete", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     const body = await c.req.json();
     const ids = body.ids || [];
@@ -5522,6 +5531,8 @@ app.post("/make-server-16010b6f/categories/bulk-delete", async (c) => {
 
 // Delete ALL categories (for cleanup)
 app.delete("/make-server-16010b6f/categories/all", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     console.log(`🗑️ Deleting ALL categories...`);
     
@@ -6930,6 +6941,8 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
 
 // Delete all vendors (clear database)
 app.delete("/make-server-16010b6f/vendors/all/clear", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     console.log("🗑️ Clearing all vendors...");
     const validVendors = await withTimeout(kv.getVendorProfiles(), 8000);
@@ -7463,6 +7476,8 @@ app.delete("/make-server-16010b6f/campaigns/:id", async (c) => {
 
 // Clear all campaigns (cleanup route)
 app.delete("/make-server-16010b6f/campaigns-clear-all", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     console.log("🗑️ Clearing all campaigns...");
     
@@ -8996,6 +9011,8 @@ app.post("/make-server-16010b6f/chat/upload-image", async (c) => {
 
 // 🔥 DELETE ALL CHAT CONVERSATIONS AND MESSAGES
 app.delete("/make-server-16010b6f/chat/conversations/all", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
   try {
     console.log("🗑️ DELETING ALL CHAT CONVERSATIONS AND MESSAGES...");
     
