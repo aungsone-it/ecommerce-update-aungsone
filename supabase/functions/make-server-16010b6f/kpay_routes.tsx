@@ -158,6 +158,42 @@ function providerIndicatesSuccess(body: AnyRecord): boolean {
   return ["SUCCESS", "OK"].includes(result);
 }
 
+/**
+ * Refund responses are not always shaped like precreate/queryorder.
+ * Accept explicit refund-success/processing signals so cancel->refund does not
+ * false-fail when gateway returns a 200 with refund-specific fields.
+ */
+function providerIndicatesRefundAccepted(body: AnyRecord): boolean {
+  if (providerIndicatesSuccess(body)) return true;
+
+  const nested = providerData(body);
+  const wrapped = asRecord(body.Response);
+  const refundStatus = refundStatusFrom(body);
+  if (refundStatus) {
+    if (
+      refundStatus === "REFUND_SUCCESS" ||
+      refundStatus === "REFUND_PROCESSING" ||
+      refundStatus === "PROCESSING" ||
+      refundStatus === "PENDING"
+    ) {
+      return true;
+    }
+  }
+
+  const code = String(nested.code ?? wrapped.code ?? body.code ?? "").trim();
+  const hasRefundNo = Boolean(
+    text(nested.refund_request_no) ||
+      text(nested.refundRequestNo) ||
+      text(wrapped.refund_request_no) ||
+      text(wrapped.refundRequestNo),
+  );
+  if ((code === "0" || code === "00" || code === "0000" || code === "10000") && hasRefundNo) {
+    return true;
+  }
+
+  return false;
+}
+
 async function postJson(
   url: string,
   payload: AnyRecord,
@@ -1036,6 +1072,7 @@ export async function refundKPayOrder(params: {
     timeoutMs: cfg.timeoutMs,
     wrapRequest: cfg.wrapRequest,
     extraHeaders: buildProviderHeaders(cfg),
+    acceptBody: providerIndicatesRefundAccepted,
   });
 
   if (!provider.success) {
@@ -1112,6 +1149,7 @@ async function tryProviderVariants(args: {
   timeoutMs: number;
   wrapRequest: boolean;
   extraHeaders: Record<string, string>;
+  acceptBody?: (body: AnyRecord) => boolean;
 }) {
   const attempts: Array<{
     endpoint: string;
@@ -1122,6 +1160,7 @@ async function tryProviderVariants(args: {
     sign?: string;
     signedPayload?: AnyRecord;
   }> = [];
+  const acceptBody = args.acceptBody || providerIndicatesSuccess;
   for (const endpoint of args.endpoints) {
     for (const pair of args.payloads) {
       const res = await signedProviderRequest(
@@ -1132,7 +1171,7 @@ async function tryProviderVariants(args: {
         args.wrapRequest,
         args.extraHeaders,
       );
-      if (providerIndicatesSuccess(res.body)) {
+      if (acceptBody(res.body)) {
         return { success: true as const, endpoint, body: res.body, signSource: res.signSource, sign: res.sign, signedPayload: res.signedPayload };
       }
       attempts.push({

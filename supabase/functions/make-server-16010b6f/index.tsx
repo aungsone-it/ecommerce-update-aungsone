@@ -5131,8 +5131,8 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
       updatedAt: new Date().toISOString(),
       inventoryDeducted: nextInventoryFlag,
       paymentStatus:
-        refundResult && isNowCancelled && refundResult.refundState === "success"
-          ? "refunded"
+        refundResult && isNowCancelled
+          ? (refundResult.refundState === "success" ? "refunded" : "pending_refund")
           : (body.paymentStatus ?? existingOrder.paymentStatus),
       kpay:
         refundResult && isNowCancelled
