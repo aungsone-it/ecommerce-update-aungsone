@@ -37,7 +37,7 @@ import { format } from "date-fns";
 import { PrintInvoice } from "./PrintInvoice";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ordersApi } from "../../utils/api";
-import { ApiError } from "../../utils/api-client";
+import { ApiError, getAdminOperationHeaders } from "../../utils/api-client";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -675,6 +675,7 @@ export function Orders({
             headers: {
               Authorization: `Bearer ${publicAnonKey}`,
               "Content-Type": "application/json",
+              ...getAdminOperationHeaders(),
             },
           }
         );

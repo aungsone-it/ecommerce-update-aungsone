@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { getAdminOperationHeaders } from "../../utils/api-client";
 import { POLLING_INTERVALS_MS } from "../../constants";
 import {
   Select,
@@ -699,6 +700,7 @@ export function Marketing() {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${publicAnonKey}`,
+            ...getAdminOperationHeaders(),
           },
         }
       );

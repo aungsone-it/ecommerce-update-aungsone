@@ -32,6 +32,7 @@ import {
 } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { chatApi } from "../../utils/api";
+import { getAdminOperationHeaders } from "../../utils/api-client";
 import { mainStoreConversationIdFromEmail } from "../../utils/chatConversation";
 import {
   broadcastConversationMessage,
@@ -447,6 +448,7 @@ export function Chat({
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${chatApi.publicAnonKey}`,
+            ...getAdminOperationHeaders(),
           },
         }
       );
