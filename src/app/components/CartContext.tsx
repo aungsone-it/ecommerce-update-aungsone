@@ -40,6 +40,13 @@ function cartCacheKey(userId: string): string {
   return `migoo-user-cart:${userId}`;
 }
 
+function getCartStats(items: CartItem[]): { lineCount: number; totalQuantity: number } {
+  return {
+    lineCount: items.length,
+    totalQuantity: items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0), 0),
+  };
+}
+
 function readMigooUserIdFromStorage(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -61,13 +68,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     () => user?.id || readMigooUserIdFromStorage()
   );
   const [items, setItems] = useState<CartItem[]>(() => {
-    // 🔥 DATABASE-FIRST: Load guest cart from localStorage ONLY (logged-in users load from DB)
-    // This is temporary cart that gets merged on login
     try {
-      const saved = localStorage.getItem('migoo-guest-cart');
-      return saved ? JSON.parse(saved) : [];
+      const initialUserId = user?.id || readMigooUserIdFromStorage();
+      if (initialUserId) {
+        const cachedUserCart = localStorage.getItem(cartCacheKey(initialUserId));
+        if (cachedUserCart) {
+          return normalizeCartPayload(JSON.parse(cachedUserCart));
+        }
+        // Signed-in users should not briefly render stale guest carts on refresh.
+        return [];
+      }
+
+      const savedGuestCart = localStorage.getItem('migoo-guest-cart');
+      return savedGuestCart ? JSON.parse(savedGuestCart) : [];
     } catch (error) {
-      console.warn('Failed to parse guest cart from localStorage:', error);
+      console.warn('Failed to parse initial cart from localStorage:', error);
       return [];
     }
   });
@@ -76,6 +91,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const loadedUserRef = useRef<string | null>(null); // Track which user's cart we loaded
   const cartSignatureRef = useRef<string>("[]");
   const suppressNextSyncRef = useRef(false);
+  const previousCartStatsRef = useRef(getCartStats(items));
   /** Throttle cart GET from tab focus/visibility (each call hits the Edge Function + KV). */
   const lastAmbientCartFetchRef = useRef<number>(0);
 
@@ -91,9 +107,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   // 🔥 Sync cart to database (for logged-in users only)
-  const syncCartToDatabase = useCallback(async (userId: string, cart: CartItem[]) => {
+  const syncCartToDatabase = useCallback(async (
+    userId: string,
+    cart: CartItem[],
+    options?: { keepalive?: boolean }
+  ) => {
     try {
-      await fetch(
+      const body = JSON.stringify({ cart });
+      const bodySize = new Blob([body]).size;
+      const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${userId}/cart`,
         {
           method: 'POST',
@@ -101,9 +123,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
             'Authorization': `Bearer ${publicAnonKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ cart }),
+          body,
+          ...(options?.keepalive && bodySize <= 64 * 1024 ? { keepalive: true } : {}),
         }
       );
+      if (!response.ok) {
+        throw new Error(`Cart sync failed with status ${response.status}`);
+      }
       try {
         localStorage.setItem(cartCacheKey(userId), JSON.stringify(cart));
       } catch {
@@ -114,6 +140,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
       console.error('Failed to sync cart to database:', error);
     }
   }, []);
+
+  const commitCartMutation = useCallback(
+    (nextItems: CartItem[], options?: { keepalive?: boolean }) => {
+      const nextSig = JSON.stringify(nextItems);
+      previousCartStatsRef.current = getCartStats(nextItems);
+      cartSignatureRef.current = nextSig;
+      setItems(nextItems);
+
+      if (effectiveUserId) {
+        try {
+          localStorage.setItem(cartCacheKey(effectiveUserId), nextSig);
+        } catch {
+          /* ignore quota/private mode */
+        }
+        localStorage.removeItem('migoo-guest-cart');
+        void syncCartToDatabase(effectiveUserId, nextItems, options);
+      } else {
+        try {
+          localStorage.setItem('migoo-guest-cart', nextSig);
+        } catch (error) {
+          console.warn('Failed to save guest cart to localStorage:', error);
+        }
+      }
+    },
+    [effectiveUserId, syncCartToDatabase]
+  );
   
   // 🔥 Load cart from database (called on login)
   const loadCartFromDatabase = useCallback(async (userId: string) => {
@@ -199,6 +251,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       console.log(`🔄 User logged out, clearing cart`);
       loadedUserRef.current = null;
       setItems([]);
+      previousCartStatsRef.current = getCartStats([]);
       localStorage.removeItem('migoo-guest-cart');
     }
   }, [effectiveUserId, loadCartFromDatabase]);
@@ -281,18 +334,33 @@ export function CartProvider({ children }: { children: ReactNode }) {
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
     }
+    const nextStats = getCartStats(items);
     
     if (effectiveUserId) {
       const nextSig = JSON.stringify(items);
+      const previousStats = previousCartStatsRef.current;
+      previousCartStatsRef.current = nextStats;
       if (nextSig === cartSignatureRef.current) return;
       if (suppressNextSyncRef.current) {
         suppressNextSyncRef.current = false;
         return;
       }
+      try {
+        localStorage.setItem(cartCacheKey(effectiveUserId), nextSig);
+      } catch {
+        /* ignore quota/private mode */
+      }
+      const isDestructiveChange =
+        nextStats.lineCount < previousStats.lineCount ||
+        nextStats.totalQuantity < previousStats.totalQuantity;
       // Logged-in user → Save to DATABASE ONLY (debounced to avoid spam)
-      syncTimeoutRef.current = setTimeout(() => {
-        syncCartToDatabase(effectiveUserId, items);
-      }, 2000); // Debounce: fewer Edge Function writes under rapid quantity changes
+      if (isDestructiveChange) {
+        void syncCartToDatabase(effectiveUserId, items, { keepalive: true });
+      } else {
+        syncTimeoutRef.current = setTimeout(() => {
+          void syncCartToDatabase(effectiveUserId, items);
+        }, 2000); // Debounce: fewer Edge Function writes under rapid quantity changes
+      }
       
       // Remove guest cart from localStorage (no longer needed)
       localStorage.removeItem('migoo-guest-cart');
@@ -303,6 +371,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.warn('Failed to save guest cart to localStorage:', error);
       }
+      previousCartStatsRef.current = nextStats;
     }
     
     return () => {
@@ -312,47 +381,47 @@ export function CartProvider({ children }: { children: ReactNode }) {
     };
   }, [items, effectiveUserId, syncCartToDatabase]);
   
-  const addToCart = (item: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
-    setItems(prevItems => {
-      const existingItem = prevItems.find(i => i.id === item.id);
-      if (existingItem) {
-        return prevItems.map((i) =>
+  const addToCart = useCallback((item: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
+    const existingItem = items.find((i) => i.id === item.id);
+    const nextItems = existingItem
+      ? items.map((i) =>
           i.id === item.id
             ? {
                 ...i,
                 quantity: i.quantity + quantity,
-                commissionRate:
-                  i.commissionRate ?? item.commissionRate,
+                commissionRate: i.commissionRate ?? item.commissionRate,
               }
             : i
-        );
-      }
-      return [...prevItems, { ...item, quantity }];
-    });
-  };
+        )
+      : [...items, { ...item, quantity }];
+    commitCartMutation(nextItems, { keepalive: true });
+  }, [items, commitCartMutation]);
 
-  const removeFromCart = (itemId: string) => {
-    setItems(prevItems => prevItems.filter(item => item.id !== itemId));
-  };
+  const removeFromCart = useCallback((itemId: string) => {
+    const nextItems = items.filter(item => item.id !== itemId);
+    commitCartMutation(nextItems, { keepalive: true });
+  }, [items, commitCartMutation]);
 
-  const updateQuantity = (itemId: string, quantity: number) => {
+  const updateQuantity = useCallback((itemId: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(itemId);
       return;
     }
-    
-    setItems(prevItems =>
-      prevItems.map(item =>
-        item.id === itemId
-          ? { ...item, quantity: Math.min(quantity, item.inventory) }
-          : item
-      )
-    );
-  };
 
-  const clearCart = () => {
-    setItems([]);
-  };
+    const nextItems = items.map(item =>
+      item.id === itemId
+        ? { ...item, quantity: Math.min(quantity, item.inventory) }
+        : item
+    );
+    const currentItem = items.find(item => item.id === itemId);
+    const isDestructive =
+      currentItem != null && Math.min(quantity, currentItem.inventory) < currentItem.quantity;
+    commitCartMutation(nextItems, { keepalive: true });
+  }, [items, removeFromCart, commitCartMutation]);
+
+  const clearCart = useCallback(() => {
+    commitCartMutation([], { keepalive: true });
+  }, [commitCartMutation]);
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
   const totalPrice = items.reduce((sum, item) => sum + (item.price || 0) * item.quantity, 0);

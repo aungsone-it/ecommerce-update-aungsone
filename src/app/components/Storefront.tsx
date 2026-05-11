@@ -268,6 +268,61 @@ function storefrontWishlistCacheKey(userId: string): string {
   return `migoo-user-wishlist:${userId}`;
 }
 
+function getCartStats(items: CartItem[]): { lineCount: number; totalQuantity: number } {
+  return {
+    lineCount: items.length,
+    totalQuantity: items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0), 0),
+  };
+}
+
+async function persistStorefrontCart(
+  userId: string,
+  cart: CartItem[],
+  options?: { keepalive?: boolean }
+): Promise<void> {
+  const body = JSON.stringify({ cart });
+  const bodySize = new Blob([body]).size;
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${userId}/cart`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${publicAnonKey}`,
+        "Content-Type": "application/json",
+      },
+      body,
+      ...(options?.keepalive && bodySize <= 64 * 1024 ? { keepalive: true } : {}),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Cart sync failed with status ${response.status}`);
+  }
+}
+
+async function persistStorefrontWishlist(
+  userId: string,
+  productIds: string[],
+  options?: { keepalive?: boolean }
+): Promise<void> {
+  const body = JSON.stringify({ productIds });
+  const bodySize = new Blob([body]).size;
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/wishlist/${userId}`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${publicAnonKey}`,
+        "Content-Type": "application/json",
+      },
+      body,
+      ...(options?.keepalive && bodySize <= 64 * 1024 ? { keepalive: true } : {}),
+    }
+  );
+  if (!response.ok) {
+    throw new Error(`Wishlist sync failed with status ${response.status}`);
+  }
+}
+
 function normalizeWishlistFromKvValue(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((x): x is string => typeof x === "string");
@@ -781,8 +836,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   });
   const cartSignatureRef = useRef<string>("[]");
   const suppressCartSyncRef = useRef(false);
+  const previousCartStatsRef = useRef(getCartStats(cart));
   const wishlistSignatureRef = useRef<string>("[]");
   const suppressWishlistSyncRef = useRef(false);
+  const previousWishlistCountRef = useRef(wishlist.length);
   /** Server-backed catalog (paginated); home sections loaded via bootstrap. */
   const [catalogTotal, setCatalogTotal] = useState(0);
   const [catalogPage, setCatalogPage] = useState(1);
@@ -1464,27 +1521,30 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // 🔥 DATABASE-FIRST: Save cart to database for logged-in users, localStorage for guests ONLY
   useEffect(() => {
+    const nextStats = getCartStats(cart);
     if (orderApiUserId) {
       const nextSig = JSON.stringify(cart);
+      const previousStats = previousCartStatsRef.current;
+      previousCartStatsRef.current = nextStats;
       if (nextSig === cartSignatureRef.current) return;
       if (suppressCartSyncRef.current) {
         suppressCartSyncRef.current = false;
         return;
       }
+      try {
+        localStorage.setItem(storefrontCartCacheKey(orderApiUserId), nextSig);
+      } catch {
+        /* ignore quota/private mode */
+      }
+      const isDestructiveChange =
+        nextStats.lineCount < previousStats.lineCount ||
+        nextStats.totalQuantity < previousStats.totalQuantity;
       // Logged-in user → Save to DATABASE ONLY (debounced to avoid spam)
       const syncCartToDB = async () => {
         try {
-          await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${orderApiUserId}/cart`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${publicAnonKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ cart }),
-            }
-          );
+          await persistStorefrontCart(orderApiUserId, cart, {
+            keepalive: isDestructiveChange,
+          });
           cartSignatureRef.current = nextSig;
           try {
             localStorage.setItem(storefrontCartCacheKey(orderApiUserId), nextSig);
@@ -1496,6 +1556,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         }
       };
       
+      if (isDestructiveChange) {
+        void syncCartToDB();
+        return;
+      }
+
       // Debounce database writes — longer window = fewer edge writes while browsing
       const timeoutId = setTimeout(syncCartToDB, 2500);
       return () => clearTimeout(timeoutId);
@@ -1506,6 +1571,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       } catch (error) {
         console.warn('Failed to save guest cart to localStorage:', error);
       }
+      previousCartStatsRef.current = nextStats;
     }
   }, [cart, orderApiUserId]);
 
@@ -2659,14 +2725,24 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     if (!orderApiUserId) return;
     const uid = orderApiUserId;
     const nextSig = JSON.stringify([...wishlist].sort());
+    const previousCount = previousWishlistCountRef.current;
+    previousWishlistCountRef.current = wishlist.length;
     if (nextSig === wishlistSignatureRef.current) return;
     if (suppressWishlistSyncRef.current) {
       suppressWishlistSyncRef.current = false;
       return;
     }
+    try {
+      localStorage.setItem(storefrontWishlistCacheKey(uid), JSON.stringify(wishlist));
+    } catch {
+      /* ignore quota/private mode */
+    }
+    const isDestructiveChange = wishlist.length < previousCount;
     const syncWishlist = async () => {
       try {
-        await wishlistApi.update(uid, wishlist);
+        await persistStorefrontWishlist(uid, wishlist, {
+          keepalive: isDestructiveChange,
+        });
         wishlistSignatureRef.current = nextSig;
         try {
           localStorage.setItem(storefrontWishlistCacheKey(uid), JSON.stringify(wishlist));
@@ -2677,7 +2753,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         console.error("Failed to sync wishlist to database:", error);
       }
     };
-    const timeoutId = setTimeout(syncWishlist, 500);
+    const timeoutId = setTimeout(syncWishlist, isDestructiveChange ? 0 : 500);
     return () => clearTimeout(timeoutId);
   }, [wishlist, orderApiUserId]);
 
@@ -2988,6 +3064,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     variantImage?: string,
     variantPrice?: string
   ) => {
+    let nextCartSnapshot: CartItem[] = [];
     setCart(prev => {
       // 🔥 Use variant SKU if provided, otherwise use product SKU
       const effectiveSku = variantSku || product.sku;
@@ -3011,38 +3088,111 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       
       const existing = prev.find(item => item.sku === effectiveSku);
       if (existing) {
-        return prev.map(item =>
+        nextCartSnapshot = prev.map(item =>
           item.sku === effectiveSku
             ? { ...item, quantity: item.quantity + quantity }
             : item
         );
+        return nextCartSnapshot;
       }
-      return [...prev, { ...productWithVariant, quantity }];
+      nextCartSnapshot = [...prev, { ...productWithVariant, quantity }];
+      return nextCartSnapshot;
     });
+
+    const nextSig = JSON.stringify(nextCartSnapshot);
+    previousCartStatsRef.current = getCartStats(nextCartSnapshot);
+    cartSignatureRef.current = nextSig;
+    if (orderApiUserId) {
+      try {
+        localStorage.setItem(storefrontCartCacheKey(orderApiUserId), nextSig);
+      } catch {
+        /* ignore quota/private mode */
+      }
+      localStorage.removeItem("migoo-guest-cart");
+      void persistStorefrontCart(orderApiUserId, nextCartSnapshot, { keepalive: true }).catch((error) => {
+        console.error("Failed to sync cart to database:", error);
+      });
+    } else {
+      try {
+        localStorage.setItem("migoo-guest-cart", nextSig);
+      } catch (error) {
+        console.warn("Failed to save guest cart to localStorage:", error);
+      }
+    }
     
     // 📱 Only auto-open cart on desktop (md breakpoint and above = 768px)
     // On mobile, user can manually open cart from badge - clean UX without popups
     if (window.innerWidth >= 768) {
       setShowCart(true);
     }
-  }, []);
+  }, [orderApiUserId]);
+
+  const commitStorefrontCartMutation = useCallback(
+    (nextCart: CartItem[], options?: { keepalive?: boolean }) => {
+      const nextSig = JSON.stringify(nextCart);
+      previousCartStatsRef.current = getCartStats(nextCart);
+      cartSignatureRef.current = nextSig;
+      setCart(nextCart);
+
+      if (orderApiUserId) {
+        try {
+          localStorage.setItem(storefrontCartCacheKey(orderApiUserId), nextSig);
+        } catch {
+          /* ignore quota/private mode */
+        }
+        localStorage.removeItem("migoo-guest-cart");
+        void persistStorefrontCart(orderApiUserId, nextCart, options).catch((error) => {
+          console.error("Failed to sync cart to database:", error);
+        });
+      } else {
+        try {
+          localStorage.setItem("migoo-guest-cart", nextSig);
+        } catch (error) {
+          console.warn("Failed to save guest cart to localStorage:", error);
+        }
+      }
+    },
+    [orderApiUserId]
+  );
 
   const removeFromCart = useCallback((productSku: string) => {
-    setCart(prev => prev.filter(item => item.sku !== productSku));
+    const nextCart = cart.filter(item => item.sku !== productSku);
+    commitStorefrontCartMutation(nextCart, { keepalive: true });
     toast.success("Removed from cart");
-  }, []);
+  }, [cart, commitStorefrontCartMutation]);
 
   const updateQuantity = useCallback((productSku: string, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(productSku);
       return;
     }
-    setCart(prev =>
-      prev.map(item =>
-        item.sku === productSku ? { ...item, quantity } : item
-      )
+
+    const nextCart = cart.map(item =>
+      item.sku === productSku ? { ...item, quantity } : item
     );
-  }, [removeFromCart]);
+    const currentItem = cart.find(item => item.sku === productSku);
+    commitStorefrontCartMutation(nextCart, { keepalive: true });
+  }, [cart, removeFromCart, commitStorefrontCartMutation]);
+
+  const commitStorefrontWishlistMutation = useCallback(
+    (nextWishlist: string[], options?: { keepalive?: boolean }) => {
+      setWishlist(nextWishlist);
+      if (!orderApiUserId) return;
+      try {
+        localStorage.setItem(storefrontWishlistCacheKey(orderApiUserId), JSON.stringify(nextWishlist));
+      } catch {
+        /* ignore quota/private mode */
+      }
+      void persistStorefrontWishlist(orderApiUserId, nextWishlist, options)
+        .then(() => {
+          wishlistSignatureRef.current = JSON.stringify([...nextWishlist].sort());
+        })
+        .catch((error) => {
+          console.error("Failed to sync wishlist to database:", error);
+        });
+    },
+    [orderApiUserId]
+  );
 
   const toggleWishlist = useCallback((productId: string) => {
     // 🔒 Require authentication to add to wishlist
@@ -3052,19 +3202,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setAuthMode('login');
       return;
     }
-    
-    setWishlist(prev => {
-      if (prev.includes(productId)) {
-        // Remove from wishlist - badge will update automatically
-        toast.success("Removed from wishlist");
-        return prev.filter(id => id !== productId);
-      } else {
-        // Add to wishlist - badge will update automatically
-        toast.success("Added to wishlist");
-        return [...prev, productId];
-      }
-    });
-  }, [user]);
+
+    const wasListed = wishlist.includes(productId);
+    const nextWishlist = wasListed
+      ? wishlist.filter((id) => id !== productId)
+      : [...wishlist, productId];
+    commitStorefrontWishlistMutation(nextWishlist, { keepalive: true });
+    toast.success(wasListed ? "Removed from wishlist" : "Added to wishlist");
+  }, [user, wishlist, commitStorefrontWishlistMutation]);
 
   const selectVariant = (variantId: string, type: string, imageIndex?: number) => {
     setSelectedVariants(prev => ({
@@ -4597,7 +4742,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         size="sm"
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs"
                         onClick={() => {
-                          setCart([]);
+                          commitStorefrontCartMutation([], { keepalive: true });
                           toast.success("Cart cleared");
                         }}
                       >
@@ -8551,7 +8696,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     navigate("/store");
                     setViewMode("home");
                   }}
-                  className="bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800"
+                  className="bg-slate-900 text-white hover:bg-black"
                 >
                   Browse Products
                 </Button>

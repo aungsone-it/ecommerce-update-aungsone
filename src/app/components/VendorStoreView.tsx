@@ -4034,11 +4034,31 @@ export function VendorStoreView({
     } else if (belongsToThisStore) {
       setSavedVendorWishlistTotal((t) => t + 1);
     }
-    setWishlist((prev) =>
-      prev.includes(productId)
-        ? prev.filter((id) => id !== productId)
-        : [...prev, productId]
-    );
+    const nextWishlist = wasListed
+      ? wishlist.filter((id) => id !== productId)
+      : [...wishlist, productId];
+    setWishlist(nextWishlist);
+    if (wishlistUserId) {
+      writePersistedJson(lsWishlistProductIdsKey(wishlistUserId), nextWishlist);
+      const body = JSON.stringify({ productIds: nextWishlist });
+      const bodySize = new Blob([body]).size;
+      void fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/wishlist/${wishlistUserId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${publicAnonKey}`,
+            "Content-Type": "application/json",
+          },
+          body,
+          ...(bodySize <= 64 * 1024 ? { keepalive: true } : {}),
+        }
+      )
+        .then(() => {
+          wishlistServerSnapshotRef.current = JSON.stringify([...nextWishlist].sort());
+        })
+        .catch(() => {});
+    }
     setSavedDisplayProducts((prev) => {
       if (wasListed) return prev.filter((p) => p.id !== productId);
       if (!optimisticProduct) return prev;
@@ -5168,7 +5188,7 @@ export function VendorStoreView({
                           ? "Your wishlist has items from other areas — browse this shop and tap the heart on products you like."
                           : "Start adding products to your wishlist!"}
                       </p>
-                      <Button onClick={() => navigateStoreHome()} className="bg-amber-600 hover:bg-amber-700">
+                      <Button onClick={() => navigateStoreHome()} className="bg-slate-900 text-white hover:bg-black">
                         Browse products
                       </Button>
                     </Card>
