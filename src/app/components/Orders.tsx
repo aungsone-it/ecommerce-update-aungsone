@@ -667,8 +667,16 @@ export function Orders({
 
   useEffect(() => {
     const triggerCacheRebuild = async () => {
+      const sessionKey = "admin-orders-cache-rebuild-requested";
       try {
-        await fetch(
+        if (sessionStorage.getItem(sessionKey)) {
+          return;
+        }
+      } catch {
+        /* ignore sessionStorage failures */
+      }
+      try {
+        const response = await fetch(
           `${projectId.includes("localhost") ? "http://localhost:54321" : `https://${projectId}.supabase.co`}/functions/v1/make-server-16010b6f/rebuild-cache`,
           {
             method: "POST",
@@ -679,6 +687,13 @@ export function Orders({
             },
           }
         );
+        if (response.ok) {
+          try {
+            sessionStorage.setItem(sessionKey, String(Date.now()));
+          } catch {
+            /* ignore sessionStorage failures */
+          }
+        }
         console.log("🔨 Cache rebuild triggered");
       } catch (error) {
         console.log("ℹ️ Could not trigger cache rebuild:", error);

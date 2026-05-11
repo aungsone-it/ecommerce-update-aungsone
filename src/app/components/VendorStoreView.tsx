@@ -197,6 +197,30 @@ function resolveUserIdFromRecord(u: unknown): string | null {
   return null;
 }
 
+function vendorUserProfileRefreshKey(userId: string): string {
+  return `migoo-user-profile-refresh:${userId}`;
+}
+
+function wasVendorUserProfileRefreshedRecently(userId: string, maxAgeMs: number): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(vendorUserProfileRefreshKey(userId));
+    const ts = Number(raw);
+    return Number.isFinite(ts) && Date.now() - ts < maxAgeMs;
+  } catch {
+    return false;
+  }
+}
+
+function markVendorUserProfileRefreshed(userId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(vendorUserProfileRefreshKey(userId), String(Date.now()));
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
 function normalizeWishlistFromKvValue(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((x): x is string => typeof x === "string");
@@ -1194,6 +1218,13 @@ export function VendorStoreView({
     ) {
       return;
     }
+    if (
+      !force &&
+      wasVendorUserProfileRefreshedRecently(uid, AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS)
+    ) {
+      vendorProfileAmbientLastRef.current = now;
+      return;
+    }
     if (vendorProfileRefreshInFlightRef.current) {
       return;
     }
@@ -1212,6 +1243,7 @@ export function VendorStoreView({
       setUser(updatedUser);
       localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
       vendorProfileAmbientLastRef.current = Date.now();
+      markVendorUserProfileRefreshed(uid);
     } catch {
       /* keep local session if profile refresh fails — do not advance throttle */
     } finally {
@@ -3573,7 +3605,7 @@ export function VendorStoreView({
         return;
       }
       vendorAccountVisibilityLastRef.current = now;
-      void refreshVendorProfileFromServer({ force: true });
+      void refreshVendorProfileFromServer();
       const raw = localStorage.getItem("migoo-user");
       if (!raw) return;
       let parsed: unknown;

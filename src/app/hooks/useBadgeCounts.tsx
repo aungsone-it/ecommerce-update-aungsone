@@ -208,7 +208,7 @@ export function useBadgeCounts() {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       void loadBadgeCounts(force);
     };
-    tick(true);
+    tick(false);
     const interval = setInterval(() => {
       console.log('🔄 Auto-refreshing badge counts...');
       tick(false);

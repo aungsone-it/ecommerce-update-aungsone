@@ -85,6 +85,7 @@ import {
 } from "../utils/module-cache";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 import {
+  AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS,
   MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
   notifyMigooUserSessionChanged,
 } from "../../constants";
@@ -266,6 +267,30 @@ function storefrontCartCacheKey(userId: string): string {
 
 function storefrontWishlistCacheKey(userId: string): string {
   return `migoo-user-wishlist:${userId}`;
+}
+
+function userProfileRefreshKey(userId: string): string {
+  return `migoo-user-profile-refresh:${userId}`;
+}
+
+function wasUserProfileRefreshedRecently(userId: string, maxAgeMs: number): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem(userProfileRefreshKey(userId));
+    const ts = Number(raw);
+    return Number.isFinite(ts) && Date.now() - ts < maxAgeMs;
+  } catch {
+    return false;
+  }
+}
+
+function markUserProfileRefreshed(userId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(userProfileRefreshKey(userId), String(Date.now()));
+  } catch {
+    /* ignore storage failures */
+  }
 }
 
 function getCartStats(items: CartItem[]): { lineCount: number; totalQuantity: number } {
@@ -2327,26 +2352,28 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         loadUserCart(uid);
         loadUserWishlist(uid);
         
-        // Refresh profile data from server to get fresh signed URL
-        authApi.getProfile(uid)
-          .then((response: any) => {
-            const freshProfile = response?.user || response;
-            if (freshProfile && typeof freshProfile === "object" && !Array.isArray(freshProfile)) {
-              // Never drop id/email from session — bad merges were breaking order history & profile APIs
-              const updatedUser = {
-                ...normalized,
-                ...freshProfile,
-                id: uid,
-                email: (freshProfile as { email?: string }).email ?? String(normalized.email ?? ""),
-              };
-              setUser(updatedUser);
-              localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
-            }
-          })
-          .catch(error => {
-            // 🔇 Silently ignore - customers don't have vendor profiles, which is expected
-            // Continue with stored user if refresh fails
-          });
+        // Refresh profile opportunistically, but not on every mount/tab if we refreshed recently.
+        if (!wasUserProfileRefreshedRecently(uid, AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS)) {
+          authApi.getProfile(uid)
+            .then((response: any) => {
+              const freshProfile = response?.user || response;
+              if (freshProfile && typeof freshProfile === "object" && !Array.isArray(freshProfile)) {
+                // Never drop id/email from session — bad merges were breaking order history & profile APIs
+                const updatedUser = {
+                  ...normalized,
+                  ...freshProfile,
+                  id: uid,
+                  email: (freshProfile as { email?: string }).email ?? String(normalized.email ?? ""),
+                };
+                setUser(updatedUser);
+                localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
+                markUserProfileRefreshed(uid);
+              }
+            })
+            .catch(() => {
+              // Continue with stored user if refresh fails
+            });
+        }
       } catch (error) {
         console.error("Failed to parse stored user:", error);
         localStorage.removeItem("migoo-user");

@@ -146,7 +146,6 @@ export function AdminPage() {
   useEffect(() => {
     const onOrdersUpdated = () => {
       setDigestTimesTick((n) => n + 1);
-      void loadBadgeCounts(true);
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key !== adminOrdersUpdatedStorageKey()) return;
