@@ -201,14 +201,22 @@ function providerIndicatesRefundAccepted(body: AnyRecord): boolean {
       text(nested.refund_status) ||
       text(nested.refundStatus) ||
       text(nested.refund_request_no) ||
-      text(nested.refundRequestNo);
+      text(nested.refundRequestNo) ||
+      text(wrapped.refund_request_no) ||
+      text(wrapped.refundRequestNo);
     if (refundSignal || rs) return true;
   }
 
-  const code = String(nested.code ?? "").trim();
+  const code = String(nested.code ?? wrapped.code ?? body.code ?? "").trim();
+  const hasRefundNo = Boolean(
+    text(nested.refund_request_no) ||
+      text(nested.refundRequestNo) ||
+      text(wrapped.refund_request_no) ||
+      text(wrapped.refundRequestNo),
+  );
   if (
-    (code === "0" || code === "0000" || code === "10000") &&
-    (text(nested.refund_request_no) || text(nested.refundRequestNo) || rs)
+    (code === "0" || code === "00" || code === "0000" || code === "10000") &&
+    (hasRefundNo || rs)
   ) {
     return true;
   }
