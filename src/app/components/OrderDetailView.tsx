@@ -18,8 +18,15 @@ interface OrderDetailViewProps {
 function normalizeSummaryPaymentMethodLabel(raw: unknown): string {
   const txt = String(raw || "").trim().toLowerCase();
   if (!txt) return "Credit / Debit Card";
-  if (txt.includes("pwa")) return "KPay In App Payment";
-  if (txt === "kpay" || txt.includes("kpay qr")) return "KPay QR Payment";
+  if (txt.includes("pwa")) return "KBZPay In App Payment";
+  if (
+    txt === "kpay" ||
+    txt === "kbzpay" ||
+    txt === "kbz pay" ||
+    txt.includes("kpay qr") ||
+    txt.includes("kbzpay qr") ||
+    txt.includes("kbz pay qr")
+  ) return "KBZPay QR Payment";
   if (txt.includes("bank")) return "Bank Transfer";
   if (txt.includes("credit") || txt.includes("debit") || txt.includes("card")) return "Credit / Debit Card";
   return String(raw);

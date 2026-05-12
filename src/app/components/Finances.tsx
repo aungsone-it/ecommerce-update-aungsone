@@ -317,7 +317,12 @@ export function Finances() {
                          t.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          t.vendor.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = filterStatus === "all" || t.status === filterStatus;
-    const matchesMethod = filterMethod === "all" || t.method === filterMethod;
+    const methodText = String(t.method || "").trim().toLowerCase();
+    const filterText = String(filterMethod || "").trim().toLowerCase();
+    const matchesMethod =
+      filterMethod === "all" ||
+      methodText === filterText ||
+      (filterText === "kbzpay" && (methodText.includes("kpay") || methodText.includes("kbz")));
     
     const from = txnTableDateRange?.from ? startOfDay(txnTableDateRange.from) : undefined;
     const to = txnTableDateRange?.to ? endOfDay(txnTableDateRange.to) : undefined;
@@ -718,7 +723,7 @@ export function Finances() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Methods</SelectItem>
-                    <SelectItem value="KPay">KPay</SelectItem>
+                    <SelectItem value="KBZPay">KBZPay</SelectItem>
                     <SelectItem value="Wave Money">Wave Money</SelectItem>
                     <SelectItem value="True Money">True Money</SelectItem>
                     <SelectItem value="Cash">Cash</SelectItem>
