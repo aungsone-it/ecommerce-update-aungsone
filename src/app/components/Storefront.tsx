@@ -3531,7 +3531,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     try {
       const totalAmount = Math.max(getCartTotal() - (appliedCoupon?.discountAmount || 0), 0);
       if (totalAmount <= 0) {
-        toast.error("Invalid amount for KPay payment");
+        toast.error("Invalid amount for KBZPay payment");
         return;
       }
 
@@ -3546,14 +3546,14 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         title: `Order ${merchantOrderId}`,
       });
       setKpaySession(session);
-      toast.success("KPay QR generated");
+      toast.success("KBZPay QR generated");
       if (!session.qrImageUrl && !session.qrContent && !session.payUrl) {
-        toast.info("Waiting for KPay QR from provider...");
+        toast.info("Waiting for KBZPay QR from provider...");
         await waitForKPayPayload(merchantOrderId);
       }
     } catch (error: any) {
-      console.error("Failed to generate KPay QR:", error);
-      toast.error(error?.message || "Failed to generate KPay QR");
+      console.error("Failed to generate KBZPay QR:", error);
+      toast.error(error?.message || "Failed to generate KBZPay QR");
     } finally {
       setKpayLoading(false);
     }
@@ -3573,7 +3573,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       });
       setKpaySession((prev) => (prev ? { ...prev, ...session } : prev));
     } catch (error) {
-      console.warn("Unable to refresh KPay status", error);
+      console.warn("Unable to refresh KBZPay status", error);
     } finally {
       kpayRefreshInFlightRef.current = false;
       if (!silent) setKpayRefreshing(false);
@@ -3612,11 +3612,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         });
         setKpaySession((prev) => (prev ? { ...prev, ...session } : session));
         if (session.qrImageUrl || session.qrContent || session.payUrl) {
-          if (attempt > 0) toast.success("KPay QR is ready");
+          if (attempt > 0) toast.success("KBZPay QR is ready");
           return;
         }
       } catch (error) {
-        console.warn("Unable to refresh KPay status while polling", error);
+        console.warn("Unable to refresh KBZPay status while polling", error);
       }
       await new Promise((resolve) => setTimeout(resolve, 2500));
     }
@@ -3637,7 +3637,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
     if (paymentMethod === "KPay") {
       if (!canSubmitKPayOrder) {
-        toast.error("KPay QR payload is missing. Please regenerate QR and try again.");
+        toast.error("KBZPay QR payload is missing. Please regenerate QR and try again.");
         return;
       }
       const refreshedSession = await fetchKPaySessionStatus({
@@ -3646,7 +3646,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         merchantOrderId: kpaySession!.merchantOrderId,
       }).catch(() => null);
       if (!refreshedSession) {
-        toast.error("Unable to verify KPay status. Please try again.");
+        toast.error("Unable to verify KBZPay status. Please try again.");
         return;
       }
       setKpaySession((prev) => (prev ? { ...prev, ...refreshedSession } : refreshedSession));
@@ -3735,7 +3735,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     try {
       const orderNum =
         paymentMethod === "KPay"
-          ? (kpaySession?.merchantOrderId || `KPAY-${Date.now().toString().slice(-8)}`)
+            ? (kpaySession?.merchantOrderId || `KPAY-${Date.now().toString().slice(-8)}`)
           : `MG${Date.now().toString().slice(-8)}`;
       const orderTotal = getCartTotal();
       
@@ -3776,7 +3776,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             ? (kpaySession?.status === "paid" ? "paid" : "pending")
             : "unpaid",
         vendor: 'SECURE Store',
-        paymentMethod: paymentMethod === "Card" ? "Credit/Debit Card" : paymentMethod === "KPay" ? "KPay" : "Bank Transfer",
+        paymentMethod: paymentMethod === "Card" ? "Credit/Debit Card" : paymentMethod === "KPay" ? "KBZPay" : "Bank Transfer",
         shippingAddress: `${customerInfo.address}, ${customerInfo.city}, ${customerInfo.zipCode}, ${customerInfo.country}`,
         notes: customerInfo.notes || ''
       };
@@ -6619,7 +6619,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     </div>
                   </button>
 
-                  {/* KPay */}
+                  {/* KBZPay */}
                   <button
                     type="button"
                     onClick={() => setPaymentMethod("KPay")}
@@ -6638,7 +6638,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                             <div className="w-2 h-2 rounded-full bg-slate-900"></div>
                           )}
                         </div>
-                        <span className="text-sm font-medium text-slate-900">KPay</span>
+                        <span className="text-sm font-medium text-slate-900">KBZPay</span>
                       </div>
                     </div>
                   </button>
@@ -6813,7 +6813,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 {paymentMethod === "KPay" && (
                   <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
                     <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-4">
-                      <p className="text-sm text-emerald-900 font-semibold">💳 KPay Payment</p>
+                      <p className="text-sm text-emerald-900 font-semibold">💳 KBZPay Payment</p>
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -6824,7 +6824,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         onClick={handleGenerateKPayQr}
                         disabled={kpayLoading}
                       >
-                        {kpayLoading ? "Generating..." : kpaySession?.merchantOrderId ? "Regenerate KPay QR" : "Generate KPay QR"}
+                        {kpayLoading ? "Generating..." : kpaySession?.merchantOrderId ? "Regenerate KBZPay QR" : "Generate KBZPay QR"}
                       </Button>
                     </div>
 
@@ -6836,7 +6836,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           {kpayQrDisplayUrl ? (
                             <img
                               src={kpayQrDisplayUrl}
-                              alt="KPay Dynamic QR Code"
+                              alt="KBZPay Dynamic QR Code"
                               className="w-full h-full object-contain"
                             />
                           ) : kpayQrCanvasValue ? (
@@ -6852,7 +6852,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                               <p className="text-sm text-slate-500">
                                 {kpaySession?.merchantOrderId
                                   ? "QR not returned by provider for this order"
-                                  : "Generate KPay QR to start payment"}
+                                  : "Generate KBZPay QR to start payment"}
                               </p>
                             </div>
                           )}
@@ -6932,18 +6932,18 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                               rel="noreferrer"
                               className="inline-flex items-center rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
                             >
-                              Open KPay payment link
+                              Open KBZPay payment link
                             </a>
                           </div>
                         )}
                         {kpaySession?.merchantOrderId && !kpaySession?.qrImageUrl && !kpaySession?.qrContent && !kpaySession?.payUrl && (
                           <div className="py-2 border-t border-slate-200 text-xs text-amber-700">
-                            KPay returned pending order without QR payload. Please confirm endpoint contract with KPay team.
+                            KBZPay returned pending order without QR payload. Please confirm endpoint contract with the KBZPay team.
                           </div>
                         )}
                         {kpaySession?.merchantOrderId && (
                           <details className="py-2 border-t border-slate-200 rounded text-xs text-slate-700" open={kpayStatus === "pending"}>
-                            <summary className="cursor-pointer font-medium text-slate-800">KPay debug details {kpaySession?.stale ? "(stale - queryorder failed)" : ""}</summary>
+                            <summary className="cursor-pointer font-medium text-slate-800">KBZPay debug details {kpaySession?.stale ? "(stale - queryorder failed)" : ""}</summary>
                             <div className="mt-2 space-y-1 break-all">
                               <div>uiStatus: {kpayStatus}</div>
                               <div>stale: {String(kpaySession?.stale ?? false)}</div>
@@ -6978,7 +6978,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                                       debug: kpaySession?.debug,
                                     }, null, 2);
                                     navigator.clipboard?.writeText(blob);
-                                    toast.success("KPay debug copied to clipboard");
+                                    toast.success("KBZPay debug copied to clipboard");
                                   } catch {
                                     toast.error("Could not copy debug payload");
                                   }
@@ -7003,9 +7003,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         📱 <strong>How to pay:</strong>
                       </p>
                       <ul className="text-sm text-blue-900 mt-2 space-y-1 list-disc list-inside">
-                        <li>If scanner shows invalid transaction type, tap "Open KPay payment link" instead</li>
+                        <li>If scanner shows invalid transaction type, tap "Open KBZPay payment link" instead</li>
                         <li>Enter the exact amount shown above</li>
-                        <li>Complete the payment in your KPay app</li>
+                        <li>Complete the payment in your KBZPay app</li>
                       </ul>
                     </div>
                   </div>

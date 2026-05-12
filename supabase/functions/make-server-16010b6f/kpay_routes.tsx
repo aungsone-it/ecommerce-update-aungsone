@@ -252,7 +252,7 @@ async function postJson(
         ok: false,
         status: response.status,
         body: {},
-        networkError: `KPay endpoint redirected (${response.status}) to ${location || "<unknown>"}. Update KPAY_PROXY_BASE_URL to the redirect target.`,
+        networkError: `KBZPay endpoint redirected (${response.status}) to ${location || "<unknown>"}. Update KPAY_PROXY_BASE_URL to the redirect target.`,
       };
     }
     const rawText = await response.text();
@@ -1053,7 +1053,7 @@ export async function refundKPayOrder(params: {
       merchantOrderId,
       refundRequestNo,
       refundAmount,
-      message: "KPay gateway is not configured for refund",
+      message: "KBZPay gateway is not configured for refund",
     };
   }
 
@@ -1127,7 +1127,7 @@ export async function refundKPayOrder(params: {
       merchantOrderId,
       refundRequestNo,
       refundAmount,
-      message: "KPay refund request failed",
+      message: "KBZPay refund request failed",
       status: last?.status || 502,
       endpoint: last?.endpoint || "",
       details: asRecord(last?.details),
@@ -1224,7 +1224,7 @@ export async function createKPayQr(c: Context) {
     const cfg = kpayConfig();
     if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
       return c.json({
-        error: "KPay gateway is not configured",
+        error: "KBZPay gateway is not configured",
         missing: [
           !cfg.baseUrl ? "KPAY_PROXY_BASE_URL" : null,
           !cfg.appId ? "KPAY_APPID" : null,
@@ -1326,7 +1326,7 @@ export async function createKPayQr(c: Context) {
     });
   } catch (error: any) {
     console.error("createKPayQr error", error);
-    return c.json({ error: "Failed to create KPay QR", message: String(error?.message || error) }, 500);
+    return c.json({ error: "Failed to create KBZPay QR", message: String(error?.message || error) }, 500);
   }
 }
 
@@ -1383,7 +1383,7 @@ export async function startKPayPwa(c: Context) {
     let cfg = kpayPwaConfig(baseCfg);
     if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
       return c.json({
-        error: "KPay gateway is not configured",
+        error: "KBZPay gateway is not configured",
         missing: [
           !cfg.baseUrl ? "KPAY_PROXY_BASE_URL" : null,
           !cfg.appId ? "KPAY_PWA_APPID (or KPAY_APPID)" : null,
@@ -1667,7 +1667,7 @@ export async function startKPayPwa(c: Context) {
     });
   } catch (error: any) {
     console.error("startKPayPwa error", error);
-    return c.json({ error: "Failed to start KPay PWA", message: String(error?.message || error) }, 500);
+    return c.json({ error: "Failed to start KBZPay PWA", message: String(error?.message || error) }, 500);
   }
 }
 
@@ -1708,7 +1708,7 @@ export async function getKPayStatus(c: Context) {
 
     const existing = (await kv.get(`kpay_txn:${merchantOrderId}`)) as AnyRecord | null;
     if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
-      if (!existing) return c.json({ error: "KPay transaction not found" }, 404);
+      if (!existing) return c.json({ error: "KBZPay transaction not found" }, 404);
       return c.json({
         success: true,
         merchantOrderId,
@@ -1851,7 +1851,7 @@ export async function getKPayStatus(c: Context) {
     });
   } catch (error: any) {
     console.error("getKPayStatus error", error);
-    return c.json({ error: "Failed to fetch KPay status", message: String(error?.message || error) }, 500);
+    return c.json({ error: "Failed to fetch KBZPay status", message: String(error?.message || error) }, 500);
   }
 }
 
@@ -1888,7 +1888,7 @@ export async function handleKPayWebhook(c: Context) {
     } catch (logErr) {
       console.warn("kpay_webhook_log write failed", logErr);
     }
-    console.log("KPay webhook received", { merchantOrderId, rawBody });
+    console.log("KBZPay webhook received", { merchantOrderId, rawBody });
 
     if (!merchantOrderId) return c.json({ error: "merchantOrderId missing" }, 400);
 
@@ -1903,7 +1903,7 @@ export async function handleKPayWebhook(c: Context) {
     const source = buildSignSource(body);
     const expectedSign = await sha256Upper(`${source}&key=${cfg.signKey}`);
     if (!providedSign || providedSign !== expectedSign) {
-      console.warn("KPay webhook signature mismatch", {
+      console.warn("KBZPay webhook signature mismatch", {
         merchantOrderId,
         providedSign,
         expectedSign,

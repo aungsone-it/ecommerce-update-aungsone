@@ -10,7 +10,7 @@ import {
 } from "../utils/kpayClient";
 
 /**
- * KPay PWA return landing page.
+ * KBZPay PWA return landing page.
  *
  * KBZ redirects the customer's mobile browser back to this route after they finish
  * (or cancel) the payment inside the KBZPay app. KBZ appends two query params:
@@ -174,7 +174,7 @@ export function KPayReturnPage() {
 
         <h1 className="text-center text-2xl font-bold text-slate-900">
           {state.kind === "loading"
-            ? "Confirming your KPay payment…"
+            ? "Confirming your KBZPay payment..."
             : state.kind === "missing_order"
               ? "Missing order reference"
               : isPaid

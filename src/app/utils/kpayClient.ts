@@ -389,7 +389,7 @@ export async function createKPayQrSession(params: CreateKPayQrParams): Promise<K
   }
   const normalized = normalizeSession(data as Record<string, any>, merchantOrderId);
   if (!normalized.qrContent && !normalized.qrImageUrl && !normalized.payUrl) {
-    console.warn("KPay create-qr returned no QR payload", data);
+    console.warn("KBZPay create-qr returned no QR payload", data);
   }
   return normalized;
 }
@@ -408,11 +408,11 @@ export async function fetchKPaySessionStatus(
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(String(data?.error || data?.message || "Failed to get KPay status"));
+    throw new Error(String(data?.error || data?.message || "Failed to get KBZPay status"));
   }
   const normalized = normalizeSession(data as Record<string, any>, merchantOrderId);
   if (!normalized.qrContent && !normalized.qrImageUrl && !normalized.payUrl) {
-    console.warn("KPay status returned no QR payload", data);
+    console.warn("KBZPay status returned no QR payload", data);
   }
   return normalized;
 }
@@ -509,7 +509,7 @@ export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaS
       hint ||
       networkErr ||
       errTag ||
-      "Failed to start KPay PWA";
+      "Failed to start KBZPay PWA";
     throw new Error(core);
   }
   return {

@@ -4999,8 +4999,11 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     const paymentStatus = String(existingOrder.paymentStatus || "").toLowerCase();
     const kpayStatus = String(existingOrder?.kpay?.status || "").toLowerCase();
     const isPaidOrder = paymentStatus === "paid" || kpayStatus === "paid";
+    const paymentMethodText = String(existingOrder.paymentMethod || "").toLowerCase();
     const isKPayOrder =
-      String(existingOrder.paymentMethod || "").toLowerCase().includes("kpay") ||
+      paymentMethodText.includes("kpay") ||
+      paymentMethodText.includes("kbzpay") ||
+      paymentMethodText.includes("kbz pay") ||
       Boolean(existingOrder?.kpay?.merchantOrderId);
     let refundResult:
       | null
@@ -5019,7 +5022,7 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     let inventoryRestored = false;
     let inventoryDeducted = false;
 
-    // If admin is cancelling a paid KPay order, force refund first (idempotent).
+    // If admin is cancelling a paid KBZPay order, force refund first (idempotent).
     if (!wasCancelled && isNowCancelled && isPaidOrder && isKPayOrder) {
       const merchantOrderId = String(
         existingOrder?.kpay?.merchantOrderId || existingOrder.orderNumber || orderKvId || ""
@@ -5033,7 +5036,7 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
         return c.json(
           {
             success: false,
-            error: "KPay refund failed",
+            error: "KBZPay refund failed",
             message: refund.message,
             refund: {
               merchantOrderId: refund.merchantOrderId,

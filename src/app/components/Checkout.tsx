@@ -226,8 +226,8 @@ function readCheckoutSummarySnapshot(key: string): CheckoutSummarySnapshot | nul
 function summaryPaymentMethodLabel(
   method: "Card" | "KPay" | "KPay-PWA" | "BankTransfer"
 ): string {
-  if (method === "KPay") return "KPay QR Payment";
-  if (method === "KPay-PWA") return "KPay In App Payment";
+  if (method === "KPay") return "KBZPay QR Payment";
+  if (method === "KPay-PWA") return "KBZPay In App Payment";
   if (method === "BankTransfer") return "Bank Transfer";
   return "Credit / Debit Card";
 }
@@ -236,7 +236,14 @@ function normalizeCheckoutPaymentMethod(raw: unknown): "Card" | "KPay" | "KPay-P
   const txt = String(raw || "").trim().toLowerCase();
   if (!txt) return "Card";
   if (txt.includes("pwa") || txt.includes("mobile browser")) return "KPay-PWA";
-  if (txt === "kpay" || txt.includes("kpay qr")) return "KPay";
+  if (
+    txt === "kpay" ||
+    txt === "kbzpay" ||
+    txt === "kbz pay" ||
+    txt.includes("kpay qr") ||
+    txt.includes("kbzpay qr") ||
+    txt.includes("kbz pay qr")
+  ) return "KPay";
   if (txt.includes("bank")) return "BankTransfer";
   if (txt.includes("credit") || txt.includes("debit") || txt.includes("card")) return "Card";
   return "Card";
@@ -713,7 +720,7 @@ export function Checkout({
                 phone: d.phone || d.shippingInfo?.phone || "",
                 status: "pending",
                 paymentStatus: "paid",
-                paymentMethod: "KPay (PWA)",
+                paymentMethod: "KBZPay (PWA)",
                 total: Number(d.total || 0),
                 subtotal: Number(d.subtotal || 0),
                 discount: Number(d.discount || 0),
@@ -990,7 +997,7 @@ export function Checkout({
         return;
       }
       if (finalTotal <= 0) {
-        toast.error("Invalid amount for KPay payment");
+        toast.error("Invalid amount for KBZPay payment");
         return;
       }
       const orderEmail = resolveOrderEmail();
@@ -1067,7 +1074,7 @@ export function Checkout({
       const redirectUrl = pwaSession.redirectUrl;
       window.location.href = redirectUrl;
     } catch (error: any) {
-      toast.error(error?.message || "Failed to start KPay PWA payment");
+      toast.error(error?.message || "Failed to start KBZPay PWA payment");
     } finally {
       setKpayPwaLoading(false);
     }
@@ -1081,7 +1088,7 @@ export function Checkout({
         return;
       }
       if (finalTotal <= 0) {
-        toast.error("Invalid amount for KPay payment");
+        toast.error("Invalid amount for KBZPay payment");
         return;
       }
       setKpayLoading(true);
@@ -1096,18 +1103,18 @@ export function Checkout({
       });
       setKpaySession(session);
       if (session.status === "failed") {
-        toast.error(`KPay precreate failed: ${session.providerStatus || session.debug?.providerCode || "UNKNOWN"}`, {
+        toast.error(`KBZPay precreate failed: ${session.providerStatus || session.debug?.providerCode || "UNKNOWN"}`, {
           duration: 8000,
         });
         return;
       }
-      toast.success("KPay QR generated");
+      toast.success("KBZPay QR generated");
       if (!session.qrImageUrl && !session.qrContent && !session.payUrl) {
-        toast.info("Waiting for KPay QR from provider...");
+        toast.info("Waiting for KBZPay QR from provider...");
         await waitForKPayPayload(merchantOrderId);
       }
     } catch (error: any) {
-      toast.error(error?.message || "Failed to generate KPay QR");
+      toast.error(error?.message || "Failed to generate KBZPay QR");
     } finally {
       setKpayLoading(false);
     }
@@ -1154,7 +1161,7 @@ export function Checkout({
         });
         setKpaySession((prev) => (prev ? { ...prev, ...session } : session));
         if (session.qrImageUrl || session.qrContent || session.payUrl) {
-          if (attempt > 0) toast.success("KPay QR is ready");
+          if (attempt > 0) toast.success("KBZPay QR is ready");
           return;
         }
       } catch {
@@ -1207,7 +1214,7 @@ export function Checkout({
       toast.success("💳 Payment Successful!", { duration: 3000 });
     } else if (paymentMethod === "KPay") {
       if (!canSubmitKPayOrder) {
-        toast.error("KPay QR payload is missing. Please regenerate QR first");
+        toast.error("KBZPay QR payload is missing. Please regenerate QR first");
         setLoading(false);
         return;
       }
@@ -1261,9 +1268,9 @@ export function Checkout({
           paymentMethod === "Card"
             ? "Credit/Debit Card"
             : paymentMethod === "KPay"
-            ? "KPay"
+            ? "KBZPay"
             : paymentMethod === "KPay-PWA"
-            ? "KPay (PWA)"
+            ? "KBZPay (PWA)"
             : "Bank Transfer",
         total: finalTotal,
         subtotal: payableSubtotal,
@@ -1851,19 +1858,19 @@ export function Checkout({
                         >
                           {paymentMethod === "KPay" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
                         </div>
-                        <span className="text-sm font-medium text-slate-700">KPay (Scan QR)</span>
+                        <span className="text-sm font-medium text-slate-700">KBZPay (Scan QR)</span>
                       </div>
                     </div>
                   </button>
                   {paymentMethod === "KPay" && (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                       {kpayLoading && (
-                        <p className="mb-3 text-xs text-slate-500">Generating KPay QR automatically...</p>
+                        <p className="mb-3 text-xs text-slate-500">Generating KBZPay QR automatically...</p>
                       )}
                       <div className="mb-4 flex justify-center">
                         <div className="relative flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
                           {kpayQrDisplayUrl ? (
-                            <img src={kpayQrDisplayUrl} alt="KPay QR Code" className="h-full w-full object-contain" />
+                            <img src={kpayQrDisplayUrl} alt="KBZPay QR Code" className="h-full w-full object-contain" />
                           ) : kpaySession?.qrContent ? (
                             <QRCodeCanvas
                               value={kpaySession.qrContent}
@@ -1876,7 +1883,7 @@ export function Checkout({
                             <div className="px-4 text-center text-sm text-slate-500">
                               {kpaySession?.merchantOrderId
                                 ? "QR not returned by provider for this order"
-                                : "Preparing KPay QR for scan and pay..."}
+                                : "Preparing KBZPay QR for scan and pay..."}
                             </div>
                           )}
                           {(kpayWebhookConfirmed || kpaySession?.status === "paid") && (
@@ -1943,7 +1950,7 @@ export function Checkout({
                         >
                           {paymentMethod === "KPay-PWA" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
                         </div>
-                        <span className="text-sm font-medium text-slate-700">KPay (Mobile Browser)</span>
+                        <span className="text-sm font-medium text-slate-700">KBZPay (Mobile Browser)</span>
                       </div>
                       <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                         Recommended
@@ -2135,7 +2142,7 @@ export function Checkout({
                 ) : paymentMethod === "KPay" ? (
                   kpayWebhookConfirmed ? "Place Order (Payment Confirmed)" : "I've Completed Payment"
                 ) : paymentMethod === "KPay-PWA" ? (
-                  `Pay with KPay · ${finalTotal.toFixed(0)} MMK`
+                  `Pay with KBZPay · ${finalTotal.toFixed(0)} MMK`
                 ) : (
                   `Pay ${finalTotal.toFixed(0)} MMK`
                 )}
