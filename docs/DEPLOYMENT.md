@@ -1,156 +1,103 @@
-# Deploying this app (any platform)
+# Deployment Guide
 
-The repo ships a **static SPA** (`npm run build` -> `dist/`). Behavior stays stable if you:
+This project deploys as:
+- static frontend bundle (`dist/`)
+- Supabase backend services (Edge Functions + DB/Auth/Storage)
 
-1. Serve `index.html` for all non-file routes (**SPA fallback**).
-2. Set **Supabase** (and optional **VITE_** vars) before build, then publish fresh assets.
+Use this document as the single deployment reference.
 
-## Quick start: Railway (recommended if you already use it)
+## 1) Prerequisites
 
-This project works on Railway as a single web service.
+- Node.js and npm for frontend build.
+- Supabase CLI for backend deployment.
+- Access to the target Supabase project.
 
-1. Push the repo to GitHub.
-2. Railway dashboard -> **New** -> **Deploy from GitHub repo**.
-3. Select this repository.
-4. Configure the service:
-   - **Build Command**: `npm ci && npm run build`
-   - **Start Command**: `npx vite preview --host 0.0.0.0 --port $PORT`
-5. Add variables from `.env.example` (at minimum Supabase keys your app uses):
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-   - optional `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN`
-   - optional `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`
-   - optional `VITE_STRIPE_PUBLISHABLE_KEY`
-6. Deploy and test core flows before custom domain cutover.
+## 2) Frontend deployment
 
-### Railway go-live checklist
-
-- Keep the same Supabase project to preserve current data/features.
-- Confirm SPA routes work directly (for example `/store/<slug>` opens without 404).
-- Verify auth, product list/detail, cart, checkout, and image loading.
-- Add custom domain only after the Railway URL passes full smoke tests.
-- Keep old host active during DNS propagation for fast rollback.
-
-## Quick start: Tencent Cloud (COS + CDN)
-
-For this repo, the easiest Tencent setup is:
-
-- **COS** as static origin (host `dist/`)
-- **CDN** for domain + HTTPS + caching
-- **SPA fallback** to `index.html`
-
-1. Build locally:
-   ```bash
-   npm ci
-   npm run build
-   ```
-2. Tencent Cloud Console -> **COS** -> create bucket in your target region.
-3. In bucket settings, enable **Static Website** hosting.
-4. Upload all files inside `dist/` to COS.
-5. Configure CDN with COS bucket as origin.
-6. Add your custom domain to CDN and enable HTTPS certificate.
-7. Configure SPA fallback in COS website rules and/or CDN rewrite rules so unknown routes return `/index.html` with `200`.
-8. Verify core flows on CDN domain, then switch production DNS.
-
-### Tencent Cloud notes (important)
-
-- Build-time env: set your `VITE_*` values **before** `npm run build`, then upload fresh `dist/`.
-- Required keys usually include:
-  - `VITE_SUPABASE_URL`
-  - `VITE_SUPABASE_ANON_KEY`
-- Optional keys (if used by your features):
-  - `VITE_STRIPE_PUBLISHABLE_KEY`
-  - `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN`
-  - `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`
-- Keep using the same Supabase project to avoid data or auth regressions.
-- If deep links like `/store/<slug>` return 404, your SPA fallback rule is missing or misconfigured.
-- During DNS cutover, keep your current host live until Tencent CDN is healthy globally.
-    
-## Build
+Build:
 
 ```bash
-npm ci
+npm install
 npm run build
 ```
 
-Publish the **`dist/`** folder.
+Publish the `dist/` folder to your host.
 
-## Single Page App (required everywhere)
+### SPA fallback is mandatory
 
-The browser must receive `index.html` for paths like `/store/foo` or `/` on a subdomain — not a 404 HTML page.
+All unknown routes must rewrite to `index.html` (for example `/admin/orders`, `/store/vendor-slug`, `/vendor/vendor-slug/admin`).
 
-| Platform | How |
-|----------|-----|
-| **Vercel** | `vercel.json` in this repo already has a rewrite `/*` → `/index.html`. |
-| **Netlify** | Add `public/_redirects`: `/* /index.html 200` (or use `netlify.toml` `[[redirects]]`). |
-| **Cloudflare Pages** | `_redirects` or **Pages** → **Redirects** → SPA fallback. |
-| **Tencent Cloud (COS/CDN)** | Configure website/CDN rule so unknown paths rewrite/return to `/index.html`. |
-| **Nginx** | `try_files $uri $uri/ /index.html;` |
-| **Apache** | `FallbackResource /index.html` or equivalent `mod_rewrite`. |
+Examples:
+- Vercel: use existing `vercel.json` rewrite rules.
+- Netlify: `/* /index.html 200`
+- Nginx: `try_files $uri $uri/ /index.html;`
 
-## Environment variables
+If deep links return 404, SPA fallback is misconfigured.
 
-See **`.env.example`**. At minimum your deployment needs the same Supabase connection your app uses (`utils/supabase/info.tsx` or `VITE_SUPABASE_*`).
+## 3) Backend deployment (Supabase)
 
-### Supabase Edge Function secrets (server-side)
+Deploy Edge Functions:
 
-For password reset email via Resend, set these in Supabase project secrets:
+```bash
+npm run deploy:edge
+```
 
-- `RESEND_API_KEY` (required)
-- `RESEND_FROM_EMAIL` (required, must be an allowed/verified sender in Resend)
-- `RESEND_FROM_NAME` (optional, default: `Migoo Marketplace`)
-- `ALLOW_DEBUG_OTP` (optional; keep `false`/unset in production)
+Or full Supabase rollout (DB + functions):
 
-Quick check endpoint after deploy:
+```bash
+npm run deploy:supabase
+```
 
-- `https://<project-ref>.supabase.co/functions/v1/make-server-16010b6f/auth/email-health`
-- Expected production response: `ok: true` and `debugOtpEnabled: false`
+Current active function paths include:
+- `supabase/functions/make-server-16010b6f`
+- `supabase/functions/kpay-webhook`
 
-### Vendor subdomains (`gogo.example.com` → storefront)
+## 4) Environment variables
 
-- **Client**: optional `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN` and `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`.
-- **Heuristic**: if the hostname looks like `label.apex.tld`, the app derives `apex.tld` automatically (two-part TLDs only). For **`.co.uk`** and similar, set `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN` explicitly.
-- **Vercel only**: `middleware.ts` uses `@vercel/edge` for optional canonical redirects. Set `VENDOR_SUBDOMAIN_BASE_DOMAIN` / `VENDOR_SUBDOMAIN_SLUG_MAP` in the Vercel project. Other hosts ignore this file unless they add an equivalent edge worker.
+Use `.env.example` as base and set environment values per target.
 
-## TLS and CDN
+### Frontend envs (`VITE_*`)
 
-If you put a **CDN / proxy** (Cloudflare, EdgeOne, etc.) in front of the origin:
+Common required:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-- Use **Full (strict)** SSL to the origin, or **DNS-only** to avoid double-proxy TLS issues.
-- **HTTP 525** usually means the proxy cannot complete TLS to your host — fix DNS/SSL, not the React bundle.
+Common optional:
+- `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN`
+- `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`
+- `VITE_ADMIN_OPERATION_SECRET`
+- payment-specific publishable keys if enabled
 
-## Optional: don’t change defaults
+### Supabase function secrets (server side)
 
-To keep your fork stable:
+Set these in Supabase project secrets when required by your enabled flows:
+- auth/email provider secrets (for reset email)
+- KBZPay gateway secrets and webhook verification values
+- `EDGE_ADMIN_OPERATION_SECRET` (recommended for destructive admin operations)
+- optional debug flags only in non-production environments
 
-- Prefer **documentation + `.env.example`** over new runtime defaults.
-- Avoid hardcoding production domains in code; use env + the shared derivation in `src/app/utils/deriveVendorApex.ts`.
+## 5) Domain and vendor host notes
 
----
+- Vendor storefront routes are supported by path and/or subdomain logic.
+- For subdomain routing, set domain mapping env vars consistently across frontend and edge/middleware configuration.
+- If using a proxy/CDN, keep TLS from CDN to origin in strict mode.
 
-## Supabase usage & keeping API / storage costs down
+## 6) Rollout checklist
 
-Supabase bills (plan-dependent) on things like **Edge Function invocations**, **database** usage, **Storage egress**, and **Auth** MAU — not on “number of React components.” A few principles:
+1. Deploy backend changes first when API contracts changed.
+2. Deploy frontend build with matching env values.
+3. Verify auth + admin login + vendor login.
+4. Verify product list/detail, cart, checkout, and order creation.
+5. Verify KBZPay webhook processing in the target environment.
+6. Verify destructive admin actions require authorized secret headers.
+7. Monitor Supabase logs and frontend errors for at least one traffic cycle.
 
-### What this codebase already does (no extra work for you)
+## 7) Troubleshooting
 
-- **`src/app/utils/module-cache.ts`** — Session-level cache + **request coalescing** (parallel navigations wait on one in-flight fetch). Big reduction in duplicate **Edge Function** calls for products, vendors, orders, etc.
-- **`withNetworkRetry`** — Fewer failed-then-user-retries that would double-bill the same read.
-- **`getCachedImageUrl()`** — Use this when you must **mint signed URLs** in the client so the same path isn’t resolved repeatedly in one session.
-- **`LazyImage`** — Images load when near the viewport; fewer parallel Storage/CDN downloads on first paint.
-
-### Practical ways to spend less
-
-1. **Prefer stable, cacheable image URLs** — If product images can live in a **public** bucket with long-cache headers, you avoid per-view **signed URL** Edge work (your backend policy permitting).
-2. **Pagination / slim payloads** — Catalog flows that use **bootstrap + paged** APIs (see `fetchCatalogBootstrap` / `fetchCatalogPage`) beat “download everything once” for large catalogs.
-3. **Don’t poll the API** — Avoid `setInterval` / rapid `useEffect` refetches; debounce search; refresh only on user action or focus (cart sync already throttles ambient refetch in `CartContext`).
-4. **Monitor** — Supabase Dashboard → **Reports** / **API** to see what actually burns quota; set **spend caps** / alerts if your plan allows.
-5. **CDN in front of Storage (optional)** — A CDN (e.g. Cloudflare) caching **GETs** to public image URLs cuts **Storage egress** from origin; configure cache rules and HTTPS once.
-
-### What *not* to worry about
-
-- **Browser HTTP cache** for static `GET` images does not multiply Supabase **DB** queries; it mainly helps **bandwidth** and perceived speed.
-- **One** Edge Function call that returns **many** products is usually cheaper than **many** tiny calls — your cached list endpoints align with that.
+- **404 on refresh/deep-link**: fix SPA rewrite.
+- **Auth redirect/login mismatch**: validate Supabase Auth allowed URLs.
+- **Webhook issues**: verify function secret values and signature settings.
+- **Admin destructive routes blocked**: set and pass admin operation secret headers correctly.
 
 
 
