@@ -2,11 +2,30 @@
  * Supabase Realtime **Broadcast** for chat (messages persist in Edge/KV; broadcast carries live deltas).
  * Wired in `FloatingChat` (marketplace + vendor storefronts) and super-admin `Chat`.
  * Enable Realtime in the Supabase Dashboard. If Realtime is off, subscribe/send no-ops gracefully;
- * HTTP polling in those components remains as fallback.
+ * HTTP polling in those components remains as a slow fallback.
  */
 import { supabase } from "../contexts/AuthContext";
 
 const INBOX_CHANNEL = "sec-chat-admin-inbox-v1";
+
+/** Payload for admin inbox sidebar updates (avoids refetching full conversation list on every ping). */
+export type InboxBroadcastPayload = {
+  t?: number;
+  conversationId?: string;
+  lastMessage?: string;
+  timestamp?: string;
+  customerEmail?: string;
+  customerName?: string;
+  customerProfileImage?: string;
+  vendorId?: string;
+  vendorSource?: string;
+  /** Customer → admin: increment sidebar unread (caller should skip when admin is already on that thread). */
+  unreadBump?: boolean;
+  /** All conversations were wiped — other admin tabs should clear local inbox. */
+  clearedAll?: boolean;
+  /** One or more threads were deleted — other admin tabs remove rows without refetch. */
+  removedConversationIds?: string[];
+};
 
 function safeSegment(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120);
@@ -32,8 +51,17 @@ async function waitSubscribed(ch: ReturnType<typeof supabase.channel>, ms = 8000
   });
 }
 
-/** Notify all admin Chat tabs to refresh the conversation list (after any new message). */
-export async function broadcastInboxPing(): Promise<void> {
+function extractBroadcastPayload<T>(ctx: unknown): T | undefined {
+  if (!ctx || typeof ctx !== "object") return undefined;
+  const o = ctx as Record<string, unknown>;
+  if (o.payload && typeof o.payload === "object" && !Array.isArray(o.payload)) {
+    return o.payload as T;
+  }
+  return undefined;
+}
+
+/** Notify all admin Chat tabs: optional row metadata so listeners can merge without GET /chat/conversations. */
+export async function broadcastInboxPing(payload: InboxBroadcastPayload = {}): Promise<void> {
   if (typeof window === "undefined") return;
   const ch = supabase.channel(INBOX_CHANNEL, {
     config: { broadcast: { ack: false } },
@@ -51,7 +79,7 @@ export async function broadcastInboxPing(): Promise<void> {
     await ch.send({
       type: "broadcast",
       event: "inbox",
-      payload: { t: Date.now() },
+      payload: { t: Date.now(), ...payload },
     });
   } finally {
     try {
@@ -63,12 +91,12 @@ export async function broadcastInboxPing(): Promise<void> {
 }
 
 /** Push a single message to everyone subscribed to this conversation (customer + admin thread). */
-export async function broadcastConversationMessage(
-  conversationId: string,
+async function sendConversationBroadcastToChannel(
+  channelConversationId: string,
   message: unknown
 ): Promise<void> {
-  if (typeof window === "undefined" || message == null) return;
-  const ch = supabase.channel(conversationChannelName(conversationId), {
+  if (typeof window === "undefined" || !channelConversationId.trim() || message == null) return;
+  const ch = supabase.channel(conversationChannelName(channelConversationId.trim()), {
     config: { broadcast: { ack: false } },
   });
   const ok = await waitSubscribed(ch);
@@ -95,12 +123,41 @@ export async function broadcastConversationMessage(
   }
 }
 
-/** Admin panel: refresh inbox when any client pings (debounce in caller). */
-export function subscribeAdminInbox(onInboxPing: () => void): () => void {
+/**
+ * Push a single message to conversation Realtime channel(s).
+ * Server persistence uses `canonicalConversationId` on the message, while clients may still be
+ * subscribed under a legacy/slug-based id (e.g. vendor storefront `go-go` vs internal vendor id).
+ * When those differ, broadcast to **both** so floating chat and admin stay in sync without refresh.
+ */
+export async function broadcastConversationMessage(
+  conversationId: string,
+  message: unknown
+): Promise<void> {
+  if (typeof window === "undefined" || message == null) return;
+  const canonical =
+    typeof message === "object" &&
+    message !== null &&
+    "conversationId" in message &&
+    String((message as { conversationId?: unknown }).conversationId || "").trim() !== ""
+      ? String((message as { conversationId: string }).conversationId).trim()
+      : String(conversationId || "").trim();
+  const fromCaller = String(conversationId || "").trim();
+  const targets = new Set<string>();
+  if (canonical) targets.add(canonical);
+  if (fromCaller && fromCaller !== canonical) targets.add(fromCaller);
+
+  for (const id of targets) {
+    await sendConversationBroadcastToChannel(id, message);
+  }
+}
+
+/** Admin panel: inbox sidebar + cross-tab sync (merge from payload when possible). */
+export function subscribeAdminInbox(onInbox: (payload: InboxBroadcastPayload) => void): () => void {
   const ch = supabase
     .channel(INBOX_CHANNEL, { config: { broadcast: { ack: false } } })
-    .on("broadcast", { event: "inbox" }, () => {
-      onInboxPing();
+    .on("broadcast", { event: "inbox" }, (ctx: unknown) => {
+      const payload = extractBroadcastPayload<InboxBroadcastPayload>(ctx) ?? { t: Date.now() };
+      onInbox(payload);
     });
   ch.subscribe();
   return () => {
@@ -124,13 +181,13 @@ export function subscribeConversationBroadcast(
     .channel(conversationChannelName(conversationId), {
       config: { broadcast: { ack: false } },
     })
-    .on("broadcast", { event: "message" }, (ctx: { payload?: { message?: unknown } } | Record<string, unknown>) => {
-      const any = ctx as Record<string, unknown>;
-      const raw = any?.payload && typeof any.payload === "object" && any.payload !== null
-        ? (any.payload as { message?: unknown }).message
-        : any.message;
-      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        onMessage(raw as Record<string, unknown>);
+    .on("broadcast", { event: "message" }, (ctx: unknown) => {
+      const raw = extractBroadcastPayload<{ message?: unknown }>(ctx)?.message;
+      const fallback =
+        ctx && typeof ctx === "object" && "message" in ctx ? (ctx as { message?: unknown }).message : undefined;
+      const msg = raw ?? fallback;
+      if (msg && typeof msg === "object" && !Array.isArray(msg)) {
+        onMessage(msg as Record<string, unknown>);
       }
     });
   ch.subscribe();

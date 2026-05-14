@@ -605,6 +605,8 @@ export const chatApi = {
     customerName?: string;
     imageUrl?: string;
     vendorId?: string;
+    /** Persisted thread label / token hint (vendor storefront vs SECURE) — keep in sync with server */
+    vendorSource?: string;
     customerProfileImage?: string;
   }) => {
     return apiClient.post('/chat/messages', data);

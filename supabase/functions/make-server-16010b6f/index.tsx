@@ -8782,10 +8782,42 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
       }
     }
 
-    const canonicalConversationId =
-      canonicalConversationIdFor(customerEmail, vendorId, vendorSource) ||
-      conversationId ||
-      `conv-${sanitizeChatToken(customerEmail || Date.now())}`;
+    /**
+     * Admin replies must stay on the thread the dashboard selected. Previously we always
+     * recomputed id from (email, vendorId); admin payloads omitted vendorId, so every reply
+     * was stored under the main-store `conv-…` id — vendor floating chat never saw it.
+     */
+    const rawConversationId = String(conversationId || "").trim();
+    const requestEmailNorm = normalizeChatEmail(customerEmail);
+    let canonicalConversationId: string | null = null;
+
+    if (sender === "admin" && rawConversationId) {
+      const existingRow = await withTimeout(
+        kv.get(`chat:conversation:${rawConversationId}`),
+        5000
+      ).catch(() => null) as any;
+      if (existingRow?.customerEmail) {
+        const rowEmailNorm = normalizeChatEmail(existingRow.customerEmail);
+        if (
+          !requestEmailNorm ||
+          !rowEmailNorm ||
+          rowEmailNorm === requestEmailNorm
+        ) {
+          canonicalConversationId = rawConversationId;
+        }
+      } else if (existingRow) {
+        canonicalConversationId = rawConversationId;
+      } else {
+        canonicalConversationId = rawConversationId;
+      }
+    }
+
+    if (!canonicalConversationId) {
+      canonicalConversationId =
+        canonicalConversationIdFor(customerEmail, vendorId, vendorSource) ||
+        rawConversationId ||
+        `conv-${sanitizeChatToken(customerEmail || Date.now())}`;
+    }
 
     const message = {
       id: messageId,
@@ -8924,10 +8956,87 @@ app.put("/make-server-16010b6f/chat/conversations/:conversationId/star", async (
   }
 });
 
+// 🔥 DELETE ALL CHAT CONVERSATIONS AND MESSAGES
+// Must be registered BEFORE `/:conversationId` or the path segment `all` is captured as an id.
+app.delete("/make-server-16010b6f/chat/conversations/all", async (c) => {
+  const denied = assertDestructiveOperationAllowed(c);
+  if (denied) return denied;
+  try {
+    console.log("🗑️ DELETING ALL CHAT CONVERSATIONS AND MESSAGES...");
+
+    // Step 1: Get all conversations
+    const conversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 15000);
+    console.log(`📊 Found ${conversations.length} conversations to delete`);
+
+    // Step 2: Get all messages
+    const messages = await withTimeout(kv.getByPrefix("chat:message:"), 15000);
+    console.log(`📊 Found ${messages.length} messages to delete`);
+
+    const deletionPromises: Promise<any>[] = [];
+    let conversationCount = 0;
+    let messageCount = 0;
+
+    // Delete all conversations
+    for (const conversation of conversations) {
+      if (conversation && conversation.id) {
+        const key = `chat:conversation:${conversation.id}`;
+        deletionPromises.push(
+          withTimeout(kv.del(key), 5000)
+            .then(() => {
+              conversationCount++;
+              console.log(`✅ Deleted conversation: ${conversation.id}`);
+            })
+            .catch((err) => console.error(`❌ Failed to delete conversation ${conversation.id}:`, err))
+        );
+      }
+    }
+
+    // Delete all messages
+    for (const message of messages) {
+      if (message && message.id && message.conversationId) {
+        const key = `chat:message:${message.conversationId}:${message.id}`;
+        deletionPromises.push(
+          withTimeout(kv.del(key), 5000)
+            .then(() => {
+              messageCount++;
+            })
+            .catch((err) => console.error(`❌ Failed to delete message ${message.id}:`, err))
+        );
+      }
+    }
+
+    // Execute all deletions in parallel
+    await Promise.allSettled(deletionPromises);
+
+    console.log(`✅ CHAT HISTORY DELETION COMPLETE!`);
+    console.log(`   - ${conversationCount} conversations deleted`);
+    console.log(`   - ${messageCount} messages deleted`);
+
+    return c.json({
+      success: true,
+      message: "All chat history deleted successfully",
+      conversationsDeleted: conversationCount,
+      messagesDeleted: messageCount,
+    });
+  } catch (error: any) {
+    console.error("❌ Error deleting chat history:", error);
+    return c.json(
+      {
+        error: "Failed to delete chat history",
+        details: String(error),
+      },
+      500
+    );
+  }
+});
+
 // Delete one conversation and all its messages
 app.delete("/make-server-16010b6f/chat/conversations/:conversationId", async (c) => {
   try {
     const conversationId = c.req.param("conversationId");
+    if (conversationId === "all") {
+      return c.json({ error: "Use DELETE /chat/conversations/all to clear all history" }, 400);
+    }
     const messageRows = await withTimeout(
       kv.getByPrefix(`chat:message:${conversationId}:`),
       15000
@@ -9011,76 +9120,6 @@ app.post("/make-server-16010b6f/chat/upload-image", async (c) => {
   } catch (error: any) {
     console.error("❌ Failed to upload image:", error);
     return c.json({ error: error.message || "Failed to upload image" }, 500);
-  }
-});
-
-// 🔥 DELETE ALL CHAT CONVERSATIONS AND MESSAGES
-app.delete("/make-server-16010b6f/chat/conversations/all", async (c) => {
-  const denied = assertDestructiveOperationAllowed(c);
-  if (denied) return denied;
-  try {
-    console.log("🗑️ DELETING ALL CHAT CONVERSATIONS AND MESSAGES...");
-    
-    // Step 1: Get all conversations
-    const conversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 15000);
-    console.log(`📊 Found ${conversations.length} conversations to delete`);
-    
-    // Step 2: Get all messages
-    const messages = await withTimeout(kv.getByPrefix("chat:message:"), 15000);
-    console.log(`📊 Found ${messages.length} messages to delete`);
-    
-    const deletionPromises: Promise<any>[] = [];
-    let conversationCount = 0;
-    let messageCount = 0;
-    
-    // Delete all conversations
-    for (const conversation of conversations) {
-      if (conversation && conversation.id) {
-        const key = `chat:conversation:${conversation.id}`;
-        deletionPromises.push(
-          withTimeout(kv.del(key), 5000)
-            .then(() => {
-              conversationCount++;
-              console.log(`✅ Deleted conversation: ${conversation.id}`);
-            })
-            .catch(err => console.error(`❌ Failed to delete conversation ${conversation.id}:`, err))
-        );
-      }
-    }
-    
-    // Delete all messages
-    for (const message of messages) {
-      if (message && message.id && message.conversationId) {
-        const key = `chat:message:${message.conversationId}:${message.id}`;
-        deletionPromises.push(
-          withTimeout(kv.del(key), 5000)
-            .then(() => {
-              messageCount++;
-            })
-            .catch(err => console.error(`❌ Failed to delete message ${message.id}:`, err))
-        );
-      }
-    }
-    
-    // Execute all deletions in parallel
-    await Promise.allSettled(deletionPromises);
-    
-    console.log(`✅ CHAT HISTORY DELETION COMPLETE!`);
-    console.log(`   - ${conversationCount} conversations deleted`);
-    console.log(`   - ${messageCount} messages deleted`);
-    
-    return c.json({
-      success: true,
-      message: "All chat history deleted successfully",
-      conversationsDeleted: conversationCount,
-      messagesDeleted: messageCount,
-    });
-  } catch (error: any) {
-    console.error("❌ Error deleting chat history:", error);
-    return c.json({ 
-      error: "Failed to delete chat history", 
-      details: String(error) 
-    }, 500);
   }
 });
 

@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { useDocumentVisible } from "../hooks/useDocumentVisible";
+import { canonicalChatThreadId } from "../../utils/chatConversation";
 
 const MIGOO_USER_STORAGE_KEY = "migoo-user";
 
@@ -179,6 +180,16 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // Align thread id with Edge canonical keys (slug vs internal id — fixes history + admin realtime).
+  useEffect(() => {
+    const email = (customerEmail || "").trim();
+    if (!email) return;
+    if (!hasMigooCustomerSession() && !isAuthenticated) return;
+    const canonical = canonicalChatThreadId(email, vendorId ? String(vendorId).trim() : undefined);
+    if (canonical) adoptConversationId(canonical);
+  }, [customerEmail, vendorId, isAuthenticated, isCustomerAuthenticated]);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
@@ -274,14 +285,33 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     }
   };
 
-  // Load messages only once when chat opens
+  // Signed-in: keep thread in sync with server (silent when minimized; full load when panel is open).
   useEffect(() => {
-    if (isOpen && messages.length === 1 && messages[0].id === "welcome-1") {
-      loadMessages();
-    }
-  }, [isOpen]);
+    if (!conversationId) return;
+    if (!hasMigooCustomerSession() && !isAuthenticated) return;
+    void loadMessages(!isOpen);
+  }, [conversationId, isOpen, isCustomerAuthenticated, isAuthenticated]);
 
-  // Poll for new admin messages when chat is open (~30s, tab visible only — avoids interval reset on every message)
+  // Realtime is primary; reconcile with server when tab becomes visible (missed deltas / offline).
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    let visTimer: ReturnType<typeof setTimeout> | null = null;
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (visTimer) clearTimeout(visTimer);
+      visTimer = window.setTimeout(() => {
+        visTimer = null;
+        void loadMessages(true);
+      }, 800);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      if (visTimer) clearTimeout(visTimer);
+    };
+  }, [conversationId]);
+
+  // Very slow HTTP fallback only if Realtime is unavailable (see CHAT_HTTP_FALLBACK).
   useEffect(() => {
     if (!isOpen || isMinimized || !docVisible) {
       if (pollingIntervalRef.current) {
@@ -291,7 +321,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       return;
     }
     pollingIntervalRef.current = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       pollForNewMessages();
     }, POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK);
 
@@ -510,7 +540,10 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       })) as { success?: boolean; message?: Message };
 
       if (response?.message) {
-        adoptConversationId((response.message as { conversationId?: unknown }).conversationId);
+        const canonicalId = String(
+          (response.message as { conversationId?: unknown }).conversationId || ""
+        ).trim();
+        adoptConversationId(canonicalId || conversationId);
         setMessages((prev) => {
           const without = prev.filter((m) => m.id !== newMessage.id);
           const merged = [...without, response.message!];
@@ -519,9 +552,23 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
               new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
           );
         });
-        void broadcastConversationMessage(conversationId, response.message);
+        const broadcastId = canonicalId || conversationId;
+        void broadcastConversationMessage(broadcastId, response.message);
+        const preview =
+          messageText.trim() ||
+          (imageUrl ? "Image" : "—");
+        void broadcastInboxPing({
+          t: Date.now(),
+          conversationId: broadcastId,
+          lastMessage: preview,
+          timestamp: response.message.timestamp,
+          customerEmail: actualCustomerEmail,
+          customerName: actualCustomerName,
+          customerProfileImage: customerProfileImage || undefined,
+          vendorId: vendorId ? String(vendorId) : undefined,
+          unreadBump: true,
+        });
       }
-      void broadcastInboxPing();
     } catch (error) {
       console.error("Failed to send message:", error);
     }
@@ -723,16 +770,16 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   // Chat window (when open)
   return (
     <>
-    <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 w-full sm:w-auto">
+    <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 w-full sm:w-auto min-w-0 max-w-full sm:max-w-none">
       <div 
-        className={`bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 ${
+        className={`bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 flex flex-col min-h-0 overflow-hidden ${
           isMinimized 
-            ? 'w-full sm:w-80 h-16' 
-            : 'w-full sm:w-96 h-[100vh] sm:h-[600px]'
+            ? 'w-full sm:w-80 h-16 shrink-0' 
+            : 'w-full sm:w-96 h-[100dvh] max-h-[100dvh] sm:h-[600px] sm:max-h-[min(600px,calc(100dvh-3rem))]'
         }`}
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 sm:rounded-t-2xl flex items-center justify-between">
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 sm:rounded-t-2xl flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
               <MessageCircleMore className="w-5 h-5" />
@@ -768,15 +815,16 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         {/* Chat Body */}
         {!isMinimized && (
           <>
-            {/* Messages */}
-            <div className="overflow-y-auto p-4 space-y-4 bg-slate-50" style={{ height: selectedImage ? 'calc(100vh - 340px)' : 'calc(100vh - 260px)', maxHeight: selectedImage ? '300px' : '380px' }}>
+            {/* Messages: flex-1 fills shell; inner min-h-full + justify-end pins short threads above composer */}
+            <div className="flex-1 min-h-0 min-w-0 overflow-y-auto bg-slate-50">
+              <div className="min-h-full flex flex-col justify-end gap-4 p-4">
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex ${message.sender === "customer" ? "justify-end" : "justify-start"}`}
+                  className={`flex min-w-0 w-full ${message.sender === "customer" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[75%] ${
+                    className={`max-w-[min(85%,18rem)] shrink break-words ${
                       message.sender === "customer"
                         ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white"
                         : "bg-white border border-slate-200 text-slate-900"
@@ -795,7 +843,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
                       />
                     )}
                     {message.text && (
-                      <p className="text-sm leading-relaxed">{message.text}</p>
+                      <p className="text-sm leading-relaxed break-words">{message.text}</p>
                     )}
                     <div className="flex items-center justify-end gap-1 mt-1">
                       <p
@@ -816,11 +864,12 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
                   </div>
                 </div>
               ))}
-              <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
+              </div>
             </div>
 
             {/* Input Area */}
-            <div className="p-3 bg-white border-t border-slate-200 rounded-b-2xl">
+            <div className="p-3 bg-white border-t border-slate-200 rounded-b-2xl shrink-0">
               <input
                 ref={fileInputRef}
                 type="file"
