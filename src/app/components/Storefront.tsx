@@ -55,6 +55,7 @@ import { apiCache, SmartCache } from "../utils/cache";
 import { NotificationCenter } from "./NotificationCenter";
 import { useCartVisibility } from "../contexts/CartVisibilityContext";
 import { useLoading } from "../contexts/LoadingContext";
+import { useChatNotification } from "../contexts/ChatNotificationContext";
 import { BannerSlider } from "./BannerSlider";
 import { checkServerHealth } from "../../utils/server-health";
 import { ServerStatusBanner } from "./ServerStatusBanner";
@@ -692,6 +693,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const params = useParams();
   const { setIsCartOpen } = useCartVisibility();
   const { setIsLoading, setIsScrollLocked } = useLoading();
+  const { chatUnreadCount, openFloatingChat } = useChatNotification();
   const { startLoading: startFaviconLoading, stopLoading: stopFaviconLoading } = useFaviconLoader();
   
   // Cleanup favicon loader on unmount
@@ -4246,8 +4248,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               </Button>
 
               <NotificationCenter
-                chatUnreadCount={0}
-                onChatClick={() => {}}
+                chatUnreadCount={chatUnreadCount}
+                onChatClick={openFloatingChat}
               />
 
               {/* Profile Menu - Show text for guests, icon for logged-in users */}

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ArrowLeft, Eye, EyeOff, Store, CheckCircle, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { publicAnonKey } from '../../../utils/supabase/info';
+import { API_BASE_URL } from '../../utils/api-client';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -47,9 +48,7 @@ export function VendorSetup() {
     setLoading(true);
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/verify-email`,
-        {
+      const response = await fetch(`${API_BASE_URL}/vendor-auth/verify-email`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -113,9 +112,7 @@ export function VendorSetup() {
     setLoading(true);
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/setup-credentials`,
-        {
+      const response = await fetch(`${API_BASE_URL}/vendor-auth/setup-credentials`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

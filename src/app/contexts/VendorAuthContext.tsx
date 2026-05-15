@@ -1,6 +1,7 @@
 // Vendor Auth Context - Vendor authentication management
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { publicAnonKey } from '../../../utils/supabase/info';
+import { API_BASE_URL } from '../../utils/api-client';
 import { storeSlugFromBusinessName } from '../../utils/storeSlug';
 import {
   setVendorAuthSessionCookie,
@@ -13,18 +14,15 @@ import {
 async function fetchVendorProfileAvatarUrl(vendorId: string): Promise<string | undefined> {
   try {
     const res = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(vendorId)}`,
+      `${API_BASE_URL}/vendor-auth/profile/${encodeURIComponent(vendorId)}`,
       { headers: { Authorization: `Bearer ${publicAnonKey}` } }
     );
     if (!res.ok) return undefined;
-    const data = (await res.json()) as { user?: { profileImageUrl?: string; avatar?: string } };
+    const data = (await res.json()) as { user?: { profileImageUrl?: string } };
     const u = data.user;
     if (!u) return undefined;
     if (typeof u.profileImageUrl === "string" && u.profileImageUrl.startsWith("http")) {
       return u.profileImageUrl;
-    }
-    if (typeof u.avatar === "string" && u.avatar.startsWith("http")) {
-      return u.avatar;
     }
     return undefined;
   } catch {
@@ -68,7 +66,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
     try {
       if (!candidate?.vendorId || !candidate?.email) return false;
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(candidate.vendorId)}`,
+        `${API_BASE_URL}/vendor-auth/profile/${encodeURIComponent(candidate.vendorId)}`,
         { headers: { Authorization: `Bearer ${publicAnonKey}` } }
       );
       if (!response.ok) return false;
@@ -146,7 +144,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
       
       // Call vendor login endpoint
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/login`,
+        `${API_BASE_URL}/vendor-auth/login`,
         {
           method: 'POST',
           headers: {
@@ -178,7 +176,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
 
         try {
           const fr = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${encodeURIComponent(data.vendor.id)}`,
+            `${API_BASE_URL}/vendor/storefront/${encodeURIComponent(data.vendor.id)}`,
             { headers: { Authorization: `Bearer ${publicAnonKey}` } }
           );
           if (fr.ok) {
@@ -208,10 +206,6 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
           storeSlug: storeSlug,
           location: typeof data.vendor.location === "string" ? data.vendor.location : undefined,
           contactName: owner || undefined,
-          avatar:
-            typeof data.vendor.avatar === "string" && data.vendor.avatar.startsWith("http")
-              ? data.vendor.avatar
-              : undefined,
         };
 
         setVendor(vendorData);
@@ -269,7 +263,7 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       const url = await fetchVendorProfileAvatarUrl(vendor.vendorId);
-      if (cancelled || !url) return;
+      if (cancelled) return;
       updateVendor({ avatar: url });
     })();
     return () => {

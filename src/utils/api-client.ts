@@ -17,6 +17,8 @@ import type { ApiResponse } from '../types';
 
 const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f`;
 
+export { API_BASE_URL };
+
 interface ApiRequestOptions extends RequestInit {
   silent?: boolean;
   timeout?: number;

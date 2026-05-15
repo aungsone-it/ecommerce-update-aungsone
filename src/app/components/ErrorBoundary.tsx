@@ -71,9 +71,9 @@ export class ErrorBoundary extends Component<Props, State> {
             {/* Error Icon */}
             <div className="mb-8 flex justify-center">
               <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-br from-orange-500 to-amber-500 rounded-full blur-2xl opacity-20"></div>
-                <div className="relative bg-gradient-to-br from-orange-500 to-amber-500 rounded-full p-6">
-                  <AlertTriangle className="w-16 h-16 text-white" />
+                <div className="absolute inset-0 bg-slate-900/10 rounded-full blur-2xl" />
+                <div className="relative bg-slate-900 dark:bg-white rounded-full p-6 shadow-lg ring-1 ring-slate-900/10 dark:ring-slate-200/20">
+                  <AlertTriangle className="w-16 h-16 text-white dark:text-slate-900" />
                 </div>
               </div>
             </div>
@@ -91,7 +91,7 @@ export class ErrorBoundary extends Component<Props, State> {
               <Button
                 onClick={() => window.location.reload()}
                 size="lg"
-                className="bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white px-8 py-3 text-base font-semibold shadow-lg hover:shadow-xl transition-all"
+                className="bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 px-8 py-3 text-base font-semibold rounded-full shadow-lg hover:shadow-xl transition-all"
               >
                 <RefreshCcw className="w-5 h-5 mr-2" />
                 Reload Page

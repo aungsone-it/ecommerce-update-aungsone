@@ -97,6 +97,7 @@ import {
 } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
 import { NotificationCenter } from "./NotificationCenter";
+import { useChatNotification } from "../contexts/ChatNotificationContext";
 import { authApi, wishlistApi } from "../../utils/api";
 import {
   AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS,
@@ -634,6 +635,7 @@ export function VendorStoreView({
 }: VendorStoreViewProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { chatUnreadCount, openFloatingChat } = useChatNotification();
 
   const storeBase = useMemo(() => {
     if (hostRootStorePaths) return "";
@@ -4331,7 +4333,7 @@ export function VendorStoreView({
                 </Button>
 
                 <div className="hidden md:flex shrink-0 [&_button]:h-10 [&_button]:w-10 [&_button]:p-0 [&_svg]:size-5">
-                  <NotificationCenter chatUnreadCount={0} onChatClick={() => {}} />
+                  <NotificationCenter chatUnreadCount={chatUnreadCount} onChatClick={openFloatingChat} />
                 </div>
 
                 {!user && (
@@ -5075,7 +5077,7 @@ export function VendorStoreView({
               </Button>
 
               <div className="hidden md:flex shrink-0 [&_button]:h-10 [&_button]:w-10 [&_button]:p-0 [&_svg]:size-5">
-                <NotificationCenter chatUnreadCount={0} onChatClick={() => {}} />
+                <NotificationCenter chatUnreadCount={chatUnreadCount} onChatClick={openFloatingChat} />
               </div>
 
               {!user && (

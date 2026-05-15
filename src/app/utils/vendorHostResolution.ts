@@ -4,7 +4,8 @@
  */
 import { useState, useEffect } from "react";
 import { resolveVendorSubdomainStoreSlug } from "./vendorSubdomainHooks";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 
 const CACHE_PREFIX = "migoo-vendor-slug:";
 
@@ -87,7 +88,7 @@ export async function fetchVendorSlugByCustomDomain(
 
   try {
     const res = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/by-domain?domain=${encodeURIComponent(
+      `${API_BASE_URL}/vendor/by-domain?domain=${encodeURIComponent(
         h
       )}`,
       { headers: { Authorization: `Bearer ${publicAnonKey}` } }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
   ArrowLeft, 
   Mail, 
@@ -35,6 +35,9 @@ import {
   CACHE_KEYS,
   getCachedAdminVendorApplications,
   invalidateAdminVendorApplicationsCache,
+  ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT,
+  ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY,
+  notifyAdminVendorApplicationsUpdated,
 } from "../utils/module-cache";
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -126,11 +129,7 @@ export function VendorApplications({
   const [statusFilter, setStatusFilter] = useState<ApplicationStatus | "all">("all");
   const [reviewingApplication, setReviewingApplication] = useState<VendorApplication | null>(null);
 
-  useEffect(() => {
-    void loadApplications(false);
-  }, []);
-
-  const loadApplications = async (forceRefresh = false) => {
+  const loadApplications = useCallback(async (forceRefresh = false) => {
     let showTimer: ReturnType<typeof setTimeout> | null = null;
     if (forceRefresh) {
       setLoading(true);
@@ -148,7 +147,36 @@ export function VendorApplications({
       if (showTimer) clearTimeout(showTimer);
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadApplications(false);
+  }, [loadApplications]);
+
+  useEffect(() => {
+    const refresh = () => void loadApplications(true);
+    window.addEventListener(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT, refresh);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY && e.newValue) refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT);
+      bc.onmessage = refresh;
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      window.removeEventListener(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT, refresh);
+      window.removeEventListener("storage", onStorage);
+      try {
+        bc?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [loadApplications]);
 
   const filteredApplications = applications.filter(app => {
     const matchesSearch = app.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -191,6 +219,7 @@ export function VendorApplications({
         onNavigateToVendorList={onNavigateToVendorList}
         onApplicationsMutated={() => {
           invalidateAdminVendorApplicationsCache();
+          notifyAdminVendorApplicationsUpdated("reviewed");
           onApplicationsMutated?.();
         }}
       />

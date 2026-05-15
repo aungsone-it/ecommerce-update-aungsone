@@ -9,11 +9,12 @@ import {
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { FloatingChat } from "./FloatingChat";
 import { BackToTop } from "./BackToTop";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCartVisibility } from "../contexts/CartVisibilityContext";
 import { CartVisibilityProvider } from "../contexts/CartVisibilityContext";
 import { LoadingProvider, useLoading } from "../contexts/LoadingContext";
+import { ChatNotificationProvider, useChatNotification } from "../contexts/ChatNotificationContext";
 import { shouldResolveCustomDomainHost } from "../utils/vendorHostResolution";
 
 // Public layout without authentication
@@ -21,7 +22,9 @@ export function RootLayout() {
   return (
     <LoadingProvider>
       <CartVisibilityProvider>
-        <RootLayoutContent />
+        <ChatNotificationProvider>
+          <RootLayoutContent />
+        </ChatNotificationProvider>
       </CartVisibilityProvider>
     </LoadingProvider>
   );
@@ -30,8 +33,8 @@ export function RootLayout() {
 function RootLayoutContent() {
   const { user } = useAuth();
   const location = useLocation();
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
-  const [showFloatingChat, setShowFloatingChat] = useState(false);
+  const { setChatUnreadCount, forceOpenFloatingChat, resetForceOpenFloatingChat } =
+    useChatNotification();
   const { isCartOpen } = useCartVisibility();
   const { isLoading, suppressFloatingChat } = useLoading();
 
@@ -91,9 +94,9 @@ function RootLayoutContent() {
         <FloatingChat 
           customerName={user?.fullName || user?.firstName || "Guest"}
           customerEmail={user?.email || ""}
-          onUnreadCountChange={(count) => setChatUnreadCount(count)}
-          forceOpen={showFloatingChat}
-          onOpen={() => setShowFloatingChat(false)}
+          onUnreadCountChange={setChatUnreadCount}
+          forceOpen={forceOpenFloatingChat}
+          onOpen={resetForceOpenFloatingChat}
           vendorId={vendorId}
           isAuthenticated={!!user}
         />

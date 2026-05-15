@@ -4,7 +4,13 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { chatApi, vendorApplicationsApi } from '../../utils/api';
-import { getCachedAdminOrdersPayload, moduleCache, CACHE_KEYS } from '../utils/module-cache';
+import {
+  getCachedAdminOrdersPayload,
+  moduleCache,
+  CACHE_KEYS,
+  ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT,
+  ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY,
+} from '../utils/module-cache';
 import { PENDING_ORDER_STATUSES, POLLING_INTERVALS_MS } from '../../constants';
 import { SmartCache } from '../../utils/cache';
 import { badgeCircuitBreaker } from '../../utils/circuit-breaker';
@@ -258,6 +264,76 @@ export function useBadgeCounts() {
       window.removeEventListener('vendorDataUpdated', queueForceRefresh as EventListener);
     };
   }, [loadBadgeCounts]);
+
+  /** New vendor application (or review) — same-tab CustomEvent, cross-tab storage + BroadcastChannel. */
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const queueForceRefresh = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        void loadBadgeCounts(true);
+      }, 180);
+    };
+
+    const onCustom = queueForceRefresh as EventListener;
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY && e.newValue) queueForceRefresh();
+    };
+
+    window.addEventListener(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT, onCustom);
+    window.addEventListener("storage", onStorage);
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT);
+      bc.onmessage = () => queueForceRefresh();
+    } catch {
+      /* BroadcastChannel unsupported */
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT, onCustom);
+      window.removeEventListener("storage", onStorage);
+      try {
+        bc?.close();
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [loadBadgeCounts]);
+
+  /**
+   * Pending vendor applications: light poll while admin tab is visible so badges update when
+   * someone submits from another device (BroadcastChannel only helps same-browser tabs).
+   */
+  useEffect(() => {
+    const tick = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (!badgeCircuitBreaker.canAttempt()) return;
+      try {
+        const vendorResponse = await vendorApplicationsApi.getAll();
+        if (!vendorResponse.success || !vendorResponse.data) return;
+        const apps = vendorResponse.data as Record<string, unknown>[];
+        moduleCache.prime(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS, apps);
+        const vendorApplicationsCount = apps.filter(
+          (app) => String(app?.status ?? "").toLowerCase() === "pending"
+        ).length;
+        setBadgeCounts((prev) => {
+          if (prev.vendor === vendorApplicationsCount) return prev;
+          const updated = { ...prev, vendor: vendorApplicationsCount };
+          SmartCache.set("badge_counts", updated);
+          return updated;
+        });
+        badgeCircuitBreaker.recordSuccess();
+      } catch {
+        /* keep previous count */
+      }
+    };
+    void tick();
+    const id = window.setInterval(tick, POLLING_INTERVALS_MS.ADMIN_VENDOR_APPLICATIONS_BADGE_POLL);
+    return () => clearInterval(id);
+  }, []);
 
   return {
     badgeCounts,

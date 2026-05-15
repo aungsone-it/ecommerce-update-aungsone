@@ -1,5 +1,6 @@
 import { Card } from "./ui/card";
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { publicAnonKey } from '../../../utils/supabase/info';
+import { API_BASE_URL } from '../../utils/api-client';
 
 interface VendorFormProps {
   onBack: () => void;
@@ -65,7 +66,7 @@ export function VendorForm({ onBack, onSave, editingVendor }: VendorFormProps) {
       emailCheckTimeoutRef.current = setTimeout(async () => {
         try {
           const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/validate`,
+            `${API_BASE_URL}/vendors/validate`,
             {
               method: 'POST',
               headers: {
@@ -107,7 +108,7 @@ export function VendorForm({ onBack, onSave, editingVendor }: VendorFormProps) {
       phoneCheckTimeoutRef.current = setTimeout(async () => {
         try {
           const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/validate`,
+            `${API_BASE_URL}/vendors/validate`,
             {
               method: 'POST',
               headers: {

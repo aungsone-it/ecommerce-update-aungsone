@@ -13,7 +13,8 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import { toast } from "sonner";
-import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import { publicAnonKey } from "../../../../utils/supabase/info";
+import { API_BASE_URL } from "../../../utils/api-client";
 import { compressImage } from "../../../utils/imageCompression";
 import { cacheManager } from "../../utils/cacheManager";
 import { invalidateVendorStorefrontCatalogCache } from "../../utils/module-cache";
@@ -23,6 +24,7 @@ import {
   readVendorAuthSessionCookie,
 } from "../../utils/vendorAuthCookie";
 import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
+import { isRenderableImageSrc, pickStoreLogo } from "../../utils/renderableImageSrc";
 
 interface StoreSettings {
   vendorId: string;
@@ -61,26 +63,33 @@ export function VendorAdminSettings({
 }: VendorAdminSettingsProps) {
   const settingsCacheKey = `vendor-admin-settings:${vendorId}`;
   const cachedSettings = cacheManager.get(settingsCacheKey) as StoreSettings | undefined;
-  const [settings, setSettings] = useState<StoreSettings>({
-    ...(cachedSettings || {
-      vendorId,
-      storeName: vendorName,
-      storeSlug: storeSlugFromBusinessName(vendorName),
-      storeDescription: "Welcome to our store",
-      storeTagline: "",
-      logo: vendorLogo,
-      banner: "",
-      primaryColor: "#1e293b",
-      secondaryColor: "#64748b",
-      accentColor: "#3b82f6",
-      contactEmail: "",
-      contactPhone: "",
-      address: "",
-      customDomain: "",
-      domainStatus: "none",
-      dnsVerified: false,
-      isActive: true,
-    }),
+  const emptyDefaults: StoreSettings = {
+    vendorId,
+    storeName: vendorName,
+    storeSlug: storeSlugFromBusinessName(vendorName),
+    storeDescription: "Welcome to our store",
+    storeTagline: "",
+    logo: "",
+    banner: "",
+    primaryColor: "#1e293b",
+    secondaryColor: "#64748b",
+    accentColor: "#3b82f6",
+    contactEmail: "",
+    contactPhone: "",
+    address: "",
+    customDomain: "",
+    domainStatus: "none",
+    dnsVerified: false,
+    isActive: true,
+  };
+  const [settings, setSettings] = useState<StoreSettings>(() => {
+    const merged = cachedSettings
+      ? { ...emptyDefaults, ...cachedSettings, vendorId }
+      : emptyDefaults;
+    return {
+      ...merged,
+      logo: pickStoreLogo(merged.logo, vendorLogo),
+    };
   });
   const [loading, setLoading] = useState(!cachedSettings);
   const [saving, setSaving] = useState(false);
@@ -106,7 +115,7 @@ export function VendorAdminSettings({
         settingsCacheKey,
         async () => {
           const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendorId}`,
+            `${API_BASE_URL}/vendor/storefront/${vendorId}`,
             {
               headers: {
                 Authorization: `Bearer ${publicAnonKey}`,
@@ -121,12 +130,11 @@ export function VendorAdminSettings({
         { ttl: 60_000, staleWhileRevalidate: true }
       );
       if (data?.settings) {
+        const rawLogo =
+          typeof data.settings.logo === "string" ? data.settings.logo.trim() : "";
         const nextSettings = {
           ...data.settings,
-          logo:
-            typeof data.settings.logo === "string" && data.settings.logo.trim()
-              ? data.settings.logo
-              : vendorLogo,
+          logo: pickStoreLogo(rawLogo, vendorLogo),
         };
         setSettings(nextSettings);
         cacheManager.set(settingsCacheKey, nextSettings);
@@ -153,7 +161,7 @@ export function VendorAdminSettings({
     try {
       const { domainVerification: _dv, ...settingsForSave } = settings;
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront`,
+        `${API_BASE_URL}/vendor/storefront`,
         {
           method: "POST",
           headers: {
@@ -171,12 +179,13 @@ export function VendorAdminSettings({
           toast.error("Invalid response from server");
           return;
         }
-        setSettings(saved);
-        cacheManager.set(settingsCacheKey, saved);
+        const normalized = { ...saved, logo: pickStoreLogo(saved.logo, "") };
+        setSettings(normalized);
+        cacheManager.set(settingsCacheKey, normalized);
 
         // Also update vendor record with new store name, slug, and logo
         const vendorUpdateResponse = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${vendorId}`,
+          `${API_BASE_URL}/vendors/${vendorId}`,
           {
             method: "PUT",
             headers: {
@@ -188,7 +197,7 @@ export function VendorAdminSettings({
               email: saved.contactEmail,
               phone: saved.contactPhone,
               location: saved.address,
-              avatar: saved.logo,
+              logo: normalized.logo,
               storeSlug: saved.storeSlug,
             }),
           }
@@ -213,7 +222,7 @@ export function VendorAdminSettings({
 
           window.dispatchEvent(
             new CustomEvent("vendorLogoUpdated", {
-              detail: { vendorId, logo: saved.logo },
+              detail: { vendorId, logo: normalized.logo },
             })
           );
 
@@ -268,7 +277,7 @@ export function VendorAdminSettings({
     setDomainBusy("prepare");
     try {
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/custom-domain/prepare`,
+        `${API_BASE_URL}/vendor/custom-domain/prepare`,
         {
           method: "POST",
           headers: {
@@ -319,7 +328,7 @@ export function VendorAdminSettings({
     setDomainBusy("verify");
     try {
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/verify-domain`,
+        `${API_BASE_URL}/vendor/verify-domain`,
         {
           method: "POST",
           headers: {
@@ -362,7 +371,7 @@ export function VendorAdminSettings({
     setDomainBusy("remove");
     try {
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/custom-domain`,
+        `${API_BASE_URL}/vendor/custom-domain`,
         {
           method: "DELETE",
           headers: {
@@ -455,13 +464,16 @@ export function VendorAdminSettings({
           {/* Store Logo */}
           <div>
             <Label className="text-sm font-normal text-slate-900 mb-3 block">Store Logo</Label>
-            {settings.logo ? (
+            {isRenderableImageSrc(settings.logo) ? (
               <div className="inline-block relative group">
                 <div className="w-[104px] h-[104px] border-2 border-dashed border-slate-300 rounded p-2 bg-white">
                   <img 
                     src={settings.logo} 
                     alt="Store logo" 
                     className="w-full h-full object-contain" 
+                    onError={() =>
+                      setSettings((prev) => ({ ...prev, logo: "" }))
+                    }
                   />
                 </div>
                 <button
