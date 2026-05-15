@@ -306,58 +306,77 @@ export function Chat({
     void loadConversations("silent");
   };
 
-  const loadMessages = useCallback(async (conversationId: string, silent = false) => {
-    if (!silent) {
-      const cached = chatAdminMessagesCache.get(conversationId);
-      if (cached && cached.length > 0) {
-        setMessages(cached);
-        setLoadingMessages(false);
-      } else {
-        setLoadingMessages(true);
-      }
-    }
-    try {
-      const response = await chatApi.getMessages(conversationId);
-      if (response.messages && Array.isArray(response.messages)) {
-        const sortedMessages = response.messages.sort(
-          (a: Message, b: Message) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-        chatAdminMessagesCache.set(conversationId, sortedMessages);
-        setMessages(sortedMessages);
+  /**
+   * @param silentUi When true, skip loading spinner (e.g. cached thread or background refetch).
+   * @param markRead When `"auto"`, mark read only if `silentUi` is false (legacy poll behavior).
+   *   Pass `true` when the admin opened this thread so badges clear even if `silentUi` is true.
+   */
+  const loadMessages = useCallback(
+    async (
+      conversationId: string,
+      silentUi = false,
+      markRead: boolean | "auto" = "auto"
+    ) => {
+      const shouldMarkRead = markRead === "auto" ? !silentUi : markRead;
 
-        if (!silent) {
-          await chatApi.markAsRead(conversationId);
-          setConversations((prev) => {
-            const next = prev.map((conv) =>
-              conv.id === conversationId ? { ...conv, unread: 0 } : conv
-            );
-            const totalUnread = next.reduce(
-              (sum, c) => sum + (Number(c.unread) || 0),
-              0
-            );
-            queueMicrotask(() =>
-              window.dispatchEvent(
-                new CustomEvent("admin-chat-unread-updated", {
-                  detail: { total: totalUnread },
-                })
-              )
-            );
-            return next;
-          });
+      if (!silentUi) {
+        const cached = chatAdminMessagesCache.get(conversationId);
+        if (cached && cached.length > 0) {
+          setMessages(cached);
+          setLoadingMessages(false);
+        } else {
+          setLoadingMessages(true);
         }
       }
-    } catch (error) {
-      console.error("Failed to load messages:", error);
-      if (!silent) {
-        toast.error("Failed to load messages", {
-          description: "The server is taking longer than expected. Please try again.",
-        });
+      try {
+        const response = await chatApi.getMessages(conversationId);
+        if (response.messages && Array.isArray(response.messages)) {
+          const sortedMessages = response.messages.sort(
+            (a: Message, b: Message) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          );
+          chatAdminMessagesCache.set(conversationId, sortedMessages);
+          setMessages(sortedMessages);
+
+          if (shouldMarkRead) {
+            await chatApi.markAsRead(conversationId);
+            setConversations((prev) => {
+              const next = prev.map((conv) =>
+                conv.id === conversationId ||
+                (Array.isArray(conv.aliasConversationIds) &&
+                  conv.aliasConversationIds.includes(conversationId))
+                  ? { ...conv, unread: 0 }
+                  : conv
+              );
+              chatAdminInboxCache = mergeConversationAvatarsByEmail(next);
+              const totalUnread = next.reduce(
+                (sum, c) => sum + (Number(c.unread) || 0),
+                0
+              );
+              queueMicrotask(() =>
+                window.dispatchEvent(
+                  new CustomEvent("admin-chat-unread-updated", {
+                    detail: { total: totalUnread },
+                  })
+                )
+              );
+              return next;
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load messages:", error);
+        if (!silentUi) {
+          toast.error("Failed to load messages", {
+            description: "The server is taking longer than expected. Please try again.",
+          });
+        }
+      } finally {
+        if (!silentUi) setLoadingMessages(false);
       }
-    } finally {
-      if (!silent) setLoadingMessages(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   // Supabase Realtime Broadcast: inbox sidebar (merge payloads to avoid list refetch) + thread messages
   useEffect(() => {
@@ -546,11 +565,11 @@ export function Chat({
       setMessages(cached);
       setLoadingMessages(false);
       if (selectionChanged) {
-        void loadMessages(canonicalConversationId, true);
+        void loadMessages(canonicalConversationId, true, true);
       }
       return;
     }
-    void loadMessages(canonicalConversationId, false);
+    void loadMessages(canonicalConversationId, false, "auto");
   }, [conversations, selectedConversation, loadMessages]);
 
   // Super admin: Customers → Message — open this thread and focus composer
@@ -648,7 +667,7 @@ export function Chat({
         visTimer = null;
         void loadConversationsRef.current();
         const sid = selectedConversationRef.current;
-        if (sid) void loadMessages(sid, true);
+        if (sid) void loadMessages(sid, true, true);
       }, 900);
     };
     document.addEventListener("visibilitychange", onVis);
@@ -664,7 +683,7 @@ export function Chat({
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       void loadConversations("silent");
       if (selectedConversation) {
-        loadMessages(selectedConversation, true); // Silent refresh — fallback if Realtime off
+        loadMessages(selectedConversation, true, "auto"); // messages only; unread handled on open / send
       }
     }, POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK); // fallback if Realtime is off
   };
@@ -747,7 +766,7 @@ export function Chat({
     chatAdminSelectedConversationCache = conversationId;
     setSelectedConversation(conversationId);
     const hasCached = !!chatAdminMessagesCache.get(conversationId)?.length;
-    void loadMessages(conversationId, hasCached);
+    void loadMessages(conversationId, hasCached, true);
   };
 
   const handleSendMessage = async () => {
@@ -807,6 +826,7 @@ export function Chat({
                   customerProfileImage: selectedConv.customerProfileImage || "",
                   lastMessage: messageInput.trim(),
                   timestamp: ts,
+                  unread: 0,
                 }
               : c
           );
@@ -814,8 +834,16 @@ export function Chat({
         setConversations((prev) => {
           const next = mergeConversationAvatarsByEmail(patchCustomer(prev));
           chatAdminInboxCache = next;
+          const totalUnread = next.reduce((sum, c) => sum + (Number(c.unread) || 0), 0);
+          queueMicrotask(() =>
+            window.dispatchEvent(
+              new CustomEvent("admin-chat-unread-updated", { detail: { total: totalUnread } })
+            )
+          );
           return next;
         });
+
+        void chatApi.markAsRead(canonicalConversationId).catch(() => undefined);
 
         void broadcastConversationMessage(canonicalConversationId, response.message);
         const pingConversationId =

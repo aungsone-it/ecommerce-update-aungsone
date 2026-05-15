@@ -8879,10 +8879,7 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
     }
 
     const prevUnread = Number(existingConv?.unread) || 0;
-    const nextUnread =
-      sender === "customer"
-        ? prevUnread + 1
-        : prevUnread;
+    const nextUnread = sender === "customer" ? prevUnread + 1 : 0;
 
     // Update or create conversation
     const conversation = {
@@ -8916,12 +8913,31 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
 app.put("/make-server-16010b6f/chat/messages/:conversationId/read", async (c) => {
   try {
     const conversationId = c.req.param("conversationId");
-    
-    // Update conversation unread count
-    const conversation = await withTimeout(kv.get(`chat:conversation:${conversationId}`), 5000);
+
+    const conversation = (await withTimeout(
+      kv.get(`chat:conversation:${conversationId}`),
+      5000
+    ).catch(() => null)) as any;
+
     if (conversation) {
       conversation.unread = 0;
       await withTimeout(kv.set(`chat:conversation:${conversationId}`, conversation), 5000);
+
+      // Merged inbox rows sum unread across alias KV keys — clear every record in the same bucket.
+      if (conversation?.customerEmail) {
+        const allConversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 10000).catch(
+          () => []
+        );
+        const bucket = conversationBucketKeyFor(conversation);
+        const aliasWrites = (allConversations || [])
+          .filter((conv: any) => String(conv?.id || "") && String(conv?.id) !== String(conversationId))
+          .filter((conv: any) => conversationBucketKeyFor(conv) === bucket)
+          .map((conv: any) => {
+            const next = { ...conv, unread: 0 };
+            return withTimeout(kv.set(`chat:conversation:${conv.id}`, next), 5000).catch(() => undefined);
+          });
+        await Promise.all(aliasWrites);
+      }
     }
 
     console.log(`✅ Marked conversation ${conversationId} as read`);
