@@ -131,9 +131,14 @@ export function VendorApplicationReview({
         void Promise.resolve(onUpdate());
 
         if (newStatus === "approved") {
+          const setupBase =
+            typeof window !== "undefined" && window.location?.origin
+              ? window.location.origin
+              : "";
+          const setupPath = `${setupBase}/vendor/setup`;
           toast.success(`Application approved! Vendor "${application.businessName}" has been created and added to your vendor list.`, {
             duration: 8000,
-            description: `Please inform the vendor to visit migoo.com/vendor/setup and use their email (${application.email}) to set up their credentials.`
+            description: `Please inform the vendor to visit ${setupPath || "/vendor/setup"} and use their email (${application.email}) to set up their credentials.`,
           });
 
           if (onNavigateToVendorList) {

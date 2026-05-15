@@ -44,8 +44,10 @@ import { VendorAdminOrderManagement } from "./vendor-admin/VendorAdminOrderManag
 import { VendorAdminSettings } from "./vendor-admin/VendorAdminSettings";
 import { VendorAdminFinances } from "./vendor-admin/VendorAdminFinances";
 import { VendorAdminUsers } from "./vendor-admin/VendorAdminUsers";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
+import { isRenderableImageSrc, pickStoreLogo } from "../utils/renderableImageSrc";
 import { UserProfile } from "./UserProfile";
 import { useVendorAuth, type VendorUser } from "../contexts/VendorAuthContext";
 
@@ -164,8 +166,8 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [vendorLogo, setVendorLogo] = useState<string>(
-    () => initialStorefrontCache?.logo || vendor.avatar || ""
+  const [vendorLogo, setVendorLogo] = useState<string>(() =>
+    pickStoreLogo(initialStorefrontCache?.logo, vendor.avatar)
   );
   /** Canonical storefront label + slug from KV (drives sidebar + URLs after rename). */
   const [storefrontSnapshot, setStorefrontSnapshot] = useState<{
@@ -247,7 +249,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const loadStorefrontSnapshot = useCallback(async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendor.id}`,
+        `${API_BASE_URL}/vendor/storefront/${vendor.id}`,
         {
           headers: {
             Authorization: `Bearer ${publicAnonKey}`,
@@ -265,7 +267,10 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         storeName: String(s.storeName || vendor.storeName || vendor.name || "Vendor Store"),
         storeSlug: String(s.storeSlug || vendor.storeSlug || ""),
       });
-      const nextLogo = typeof s.logo === "string" ? s.logo : "";
+      const nextLogo = pickStoreLogo(
+        typeof s.logo === "string" ? s.logo : "",
+        vendor.avatar
+      );
       setVendorLogo(nextLogo);
       writeStorefrontSnapshotCache(vendor.id, {
         storeName: String(s.storeName || vendor.storeName || vendor.name || "Vendor Store"),
@@ -275,7 +280,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     } catch (error) {
       console.error("Failed to load vendor storefront snapshot:", error);
     }
-  }, [vendor.id, vendor.name, vendor.storeName, vendor.storeSlug]);
+  }, [vendor.id, vendor.name, vendor.storeName, vendor.storeSlug, vendor.avatar]);
 
   useEffect(() => {
     void loadStorefrontSnapshot();
@@ -300,7 +305,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   ]);
 
   useEffect(() => {
-    if (vendorLogo.trim()) {
+    if (isRenderableImageSrc(vendorLogo)) {
       applyDocumentFavicon(vendorLogo);
     } else {
       resetDocumentFavicon();
@@ -329,11 +334,12 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
       const d = (e as CustomEvent<{ vendorId?: string; logo?: string }>).detail;
       if (d?.vendorId !== vendor.id) return;
       if (typeof d.logo === "string") {
-        setVendorLogo(d.logo);
+        const next = pickStoreLogo(d.logo, "");
+        setVendorLogo(next);
         writeStorefrontSnapshotCache(vendor.id, {
           storeName: storefrontSnapshot?.storeName || vendor.storeName || vendor.name,
           storeSlug: storefrontSnapshot?.storeSlug || vendor.storeSlug || "",
-          logo: d.logo,
+          logo: next,
         });
       }
       void loadStorefrontSnapshot();
@@ -441,7 +447,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     const fetchPendingOrders = async () => {
       try {
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/orders/${encodeURIComponent(vendor.id)}`,
+          `${API_BASE_URL}/vendor/orders/${encodeURIComponent(vendor.id)}`,
           {
             headers: {
               Authorization: `Bearer ${publicAnonKey}`,
@@ -654,7 +660,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
           <VendorAdminSettings
             vendorId={vendor.id}
             vendorName={vendor.name}
-            vendorLogo={vendorLogo || vendor.avatar || ""}
+            vendorLogo={vendorLogo}
             onPreviewStore={onPreviewStore}
           />
         );
@@ -743,11 +749,12 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
             }}
             className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer"
           >
-            {vendorLogo ? (
+            {isRenderableImageSrc(vendorLogo) ? (
               <img 
                 src={vendorLogo} 
                 alt={storefrontSnapshot?.storeName || vendor.name}
                 className="w-10 h-10 rounded-md object-cover"
+                onError={() => setVendorLogo("")}
               />
             ) : (
               <div className="w-10 h-10 bg-gradient-to-br from-orange-600 to-orange-700 rounded-md flex items-center justify-center text-white">

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Component, type ReactNode } from "react";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 import { 
   ArrowLeft, 
   Mail, 
@@ -557,7 +558,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
   const loadStorefrontSettings = async () => {
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendor.id}`,
+        `${API_BASE_URL}/vendor/storefront/${vendor.id}`,
         {
           method: "GET",
           headers: {
@@ -882,7 +883,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
     setSavingProducts(true);
     try {
       const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/bulk-assign-vendor`,
+        `${API_BASE_URL}/products/bulk-assign-vendor`,
         {
           method: "POST",
           headers: {

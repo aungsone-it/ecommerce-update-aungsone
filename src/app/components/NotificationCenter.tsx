@@ -1,10 +1,25 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Bell, MessageCircle, Package, ShoppingCart, Tag, X, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
 import { Separator } from "./ui/separator";
+import { MIGOO_CHAT_DISMISS_UNREAD_EVENT } from "../../constants";
+
+const CHAT_ADMIN_ALERT_ID = "migoo-notify-admin-chat";
+
+function readStoredNotifications(): Notification[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("migoo-notifications");
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as Notification[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 export interface Notification {
   id: string;
@@ -33,41 +48,39 @@ export function NotificationCenter({
   externalNotifications = []
 }: NotificationCenterProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>(readStoredNotifications);
 
-  // Add chat notifications based on unread count
+  const onChatClickRef = useRef(onChatClick);
+  onChatClickRef.current = onChatClick;
+
+  // Sync synthetic “admin chat” row with live unread count from FloatingChat (via RootLayout context).
   useEffect(() => {
     if (chatUnreadCount > 0) {
-      // Check if we already have a chat notification
-      const existingChatNotification = notifications.find(n => n.type === "chat" && !n.read);
-      
-      if (!existingChatNotification) {
+      setNotifications((prev) => {
+        const idx = prev.findIndex((n) => n.id === CHAT_ADMIN_ALERT_ID);
         const chatNotification: Notification = {
-          id: `chat-${Date.now()}`,
+          id: CHAT_ADMIN_ALERT_ID,
           type: "chat",
-          title: "New Message",
-          message: `You have ${chatUnreadCount} unread message${chatUnreadCount > 1 ? 's' : ''} from admin`,
+          title: "New message",
+          message: `You have ${chatUnreadCount} unread message${chatUnreadCount > 1 ? "s" : ""} from support`,
           timestamp: new Date().toISOString(),
           read: false,
           icon: MessageCircle,
           action: () => {
-            onChatClick();
-            handleMarkAsRead(`chat-${Date.now()}`);
+            onChatClickRef.current();
+            setNotifications((p) =>
+              p.map((n) => (n.id === CHAT_ADMIN_ALERT_ID ? { ...n, read: true } : n))
+            );
             setIsOpen(false);
-          }
+          },
         };
-        setNotifications(prev => [chatNotification, ...prev]);
-      } else {
-        // Update existing chat notification
-        setNotifications(prev => prev.map(n => 
-          n.type === "chat" && !n.read
-            ? { ...n, message: `You have ${chatUnreadCount} unread message${chatUnreadCount > 1 ? 's' : ''} from admin` }
-            : n
-        ));
-      }
+        if (idx === -1) return [chatNotification, ...prev];
+        return prev.map((n, i) =>
+          i === idx ? { ...n, ...chatNotification, read: false } : n
+        );
+      });
     } else {
-      // Remove unread chat notifications when count is 0
-      setNotifications(prev => prev.filter(n => n.type !== "chat" || n.read));
+      setNotifications((prev) => prev.filter((n) => n.id !== CHAT_ADMIN_ALERT_ID));
     }
   }, [chatUnreadCount]);
 
@@ -82,19 +95,6 @@ export function NotificationCenter({
       });
     }
   }, [externalNotifications]);
-
-  // Load notifications from localStorage on mount
-  useEffect(() => {
-    const savedNotifications = localStorage.getItem('migoo-notifications');
-    if (savedNotifications) {
-      try {
-        const parsed = JSON.parse(savedNotifications);
-        setNotifications(parsed);
-      } catch (error) {
-        console.error('Failed to parse saved notifications:', error);
-      }
-    }
-  }, []);
 
   // Save notifications to localStorage
   useEffect(() => {
@@ -113,6 +113,9 @@ export function NotificationCenter({
   };
 
   const handleClearAll = () => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(MIGOO_CHAT_DISMISS_UNREAD_EVENT));
+    }
     setNotifications([]);
     if (onClearAll) {
       onClearAll();
@@ -120,7 +123,10 @@ export function NotificationCenter({
   };
 
   const handleMarkAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(MIGOO_CHAT_DISMISS_UNREAD_EVENT));
+    }
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
   const getNotificationIcon = (type: string) => {

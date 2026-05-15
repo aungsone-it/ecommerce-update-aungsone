@@ -39,6 +39,9 @@ export const MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT = "migoo-open-customer-auth
 /** After login / register / logout touching `migoo-user` — FloatingChat re-checks auth (same-tab). */
 export const MIGOO_USER_SESSION_CHANGED_EVENT = "migoo-user-session-changed";
 
+/** Header “Mark all read” (and similar) — clears floating-chat unread without opening the panel. */
+export const MIGOO_CHAT_DISMISS_UNREAD_EVENT = "migoo-chat-dismiss-unread";
+
 export function notifyMigooUserSessionChanged(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(MIGOO_USER_SESSION_CHANGED_EVENT));
@@ -53,10 +56,14 @@ export const POLLING_INTERVALS_MS = {
   BADGE_COUNTS: 15 * 60 * 1000,
   /** If badge cache is newer than this, skip network (see useBadgeCounts). */
   BADGE_COUNTS_CACHE_FRESH: 12 * 60 * 1000,
+  /** Admin-only: re-check pending vendor applications (cross-device; public form cannot BroadcastChannel). */
+  ADMIN_VENDOR_APPLICATIONS_BADGE_POLL: 60 * 1000,
   TOP_NAV_NOTIFICATIONS: 15 * 60 * 1000,
   VENDOR_PORTAL_NOTIFICATIONS: 15 * 60 * 1000,
   /** Rare safety net only — admin + floating chat use Realtime broadcast for live deltas. */
   CHAT_HTTP_FALLBACK: 45 * 60 * 1000,
+  /** When chat is closed or minimized — light poll so admin replies still bump unread if Realtime lags. */
+  CHAT_HTTP_FALLBACK_DOCKET: 30 * 1000,
   /** When Marketing campaign auto-refresh is enabled. */
   MARKETING_CAMPAIGNS: 10 * 60 * 1000,
 } as const;

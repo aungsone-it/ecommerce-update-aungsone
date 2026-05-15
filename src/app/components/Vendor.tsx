@@ -1,6 +1,7 @@
 // Vendor Management Component - Force rebuild
 import { useState, useEffect, useMemo, useRef } from "react";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 import { useLanguage } from "../contexts/LanguageContext";
 import { cacheManager } from "../utils/cacheManager";
 import {
@@ -471,7 +472,7 @@ export function Vendor({
       console.log("✅ Adding vendor:", newVendor);
       
       // Add vendor to backend
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors`, {
+      const response = await fetch(`${API_BASE_URL}/vendors`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${publicAnonKey}`,
@@ -518,10 +519,9 @@ export function Vendor({
         const L = updatedData.logo;
         const url = typeof L === "string" ? L : "";
         body.logo = url;
-        body.avatar = url;
       }
 
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${editingVendor.id}`, {
+      const response = await fetch(`${API_BASE_URL}/vendors/${editingVendor.id}`, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${publicAnonKey}`,
@@ -580,7 +580,7 @@ export function Vendor({
     try {
       console.log("🗑️ Deleting vendor:", vendorId);
 
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${vendorId}`, {
+      const response = await fetch(`${API_BASE_URL}/vendors/${vendorId}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${publicAnonKey}`,
@@ -593,6 +593,7 @@ export function Vendor({
 
       // Keep cache coherent and verify with a background refresh.
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+      window.dispatchEvent(new CustomEvent("vendorDataUpdated", { detail: { vendorId } }));
       void loadVendors();
 
       alert(t('vendor.deleteSuccess') || '✅ Vendor deleted successfully!');
@@ -632,7 +633,7 @@ export function Vendor({
 
       // Delete all selected vendors
       const deletePromises = idsToDelete.map(vendorId =>
-        fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${vendorId}`, {
+        fetch(`${API_BASE_URL}/vendors/${vendorId}`, {
           method: "DELETE",
           headers: {
             "Authorization": `Bearer ${publicAnonKey}`,
@@ -650,6 +651,7 @@ export function Vendor({
 
       // Keep cache coherent and verify with a background refresh.
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+      window.dispatchEvent(new CustomEvent("vendorDataUpdated", { detail: { bulk: true } }));
       void loadVendors();
 
       alert(t('vendor.bulkDeleteSuccess')?.replace('{count}', count.toString()) || `✅ ${count} vendor(s) deleted successfully!`);
@@ -685,7 +687,7 @@ export function Vendor({
     // Different confirmation messages based on action
     let confirmMessage = "";
     if (newStatus === "active") {
-      confirmMessage = `Are you sure you want to activate vendor "${vendor.name}"? They will regain full access to the platform.`;
+      confirmMessage = `Are you sure you want to activate vendor "${vendor.name}"? They will regain full access to the platform. Note: returning to active does not automatically turn their public storefront back on; they may need to enable the store in vendor settings if it was switched off.`;
     } else if (newStatus === "suspended" || newStatus === "banned") {
       confirmMessage = `Are you sure you want to ${action} vendor "${vendor.name}"? This action will restrict their ability to access the platform.`;
     } else {
@@ -705,7 +707,7 @@ export function Vendor({
         throw new Error(`Invalid status: ${newStatus}`);
       }
       
-      const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/${vendorId}`, {
+      const response = await fetch(`${API_BASE_URL}/vendors/${vendorId}`, {
         method: "PUT",
         headers: {
           "Authorization": `Bearer ${publicAnonKey}`,
@@ -754,6 +756,7 @@ export function Vendor({
       
       // Must invalidate module cache — otherwise loadVendors() returns stale rows and filters (suspended/banned/all) break
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+      window.dispatchEvent(new CustomEvent("vendorDataUpdated", { detail: { vendorId } }));
       try {
         await loadVendors(true);
       } catch (reloadError) {
@@ -1002,7 +1005,7 @@ export function Vendor({
           } else {
             // Add new vendor
             try {
-              const response = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors`, {
+              const response = await fetch(`${API_BASE_URL}/vendors`, {
                 method: "POST",
                 headers: {
                   "Authorization": `Bearer ${publicAnonKey}`,

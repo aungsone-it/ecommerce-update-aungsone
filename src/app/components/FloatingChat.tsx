@@ -8,6 +8,7 @@ import { chatApi } from "../../utils/api";
 import {
   CHAT_LOCAL_STORAGE_DEBOUNCE_MS,
   CHAT_SCROLL_DEBOUNCE_MS,
+  MIGOO_CHAT_DISMISS_UNREAD_EVENT,
   MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
   MIGOO_USER_SESSION_CHANGED_EVENT,
   POLLING_INTERVALS_MS,
@@ -311,19 +312,38 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     };
   }, [conversationId]);
 
-  // Very slow HTTP fallback only if Realtime is unavailable (see CHAT_HTTP_FALLBACK).
+  // HTTP fallback: slow poll while chat is expanded; faster poll while closed/minimized (Realtime can still miss).
   useEffect(() => {
-    if (!isOpen || isMinimized || !docVisible) {
+    if (!conversationId || !docVisible) {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
       }
       return;
     }
-    pollingIntervalRef.current = window.setInterval(() => {
+    if (!hasMigooCustomerSession() && !isAuthenticated) {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const tick = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      pollForNewMessages();
-    }, POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK);
+      void pollForNewMessages();
+    };
+
+    const intervalMs =
+      !isOpen || isMinimized
+        ? POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK_DOCKET
+        : POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK;
+
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    pollingIntervalRef.current = window.setInterval(tick, intervalMs);
 
     return () => {
       if (pollingIntervalRef.current) {
@@ -331,7 +351,17 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         pollingIntervalRef.current = null;
       }
     };
-  }, [isOpen, isMinimized, conversationId, docVisible]);
+  }, [isOpen, isMinimized, conversationId, docVisible, isAuthenticated]);
+
+  // Header “Mark all read” clears widget unread without opening the panel.
+  useEffect(() => {
+    const onDismiss = () => {
+      setUnreadCount(0);
+      if (onUnreadCountChange) onUnreadCountChange(0);
+    };
+    window.addEventListener(MIGOO_CHAT_DISMISS_UNREAD_EVENT, onDismiss);
+    return () => window.removeEventListener(MIGOO_CHAT_DISMISS_UNREAD_EVENT, onDismiss);
+  }, [onUnreadCountChange]);
 
   // Refs keep Realtime subscription stable (avoid unsubscribe/resubscribe on every open/minimize)
   const isOpenRef = useRef(isOpen);
@@ -793,6 +823,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {unreadCount > 0 && (
+              <Badge className="h-6 min-w-[1.5rem] px-1.5 flex items-center justify-center border-2 border-white bg-red-500 text-white text-xs font-semibold shadow-sm">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </Badge>
+            )}
             <Button
               variant="ghost"
               size="sm"

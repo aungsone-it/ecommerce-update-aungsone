@@ -9,7 +9,8 @@ import { useResolvedVendorHostSlug } from '../utils/vendorHostResolution';
 import { getEffectiveVendorSubdomainBase } from '../utils/vendorSubdomainBase';
 import { subdomainHostLabelForVendorProfile } from '../utils/subdomainSlugMap';
 import { storeSlugFromBusinessName } from '../../utils/storeSlug';
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { publicAnonKey } from '../../../utils/supabase/info';
+import { API_BASE_URL } from '../../utils/api-client';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -118,7 +119,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
       let storefrontDomainStatus = "";
       try {
         const res = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${encodeURIComponent(vendor.vendorId)}`,
+          `${API_BASE_URL}/vendor/storefront/${encodeURIComponent(vendor.vendorId)}`,
           { headers: { Authorization: `Bearer ${publicAnonKey}` } }
         );
         if (res.ok) {
@@ -216,7 +217,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
         ) {
           const host = window.location.hostname;
           const byDomainRes = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/by-domain?domain=${encodeURIComponent(host)}`,
+            `${API_BASE_URL}/vendor/by-domain?domain=${encodeURIComponent(host)}`,
             {
               headers: {
                 Authorization: `Bearer ${publicAnonKey}`,
@@ -245,7 +246,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
 
         console.log('🔍 Fetching vendor data for:', storeName);
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/by-slug/${storeName}`,
+          `${API_BASE_URL}/vendors/by-slug/${storeName}`,
           {
             headers: {
               'Authorization': `Bearer ${publicAnonKey}`,

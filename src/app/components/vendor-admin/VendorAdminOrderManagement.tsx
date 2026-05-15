@@ -37,7 +37,8 @@ import { format, startOfDay, endOfDay } from "date-fns";
 import { PrintInvoice } from "../PrintInvoice";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { toast } from "sonner";
-import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
+import { publicAnonKey } from "../../../../utils/supabase/info";
+import { API_BASE_URL } from "../../../utils/api-client";
 import { ordersApi } from "../../../utils/api";
 import { Skeleton } from "../ui/skeleton";
 import {
@@ -103,7 +104,7 @@ async function fetchVendorContractCommissionPercent(slugOrId: string | undefined
   if (!key) return 15;
   try {
     const res = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/by-slug/${encodeURIComponent(key)}`,
+      `${API_BASE_URL}/vendors/by-slug/${encodeURIComponent(key)}`,
       { headers: { Authorization: `Bearer ${publicAnonKey}` } }
     );
     if (!res.ok) return 15;

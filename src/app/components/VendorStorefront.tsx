@@ -30,7 +30,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "./ui/tabs";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 
 interface Vendor {
   id: string;
@@ -123,7 +124,7 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
     setLoading(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront/${vendor.id}`,
+        `${API_BASE_URL}/vendor/storefront/${vendor.id}`,
         {
           headers: {
             Authorization: `Bearer ${publicAnonKey}`,
@@ -148,7 +149,7 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
     setSaving(true);
     try {
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/storefront`,
+        `${API_BASE_URL}/vendor/storefront`,
         {
           method: "POST",
           headers: {

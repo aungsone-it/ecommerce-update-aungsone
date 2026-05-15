@@ -40,6 +40,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { ProductFormPage } from "./ProductFormPage";
 import { StorefrontProductDetail } from "./StorefrontProductDetail";
@@ -58,7 +59,12 @@ import {
 } from "../utils/module-cache";
 import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
 import { normalizeProductForAdminDetailView } from "../utils/adminProductDetailNormalize";
-import { buildVendorDisplayLookup, resolveVendorDisplayLabel } from "../utils/vendorDisplay";
+import {
+  buildVendorDisplayLookup,
+  tryResolveVendorDisplayLabel,
+  isVendorActiveForAssignmentDisplay,
+  findVendorRowForProductSelectionEntry,
+} from "../utils/vendorDisplay";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../contexts/AuthContext";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
@@ -147,6 +153,8 @@ export function ProductList({
   const [collaboratorFilter, setCollaboratorFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("newest");
   const [vendorsMap, setVendorsMap] = useState<Record<string, string>>({}); // 🔥 Map vendor ID to name
+  /** Raw vendor rows from admin API — used to gate badges (active only) while labels use full `vendorsMap`. */
+  const [adminVendorsRows, setAdminVendorsRows] = useState<unknown[]>([]);
 
   // View states - replace modal with page views
   const [currentView, setCurrentView] = useState<"list" | "add" | "edit" | "view" | "storefront">("list");
@@ -253,6 +261,40 @@ export function ProductList({
     ]
   );
 
+  const applyVendorsListToState = useCallback((vendorsList: unknown[]) => {
+    if (!Array.isArray(vendorsList)) return;
+    setAdminVendorsRows(vendorsList);
+    setVendorsMap(buildVendorDisplayLookup(vendorsList));
+    const names = [
+      ...new Set(
+        vendorsList
+          .map((vendor: any) => String(vendor.name || vendor.id || "").trim())
+          .filter(Boolean)
+      ),
+    ].sort();
+    setVendorFilterOptions(names);
+  }, []);
+
+  const loadVendors = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS);
+      // Empty array is not a usable cache hit — otherwise we never fetch and every label falls back to "Vendor store".
+      if (peeked != null && Array.isArray(peeked) && peeked.length > 0) {
+        applyVendorsListToState(peeked);
+        return;
+      }
+    }
+    try {
+      const vendorsList = await getCachedAdminVendorsForProductList(forceRefresh);
+      if (Array.isArray(vendorsList)) {
+        applyVendorsListToState(vendorsList);
+        console.log(`✅ Loaded ${vendorsList.length} vendors for name mapping`);
+      }
+    } catch (error) {
+      console.error("❌ Failed to load vendors:", error);
+    }
+  }, [applyVendorsListToState]);
+
   useEffect(() => {
     void loadProductPage(false);
   }, [loadProductPage]);
@@ -276,7 +318,7 @@ export function ProductList({
     return () => {
       window.removeEventListener("vendorDataUpdated", handleVendorUpdate as EventListener);
     };
-  }, []);
+  }, [loadVendors]);
 
   useEffect(() => {
     /** Silent = merged session cache; avoids skeleton blink after order-driven stock patches. */
@@ -296,13 +338,30 @@ export function ProductList({
     };
   }, [loadProductPage]);
 
-  // Realtime bridge: product pool updates from any admin/session via Supabase websocket.
+  // Realtime bridge: product pool + vendor profile/settings (badge labels stay in sync).
   useEffect(() => {
-    let debounce: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => {
+    let debounceProducts: ReturnType<typeof setTimeout> | undefined;
+    let debounceVendors: ReturnType<typeof setTimeout> | undefined;
+    const scheduleProducts = () => {
+      window.clearTimeout(debounceProducts);
+      debounceProducts = window.setTimeout(() => {
         void loadProductPage(true);
+      }, 280);
+    };
+    const scheduleVendors = () => {
+      window.clearTimeout(debounceVendors);
+      debounceVendors = window.setTimeout(() => {
+        moduleCache.invalidate(MODULE_CACHE_KEYS.ADMIN_VENDORS);
+        void (async () => {
+          try {
+            const vendorsList = await getCachedAdminVendorsForProductList(true);
+            if (Array.isArray(vendorsList)) {
+              applyVendorsListToState(vendorsList);
+            }
+          } catch {
+            /* ignore */
+          }
+        })();
       }, 280);
     };
     const channel = supabase
@@ -312,16 +371,26 @@ export function ProductList({
         { event: "*", schema: "public", table: "kv_store_16010b6f" },
         (payload: any) => {
           const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key.startsWith("product:")) return;
-          schedule();
+          if (key.startsWith("product:")) {
+            scheduleProducts();
+            return;
+          }
+          if (key.startsWith("vendor_settings:")) {
+            scheduleVendors();
+            return;
+          }
+          if (key.startsWith("vendor:") && !key.startsWith("vendor:audience:")) {
+            scheduleVendors();
+          }
         }
       )
       .subscribe();
     return () => {
-      window.clearTimeout(debounce);
+      window.clearTimeout(debounceProducts);
+      window.clearTimeout(debounceVendors);
       void supabase.removeChannel(channel);
     };
-  }, [loadProductPage]);
+  }, [loadProductPage, applyVendorsListToState]);
 
   const handleSearchInputChange = useCallback(
     (value: string) => {
@@ -344,33 +413,6 @@ export function ProductList({
     },
     [commitSearchFromInput]
   );
-
-  const loadVendors = async (forceRefresh = false) => {
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS);
-      if (peeked != null && Array.isArray(peeked)) {
-        setVendorsMap(buildVendorDisplayLookup(peeked));
-        return;
-      }
-    }
-    try {
-      const vendorsList = await getCachedAdminVendorsForProductList(forceRefresh);
-      if (Array.isArray(vendorsList)) {
-        setVendorsMap(buildVendorDisplayLookup(vendorsList));
-        const names = [
-          ...new Set(
-            vendorsList
-              .map((vendor: any) => String(vendor.name || vendor.id || "").trim())
-              .filter(Boolean)
-          ),
-        ].sort();
-        setVendorFilterOptions(names);
-        console.log(`✅ Loaded ${vendorsList.length} vendors for name mapping`);
-      }
-    } catch (error) {
-      console.error("❌ Failed to load vendors:", error);
-    }
-  };
 
   const handleSaveProduct = async (data: any) => {
     setCurrentView("list");
@@ -1088,20 +1130,51 @@ export function ProductList({
                           </td>
                           <td className="py-3 px-4 text-sm text-slate-700">{product.category}</td>
                           <td className="py-3 px-4 text-sm text-slate-700">
-                            {Array.isArray(product.selectedVendors) && product.selectedVendors.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {product.selectedVendors.slice(0, 2).map((vendorEntry, index) => (
-                                  <Badge key={index} variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
-                                    {resolveVendorDisplayLabel(String(vendorEntry), vendorsMap)}
-                                  </Badge>
-                                ))}
-                                {product.selectedVendors.length > 2 && (
-                                  <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-200 text-xs">
-                                    +{product.selectedVendors.length - 2}
-                                  </Badge>
-                                )}
-                              </div>
-                            ) : product.vendor ? (
+                            {Array.isArray(product.selectedVendors) && product.selectedVendors.length > 0 ? (() => {
+                              const activePairs: { label: string; raw: string }[] = [];
+                              for (const entry of product.selectedVendors) {
+                                const raw = String(entry ?? "").trim();
+                                if (!raw) continue;
+                                const row = findVendorRowForProductSelectionEntry(raw, adminVendorsRows);
+                                if (!row || !isVendorActiveForAssignmentDisplay(row)) continue;
+                                const label = tryResolveVendorDisplayLabel(raw, vendorsMap);
+                                if (label != null) activePairs.push({ label, raw });
+                              }
+                              if (activePairs.length === 0) {
+                                return <span className="text-slate-400">-</span>;
+                              }
+                              return (
+                                <div className="flex flex-wrap gap-1">
+                                  {activePairs.slice(0, 2).map((p, index) => (
+                                    <Badge
+                                      key={`${p.raw}-${index}`}
+                                      variant="secondary"
+                                      className="bg-blue-50 text-blue-700 border-blue-200 text-xs"
+                                    >
+                                      {p.label}
+                                    </Badge>
+                                  ))}
+                                  {activePairs.length > 2 && (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge
+                                          variant="secondary"
+                                          className="bg-slate-100 text-slate-600 border-slate-200 text-xs cursor-default"
+                                        >
+                                          +{activePairs.length - 2}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="max-w-xs text-left font-normal">
+                                        {activePairs
+                                          .slice(2)
+                                          .map((p) => p.label)
+                                          .join(", ")}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
+                                </div>
+                              );
+                            })() : product.vendor ? (
                               <span>{product.vendor}</span>
                             ) : (
                               <span className="text-slate-400">-</span>

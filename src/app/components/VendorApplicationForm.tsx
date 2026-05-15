@@ -10,12 +10,16 @@ import {
   FileText, 
   Upload, 
   X, 
-  Globe,
   Mail,
   Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
+import {
+  invalidateAdminVendorApplicationsCache,
+  notifyAdminVendorApplicationsUpdated,
+} from "../utils/module-cache";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
@@ -23,6 +27,174 @@ import { Button } from "./ui/button";
 interface VendorApplicationFormProps {
   onBack?: () => void;
   source?: "admin" | "storefront";
+}
+
+const BUSINESS_TYPE_OPTIONS = [
+  "Sole Proprietorship",
+  "Partnership",
+  "Limited Liability Company (LLC)",
+  "Corporation",
+  "Other",
+] as const;
+
+/** Simplified but strict email check (no spaces, sensible TLD). */
+function isValidEmailStrict(email: string): boolean {
+  const t = email.trim();
+  if (t.length < 5 || t.length > 254) return false;
+  const re =
+    /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  if (!re.test(t)) return false;
+  if (t.includes("..")) return false;
+  const domain = t.split("@")[1] || "";
+  if (!domain.includes(".")) return false;
+  const tld = domain.split(".").pop() || "";
+  return tld.length >= 2 && tld.length <= 24;
+}
+
+/** Myanmar (+95 9…) or international 10–15 digit subscriber (digits only after normalizing). */
+function isValidPhoneStrict(phone: string): boolean {
+  const raw = phone.trim();
+  if (!raw) return false;
+  const d = raw.replace(/\D/g, "");
+  if (d.length < 10 || d.length > 15) return false;
+  if (d.startsWith("95")) {
+    const rest = d.slice(2);
+    if (rest.startsWith("9") && rest.length >= 9 && rest.length <= 11) return true;
+  }
+  if (d.startsWith("0")) return false;
+  return d.length >= 10 && d.length <= 15;
+}
+
+function validateRegistrationNumber(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 4 || t.length > 40) return false;
+  return /^[A-Za-z0-9\-/ ]+$/.test(t);
+}
+
+function validateVendorApplicationStrict(
+  formData: Record<string, unknown>,
+  files: { businessLicense: File | null; idDocument: File | null },
+  allowedBusinessTypes: readonly string[]
+): string[] {
+  const errs: string[] = [];
+  const str = (k: string) => String(formData[k] ?? "").trim();
+
+  const companyName = str("companyName");
+  if (companyName.length < 2 || companyName.length > 120) {
+    errs.push("Company name must be between 2 and 120 characters.");
+  }
+
+  const businessType = str("businessType");
+  if (!businessType || !allowedBusinessTypes.includes(businessType)) {
+    errs.push("Please select a valid business type.");
+  }
+
+  const reg = str("registrationNumber");
+  if (!validateRegistrationNumber(reg)) {
+    errs.push(
+      "Business registration number is required (4–40 characters: letters, numbers, spaces, hyphen or /)."
+    );
+  }
+
+  const contactName = str("contactName");
+  if (contactName.length < 2 || contactName.length > 100) {
+    errs.push("Full name must be between 2 and 100 characters.");
+  } else if (!/[a-zA-Z\u00C0-\u024F]/.test(contactName)) {
+    errs.push("Full name must include at least one letter.");
+  }
+
+  const email = str("email");
+  if (!isValidEmailStrict(email)) {
+    errs.push("Enter a valid email address.");
+  }
+
+  const phone = String(formData.phone ?? "");
+  if (!isValidPhoneStrict(phone)) {
+    errs.push(
+      "Enter a valid phone number (e.g. Myanmar mobile +95 9XX XXX XXXX, or 10–15 digits international)."
+    );
+  }
+
+  const storeName = str("storeName");
+  if (storeName.length < 2 || storeName.length > 80) {
+    errs.push("Store name must be between 2 and 80 characters.");
+  }
+
+  const storeDescription = str("storeDescription");
+  if (storeDescription.length < 30 || storeDescription.length > 5000) {
+    errs.push("Store description must be at least 30 characters and at most 5,000 characters.");
+  }
+
+  const categories = formData.categories as unknown;
+  if (!Array.isArray(categories) || categories.length < 1) {
+    errs.push("Select at least one product category.");
+  }
+
+  const estRaw = String(formData.estimatedProducts ?? "").trim();
+  const est = parseInt(estRaw, 10);
+  if (!/^\d+$/.test(estRaw) || est < 1 || est > 1_000_000) {
+    errs.push("Estimated number of products must be a whole number from 1 to 1,000,000.");
+  }
+
+  const address = str("address");
+  if (address.length < 5 || address.length > 200) {
+    errs.push("Street address must be between 5 and 200 characters.");
+  }
+
+  const city = str("city");
+  if (city.length < 2 || city.length > 80) {
+    errs.push("City must be between 2 and 80 characters.");
+  }
+
+  const country = str("country");
+  if (country.length < 2 || country.length > 80) {
+    errs.push("Country must be between 2 and 80 characters.");
+  }
+
+  const postal = str("postalCode");
+  if (postal.length < 2 || postal.length > 12 || !/^[A-Za-z0-9\- ]+$/.test(postal)) {
+    errs.push("Postal code must be 2–12 characters (letters, numbers, spaces, or hyphen).");
+  }
+
+  const bankName = str("bankName");
+  if (bankName.length < 2 || bankName.length > 100) {
+    errs.push("Bank name must be between 2 and 100 characters.");
+  }
+
+  const accountName = str("accountName");
+  if (accountName.length < 2 || accountName.length > 120) {
+    errs.push("Account holder name must be between 2 and 120 characters.");
+  }
+
+  const acctDigits = str("accountNumber").replace(/\D/g, "");
+  if (!/^\d{6,22}$/.test(acctDigits)) {
+    errs.push("Account number must be 6–22 digits (spaces allowed for grouping).");
+  }
+
+  const website = str("website");
+  if (website) {
+    try {
+      const u = new URL(website.startsWith("http") ? website : `https://${website}`);
+      if (!["http:", "https:"].includes(u.protocol)) errs.push("Website must start with http:// or https://.");
+    } catch {
+      errs.push("Website must be a valid URL (or leave it blank).");
+    }
+  }
+
+  const fb = str("facebook");
+  if (fb && fb.length < 4) errs.push("Facebook link is too short (or leave it blank).");
+  const ig = str("instagram");
+  if (ig && ig.length < 2) errs.push("Instagram handle or URL is too short (or leave it blank).");
+
+  if (!files.businessLicense) errs.push("Upload a business license document.");
+  if (!files.idDocument) errs.push("Upload an ID document (passport or driver license).");
+
+  const agree = Boolean(formData.agreeToTerms);
+  const privacy = Boolean(formData.acceptPrivacy);
+  if (!agree) errs.push("You must agree to the terms and conditions.");
+  if (!privacy) errs.push("You must accept the privacy policy.");
+
+  return errs;
 }
 
 export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplicationFormProps) {
@@ -33,34 +205,34 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     companyName: "",
     businessType: "",
     registrationNumber: "",
-    
+
     // Contact Person
     contactName: "",
     email: "",
     phone: "",
-    
+
     // Store Details
     storeName: "",
     storeDescription: "",
     categories: [] as string[],
     estimatedProducts: 0,
-    
+
     // Business Address
     address: "",
     city: "",
     country: "",
     postalCode: "",
-    
+
     // Bank Information
     bankName: "",
     accountNumber: "",
     accountName: "",
-    
+
     // Social Links
     website: "",
     facebook: "",
     instagram: "",
-    
+
     // Terms
     agreeToTerms: false,
     acceptPrivacy: false,
@@ -74,14 +246,6 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     idDocument: null,
   });
 
-  const businessTypes = [
-    "Sole Proprietorship",
-    "Partnership",
-    "Limited Liability Company (LLC)",
-    "Corporation",
-    "Other"
-  ];
-
   const categoryOptions = [
     "Electronics",
     "Fashion",
@@ -92,21 +256,27 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     "Books & Media",
     "Food & Beverages",
     "Automotive",
-    "Other"
+    "Other",
   ];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
-    
+
     if (type === "checkbox") {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        [name]: (e.target as HTMLInputElement).checked
+        [name]: (e.target as HTMLInputElement).checked,
+      }));
+    } else if (name === "estimatedProducts") {
+      const n = parseInt(value, 10);
+      setFormData((prev) => ({
+        ...prev,
+        estimatedProducts: Number.isNaN(n) ? 0 : n,
       }));
     } else {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        [name]: value
+        [name]: value,
       }));
     }
   };
@@ -281,50 +451,17 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate required text fields
-    if (!formData.companyName || !formData.contactName || !formData.email || !formData.phone) {
-      toast.error("Missing Required Fields", {
-        description: "Please fill in all required fields"
-      });
-      return;
-    }
-
-    // Validate store details
-    if (!formData.storeName || !formData.storeDescription) {
-      toast.error("Missing Store Details", {
-        description: "Please provide store name and description"
-      });
-      return;
-    }
-
-    // Validate business type
-    if (!formData.businessType) {
-      toast.error("Missing Business Type", {
-        description: "Please select your business type"
-      });
-      return;
-    }
-
-    // Validate terms and privacy
-    if (!formData.agreeToTerms || !formData.acceptPrivacy) {
-      toast.error("Terms Required", {
-        description: "You must agree to the terms and conditions and privacy policy"
-      });
-      return;
-    }
-
-    // Validate file uploads
-    if (!files.businessLicense || !files.idDocument) {
-      toast.error("Documents Required", {
-        description: "Please upload both business license and ID document"
-      });
-      return;
-    }
-
-    // Validate categories
-    if (formData.categories.length === 0) {
-      toast.error("Categories Required", {
-        description: "Please select at least one product category"
+    const validationErrors = validateVendorApplicationStrict(formData, files, BUSINESS_TYPE_OPTIONS);
+    if (validationErrors.length > 0) {
+      const maxShow = 5;
+      const head = validationErrors.slice(0, maxShow);
+      const more =
+        validationErrors.length > maxShow
+          ? `\n… and ${validationErrors.length - maxShow} more.`
+          : "";
+      toast.error("Please fix the form", {
+        description: `${head.join("\n")}${more}`,
+        duration: 9000,
       });
       return;
     }
@@ -354,7 +491,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
       };
 
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-applications`,
+        `${API_BASE_URL}/vendor-applications`,
         {
           method: "POST",
           headers: {
@@ -366,12 +503,23 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
       );
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to submit application");
+        const error = await response.json().catch(() => ({} as { error?: string; code?: string }));
+        const msg =
+          response.status === 409 && String(error.code || "") === "DUPLICATE_PENDING"
+            ? String(error.error || "A pending application already exists for this email.")
+            : String(error.error || "Failed to submit application");
+        throw new Error(msg);
       }
 
       const result = await response.json();
       console.log("✅ Application submitted:", result);
+
+      try {
+        invalidateAdminVendorApplicationsCache();
+        notifyAdminVendorApplicationsUpdated("submitted");
+      } catch {
+        /* non-fatal */
+      }
 
       setIsSubmitted(true);
       toast.success("Application Submitted!", {
@@ -477,7 +625,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
       {/* Form */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <form onSubmit={handleSubmit} className="space-y-6">
+        <form noValidate onSubmit={handleSubmit} className="space-y-6">
           {/* Business Information */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center gap-3 mb-6">
@@ -518,7 +666,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
                 >
                   <option value="">Select type</option>
-                  {businessTypes.map(type => (
+                  {BUSINESS_TYPE_OPTIONS.map((type) => (
                     <option key={type} value={type}>{type}</option>
                   ))}
                 </select>
@@ -526,7 +674,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Business Registration Number
+                  Business Registration Number *
                 </label>
                 <input
                   type="text"
@@ -588,13 +736,15 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   Phone Number *
                 </label>
                 <input
-                  type="number"
+                  type="tel"
                   name="phone"
+                  inputMode="tel"
+                  autoComplete="tel"
                   value={formData.phone}
                   onChange={handleInputChange}
-                  required
+                  aria-required="true"
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                  placeholder="+95 9 XXX XXX XXX"
+                  placeholder="+95 9XX XXX XXXX or international"
                 />
               </div>
             </div>
@@ -669,15 +819,19 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Estimated Number of Products
+                  Estimated Number of Products *
                 </label>
                 <input
                   type="number"
                   name="estimatedProducts"
-                  value={formData.estimatedProducts}
+                  min={1}
+                  max={1000000}
+                  step={1}
+                  value={formData.estimatedProducts || ""}
                   onChange={handleInputChange}
+                  aria-required="true"
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all md:max-w-md"
-                  placeholder="100"
+                  placeholder="e.g. 50"
                 />
               </div>
             </div>
@@ -698,7 +852,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Street Address
+                  Street Address *
                 </label>
                 <input
                   type="text"
@@ -712,7 +866,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  City
+                  City *
                 </label>
                 <input
                   type="text"
@@ -726,7 +880,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Country
+                  Country *
                 </label>
                 <input
                   type="text"
@@ -740,7 +894,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Postal Code
+                  Postal Code *
                 </label>
                 <input
                   type="text"
@@ -769,7 +923,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Bank Name
+                  Bank Name *
                 </label>
                 <input
                   type="text"
@@ -783,7 +937,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Account Holder Name
+                  Account Holder Name *
                 </label>
                 <input
                   type="text"
@@ -797,7 +951,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Account Number
+                  Account Number *
                 </label>
                 <input
                   type="text"

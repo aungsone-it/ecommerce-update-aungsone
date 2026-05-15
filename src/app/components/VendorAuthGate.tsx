@@ -5,7 +5,8 @@ import { useVendorAuth } from "../contexts/VendorAuthContext";
 import { VendorLogin } from "./VendorLogin";
 import { useVendorAdminRouteParams } from "../utils/vendorAdminRouteParams";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 
 export function VendorAuthGate({ children }: { children: React.ReactNode }) {
   const { vendor, loading } = useVendorAuth();
@@ -26,7 +27,7 @@ export function VendorAuthGate({ children }: { children: React.ReactNode }) {
     void (async () => {
       try {
         const bySlugRes = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendors/by-slug/${encodeURIComponent(hostSlug)}`,
+          `${API_BASE_URL}/vendors/by-slug/${encodeURIComponent(hostSlug)}`,
           {
             headers: {
               Authorization: `Bearer ${publicAnonKey}`,

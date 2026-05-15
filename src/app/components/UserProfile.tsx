@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 import { toast } from "sonner";
 import { compressImage } from "../../utils/imageCompression";
 import { useAuth } from "../contexts/AuthContext";
@@ -53,12 +54,14 @@ function dicebearAvatar(email: string) {
   return `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(email || "user")}`;
 }
 
-function displayAvatarUrl(u: any): string {
+function displayAvatarUrl(u: any, variant: "staff" | "vendor" = "staff"): string {
   if (u?.profileImageUrl && String(u.profileImageUrl).startsWith("http")) {
     return u.profileImageUrl;
   }
-  if (u?.avatar && String(u.avatar).startsWith("http")) {
-    return u.avatar;
+  if (variant !== "vendor") {
+    if (u?.avatar && String(u.avatar).startsWith("http")) {
+      return u.avatar;
+    }
   }
   if (u?.avatar && String(u.avatar).startsWith("data:image")) {
     return u.avatar;
@@ -152,7 +155,7 @@ export function UserProfile({
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(!!initialEditMode);
   const [editedUser, setEditedUser] = useState(user);
-  const [avatarPreview, setAvatarPreview] = useState(() => displayAvatarUrl(user));
+  const [avatarPreview, setAvatarPreview] = useState(() => displayAvatarUrl(user, variant));
   const [isSaving, setIsSaving] = useState(false);
   const [avatarFile, setAvatarFile] = useState<string | null>(null);
   const [avatarMarkedForRemoval, setAvatarMarkedForRemoval] = useState(false);
@@ -167,7 +170,7 @@ export function UserProfile({
 
   useEffect(() => {
     setEditedUser(user);
-    setAvatarPreview(displayAvatarUrl(user));
+    setAvatarPreview(displayAvatarUrl(user, variant));
     setAvatarFile(null);
     setAvatarMarkedForRemoval(false);
 
@@ -178,7 +181,7 @@ export function UserProfile({
       (async () => {
         try {
           const profileRes = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(user.id)}`,
+            `${API_BASE_URL}/vendor-auth/profile/${encodeURIComponent(user.id)}`,
             { headers: { Authorization: `Bearer ${publicAnonKey}` } }
           );
           if (cancelled) return;
@@ -187,7 +190,7 @@ export function UserProfile({
             const u = data.user;
             if (u && !cancelled) {
               setEditedUser((prev: any) => ({ ...prev, ...u }));
-              setAvatarPreview(displayAvatarUrl({ ...user, ...u }));
+              setAvatarPreview(displayAvatarUrl({ ...user, ...u }, variant));
             }
           } else {
             let payload: { error?: string; message?: string } = {};
@@ -236,11 +239,11 @@ export function UserProfile({
       try {
         const [profileRes, activityRes] = await Promise.all([
           fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/profile/${user.id}`,
+            `${API_BASE_URL}/auth/profile/${user.id}`,
             { headers: { Authorization: `Bearer ${publicAnonKey}` } }
           ),
           fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/staff-activity/${user.id}`,
+            `${API_BASE_URL}/auth/staff-activity/${user.id}`,
             { headers: { Authorization: `Bearer ${publicAnonKey}` } }
           ),
         ]);
@@ -250,7 +253,7 @@ export function UserProfile({
           const u = data.user;
           if (u && !cancelled) {
             setEditedUser((prev: any) => ({ ...prev, ...u }));
-            setAvatarPreview(displayAvatarUrl({ ...user, ...u }));
+            setAvatarPreview(displayAvatarUrl({ ...user, ...u }, variant));
           }
         }
         if (activityRes.ok) {
@@ -305,7 +308,7 @@ export function UserProfile({
   const handleRemoveAvatar = () => {
     if (avatarFile) {
       setAvatarFile(null);
-      setAvatarPreview(displayAvatarUrl(user));
+      setAvatarPreview(displayAvatarUrl(user, variant));
       return;
     }
     if (!hasStoredProfilePhoto(user) && !hasStoredProfilePhoto(editedUser)) return;
@@ -338,7 +341,7 @@ export function UserProfile({
     }
 
     const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/user/${user.id}`,
+      `${API_BASE_URL}/auth/user/${user.id}`,
       {
         method: "PUT",
         headers: {
@@ -365,7 +368,7 @@ export function UserProfile({
       profileImageUrl: updated.profileImageUrl,
     };
     setEditedUser(merged);
-    setAvatarPreview(displayAvatarUrl(merged));
+    setAvatarPreview(displayAvatarUrl(merged, variant));
     setAvatarFile(null);
     setAvatarMarkedForRemoval(false);
     setIsEditing(false);
@@ -377,7 +380,7 @@ export function UserProfile({
     let avatarUrl = editedUser.avatar;
     if (avatarFile) {
       const avatarResponse = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/users/${user.id}/avatar`,
+        `${API_BASE_URL}/users/${user.id}/avatar`,
         {
           method: "POST",
           headers: {
@@ -401,7 +404,7 @@ export function UserProfile({
     }
 
     const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/users/${user.id}`,
+      `${API_BASE_URL}/users/${user.id}`,
       {
         method: "PUT",
         headers: {
@@ -423,7 +426,7 @@ export function UserProfile({
     const result = await response.json();
     const merged = result.user;
     setEditedUser(merged);
-    setAvatarPreview(merged.avatar || displayAvatarUrl(merged));
+    setAvatarPreview(merged.avatar || displayAvatarUrl(merged, variant));
     setAvatarFile(null);
     setIsEditing(false);
     onSave(merged);
@@ -452,7 +455,7 @@ export function UserProfile({
     }
 
     const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor-auth/profile/${encodeURIComponent(user.id)}`,
+      `${API_BASE_URL}/vendor-auth/profile/${encodeURIComponent(user.id)}`,
       {
         method: "PUT",
         headers: {
@@ -486,11 +489,11 @@ export function UserProfile({
     const merged = {
       ...editedUser,
       ...updated,
-      avatar: updated.profileImageUrl || displayAvatarUrl(updated),
+      avatar: updated.profileImageUrl || displayAvatarUrl(updated, "vendor"),
       profileImageUrl: updated.profileImageUrl,
     };
     setEditedUser(merged);
-    setAvatarPreview(displayAvatarUrl(merged));
+    setAvatarPreview(displayAvatarUrl(merged, variant));
     setAvatarFile(null);
     setAvatarMarkedForRemoval(false);
     setIsEditing(false);
@@ -556,7 +559,7 @@ export function UserProfile({
 
   const handleCancel = () => {
     setEditedUser(user);
-    setAvatarPreview(displayAvatarUrl(user));
+    setAvatarPreview(displayAvatarUrl(user, variant));
     setAvatarFile(null);
     setAvatarMarkedForRemoval(false);
     setIsEditing(false);

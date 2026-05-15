@@ -23,6 +23,7 @@ import {
 } from "./storage_delete_helpers.tsx";
 import { appendStaffActivity } from "./staff_activity_helpers.tsx";
 import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
+import { hashPasswordPlain, verifyPasswordPlain, isPasswordHashFormat } from "./password_crypto.tsx";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
 const originalConsoleError = console.error;
@@ -2299,10 +2300,32 @@ app.post("/make-server-16010b6f/vendor-auth/login", async (c) => {
       }, 401);
     }
     
-    // Check password (in production, this should use hashed passwords)
-    if (vendor.password !== password) {
+    const fullLoginVendor = await withTimeout(kv.get(`vendor:${vendor.id}`), 5000).catch(() => null) as any;
+    const storedPassword = fullLoginVendor?.password ?? vendor.password;
+    const passwordOk = await verifyPasswordPlain(password, storedPassword);
+    if (!passwordOk) {
       console.log(`❌ [VendorAuth] Invalid password for: ${email}`);
       return c.json({ error: "Invalid email or password" }, 401);
+    }
+    if (
+      fullLoginVendor &&
+      typeof fullLoginVendor.password === "string" &&
+      fullLoginVendor.password.length > 0 &&
+      !isPasswordHashFormat(fullLoginVendor.password)
+    ) {
+      try {
+        const migratedHash = await hashPasswordPlain(password);
+        await withTimeout(
+          kv.set(`vendor:${vendor.id}`, {
+            ...fullLoginVendor,
+            password: migratedHash,
+            updatedAt: new Date().toISOString(),
+          }),
+          5000
+        );
+      } catch (migrateErr) {
+        console.warn("[VendorAuth] Password migrate-to-hash skipped:", migrateErr);
+      }
     }
     
     // Check if vendor is active
@@ -2456,10 +2479,12 @@ app.post("/make-server-16010b6f/vendor-auth/setup-credentials", async (c) => {
       return c.json({ error: "Vendor account is not active" }, 403);
     }
     
-    // Update vendor with password
+    const passwordHash = await hashPasswordPlain(password);
+    const fullSetupVendor = await withTimeout(kv.get(`vendor:${vendor.id}`), 5000).catch(() => null) as any;
     const updatedVendor = {
-      ...vendor,
-      password: password, // In production, this should be hashed
+      ...(fullSetupVendor && typeof fullSetupVendor === "object" ? fullSetupVendor : vendor),
+      id: vendor.id,
+      password: passwordHash,
       credentialsSetAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -2517,9 +2542,8 @@ async function buildVendorAuthProfileUser(vendorRaw: Record<string, unknown>) {
   if (typeof pi === "string" && pi.trim()) {
     const su = await getSignedImageUrl(pi.trim());
     if (su) profileImageUrl = su;
-  } else if (typeof rest.avatar === "string" && rest.avatar.startsWith("http")) {
-    profileImageUrl = rest.avatar;
   }
+  /** Do not treat `avatar` as profile photo: it may be a storefront logo URL or initials. */
 
   const created = (rest.createdAt || rest.joinedDate) as string | undefined;
   const id = String(rest.id || "");
@@ -2548,7 +2572,7 @@ async function buildVendorAuthProfileUser(vendorRaw: Record<string, unknown>) {
     bio: String(rest.bio || ""),
     profileImage: typeof pi === "string" ? pi : "",
     profileImageUrl: profileImageUrl || undefined,
-    avatar: profileImageUrl || (typeof rest.avatar === "string" ? rest.avatar : ""),
+    avatar: profileImageUrl || "",
     createdAt: created,
     authCreatedAt: created,
     lastSignInAt: (rest.lastLoginAt || rest.lastSignInAt || rest.updatedAt) as string | undefined,
@@ -3014,6 +3038,28 @@ app.post("/make-server-16010b6f/products/wishlist-vendor-page", async (c) => {
     if (!vendorStorefront) {
       return c.json({ error: "vendorStorefront required" }, 400);
     }
+
+    const canonicalVendorId = resolvedVendorId
+      ? await resolveVendorIdFromSlugOrId(resolvedVendorId)
+      : await resolveVendorIdFromSlugOrId(vendorStorefront);
+    if (canonicalVendorId) {
+      const vendorRow = await withTimeout(kv.get(`vendor:${canonicalVendorId}`), 5000).catch(() => null);
+      if (vendorRow && typeof vendorRow === "object" && !vendorProfileAllowsPublicStorefront(vendorRow)) {
+        return c.json(
+          {
+            products: [],
+            total: 0,
+            page,
+            pageSize,
+            hasMore: false,
+            storeUnavailable: true,
+            error: "This store is not available.",
+          },
+          403
+        );
+      }
+    }
+
     const MAX_IDS = 800;
     const ids = productIds.slice(0, MAX_IDS);
     const matchKeys = expandStorefrontWishlistVendorKeys(vendorStorefront, resolvedVendorId || null);
@@ -5869,8 +5915,13 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
     const cacheKey = `vendor_by_slug:${slug}`;
     const cached = getCached(cacheKey, 60000); // Cache for 60 seconds
     if (cached) {
-      console.log(`⚡ Returning cached vendor for slug: ${slug}`);
-      return c.json(cached);
+      const row = (cached as { vendor?: unknown }).vendor;
+      if (row && typeof row === "object" && !vendorProfileAllowsPublicStorefront(row)) {
+        clearCache(cacheKey);
+      } else {
+        console.log(`⚡ Returning cached vendor for slug: ${slug}`);
+        return c.json(cached);
+      }
     }
     
     // Fetch all vendors and find by slug or ID
@@ -5944,6 +5995,14 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
       return c.json({ error: "Vendor not found" }, 404);
     }
     
+    if (!vendorProfileAllowsPublicStorefront(vendor)) {
+      console.log(`❌ Vendor not available for public slug lookup: ${vendor.id}`);
+      return c.json(
+        { error: "This store is not available.", storeUnavailable: true, reason: (vendor as any).status },
+        403
+      );
+    }
+
     const [settings, storefront] = await Promise.all([
       withTimeout(kv.get(`vendor_settings:${vendor.id}`), 5000),
       withTimeout(kv.get(`vendor_storefront_${vendor.id}`), 5000),
@@ -6617,7 +6676,33 @@ app.post("/make-server-16010b6f/vendor-applications", async (c) => {
       reviewedBy: null,
       reviewNotes: null,
     };
-    
+
+    const emailNorm = String((application as any).email || "")
+      .trim()
+      .toLowerCase();
+    if (emailNorm) {
+      const existing = await withTimeout(kv.getByPrefix("vendor_application:"), 15000).catch(() => []);
+      const list = Array.isArray(existing) ? existing : [];
+      const dupPending = list.some(
+        (a: any) =>
+          a &&
+          typeof a === "object" &&
+          String(a.email || "")
+            .trim()
+            .toLowerCase() === emailNorm &&
+          String(a.status || "").toLowerCase() === "pending"
+      );
+      if (dupPending) {
+        return c.json(
+          {
+            error: "A pending application already exists for this email.",
+            code: "DUPLICATE_PENDING",
+          },
+          409
+        );
+      }
+    }
+
     // Save application to KV store
     await withTimeout(kv.set(`vendor_application:${id}`, application), 5000);
     
@@ -6708,101 +6793,195 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
   try {
     const { id } = c.req.param();
     const { status, reviewNotes, reviewedBy } = await c.req.json();
-    
-    const application = await withTimeout(
-      kv.get(`vendor_application:${id}`),
-      5000
-    );
-    
+
+    const application = await withTimeout(kv.get(`vendor_application:${id}`), 5000);
+
     if (!application) {
       return c.json({ error: "Application not found" }, 404);
     }
-    
-    const updatedApplication = {
+
+    const nextStatus = String(status ?? "")
+      .trim()
+      .toLowerCase();
+    const allowedStatuses = new Set(["pending", "approved", "rejected"]);
+    if (!allowedStatuses.has(nextStatus)) {
+      return c.json(
+        { error: `Invalid status. Allowed: ${[...allowedStatuses].join(", ")}` },
+        400
+      );
+    }
+
+    const prevStatus = String((application as any).status ?? "pending")
+      .trim()
+      .toLowerCase();
+    if (prevStatus === "approved" && nextStatus === "pending") {
+      return c.json({ error: "Cannot move an approved application back to pending." }, 400);
+    }
+
+    const reviewedAt = new Date().toISOString();
+    const baseUpdate = {
       ...application,
-      status,
+      status: nextStatus,
       reviewNotes,
       reviewedBy,
-      reviewedAt: new Date().toISOString(),
+      reviewedAt,
     };
-    
-    await withTimeout(
-      kv.set(`vendor_application:${id}`, updatedApplication),
-      5000
-    );
-    
-    // If approved, automatically create vendor account
-    if (status === "approved") {
-      console.log(`✅ Vendor application approved: ${id}, creating vendor account...`);
-      
-      // Create vendor from application data
-      const vendorId = `vendor_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const newVendor = {
-        id: vendorId,
-        name: application.companyName || application.businessName,
-        email: application.email,
-        phone: application.phone,
-        location: application.city && application.country ? `${application.city}, ${application.country}` : application.address || "",
-        status: "active",
-        productsCount: 0,
-        totalRevenue: 0,
-        commission: parseInt(application.requestedCommission) || 15,
-        joinedDate: new Date().toISOString(),
-        avatar: (application.companyName || application.businessName)?.substring(0, 2).toUpperCase() || "VN",
-        businessType: application.businessType,
-        taxId: application.registrationNumber || application.taxId,
-        website: application.website,
-        description: application.storeDescription || application.description,
-        categories: application.categories || [],
-        contactName: application.contactName,
-        applicationId: id, // Link back to the application
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      
-      await withTimeout(
-        kv.set(`vendor:${vendorId}`, newVendor),
-        5000
-      );
-      
-      // Create vendor settings with friendly slug (subdomain-safe: a-z0-9 only)
-      const storeName = application.companyName || application.businessName || "Vendor Store";
-      const baseSlug = await allocateUniqueVendorSlugFromName(storeName, vendorId);
-      
-      const vendorSettings = {
-        vendorId: vendorId,
-        storeName: storeName,
-        storeSlug: baseSlug,
-        storeDescription: application.storeDescription || application.description || "Welcome to our store",
-        storeTagline: "",
-        logo: "",
-        banner: "",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      
-      await withTimeout(
-        kv.set(`vendor_settings:${vendorId}`, vendorSettings),
-        5000
-      );
 
-      const slugMappingApproved = {
-        slug: baseSlug,
-        vendorId: vendorId,
-        businessName: storeName,
-        createdAt: new Date().toISOString(),
-      };
-      await withTimeout(kv.set(`vendor_slug_${baseSlug}`, slugMappingApproved), 5000);
-      console.log(`✅ Slug mapping created for approved application: ${baseSlug} → ${vendorId}`);
-      
-      console.log(`✅ Vendor account created: ${vendorId} for ${newVendor.name} with slug: ${baseSlug}`);
+    if (nextStatus !== "approved") {
+      await withTimeout(kv.set(`vendor_application:${id}`, baseUpdate), 5000);
+      return c.json({
+        success: true,
+        application: baseUpdate,
+        message: `Application ${nextStatus} successfully`,
+      });
     }
-    
-    return c.json({ 
+
+    const priorApprovedId = String((application as any).approvedVendorId || "").trim();
+    if (priorApprovedId) {
+      const existingVendor = await withTimeout(kv.get(`vendor:${priorApprovedId}`), 5000).catch(() => null);
+      if (existingVendor && typeof existingVendor === "object") {
+        const vs = await withTimeout(kv.get(`vendor_settings:${priorApprovedId}`), 5000).catch(() => null);
+        const finalApplication = {
+          ...baseUpdate,
+          approvedVendorId: priorApprovedId,
+          approvedStoreSlug:
+            (vs && typeof vs === "object" && String((vs as any).storeSlug || "").trim()) || null,
+          approvedAt: String((application as any).approvedAt || "").trim() || reviewedAt,
+        };
+        await withTimeout(kv.set(`vendor_application:${id}`, finalApplication), 5000);
+        clearCache("vendors_list_v4");
+        try {
+          await withTimeout(kv.del("vendors"), 5000);
+        } catch {
+          /* non-fatal */
+        }
+        console.log(`ℹ️ Application ${id} already approved → vendor ${priorApprovedId}`);
+        return c.json({
+          success: true,
+          application: finalApplication,
+          message: "Application was already approved",
+          vendorAlreadyExisted: true,
+        });
+      }
+    }
+
+    const validVendors = await withTimeout(kv.getVendorProfiles(), 8000).catch(() => [] as any[]);
+    const appEmail = String((application as any).email || "")
+      .trim()
+      .toLowerCase();
+    if (appEmail) {
+      const dup = (Array.isArray(validVendors) ? validVendors : []).find(
+        (v: any) => String(v?.email || "").trim().toLowerCase() === appEmail
+      );
+      if (dup?.id) {
+        const vs = await withTimeout(kv.get(`vendor_settings:${dup.id}`), 5000).catch(() => null);
+        const finalApplication = {
+          ...baseUpdate,
+          approvedVendorId: dup.id,
+          approvedStoreSlug:
+            (vs && typeof vs === "object" && String((vs as any).storeSlug || "").trim()) || null,
+          approvedAt: reviewedAt,
+        };
+        await withTimeout(kv.set(`vendor_application:${id}`, finalApplication), 5000);
+        clearCache("vendors_list_v4");
+        try {
+          await withTimeout(kv.del("vendors"), 5000);
+        } catch {
+          /* non-fatal */
+        }
+        console.log(`✅ Application ${id} approved → linked existing vendor ${dup.id} (${appEmail})`);
+        return c.json({
+          success: true,
+          application: finalApplication,
+          message: "Application approved; linked to existing vendor account",
+          linkedExistingVendor: true,
+        });
+      }
+    }
+
+    console.log(`✅ Vendor application approved: ${id}, creating vendor account...`);
+
+    const vendorId = `vendor_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const newVendor = {
+      id: vendorId,
+      name: (application as any).companyName || (application as any).businessName,
+      email: (application as any).email,
+      phone: (application as any).phone,
+      location:
+        (application as any).city && (application as any).country
+          ? `${(application as any).city}, ${(application as any).country}`
+          : (application as any).address || "",
+      status: "active",
+      productsCount: 0,
+      totalRevenue: 0,
+      commission: parseInt(String((application as any).requestedCommission || ""), 10) || 15,
+      joinedDate: new Date().toISOString(),
+      avatar:
+        ((application as any).companyName || (application as any).businessName)?.substring(0, 2).toUpperCase() ||
+        "VN",
+      businessType: (application as any).businessType,
+      taxId: (application as any).registrationNumber || (application as any).taxId,
+      website: (application as any).website,
+      description: (application as any).storeDescription || (application as any).description,
+      categories: (application as any).categories || [],
+      contactName: (application as any).contactName,
+      applicationId: id,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await withTimeout(kv.set(`vendor:${vendorId}`, newVendor), 5000);
+
+    const storeName =
+      (application as any).companyName || (application as any).businessName || "Vendor Store";
+    const baseSlug = await allocateUniqueVendorSlugFromName(storeName, vendorId);
+
+    const vendorSettings = {
+      vendorId: vendorId,
+      storeName: storeName,
+      storeSlug: baseSlug,
+      storeDescription:
+        (application as any).storeDescription || (application as any).description || "Welcome to our store",
+      storeTagline: "",
+      logo: "",
+      banner: "",
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await withTimeout(kv.set(`vendor_settings:${vendorId}`, vendorSettings), 5000);
+
+    const slugMappingApproved = {
+      slug: baseSlug,
+      vendorId: vendorId,
+      businessName: storeName,
+      createdAt: new Date().toISOString(),
+    };
+    await withTimeout(kv.set(`vendor_slug_${baseSlug}`, slugMappingApproved), 5000);
+    console.log(`✅ Slug mapping created for approved application: ${baseSlug} → ${vendorId}`);
+
+    const finalApplication = {
+      ...baseUpdate,
+      approvedVendorId: vendorId,
+      approvedStoreSlug: baseSlug,
+      approvedAt: reviewedAt,
+    };
+    await withTimeout(kv.set(`vendor_application:${id}`, finalApplication), 5000);
+
+    clearCache("vendors_list_v4");
+    try {
+      await withTimeout(kv.del("vendors"), 5000);
+    } catch {
+      /* non-fatal */
+    }
+
+    console.log(`✅ Vendor account created: ${vendorId} for ${newVendor.name} with slug: ${baseSlug}`);
+
+    return c.json({
       success: true,
-      application: updatedApplication,
-      message: `Application ${status} successfully`
+      application: finalApplication,
+      message: "Application approved successfully",
     });
   } catch (error: any) {
     console.error("❌ Error updating vendor application:", error);
@@ -6853,27 +7032,80 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
           ? (existingVendor as any).avatar
           : "";
 
-    /** Keep storefront + admin list in sync: public catalog prefers `vendor_storefront_*.logo`, then `vendor.avatar`. */
-    const logoTouched =
-      Object.prototype.hasOwnProperty.call(body, "logo") ||
-      Object.prototype.hasOwnProperty.call(body, "avatar");
-    if (logoTouched) {
-      const rawLogo = Object.prototype.hasOwnProperty.call(body, "logo") ? body.logo : body.avatar;
+    const logoFieldTouched = Object.prototype.hasOwnProperty.call(body, "logo");
+    const avatarFieldTouched = Object.prototype.hasOwnProperty.call(body, "avatar");
+
+    /**
+     * Storefront `logo` and account `avatar` are separate.
+     * New clients send `logo` for store branding only. Legacy clients sent only `avatar` for both.
+     */
+    if (logoFieldTouched) {
+      const raw = body.logo;
       const nextLogo =
-        typeof rawLogo === "string"
-          ? rawLogo
-          : rawLogo === null
+        typeof raw === "string"
+          ? raw
+          : raw === null
             ? ""
-            : typeof updatedVendor.logo === "string"
-              ? updatedVendor.logo
-              : typeof updatedVendor.avatar === "string"
-                ? updatedVendor.avatar
-                : "";
-      updatedVendor.logo = nextLogo;
-      updatedVendor.avatar = nextLogo || updatedVendor.avatar || "";
+            : typeof (existingVendor as any).logo === "string"
+              ? (existingVendor as any).logo
+              : "";
+      (updatedVendor as any).logo = nextLogo;
+      const exL = String((existingVendor as any).logo ?? "").trim();
+      const exA = String((existingVendor as any).avatar ?? "").trim();
+      const mirroredStoreBranding =
+        exA === exL &&
+        exA.length > 0 &&
+        (/^https?:\/\//i.test(exA) || exA.startsWith("data:image/"));
+      if (!avatarFieldTouched && mirroredStoreBranding) {
+        (updatedVendor as any).avatar = "";
+      }
+    } else if (avatarFieldTouched) {
+      const rawA = body.avatar;
+      (updatedVendor as any).avatar =
+        typeof rawA === "string" ? rawA : rawA === null || rawA === "" ? "" : (updatedVendor as any).avatar || "";
+      const isImageLike =
+        typeof rawA === "string" &&
+        (/^https?:\/\//i.test(rawA) ||
+          rawA.startsWith("data:image/") ||
+          rawA.startsWith("blob:"));
+      if (isImageLike) {
+        (updatedVendor as any).logo = rawA;
+      }
     }
 
+    if (avatarFieldTouched && logoFieldTouched) {
+      const rawA = body.avatar;
+      (updatedVendor as any).avatar =
+        typeof rawA === "string" ? rawA : rawA === null || rawA === "" ? "" : (updatedVendor as any).avatar || "";
+    }
+
+    const logoTouched = logoFieldTouched || avatarFieldTouched;
+
     await withTimeout(kv.set(`vendor:${id}`, updatedVendor), 5000);
+
+    const nextLifecycleStatus = String(updatedVendor.status || (existingVendor as any).status || "active")
+      .trim()
+      .toLowerCase();
+    if (nextLifecycleStatus !== "active") {
+      try {
+        for (const key of [`vendor_settings:${id}`, `vendor_storefront_${id}`] as const) {
+          const row = await withTimeout(kv.get(key), 5000).catch(() => null);
+          if (row && typeof row === "object") {
+            await withTimeout(
+              kv.set(key, {
+                ...row,
+                isActive: false,
+                updatedAt: new Date().toISOString(),
+              }),
+              5000
+            );
+          }
+        }
+        console.log(`🛑 Public storefront isActive=false (vendor status: ${nextLifecycleStatus}) for ${id}`);
+      } catch (deactErr) {
+        console.warn("⚠️ Failed to sync isActive on settings/storefront:", deactErr);
+      }
+    }
 
     if (logoTouched) {
       const nextLogo =
@@ -6921,6 +7153,7 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
     try {
       await withTimeout(kv.del("vendors"), 5000);
       clearCache("vendors_list_v4");
+      await clearVendorPublicSlugCaches(id);
       console.log("🔄 Cleared vendor list cache after vendor update");
     } catch (cacheError) {
       console.warn("⚠️ Failed to clear vendor cache, but vendor update succeeded:", cacheError);
@@ -9299,14 +9532,29 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
 // Get vendor storefront settings by vendor ID
 app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
   try {
-    const vendorId = c.req.param("vendorId");
-    const key = `vendor_storefront_${vendorId}`;
-    
+    const param = c.req.param("vendorId");
+    const actualVendorId = await resolveVendorIdFromSlugOrId(param);
+    const vendor = await withTimeout(kv.get(`vendor:${actualVendorId}`), 5000).catch(() => null);
+    if (!vendor || typeof vendor !== "object") {
+      return c.json({ error: "Vendor not found" }, 404);
+    }
+    if (!vendorProfileAllowsPublicStorefront(vendor)) {
+      return c.json(
+        {
+          error: "This vendor account cannot load storefront settings right now.",
+          vendorAccountInactive: true,
+          reason: (vendor as { status?: string }).status || "inactive",
+        },
+        403
+      );
+    }
+
+    const key = `vendor_storefront_${actualVendorId}`;
+
     // Get vendor settings
     const settings = await kv.get(key);
-    
+
     // Get vendor data to populate contact fields from application
-    const vendor = await kv.get(`vendor:${vendorId}`);
     
     const resolvedVendorLogo =
       typeof vendor?.avatar === "string" && vendor.avatar.trim()
@@ -9316,13 +9564,13 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
           : "";
 
     if (!settings) {
-      console.log(`⚠️ No settings found for vendor ${vendorId}, returning defaults`);
+      console.log(`⚠️ No settings found for vendor ${actualVendorId}, returning defaults`);
       // Return default settings if none exist, populated with vendor data if available
       return c.json({ 
         settings: {
-          vendorId,
+          vendorId: actualVendorId,
           storeName: vendor?.name || "Vendor Store",
-          storeSlug: `vendor-${vendorId}`,
+          storeSlug: `vendor-${actualVendorId}`,
           storeDescription: "Welcome to our store",
           storeTagline: "",
           logo: resolvedVendorLogo,
@@ -9360,7 +9608,7 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
       address: settings.address || vendor?.location || "",
     };
 
-    const pending = await kv.get(`vendor_domain_pending:${vendorId}`);
+    const pending = await kv.get(`vendor_domain_pending:${actualVendorId}`);
     let domainVerification:
       | { txtName: string; txtValue: string; cnameTarget: string }
       | undefined;
@@ -9381,7 +9629,7 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
       };
     }
 
-    console.log(`✅ Loaded settings for vendor ${vendorId}, isActive: ${populatedSettings.isActive}`);
+    console.log(`✅ Loaded settings for vendor ${actualVendorId}, isActive: ${populatedSettings.isActive}`);
 
     return c.json({
       settings: { ...populatedSettings, domainVerification },
@@ -9914,6 +10162,16 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
           }
           continue;
         }
+        if (!vendorProfileAllowsPublicStorefront(vendor)) {
+          return c.json(
+            {
+              error: "This store is not available.",
+              storeUnavailable: true,
+              reason: (vendor as { status?: string }).status || "inactive",
+            },
+            403
+          );
+        }
         return c.json({
           vendorId: fast.vendorId,
           storeSlug: fast.storeSlug,
@@ -9942,6 +10200,16 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
     }
 
     const vendor = await kv.get(`vendor:${vendorSettings.vendorId}`);
+    if (!vendorProfileAllowsPublicStorefront(vendor)) {
+      return c.json(
+        {
+          error: "This store is not available.",
+          storeUnavailable: true,
+          reason: (vendor as { status?: string } | null)?.status || "inactive",
+        },
+        403
+      );
+    }
 
     return c.json({
       vendorId: vendorSettings.vendorId,
@@ -10012,6 +10280,51 @@ app.post("/make-server-16010b6f/admin/domain/purge", async (c) => {
   }
 });
 
+/** Public catalog + storefront require an active vendor profile (not suspended/banned/inactive). */
+function vendorProfileAllowsPublicStorefront(vendorRow: unknown): boolean {
+  if (!vendorRow || typeof vendorRow !== "object") return true;
+  const s = String((vendorRow as { status?: unknown }).status || "active")
+    .trim()
+    .toLowerCase();
+  return s === "active";
+}
+
+async function clearVendorPublicSlugCaches(vendorId: string) {
+  try {
+    const [vs, sf] = await Promise.all([
+      withTimeout(kv.get(`vendor_settings:${vendorId}`), 3000).catch(() => null),
+      withTimeout(kv.get(`vendor_storefront_${vendorId}`), 3000).catch(() => null),
+    ]);
+    const slugs = new Set<string>();
+    const a = vs && typeof vs === "object" ? (vs as { storeSlug?: unknown }).storeSlug : "";
+    const b = sf && typeof sf === "object" ? (sf as { storeSlug?: unknown }).storeSlug : "";
+    if (typeof a === "string" && a.trim()) slugs.add(a.trim());
+    if (typeof b === "string" && b.trim()) slugs.add(b.trim());
+    for (const slug of slugs) {
+      clearCache(`vendor_by_slug:${slug}`);
+    }
+  } catch {
+    /* non-fatal */
+  }
+}
+
+/** Resolve internal vendor id from store slug or `vendor_*` id string. */
+async function resolveVendorIdFromSlugOrId(vendorIdOrSlug: string): Promise<string> {
+  const raw = String(vendorIdOrSlug || "").trim();
+  if (!raw) return "";
+  const slugRow = await withTimeout(kv.get(`vendor_slug_${raw}`), 3000).catch(() => null);
+  if (slugRow && typeof slugRow === "object") {
+    const vid = String((slugRow as { vendorId?: unknown }).vendorId || "").trim();
+    if (vid) return vid;
+  }
+  const direct = await withTimeout(kv.get(`vendor:${raw}`), 3000).catch(() => null);
+  if (direct && typeof direct === "object") {
+    const id = String((direct as { id?: unknown }).id || "").trim();
+    if (id) return id;
+  }
+  return raw;
+}
+
 // Get vendor storefront by slug (public access)
 app.get("/make-server-16010b6f/vendor/store/:storeSlug", async (c) => {
   try {
@@ -10025,6 +10338,23 @@ app.get("/make-server-16010b6f/vendor/store/:storeSlug", async (c) => {
     if (!slugData || !slugData.vendorId) {
       console.log(`❌ No vendor found for slug: ${storeSlug}`);
       return c.json({ error: "Store not found" }, 404);
+    }
+
+    const vendorRow = await withTimeout(kv.get(`vendor:${slugData.vendorId}`), 5000).catch(() => null);
+    if (!vendorRow || typeof vendorRow !== "object") {
+      console.log(`❌ Vendor profile missing for slug: ${storeSlug}`);
+      return c.json({ error: "Store not found" }, 404);
+    }
+    if (!vendorProfileAllowsPublicStorefront(vendorRow)) {
+      console.log(`❌ Store unavailable (vendor status): ${slugData.vendorId}`);
+      return c.json(
+        {
+          error: "This store is not available.",
+          storeUnavailable: true,
+          reason: (vendorRow as { status?: string })?.status || "inactive",
+        },
+        403
+      );
     }
 
     console.log(`✅ Found vendor ${slugData.vendorId} for slug ${storeSlug}`);
@@ -10091,6 +10421,26 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
       "Vendor Store";
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
     
+    if (vendorData && typeof vendorData === "object" && !vendorProfileAllowsPublicStorefront(vendorData)) {
+      return c.json(
+        {
+          products: [],
+          storeName: "",
+          logo: "",
+          storePhone: "",
+          resolvedVendorId: actualVendorId,
+          total: 0,
+          page: 1,
+          pageSize: Math.min(100, Math.max(1, parseInt(c.req.query("pageSize") || "24", 10) || 24)),
+          hasMore: false,
+          storeUnavailable: true,
+          error: "This store is not available.",
+          reason: (vendorData as { status?: string }).status || "inactive",
+        },
+        403
+      );
+    }
+
     console.log(`🏪 Vendor info - ID: ${actualVendorId}, Name: ${vendorBusinessName}, Store: ${storeName}`);
 
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1);
@@ -10939,19 +11289,27 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
 // Get all categories for a vendor
 app.get("/make-server-16010b6f/vendor/categories/:vendorId", async (c) => {
   try {
-    const vendorId = c.req.param("vendorId");
-    console.log(`📁 Getting categories for vendor: ${vendorId}`);
-    
+    const vendorIdOrSlug = c.req.param("vendorId");
+    const actualVendorId = await resolveVendorIdFromSlugOrId(vendorIdOrSlug);
+    console.log(`📁 Getting categories for vendor: ${actualVendorId}`);
+
+    const vendorData = await kv.get(`vendor:${actualVendorId}`);
+    if (vendorData && typeof vendorData === "object" && !vendorProfileAllowsPublicStorefront(vendorData)) {
+      return c.json(
+        { categories: [], storeUnavailable: true, error: "This store is not available." },
+        403
+      );
+    }
+
     const allCategories = await withRetry(
-      () => withTimeout(kv.getByPrefix(`category:${vendorId}:`), 15000),
+      () => withTimeout(kv.getByPrefix(`category:${actualVendorId}:`), 15000),
       5,
       1000
     );
     const categoryList = allCategories.map((cat: any) => cat.name);
-    
-    console.log(`✅ Found ${categoryList.length} categories for vendor ${vendorId}`);
-    return c.json({ categories: categoryList });
 
+    console.log(`✅ Found ${categoryList.length} categories for vendor ${actualVendorId}`);
+    return c.json({ categories: categoryList });
   } catch (error: any) {
     console.error("❌ Failed to load categories:", error);
     // Return default categories on error
@@ -10979,6 +11337,12 @@ app.get("/make-server-16010b6f/vendor/categories-details/:vendorId", async (c) =
     }
 
     const vendorData = await kv.get(`vendor:${actualVendorId}`);
+    if (vendorData && typeof vendorData === "object" && !vendorProfileAllowsPublicStorefront(vendorData)) {
+      return c.json(
+        { categories: [], storeUnavailable: true, error: "This store is not available." },
+        403
+      );
+    }
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
 
     const [allCategories, allProducts] = await Promise.all([
@@ -11917,12 +12281,25 @@ app.get("/make-server-16010b6f/inventory", async (c) => {
 // Get inventory for specific vendor
 app.get("/make-server-16010b6f/inventory/:vendorId", async (c) => {
   try {
-    const vendorId = c.req.param("vendorId");
+    const param = c.req.param("vendorId");
+    const vendorId = await resolveVendorIdFromSlugOrId(param);
     console.log(`📦 Getting inventory for vendor: ${vendorId}`);
-    
+
+    const vendorRow = await withTimeout(kv.get(`vendor:${vendorId}`), 5000).catch(() => null);
+    if (vendorRow && typeof vendorRow === "object" && !vendorProfileAllowsPublicStorefront(vendorRow)) {
+      return c.json(
+        {
+          error: "This vendor account cannot load inventory right now.",
+          inventory: [],
+          vendorAccountInactive: true,
+        },
+        403
+      );
+    }
+
     const allInventory = await kv.getByPrefix("inventory:");
     const vendorInventory = allInventory.filter((item: any) => item.vendorId === vendorId);
-    
+
     console.log(`✅ Found ${vendorInventory.length} inventory items for vendor ${vendorId}`);
     return c.json({ inventory: vendorInventory });
   } catch (error: any) {
