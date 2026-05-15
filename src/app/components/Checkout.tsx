@@ -327,11 +327,11 @@ export function Checkout({
   const pwaFinalizeInFlightRef = useRef<Set<string>>(new Set());
   const summaryPath = useMemo(() => {
     const path = location.pathname;
-    if (path.endsWith("/summary") || path === "/summary" || path === "/store/summary") {
+    if (path.endsWith("/summary") || path === "/summary") {
       return path;
     }
     if (path === "/checkout") return "/summary";
-    if (path === "/store/checkout") return "/store/summary";
+    if (path === "/checkout") return "/summary";
     return path.replace(/\/checkout(?:\/success)?$/, "/summary");
   }, [location.pathname]);
   const summarySnapshotStorageKey = useMemo(

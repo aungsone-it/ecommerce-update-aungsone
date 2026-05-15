@@ -54,7 +54,7 @@ export function AuthModal({
     if ((parts[0] === "store" || parts[0] === "vendor") && parts[1] && parts[1] !== "reset-password") {
       return `/${parts[0]}/${parts[1]}/reset-password?${returnTo}`;
     }
-    return `/store/reset-password?${returnTo}`;
+    return `/reset-password?${returnTo}`;
   };
 
   // Lock scroll when modal is open

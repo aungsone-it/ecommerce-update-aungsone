@@ -41,7 +41,7 @@ function RootLayoutContent() {
   const subdomainStoreSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug } = useResolvedVendorHostSlug();
   const isPathVendorStorefront =
-    (location.pathname.startsWith("/store/") || location.pathname.startsWith("/vendor/")) &&
+    location.pathname.startsWith("/vendor/") &&
     !location.pathname.includes("/admin");
   const isSubdomainStorefrontHome = subdomainStoreSlug != null && location.pathname === "/";
   const isCustomDomainStorefrontHome =
@@ -58,8 +58,8 @@ function RootLayoutContent() {
   const isLandingPage =
     location.pathname === "/" && subdomainStoreSlug == null && customHostSlug == null;
   const isResetPasswordPage =
-    location.pathname === '/store/reset-password' ||
-    /^\/store\/[^/]+\/reset-password$/.test(location.pathname) ||
+    location.pathname === '/reset-password' ||
+    /^\/vendor\/[^/]+\/reset-password$/.test(location.pathname) ||
     /^\/vendor\/[^/]+\/reset-password$/.test(location.pathname);
   const isVendorLoginPage = location.pathname === '/vendor/login';
   const isAdminPortal = isAdminPortalRoute(location.pathname);

@@ -978,12 +978,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setViewMode("all-products");
     }
     
-    if (path === "/store") {
-      // Only reset to home if no category parameter
-      if (!categoryParam) {
-        setViewMode("home");
-      }
-    } else if (path === "/products") {
+    if (path === "/products") {
       setViewMode("all-products");
     } else if (path.startsWith("/product/")) {
       const sku = decodeURIComponent(path.replace("/product/", "").split("/")[0]);
@@ -1001,14 +996,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       } else {
         setViewMode("product-detail");
       }
-    } else if (path === "/checkout" || path === "/store/checkout") {
+    } else if (path === "/checkout") {
       setViewMode("checkout");
     } else if (
       path === "/order-confirmation" ||
       path === "/summary" ||
-      path === "/checkout/success" ||
-      path === "/store/checkout/success" ||
-      path === "/store/summary"
+      path === "/checkout/success"
     ) {
       setViewMode("order-confirmation");
     } else if (path === "/profile") {
@@ -1067,7 +1060,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     let targetPath = "/";
     switch (viewMode) {
       case "home":
-        targetPath = "/store";
+        targetPath = "/products";
         break;
       case "all-products":
         targetPath = "/products";
@@ -1076,11 +1069,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         if (selectedProduct) {
           targetPath = `/product/${selectedProduct.sku}`;
         } else {
-          targetPath = "/store";
+          targetPath = "/products";
         }
         break;
       case "checkout":
-        targetPath = "/store/checkout";
+        targetPath = "/checkout";
         break;
       case "order-confirmation":
         targetPath = "/summary";
@@ -2072,17 +2065,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         );
         if (cancelled) return;
         if (!res.ok) {
-          navigate("/store", { replace: true });
+          navigate("/products", { replace: true });
           return;
         }
         const data = await res.json();
         if (data.product) {
           setSelectedProduct(productFromBySkuApi(data.product));
         } else {
-          navigate("/store", { replace: true });
+          navigate("/products", { replace: true });
         }
       } catch {
-        if (!cancelled) navigate("/store", { replace: true });
+        if (!cancelled) navigate("/products", { replace: true });
       }
     })();
     return () => {
@@ -2738,13 +2731,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       setPreSearchState(null);
       // Navigate based on the restored view mode
       if (preSearchState.viewMode === "home") {
-        navigate("/store");
+        navigate("/products");
       } else if (preSearchState.viewMode === "all-products") {
         navigate("/products");
       }
     } else {
       // Fallback: just go to home if no previous state
-      navigate("/store");
+      navigate("/products");
       setViewMode("home");
     }
   };
@@ -4060,7 +4053,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             <button 
               onClick={() => {
                 // Navigate to home URL first to prevent URL/state mismatch
-                navigate("/store");
+                navigate("/products");
                 setSelectedProduct(null);
                 setViewMode("home");
                 setSelectedCategory("all");
@@ -4751,7 +4744,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     type="button"
                     className="bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800"
                     onClick={() => {
-                      navigate("/store");
+                      navigate("/products");
                       setShowCart(false);
                       setViewMode("home");
                     }}
@@ -4983,7 +4976,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 <li key={category.id}>
                   <button 
                     onClick={() => {
-                      navigate("/store");
+                      navigate("/products");
                       setSelectedCategory(category.name);
                       setViewMode("all-products");
                       window.scrollTo(0, 0);
@@ -4998,7 +4991,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               <li>
                 <button 
                   onClick={() => {
-                    navigate("/store");
+                    navigate("/products");
                     setSelectedCategory("all");
                     setViewMode("all-products");
                     window.scrollTo(0, 0);
@@ -5226,7 +5219,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           <Button 
             variant="ghost" 
             onClick={() => {
-              navigate("/store");
+              navigate("/products");
               setViewMode("home");
             }}
             className="mb-6 hover:bg-slate-100"
@@ -6391,7 +6384,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               <div className="flex justify-center">
                 <Button 
                   onClick={() => {
-                    navigate("/store");
+                    navigate("/products");
                     setBuyNowItem(null);
                     setCompletedOrder(null);
                     setViewMode("home");
@@ -6467,7 +6460,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               variant="ghost" 
               className="mb-6 hover:bg-white"
               onClick={() => {
-                navigate("/store");
+                navigate("/products");
                 setBuyNowItem(null); // 🔥 Clear Buy Now item when going back
                 setViewMode("home");
               }}
@@ -7301,7 +7294,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
             <button onClick={() => {
-              navigateAwayFromProduct("/store", "home");
+              navigateAwayFromProduct("/products", "home");
             }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
               Home
             </button>
@@ -7309,7 +7302,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               <>
                 <ChevronRight className="w-3 h-3 flex-shrink-0" />
                 <button onClick={() => {
-                  navigateAwayFromProduct("/store", "home", selectedProduct.category);
+                  navigateAwayFromProduct("/products", "home", selectedProduct.category);
                 }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
                   {selectedProduct.category}
                 </button>
@@ -8476,7 +8469,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                     key={category.id}
                     className="overflow-hidden hover:shadow-xl transition-all duration-300 cursor-pointer group border-0 shadow-md"
                     onClick={() => {
-                      navigate("/store");
+                      navigate("/products");
                       setSelectedCategory(category.name);
                       setUserAppliedFilters(false);
                       setViewMode("home");
@@ -8722,7 +8715,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               <div className="flex gap-3 justify-center">
                 <Button 
                   onClick={() => {
-                    navigate("/store");
+                    navigate("/products");
                     setViewMode("home");
                   }}
                   className="bg-slate-900 text-white hover:bg-black"

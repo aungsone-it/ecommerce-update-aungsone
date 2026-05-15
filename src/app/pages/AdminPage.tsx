@@ -675,7 +675,7 @@ export function AdminPage() {
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
               Open a specific vendor&apos;s shop from the marketplace URL{" "}
-              <code className="text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">/store/&lt;vendor&gt;</code>
+              <code className="text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">/vendor/&lt;slug&gt;</code>
               , or use <strong>Preview store</strong> on a vendor in the Vendors list. This admin section does not
               embed a store without choosing which vendor.
             </p>

@@ -45,7 +45,7 @@ export function ForgotPassword({ onBack }: ForgotPasswordProps) {
       }
 
       setLoading(false);
-      navigate(`/store/reset-password?email=${encodeURIComponent(email.trim())}&step=verify`);
+      navigate(`/reset-password?email=${encodeURIComponent(email.trim())}&step=verify`);
     } catch (err: any) {
       console.error('Forgot password error:', err);
       setError(err?.message || t('auth.forgotPassword.error'));

@@ -173,7 +173,7 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
   };
 
   const handleCopyStoreUrl = () => {
-    const storeUrl = `${window.location.origin}/store/${settings.storeSlug}`;
+    const storeUrl = `${window.location.origin}/vendor/${settings.storeSlug}`;
     // Use fallback for clipboard API with proper error handling
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(storeUrl).then(() => {
@@ -236,7 +236,7 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
     }));
   };
 
-  const storeUrl = `${window.location.origin}/store/${settings.storeSlug}`;
+  const storeUrl = `${window.location.origin}/vendor/${settings.storeSlug}`;
 
   return (
     <div className="p-6 space-y-6">
@@ -378,7 +378,7 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
                   <Label htmlFor="storeSlug">Store Slug (URL) *</Label>
                   <div className="flex gap-2 mt-2">
                     <div className="flex-1 flex items-center gap-2 px-3 bg-slate-50 border border-slate-200 rounded-lg">
-                      <span className="text-sm text-slate-500">{window.location.origin}/store/</span>
+                      <span className="text-sm text-slate-500">{window.location.origin}/vendor/</span>
                       <Input
                         id="storeSlug"
                         value={settings.storeSlug}

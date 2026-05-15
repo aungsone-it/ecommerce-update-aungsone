@@ -52,11 +52,7 @@ export function VendorAdminProductViewPage() {
   const { clean: vendorHostCleanAdmin } = useVendorHostCleanAdmin();
   const onVendorHostCleanAdmin =
     vendorHostCleanAdmin && pathnameUnderAdmin(location.pathname);
-  const adminPrefix = onVendorHostCleanAdmin
-    ? null
-    : location.pathname.startsWith("/store/")
-      ? "store"
-      : "vendor";
+  const adminPrefix = onVendorHostCleanAdmin ? null : "vendor";
   const { vendor } = useVendorAuth();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);

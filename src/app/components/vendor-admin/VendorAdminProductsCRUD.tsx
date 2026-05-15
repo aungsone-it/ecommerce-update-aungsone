@@ -135,11 +135,7 @@ export function VendorAdminProductsCRUD({
   const { clean: vendorHostCleanAdmin } = useVendorHostCleanAdmin();
   const onVendorHostCleanAdmin =
     vendorHostCleanAdmin && pathnameUnderAdmin(location.pathname);
-  const adminPrefix = onVendorHostCleanAdmin
-    ? null
-    : location.pathname.startsWith("/store/")
-      ? "store"
-      : "vendor";
+  const adminPrefix = onVendorHostCleanAdmin ? null : "vendor";
   const cachedVendorProductsPayload = moduleCache.peek<{ products?: Product[] }>(
     CACHE_KEYS.vendorProductsAdmin(vendorId)
   );

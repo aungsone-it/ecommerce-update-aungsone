@@ -111,7 +111,7 @@ export function VendorAdminPage() {
         const targetPath =
           resolveVendorSubdomainStoreSlug() || customHostSlug
             ? "/"
-            : `/store/${storeSlug}`;
+            : `/vendor/${storeSlug}`;
         window.open(targetPath, "_blank", "noopener,noreferrer");
       }}
     />

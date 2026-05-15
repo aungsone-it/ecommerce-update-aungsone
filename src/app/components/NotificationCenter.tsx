@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Bell, MessageCircle, Package, ShoppingCart, Tag, X, Check } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -49,9 +50,27 @@ export function NotificationCenter({
 }: NotificationCenterProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>(readStoredNotifications);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const onChatClickRef = useRef(onChatClick);
   onChatClickRef.current = onChatClick;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (panelRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      setIsOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [isOpen]);
 
   // Sync synthetic “admin chat” row with live unread count from FloatingChat (via RootLayout context).
   useEffect(() => {
@@ -168,8 +187,9 @@ export function NotificationCenter({
 
   return (
     <div className="relative">
-      <Button 
-        variant="ghost" 
+      <Button
+        ref={triggerRef}
+        variant="ghost"
         size="icon"
         className="relative hover:bg-slate-100 rounded-full"
         onClick={() => setIsOpen(!isOpen)}
@@ -183,16 +203,20 @@ export function NotificationCenter({
         )}
       </Button>
 
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <div 
-            className="fixed inset-0 z-40 bg-black/20" 
-            onClick={() => setIsOpen(false)}
-          />
-          
-          {/* Notification Panel */}
-          <Card className="fixed top-16 left-2 right-2 sm:absolute sm:right-0 sm:left-auto sm:top-12 w-auto sm:w-96 z-50 shadow-2xl border-slate-200">
+      {isOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[100] bg-black/20"
+              aria-hidden
+              onClick={() => setIsOpen(false)}
+            />
+            <div
+              ref={panelRef}
+              className="fixed z-[101] left-2 right-2 top-16 w-auto sm:left-auto sm:right-4 sm:top-[4.25rem] sm:w-96"
+            >
+              <Card className="shadow-2xl border-slate-200">
             <div className="p-3 sm:p-4 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div>
@@ -295,9 +319,11 @@ export function NotificationCenter({
                 </div>
               </>
             )}
-          </Card>
-        </>
-      )}
+              </Card>
+            </div>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

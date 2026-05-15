@@ -51,7 +51,7 @@ export function getCanonicalSubdomainLabelIfSlugForm(label: string): string | nu
 
 /**
  * Host label for `https://{label}.{apex}/admin` from a path store slug (e.g. go-go → gogo).
- * Returns null if the slug is not mapped (caller falls back to `/store/:slug/admin`).
+ * Returns null if the slug is not mapped (caller falls back to `/vendor/:slug/admin`).
  */
 export function subdomainHostLabelForStoreSlug(storeSlug: string): string | null {
   const trimmed = String(storeSlug || "").trim();

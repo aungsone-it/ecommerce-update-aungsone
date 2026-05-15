@@ -31,7 +31,6 @@ function vendorProfileOrderIdFromPathname(pathname: string, storeName: string): 
     return typeof id === "string" && id.trim() ? decodeURIComponent(id) : null;
   }
   const m =
-    matchPath({ path: "/store/:storeName/profile/orders/:orderId", end: true }, pathname) ??
     matchPath({ path: "/vendor/:storeName/profile/orders/:orderId", end: true }, pathname) ??
     matchPath({ path: "/vendor-:storeName/profile/orders/:orderId", end: true }, pathname);
   if (m?.params?.storeName !== storeName) return null;
@@ -61,10 +60,8 @@ function vendorProfileSegmentFromPathname(
     if (matchPath({ path, end: true }, pathname)) return seg;
   }
   const patterns = [
-    "/store/:storeName/profile/:profileSection",
     "/vendor/:storeName/profile/:profileSection",
     "/vendor-:storeName/profile/:profileSection",
-    "/store/:storeName/profile",
     "/vendor/:storeName/profile",
     "/vendor-:storeName/profile",
   ] as const;
@@ -91,7 +88,6 @@ function vendorCategorySlugFromPathname(pathname: string, storeName: string): st
     }
   }
   const direct =
-    matchPath({ path: "/store/:storeName/:categorySlug", end: true }, pathname) ??
     matchPath({ path: "/vendor/:storeName/:categorySlug", end: true }, pathname) ??
     matchPath({ path: "/vendor-:storeName/:categorySlug", end: true }, pathname);
   if (direct?.params?.storeName === storeName) {
@@ -183,7 +179,6 @@ export function VendorStorefrontPage() {
     if (vendorDash?.storeName === storeName && vendorDash.tail[0] === "saved") return true;
     if ((subdomainSlug || customHostSlug) && location.pathname === "/saved") return true;
     return (
-      matchPath({ path: "/store/:storeName/saved", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/saved", end: true }, location.pathname) != null
     );
@@ -219,7 +214,7 @@ export function VendorStorefrontPage() {
             <p className="text-slate-600">The vendor store you're looking for doesn't exist or has been removed.</p>
           </div>
           <Button 
-            onClick={() => navigate('/store')}
+            onClick={() => navigate('/')}
             className="bg-slate-900 hover:bg-slate-800"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -232,7 +227,7 @@ export function VendorStorefrontPage() {
 
   const handleBack = () => {
     const vendorAdminPath =
-      subdomainSlug || customHostSlug ? "/admin" : `/store/${storeName}/admin`;
+      subdomainSlug || customHostSlug ? "/admin" : `/vendor/${storeName}/admin`;
     navigate(vendorAdminPath);
   };
 

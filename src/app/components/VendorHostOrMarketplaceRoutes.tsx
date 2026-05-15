@@ -7,58 +7,41 @@ import { NotFound } from "../pages/NotFound";
 const VendorStorefrontPage = lazy(() =>
   import("../pages/VendorStorefrontPage").then((m) => ({ default: m.VendorStorefrontPage }))
 );
-const StorefrontPage = lazy(() =>
-  import("../pages/StorefrontPage").then((m) => ({ default: m.StorefrontPage }))
-);
 
-/** `/saved` — vendor subdomain / custom domain use vendor storefront wishlist; apex uses marketplace. */
+function useVendorHost(): { vendorHost: boolean; loading: boolean } {
+  const sub = resolveVendorSubdomainStoreSlug();
+  const { slug: custom, loading } = useResolvedVendorHostSlug();
+  return { vendorHost: sub != null || custom != null, loading: loading && !sub };
+}
+
+/** Vendor subdomain / custom domain only — apex marketplace storefront removed. */
+export function VendorHostOnlyStorefront() {
+  const { vendorHost, loading } = useVendorHost();
+  if (loading) return <RouteLoadingFallback />;
+  if (!vendorHost) return <NotFound />;
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <VendorStorefrontPage />
+    </Suspense>
+  );
+}
+
+/** `/saved` — vendor host wishlist only. */
 export function VendorHostOrMarketplaceSaved() {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: custom, loading } = useResolvedVendorHostSlug();
-  const vendorHost = sub != null || custom != null;
-  if (loading && !sub) return <RouteLoadingFallback />;
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      {vendorHost ? <VendorStorefrontPage /> : <StorefrontPage />}
-    </Suspense>
-  );
+  return <VendorHostOnlyStorefront />;
 }
 
-/** `/product/:productSlug` — same path shape; vendor host renders vendor product detail. */
+/** `/product/:productSlug` — vendor host product detail only. */
 export function VendorHostOrMarketplaceProduct() {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: custom, loading } = useResolvedVendorHostSlug();
-  const vendorHost = sub != null || custom != null;
-  if (loading && !sub) return <RouteLoadingFallback />;
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      {vendorHost ? <VendorStorefrontPage /> : <StorefrontPage />}
-    </Suspense>
-  );
+  return <VendorHostOnlyStorefront />;
 }
 
-/** `/profile` and nested — vendor host uses vendor storefront account shell. */
+/** `/profile` and nested — vendor host account shell only. */
 export function VendorHostOrMarketplaceProfile() {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: custom, loading } = useResolvedVendorHostSlug();
-  const vendorHost = sub != null || custom != null;
-  if (loading && !sub) return <RouteLoadingFallback />;
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      {vendorHost ? <VendorStorefrontPage /> : <StorefrontPage />}
-    </Suspense>
-  );
+  return <VendorHostOnlyStorefront />;
 }
 
 /** `/:categorySlug` — valid only on vendor-only hosts (subdomain/custom-domain). */
 export function VendorHostCategoryRoute() {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: custom, loading } = useResolvedVendorHostSlug();
-  const vendorHost = sub != null || custom != null;
-  if (loading && !sub) return <RouteLoadingFallback />;
-  return (
-    <Suspense fallback={<RouteLoadingFallback />}>
-      {vendorHost ? <VendorStorefrontPage /> : <NotFound />}
-    </Suspense>
-  );
+  return <VendorHostOnlyStorefront />;
 }

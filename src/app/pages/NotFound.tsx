@@ -33,7 +33,7 @@ export function NotFound() {
               whileTap={{ scale: 0.98 }}
             >
               <Button
-                onClick={() => navigate("/store")}
+                onClick={() => navigate("/")}
                 className="w-full sm:w-auto min-h-11 px-8 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-xl shadow-md hover:shadow-lg transition-all"
               >
                 Go Home

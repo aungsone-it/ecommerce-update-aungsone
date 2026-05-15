@@ -55,20 +55,6 @@ export function AnimatedOutlet() {
       }
     }
 
-    // Storefront routes (all use StorefrontPage component)
-    if (
-      pathname === "/store" ||
-      pathname.startsWith("/products") ||
-      pathname.startsWith("/product/") ||
-      pathname.startsWith("/checkout") ||
-      pathname.startsWith("/order-confirmation") ||
-      pathname.startsWith("/profile") ||
-      pathname.startsWith("/saved") ||
-      pathname.startsWith("/blog")
-    ) {
-      return "storefront";
-    }
-
     // Admin routes (must check early to avoid conflicts)
     if (pathnameUnderAdmin(pathname) && !pathname.startsWith("/vendor/")) {
       const subSlug = resolveVendorSubdomainStoreSlug();
@@ -87,14 +73,7 @@ export function AnimatedOutlet() {
       return "setup";
     }
 
-    // Vendor admin: /store/<slug>/admin (same grouping as legacy /vendor/.../admin)
-    if (pathname.startsWith("/store/") && pathname.includes("/admin")) {
-      const parts = pathname.split("/");
-      const vendorSlug = parts[2] || "unknown";
-      return `vendor-admin-${vendorSlug}`;
-    }
-
-    // Vendor admin routes (legacy /vendor/.../admin)
+    // Vendor admin routes (/vendor/.../admin)
     if (pathname.startsWith("/vendor/") && pathname.includes("/admin")) {
       const parts = pathname.split("/");
       const vendorSlug = parts[2] || "unknown";
@@ -102,7 +81,7 @@ export function AnimatedOutlet() {
     }
 
     // Vendor storefront routes (both /store/ and legacy /vendor/)
-    if (pathname.startsWith("/store/") || pathname.startsWith("/vendor/")) {
+    if (pathname.startsWith("/vendor/")) {
       const parts = pathname.split("/");
       const vendorSlug = parts[2] || "unknown";
       return `vendor-store-${vendorSlug}`; // Group by vendor

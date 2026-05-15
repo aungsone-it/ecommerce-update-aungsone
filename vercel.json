@@ -3,6 +3,24 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "installCommand": "npm install",
+  "redirects": [
+    { "source": "/store", "destination": "/", "permanent": true },
+    { "source": "/products", "destination": "/", "permanent": true },
+    { "source": "/products/:path*", "destination": "/", "permanent": true },
+    { "source": "/product/:path*", "destination": "/", "permanent": true },
+    { "source": "/profile/:path*", "destination": "/", "permanent": true },
+    { "source": "/profile", "destination": "/", "permanent": true },
+    { "source": "/saved", "destination": "/", "permanent": true },
+    { "source": "/blog/:path*", "destination": "/", "permanent": true },
+    { "source": "/blog", "destination": "/", "permanent": true },
+    { "source": "/checkout/:path*", "destination": "/", "permanent": true },
+    { "source": "/checkout", "destination": "/", "permanent": true },
+    { "source": "/summary", "destination": "/", "permanent": true },
+    { "source": "/order-confirmation", "destination": "/", "permanent": true },
+    { "source": "/store/reset-password", "destination": "/reset-password", "permanent": true },
+    { "source": "/store/:slug/reset-password", "destination": "/vendor/:slug/reset-password", "permanent": true },
+    { "source": "/store/:path*", "destination": "/vendor/:path*", "permanent": true }
+  ],
   "rewrites": [
     {
       "source": "/.well-known/migoo-verify.txt",

@@ -159,8 +159,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   /** Subdomain or custom domain with `/admin/*` URLs (not `/vendor/.../admin`). */
   const onVendorHostCleanAdmin =
     vendorHostCleanAdmin && pathnameUnderAdmin(location.pathname);
-  /** /store/<slug>/admin vs legacy /vendor/<slug>/admin (not used on vendor host `/admin`) */
-  const adminPathPrefix = location.pathname.startsWith("/store/") ? "store" : "vendor";
+  const adminPathPrefix = "vendor";
   const [currentPage, setCurrentPage] = useState<VendorPage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<VendorPage[]>(["products"]); // Auto-expand Products
@@ -396,7 +395,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     if (!snap || !urlSlug || snap === urlSlug) return;
     if (!location.pathname.includes("/admin")) return;
     const next = location.pathname
-      .replace(/^\/store\/[^/]+/, `/store/${snap}`)
+      .replace(/^\/vendor\/[^/]+/, `/vendor/${snap}`)
       .replace(/^\/vendor\/[^/]+/, `/vendor/${snap}`);
     if (next !== location.pathname) {
       navigate(next, { replace: true });

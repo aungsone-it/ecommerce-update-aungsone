@@ -84,10 +84,9 @@ export function validateSection(section: string | undefined): string | null {
 }
 
 /**
- * Safely builds vendor admin URL.
- * Pass `pathname` when already on a `/store/.../admin` URL so links stay under `/store/`.
+ * Safely builds vendor admin URL (`/vendor/:slug/admin` or `/admin` on vendor host).
  */
-export function buildVendorAdminUrl(storeName: string, section?: string, pathname?: string): string {
+export function buildVendorAdminUrl(storeName: string, section?: string, _pathname?: string): string {
   const validStoreName = validateStoreName(storeName);
   
   if (!validStoreName) {
@@ -96,15 +95,13 @@ export function buildVendorAdminUrl(storeName: string, section?: string, pathnam
   }
 
   const enc = encodeURIComponent(validStoreName);
-  const useStorePrefix = pathname?.startsWith('/store/') ?? false;
-  const base = useStorePrefix ? 'store' : 'vendor';
 
   if (!section || section === 'dashboard') {
-    return `/${base}/${enc}/admin`;
+    return `/vendor/${enc}/admin`;
   }
 
   const validSection = validateSection(section);
-  return `/${base}/${enc}/admin/${validSection}`;
+  return `/vendor/${enc}/admin/${validSection}`;
 }
 
 /**
@@ -119,15 +116,15 @@ export function buildVendorStorefrontUrl(storeName: string, productSlug?: string
   }
 
   if (!productSlug) {
-    return `/store/${encodeURIComponent(validStoreName)}`;
+    return `/vendor/${encodeURIComponent(validStoreName)}`;
   }
 
   const validSlug = validateProductSlug(productSlug);
   if (!validSlug) {
-    return `/store/${encodeURIComponent(validStoreName)}`;
+    return `/vendor/${encodeURIComponent(validStoreName)}`;
   }
 
-  return `/store/${encodeURIComponent(validStoreName)}/product/${encodeURIComponent(validSlug)}`;
+  return `/vendor/${encodeURIComponent(validStoreName)}/product/${encodeURIComponent(validSlug)}`;
 }
 
 /**
@@ -135,7 +132,6 @@ export function buildVendorStorefrontUrl(storeName: string, productSlug?: string
  */
 export function isVendorAdminRoute(pathname: string): boolean {
   if (pathname.includes("/vendor/") && pathname.includes("/admin")) return true;
-  if (pathname.startsWith("/store/") && pathname.includes("/admin")) return true;
   if (pathnameUnderAdmin(pathname) && typeof window !== "undefined") {
     if (resolveVendorSubdomainStoreSlug()) return true;
     if (getCachedVendorHostSlug()) return true;
@@ -147,10 +143,7 @@ export function isVendorAdminRoute(pathname: string): boolean {
  * Checks if the current route is a vendor storefront route
  */
 export function isVendorStorefrontRoute(pathname: string): boolean {
-  if (pathname.startsWith('/store/') && pathname.includes('/admin')) {
-    return false;
-  }
-  return pathname.startsWith('/store/') || (pathname.includes('/vendor/') && !pathname.includes('/admin'));
+  return pathname.includes('/vendor/') && !pathname.includes('/admin');
 }
 
 /**
@@ -171,9 +164,7 @@ export function isSuperAdminRoute(pathname: string): boolean {
 export function extractStoreNameFromPath(pathname: string): string | null {
   // Match /vendor/:storeName/admin or /store/:storeName
   const vendorMatch = pathname.match(/\/vendor\/([^\/]+)/);
-  const storeMatch = pathname.match(/\/store\/([^\/]+)/);
-  
-  const storeName = vendorMatch?.[1] || storeMatch?.[1];
+  const storeName = vendorMatch?.[1];
   
   if (!storeName) {
     return null;

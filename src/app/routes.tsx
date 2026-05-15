@@ -20,18 +20,17 @@ import {
 } from "./components/AdminSubdomainOrSuper";
 import { OrderRealtimeBridge } from "./components/OrderRealtimeBridge";
 import {
+  VendorHostOnlyStorefront,
   VendorHostOrMarketplaceSaved,
   VendorHostOrMarketplaceProduct,
   VendorHostOrMarketplaceProfile,
   VendorHostCategoryRoute,
 } from "./components/VendorHostOrMarketplaceRoutes";
+import { LegacyStoreRedirect } from "./components/LegacyStoreRedirect";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
   import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })),
-);
-const StorefrontPage = lazy(() =>
-  import("./pages/StorefrontPage").then((m) => ({ default: m.StorefrontPage })),
 );
 const VendorApplicationPage = lazy(() =>
   import("./pages/VendorApplicationPage").then((m) => ({
@@ -90,45 +89,6 @@ function VendorSubdomainIndexOrLanding() {
   return <LandingPage />;
 }
 
-/** `/store` is the marketplace catalog — not valid on vendor-only hosts (subdomain / custom domain). */
-function MarketplaceStoreRoute() {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
-  if (loading && !sub) {
-    return <RouteLoadingFallback />;
-  }
-  if (sub || customSlug) {
-    return <NotFound />;
-  }
-  return <StorefrontPage />;
-}
-
-/** `/checkout` resolves by host: vendor hosts use vendor storefront checkout, marketplace uses `/store` checkout. */
-function HostAwareCheckoutRoute() {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
-  if (loading && !sub) {
-    return <RouteLoadingFallback />;
-  }
-  if (sub || customSlug) {
-    return <VendorStorefrontPage />;
-  }
-  return <StorefrontPage />;
-}
-
-/** `/checkout/success` resolves by host: vendor hosts use vendor storefront, marketplace uses `/store` checkout success. */
-function HostAwareCheckoutSuccessRoute() {
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
-  if (loading && !sub) {
-    return <RouteLoadingFallback />;
-  }
-  if (sub || customSlug) {
-    return <VendorStorefrontPage />;
-  }
-  return <StorefrontPage />;
-}
-
 function LazyBoundary({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
 }
@@ -175,14 +135,22 @@ export const appRouteObjects: RouteObject[] = [
           },
           {
             path: "store",
-            element: <MarketplaceStoreRoute />,
+            element: <LegacyStoreRedirect />,
           },
           {
-            path: "store/reset-password",
-            element: <ResetPasswordPage />,
+            path: "store/*",
+            element: <LegacyStoreRedirect />,
           },
           {
-            path: "store/:storeName/reset-password",
+            path: "products",
+            element: <LegacyStoreRedirect />,
+          },
+          {
+            path: "products/*",
+            element: <LegacyStoreRedirect />,
+          },
+          {
+            path: "reset-password",
             element: <ResetPasswordPage />,
           },
           {
@@ -190,16 +158,12 @@ export const appRouteObjects: RouteObject[] = [
             element: <ResetPasswordPage />,
           },
           {
-            path: "products",
-            element: <StorefrontPage />,
-          },
-          {
             path: "product/:productSlug",
             element: <VendorHostOrMarketplaceProduct />,
           },
           {
             path: "checkout",
-            element: <HostAwareCheckoutRoute />,
+            element: <VendorHostOnlyStorefront />,
           },
           {
             // Customer landing page after KBZ PWA payment.
@@ -209,27 +173,15 @@ export const appRouteObjects: RouteObject[] = [
           },
           {
             path: "checkout/success",
-            element: <HostAwareCheckoutSuccessRoute />,
+            element: <VendorHostOnlyStorefront />,
           },
           {
             path: "summary",
-            element: <HostAwareCheckoutSuccessRoute />,
-          },
-          {
-            path: "store/checkout",
-            element: <StorefrontPage />,
+            element: <VendorHostOnlyStorefront />,
           },
           {
             path: "order-confirmation",
-            element: <HostAwareCheckoutSuccessRoute />,
-          },
-          {
-            path: "store/checkout/success",
-            element: <StorefrontPage />,
-          },
-          {
-            path: "store/summary",
-            element: <StorefrontPage />,
+            element: <VendorHostOnlyStorefront />,
           },
           {
             path: "profile/*",
@@ -241,11 +193,11 @@ export const appRouteObjects: RouteObject[] = [
           },
           {
             path: "blog",
-            element: <StorefrontPage />,
+            element: <LegacyStoreRedirect />,
           },
           {
-            path: "blog/:id",
-            element: <StorefrontPage />,
+            path: "blog/*",
+            element: <LegacyStoreRedirect />,
           },
           {
             path: "setup",
@@ -298,44 +250,6 @@ export const appRouteObjects: RouteObject[] = [
             ],
           },
           {
-            path: "store/:storeName/admin",
-            element: <VendorProtectedLayout />,
-            children: [
-              {
-                index: true,
-                element: (
-                  <LazyBoundary>
-                    <VendorAdminPage />
-                  </LazyBoundary>
-                ),
-              },
-              {
-                path: "products/:productId/view",
-                element: (
-                  <LazyBoundary>
-                    <VendorAdminProductViewPage />
-                  </LazyBoundary>
-                ),
-              },
-              {
-                path: ":section",
-                element: (
-                  <LazyBoundary>
-                    <VendorAdminPage />
-                  </LazyBoundary>
-                ),
-              },
-              {
-                path: ":section/*",
-                element: (
-                  <LazyBoundary>
-                    <VendorAdminPage />
-                  </LazyBoundary>
-                ),
-              },
-            ],
-          },
-          {
             path: "vendor/:storeName/admin",
             element: <VendorProtectedLayout />,
             children: [
@@ -374,51 +288,6 @@ export const appRouteObjects: RouteObject[] = [
             ],
           },
           {
-            path: "store/:storeName/profile/orders/:orderId",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/profile/:profileSection",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/profile",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/product/:productSlug",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/saved",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/checkout",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/checkout/success",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/summary",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
             path: "vendor/:storeName/profile/orders/:orderId",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
@@ -440,11 +309,6 @@ export const appRouteObjects: RouteObject[] = [
           },
           {
             path: "vendor/:storeName/saved",
-            element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
-          },
-          {
-            path: "store/:storeName/:categorySlug",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
           },

@@ -17,20 +17,27 @@ export const ROUTING_TEST_SCENARIOS = {
   
   // ✅ Valid vendor storefront routes
   validVendorStorefront: [
-    '/store/golden-gate-gadgets',
-    '/store/golden-gate-gadgets/product/wireless-headphones',
+    '/vendor/golden-gate-gadgets',
+    '/vendor/golden-gate-gadgets/product/wireless-headphones',
     '/vendor/golden-gate-gadgets', // Legacy support
   ],
   
   // ✅ Valid super admin routes (DON'T TOUCH)
   validSuperAdmin: [
     '/',
-    '/product/MW06886-Black', // Clean product detail URL
-    '/products',
     '/admin',
     '/admin/products',
     '/admin/vendors',
     '/admin/orders',
+  ],
+
+  removedApexMarketplace: [
+    '/products',
+    '/product/MW06886-Black',
+    '/profile',
+    '/profile/orders',
+    '/saved',
+    '/checkout',
   ],
   
   // ❌ Invalid routes (should show 404)

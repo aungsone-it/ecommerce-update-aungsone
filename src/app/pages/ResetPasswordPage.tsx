@@ -24,8 +24,8 @@ export function ResetPasswordPage() {
 
   const isVendorRoute = location.pathname.startsWith('/vendor/');
   const storefrontBasePath = storeName
-    ? `${isVendorRoute ? '/vendor' : '/store'}/${storeName}`
-    : '/store';
+    ? `/vendor/${storeName}`
+    : '/';
   const returnTo = searchParams.get('returnTo');
   const goBackPath = returnTo || storefrontBasePath;
 

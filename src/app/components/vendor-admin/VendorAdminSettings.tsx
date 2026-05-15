@@ -529,7 +529,7 @@ export function VendorAdminSettings({
               className="bg-white border-slate-200"
             />
             <p className="text-xs text-slate-500 mt-1.5">
-              Public path: <span className="font-mono">/store/{settings.storeSlug || "…"}</span>. On save, the slug is
+              Public path: <span className="font-mono">/vendor/{settings.storeSlug || "…"}</span>. On save, the slug is
               finalized from this name (letters and digits only). With a wildcard DNS record, your host can use{" "}
               <span className="font-mono">{settings.storeSlug || "yourstore"}.yourdomain.com</span>.
             </p>

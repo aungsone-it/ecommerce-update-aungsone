@@ -641,8 +641,7 @@ export function VendorStoreView({
     if (hostRootStorePaths) return "";
     const slug = encodeURIComponent(storeSlug || vendorId);
     if (location.pathname.startsWith("/vendor-")) return `/vendor-${slug}`;
-    if (location.pathname.startsWith("/vendor/")) return `/vendor/${slug}`;
-    return `/store/${slug}`;
+    return `/vendor/${slug}`;
   }, [hostRootStorePaths, location.pathname, storeSlug, vendorId]);
   const checkoutPath = `${storeBase}/checkout`;
 
@@ -672,7 +671,6 @@ export function VendorStoreView({
         : "";
     if (fromDashBase) return fromDashBase;
     const m =
-      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
@@ -682,7 +680,6 @@ export function VendorStoreView({
   const isVendorProductDetailPath = useMemo(
     () =>
       (storeBase.startsWith("/vendor-") && location.pathname.startsWith(`${storeBase}/product/`)) ||
-      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) != null ||
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname) != null,
@@ -847,8 +844,8 @@ export function VendorStoreView({
       location.pathname === "/summary" ||
       location.pathname === `${storeBase}/checkout` ||
       location.pathname === `${storeBase}/summary` ||
-      matchPath({ path: "/store/:storeName/checkout", end: true }, location.pathname) != null ||
-      matchPath({ path: "/store/:storeName/summary", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null ||
+      matchPath({ path: "/vendor/:storeName/summary", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/checkout", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/summary", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null ||
@@ -2355,7 +2352,7 @@ export function VendorStoreView({
                 <p className="text-slate-600 mb-6">{ordersError}</p>
                 <Button
                   onClick={() => window.location.reload()}
-                  className="bg-amber-600 hover:bg-amber-700"
+                  className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
                   Retry
                 </Button>
@@ -2471,7 +2468,7 @@ export function VendorStoreView({
                 });
                 setTimeout(() => window.scrollTo({ top: 200, behavior: "instant" }), 10);
               }}
-              className="bg-amber-600 hover:bg-amber-700 shrink-0"
+              className="bg-slate-900 hover:bg-slate-800 text-white shrink-0"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Address
@@ -2479,7 +2476,7 @@ export function VendorStoreView({
           </div>
 
           {showAddressForm && (
-            <Card className="mb-6 border-2 border-amber-500">
+            <Card className="mb-6 border-2 border-slate-300">
               <CardHeader>
                 <CardTitle>{editingAddress ? "Edit Address" : "Add New Address"}</CardTitle>
               </CardHeader>
@@ -2636,7 +2633,7 @@ export function VendorStoreView({
                       setShowAddressForm(false);
                       setEditingAddress(null);
                     }}
-                    className="flex-1 bg-amber-600 hover:bg-amber-700"
+                    className="flex-1 bg-slate-900 hover:bg-slate-800 text-white"
                   >
                     <Check className="w-4 h-4 mr-2" />
                     {editingAddress ? "Update Address" : "Save Address"}
@@ -2681,7 +2678,7 @@ export function VendorStoreView({
                       isDefault: true,
                     });
                   }}
-                  className="bg-amber-600 hover:bg-amber-700"
+                  className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Add Your First Address
@@ -2691,14 +2688,14 @@ export function VendorStoreView({
           ) : (
             <div className="grid md:grid-cols-2 gap-4">
               {shippingAddresses.map((address) => (
-                <Card key={address.id} className={address.isDefault ? "border-2 border-amber-500" : ""}>
+                <Card key={address.id} className={address.isDefault ? "border-2 border-slate-900" : ""}>
                   <CardContent className="pt-6">
                     <div className="flex items-start justify-between mb-4">
                       <div>
                         <h3 className="font-bold text-slate-900 mb-1 flex items-center gap-2 flex-wrap">
                           {address.label}
                           {address.isDefault && (
-                            <Badge className="bg-amber-600 hover:bg-amber-600 text-xs">Default</Badge>
+                            <Badge className="bg-slate-900 hover:bg-slate-900 text-xs">Default</Badge>
                           )}
                         </h3>
                         <p className="text-sm font-medium text-slate-700">{address.recipientName}</p>
@@ -2706,7 +2703,7 @@ export function VendorStoreView({
                     </div>
                     <div className="space-y-2 text-sm text-slate-600 mb-4">
                       <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                        <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-slate-600" />
                         <div>
                           <p>{address.addressLine1}</p>
                           {address.addressLine2 && <p>{address.addressLine2}</p>}
@@ -2813,7 +2810,7 @@ export function VendorStoreView({
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-amber-600" />
+              <Shield className="w-5 h-5 text-slate-700" />
               Change Password
             </CardTitle>
           </CardHeader>
@@ -2901,7 +2898,7 @@ export function VendorStoreView({
               <Button
                 type="submit"
                 disabled={isChangingPassword}
-                className="w-full bg-amber-600 hover:bg-amber-700"
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white"
               >
                 {isChangingPassword ? (
                   "Changing password…"
@@ -2919,7 +2916,7 @@ export function VendorStoreView({
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5 text-amber-600" />
+              <User className="w-5 h-5 text-slate-700" />
               Account Information
             </CardTitle>
           </CardHeader>
@@ -3356,7 +3353,6 @@ export function VendorStoreView({
   // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.
   useLayoutEffect(() => {
     const stillOnProduct =
-      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
@@ -3433,7 +3429,6 @@ export function VendorStoreView({
     const decoded = safeDecodePathSegment(slug);
     if (!decoded) return;
     const stillOnProduct =
-      matchPath({ path: "/store/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor/:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
