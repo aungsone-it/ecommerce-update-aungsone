@@ -350,9 +350,8 @@ export function SideNav({
               />
             </div>
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col justify-center">
             <span className="text-xl leading-tight text-slate-900 dark:text-white uppercase font-bold" style={{ fontFamily: 'Rubik, sans-serif', letterSpacing: '0.05em' }}>{storeName}</span>
-            <span className="text-xs text-slate-400 dark:text-slate-500 font-medium tracking-widest uppercase">E-Commerce</span>
           </div>
         </div>
       </Link>

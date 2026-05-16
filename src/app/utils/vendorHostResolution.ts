@@ -103,6 +103,46 @@ export async function fetchVendorSlugByCustomDomain(
   }
 }
 
+/** Mirrors AnimatedOutlet grouping for vendor-only hosts (subdomain/custom domain). */
+function isVendorOnlyHostCustomerPath(pathname: string): boolean {
+  const vendorRootReserved = new Set(["admin", "setup", "vendor", "store", "blog", "auth"]);
+  const first = pathname.split("/").filter(Boolean)[0] || "";
+  const p = pathname.replace(/\/+$/, "") || "/";
+  const isVendorStorefrontRootPath =
+    p === "/" ||
+    p.startsWith("/product/") ||
+    p === "/saved" ||
+    p.startsWith("/profile") ||
+    p === "/checkout" ||
+    p.startsWith("/checkout/") ||
+    p === "/order-confirmation" ||
+    p === "/summary";
+  return isVendorStorefrontRootPath || (!!first && !vendorRootReserved.has(first));
+}
+
+/**
+ * Called when `VendorStorefrontPage` unmounts: keep the vendor tab icon if navigation stayed inside the
+ * customer storefront shell (avoids resetting during sibling route swaps or vendor-host path changes).
+ */
+export function shouldPreserveVendorStorefrontFaviconOnUnload(pathname: string): boolean {
+  const p = (pathname.replace(/\/+$/, "") || "/").split("#")[0] ?? "/";
+
+  if (p.startsWith("/vendor/") && !p.includes("/admin")) return true;
+
+  if (resolveVendorSubdomainStoreSlug() != null) {
+    return isVendorOnlyHostCustomerPath(p);
+  }
+
+  if (typeof window !== "undefined") {
+    const h = normalizeHostForLookup(window.location.hostname);
+    if (shouldResolveCustomDomainHost(h) && readCachedSlug(h)) {
+      return isVendorOnlyHostCustomerPath(p);
+    }
+  }
+
+  return false;
+}
+
 /**
  * Subdomain slug (e.g. gogo.walwal.online) or verified custom domain slug, or null.
  */

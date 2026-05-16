@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { Barcode } from "./BarcodeLazy";
 import { Button } from "./ui/button";
 import { Printer } from "lucide-react";
+import { BRANDING } from "../../constants";
 
 interface Product {
   id: string;
@@ -85,10 +86,10 @@ export function Invoice({ order }: InvoiceProps) {
       {/* Invoice Content - Optimized for 100mm x 150mm */}
       <div ref={printRef} className="invoice-container">
         <div className="invoice-page">
-          {/* Header with SECURE.OS and Barcode */}
+          {/* Header with brand and barcode */}
           <div className="invoice-header">
             <div className="brand">
-              <h1 className="brand-name">SECURE.OS</h1>
+              <h1 className="brand-name">{BRANDING.APP_NAME}</h1>
               <p className="order-date">Date: {formatDate(order.date)}</p>
             </div>
             <div className="barcode-section">

@@ -1,5 +1,5 @@
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ArrowLeft, Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
@@ -7,6 +7,7 @@ import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
+import { BRANDING } from '../../constants';
 
 export function Setup() {
   const { t, language, setLanguage } = useLanguage();
@@ -25,6 +26,10 @@ export function Setup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+
+  useEffect(() => {
+    document.title = BRANDING.APP_NAME;
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

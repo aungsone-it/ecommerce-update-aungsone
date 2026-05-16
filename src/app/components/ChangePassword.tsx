@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useLocation } from 'react-router';
+import { BRANDING } from '../../constants';
 
 export function ChangePassword() {
   const { changePassword } = useAuth();
@@ -14,6 +16,16 @@ export function ChangePassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const prev = document.title;
+    if (location.pathname.startsWith('/admin')) {
+      document.title = BRANDING.ADMIN_DOCUMENT_TITLE;
+    }
+    return () => {
+      document.title = prev;
+    };
+  }, [location.pathname]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

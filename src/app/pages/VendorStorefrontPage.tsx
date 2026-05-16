@@ -1,8 +1,15 @@
-import { useLayoutEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
-import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
-import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
+import {
+  shouldPreserveVendorStorefrontFaviconOnUnload,
+  useResolvedVendorHostSlug,
+} from "../utils/vendorHostResolution";
+import { resetDocumentFavicon, applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
+import {
+  buildVendorStorefrontDocumentTitle,
+  vendorProfileSegmentToDocTitleMode,
+} from "../utils/vendorStorefrontDocumentTitle";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
@@ -146,15 +153,6 @@ export function VendorStorefrontPage() {
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
   const storeName = params.storeName ?? vendorDash?.storeName ?? subdomainSlug ?? customHostSlug ?? undefined;
-  const instantTitleBase = useMemo(() => {
-    const raw = (storeName || "").trim();
-    if (!raw) return "Vendor Store";
-    return decodeURIComponent(raw)
-      .replace(/[-_]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-  }, [storeName]);
   const instantFavicon = useMemo(() => readCachedVendorLogoBySlug(storeName), [storeName]);
   const productSlug =
     (typeof params.productSlug === "string" && params.productSlug) ||
@@ -189,14 +187,63 @@ export function VendorStorefrontPage() {
     return vendorCategorySlugFromPathname(location.pathname, storeName);
   }, [storeName, location.pathname]);
 
+  const hostRootStorePathsNav = !!(subdomainSlug || customHostSlug);
+
+  const storeBaseNav = useMemo(() => {
+    if (hostRootStorePathsNav || !storeName) return "";
+    const enc = encodeURIComponent(storeName);
+    if (location.pathname.startsWith("/vendor-")) return `/vendor-${enc}`;
+    return `/vendor/${enc}`;
+  }, [hostRootStorePathsNav, storeName, location.pathname]);
+
+  const vendorDocTitleMode = useMemo(() => {
+    if (!storeName) return "storefront" as const;
+    const seg = profileOrderId ? "orders" : profileSegment ?? null;
+    return vendorProfileSegmentToDocTitleMode(seg);
+  }, [storeName, profileSegment, profileOrderId]);
+
+  const vendorTabIconSeqRef = useRef(0);
+
   useLayoutEffect(() => {
-    document.title = instantTitleBase;
-    if (instantFavicon) {
-      applyDocumentFavicon(instantFavicon);
-    } else {
+    if (!storeName) {
+      document.title = "Vendor Store";
       resetDocumentFavicon();
+      return;
     }
-  }, [instantTitleBase]);
+    document.title = buildVendorStorefrontDocumentTitle({
+      vendorSlug: storeName,
+      pathname: location.pathname,
+      storeBase: storeBaseNav,
+      savedPage,
+      vendorViewMode: vendorDocTitleMode,
+      profileOrderId,
+      categorySegment: categorySlug ?? null,
+    });
+
+    if (instantFavicon) {
+      const seq = ++vendorTabIconSeqRef.current;
+      void applyVendorStoreLogoFavicon(instantFavicon).then(() => {
+        if (vendorTabIconSeqRef.current !== seq) return;
+      });
+    }
+  }, [
+    storeName,
+    location.pathname,
+    storeBaseNav,
+    savedPage,
+    vendorDocTitleMode,
+    profileOrderId,
+    categorySlug,
+    instantFavicon,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === "undefined") return;
+      if (shouldPreserveVendorStorefrontFaviconOnUnload(window.location.pathname)) return;
+      resetDocumentFavicon();
+    };
+  }, []);
 
   if (customHostLoading && !params.storeName && !subdomainSlug) {
     return <VendorStorefrontFullSkeleton />;

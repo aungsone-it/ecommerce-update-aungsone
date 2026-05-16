@@ -371,7 +371,8 @@ export const SUCCESS_MESSAGES = {
 
 export const BRANDING = {
   APP_NAME: 'SECURE',
-  SYSTEM_NAME: 'SECURE.OS',
+  SYSTEM_NAME: 'SECURE',
+  ADMIN_DOCUMENT_TITLE: 'SECURE DASHBOARD',
   TAGLINE: 'Modern E-commerce Platform',
   COPYRIGHT: `© ${new Date().getFullYear()} SECURE. All rights reserved.`,
 } as const;

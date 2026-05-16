@@ -83,7 +83,6 @@ import { Input } from "./ui/input";
 import { Checkbox } from "./ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
-import { useFaviconLoader } from "../hooks/useFaviconLoader";
 import { useCart } from "./CartContext";
 import { CartDrawer } from "./CartDrawer";
 import { Checkout } from "./Checkout";
@@ -109,7 +108,8 @@ import {
 import { toast } from "sonner";
 import { getEffectiveVariantOptions } from "./ProductVariantChips";
 import { useLoading } from "../contexts/LoadingContext";
-import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
+import { applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
+import { buildVendorStorefrontDocumentTitle } from "../utils/vendorStorefrontDocumentTitle";
 import { supabase } from "../contexts/AuthContext";
 
 interface Product {
@@ -705,15 +705,6 @@ export function VendorStoreView({
     [navigate, navigateStoreHome, storeBase]
   );
 
-  const { startLoading: startFaviconLoading, stopLoading: stopFaviconLoading } = useFaviconLoader();
-  
-  // Cleanup favicon loader on unmount
-  useEffect(() => {
-    return () => {
-      stopFaviconLoading();
-    };
-  }, [stopFaviconLoading]);
-  
   // Single LS read for first paint — avoids skeleton + empty grid on slow networks (see getVendorHomepageInitialState).
   const [vendorHomeSnapshot] = useState(() =>
     getVendorHomepageInitialState(vendorId, savedPage, initialProductSlug)
@@ -830,6 +821,7 @@ export function VendorStoreView({
   /** Match /store: in-flow while scrolling down (nav scrolls away); sticky when scrolling up (even 1px). */
   const [vendorNavbarSticky, setVendorNavbarSticky] = useState(false);
   const vendorScrollRootRef = useRef<HTMLDivElement>(null);
+  const vendorTabIconSeqRef = useRef(0);
   const lastVendorScrollTopRef = useRef(0);
   /** Last `/product/:slug` segment — used to scroll-reset only when entering/changing product, not when leaving to home. */
   const lastVendorProductSlugForScrollRef = useRef<string | undefined>(undefined);
@@ -854,23 +846,6 @@ export function VendorStoreView({
   }, [location.pathname, storeBase]);
 
   const { addToCart, totalItems, clearCart } = useCart();
-
-  useEffect(() => {
-    const base = (storeName || "Vendor Store").trim();
-    const productTitle = selectedProduct?.name?.trim();
-    const title = productTitle ? `${productTitle} - ${base}` : base;
-    document.title = title;
-
-    if (typeof storeLogo === "string" && storeLogo.trim()) {
-      applyDocumentFavicon(storeLogo);
-    } else {
-      resetDocumentFavicon();
-    }
-
-    return () => {
-      resetDocumentFavicon();
-    };
-  }, [storeName, storeLogo, selectedProduct?.name]);
 
   // Product description gallery lightbox (full-screen overlay + prev/next)
   const [descLightboxOpen, setDescLightboxOpen] = useState(false);
@@ -930,6 +905,39 @@ export function VendorStoreView({
       setVendorViewMode(mode);
     }
   }, [profileSegment]);
+
+  useEffect(() => {
+    document.title = buildVendorStorefrontDocumentTitle({
+      vendorSlug: vendorId,
+      pathname: location.pathname,
+      storeBase,
+      savedPage,
+      vendorViewMode,
+      profileOrderId,
+      selectedProductName: selectedProduct?.name,
+      categorySegment: normalizedCategorySlugFromRoute || null,
+      storeDisplayNameFallback: storeName,
+    });
+
+    const logo = typeof storeLogo === "string" ? storeLogo.trim() : "";
+    if (logo) {
+      const seq = ++vendorTabIconSeqRef.current;
+      void applyVendorStoreLogoFavicon(logo).then(() => {
+        if (vendorTabIconSeqRef.current !== seq) return;
+      });
+    }
+  }, [
+    vendorId,
+    location.pathname,
+    storeBase,
+    savedPage,
+    vendorViewMode,
+    profileOrderId,
+    selectedProduct?.name,
+    normalizedCategorySlugFromRoute,
+    storeName,
+    storeLogo,
+  ]);
 
   useEffect(() => {
     if (savedPage) return;

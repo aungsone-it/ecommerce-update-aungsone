@@ -486,13 +486,13 @@ export function AdminPage() {
 
   // Update document title based on current page
   useEffect(() => {
-    const baseTitle = "SECURE E-commerce";
+    const baseTitle = "SECURE DASHBOARD";
     if (viewingUserProfile) {
       document.title = `${viewingUserProfile.name} - ${baseTitle}`;
     } else if (viewingOrder) {
       document.title = `Order #${viewingOrder.id} - ${baseTitle}`;
     } else {
-      const pageName = currentPage === 'Home' ? 'Dashboard' : currentPage;
+      const pageName = currentPage === 'Home' ? 'Home' : currentPage;
       document.title = `${pageName} - ${baseTitle}`;
     }
 

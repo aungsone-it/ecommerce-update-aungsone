@@ -5,6 +5,7 @@ import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import { useEffect, useState } from "react";
+import { BRANDING } from "../../constants";
 import {
   fetchLandingPlatformSettingsCached,
   fetchLandingVendorsCached,
@@ -44,6 +45,10 @@ interface Category {
 
 export function LandingPage() {
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.title = BRANDING.APP_NAME;
+  }, []);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoadingVendors, setIsLoadingVendors] = useState(true);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({

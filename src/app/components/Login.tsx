@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
+import { BRANDING } from '../../constants';
 
 export function Login() {
   const { login } = useAuth();
@@ -20,6 +21,16 @@ export function Login() {
   const [rememberMe, setRememberMe] = useState(true); // Default to remember me
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const prev = document.title;
+    if (location.pathname.startsWith('/admin')) {
+      document.title = BRANDING.ADMIN_DOCUMENT_TITLE;
+    }
+    return () => {
+      document.title = prev;
+    };
+  }, [location.pathname]);
 
   const getResetPasswordPath = (): string => {
     const parts = location.pathname.split('/').filter(Boolean);

@@ -1,4 +1,5 @@
 import { Barcode } from "./BarcodeLazy";
+import { BRANDING } from "../../constants";
 
 interface OrderItem {
   id: string;
@@ -52,10 +53,10 @@ export function PrintInvoice({ orders }: PrintInvoiceProps) {
                 className="invoice-page"
                 data-order-index={index}
               >
-                {/* Header with SECURE.OS and Barcode */}
+                {/* Header with brand and barcode */}
                 <div className="invoice-header">
                   <div className="brand">
-                    <h1 className="brand-name">SECURE.OS</h1>
+                    <h1 className="brand-name">{BRANDING.APP_NAME}</h1>
                     <p className="order-date">Date: {new Date(order.date).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })}</p>
                   </div>
                   <div className="barcode-section">
