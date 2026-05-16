@@ -274,6 +274,80 @@ function normalizeCheckoutPaymentMethod(raw: unknown): "Card" | "KPay" | "KPay-P
   return "Card";
 }
 
+async function waitForKPayPaidSession(
+  merchantOrderId: string,
+  maxAttempts = 20,
+  intervalMs = 2000
+): Promise<KPaySession | null> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const session = await fetchKPaySessionStatus({
+        projectId,
+        publicAnonKey,
+        merchantOrderId,
+      });
+      if (session.status === "paid" || session.status === "failed") return session;
+    } catch {
+      /* retry */
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  return null;
+}
+
+function buildPwaFinalizeOrderPayload(
+  orderId: string,
+  d: NonNullable<KPayPwaPendingContext["draftOrder"]>,
+  session: KPaySession,
+  prepayId: string | undefined,
+  storeName: string,
+  vendorId: string | undefined,
+  effectiveUserId: string | null | undefined
+) {
+  return {
+    orderNumber: orderId,
+    userId: d.userId ?? effectiveUserId ?? null,
+    customer: d.customerName || d.shippingInfo?.fullName || "",
+    customerName: d.customerName || d.shippingInfo?.fullName || "",
+    email: d.email || "",
+    phone: d.phone || d.shippingInfo?.phone || "",
+    status: "pending",
+    paymentStatus: "paid",
+    paymentMethod: "KBZPay (PWA)",
+    total: Number(d.total || 0),
+    subtotal: Number(d.subtotal || 0),
+    discount: Number(d.discount || 0),
+    date: new Date().toISOString(),
+    vendor: d.vendor || storeName,
+    vendorId: d.vendorId || vendorId || undefined,
+    couponCode: d.couponCode || null,
+    couponId: d.couponId || null,
+    couponDiscount: Number(d.discount || 0),
+    items: Array.isArray(d.items) ? d.items : [],
+    address: d.shippingInfo?.address || "",
+    city: d.shippingInfo?.city || "",
+    zipCode: d.shippingInfo?.zipCode || "",
+    country: d.shippingInfo?.country || "",
+    shippingAddress: [
+      d.shippingInfo?.address || "",
+      d.shippingInfo?.city || "",
+      d.shippingInfo?.zipCode || "",
+      d.shippingInfo?.country || "",
+    ]
+      .filter(Boolean)
+      .join(", "),
+    notes: d.notes || "",
+    kpay: {
+      method: "pwa",
+      merchantOrderId: orderId,
+      prepayId: session.prepayId || prepayId || "",
+      status: "paid",
+      providerStatus: session.providerStatus || "paid",
+      payUrl: session.payUrl || "",
+    },
+  };
+}
+
 export function Checkout({
   onBack,
   storeName,
@@ -350,6 +424,7 @@ export function Checkout({
     () => /\/summary$/.test(location.pathname) && !initialSummarySnapshot
   );
   const pwaFinalizeInFlightRef = useRef<Set<string>>(new Set());
+  const pwaOrderPersistedRef = useRef(false);
   const summaryPath = useMemo(
     () => buildCheckoutSummaryPath(location.pathname),
     [location.pathname]
@@ -686,7 +761,6 @@ export function Checkout({
       setPaymentMethod(normalizeCheckoutPaymentMethod(snapshot.paymentMethod));
       setStep("success");
       setLoading(false);
-      clearKPayPwaPendingStorage();
     } catch {
       // ignore corrupted snapshot and fall back to normal checkout
     } finally {
@@ -696,11 +770,51 @@ export function Checkout({
   }, [location.pathname, summarySnapshotStorageKey, summaryQueryOrderId, pwaPendingContext]);
 
   useEffect(() => {
+    pwaOrderPersistedRef.current = false;
+  }, [location.pathname, summaryQueryOrderId]);
+
+  useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
     if (!onSummaryRoute) return;
-    if (step === "success" && confirmedItems.length > 0 && orderNumber) return;
+    if (pwaOrderPersistedRef.current) return;
+
     setSummaryResolving(true);
     let cancelled = false;
+
+    const applyDraftPreview = (orderId: string, d: NonNullable<KPayPwaPendingContext["draftOrder"]>) => {
+      const draftItems = (Array.isArray(d.items) ? d.items : []).map((it: any, idx: number) => ({
+        id: String(it?.productId ?? it?.id ?? idx),
+        sku: String(it?.name ?? it?.sku ?? "Item"),
+        quantity: Number(it?.quantity ?? 1) || 1,
+        price: Number(it?.price ?? 0) || 0,
+        image: typeof it?.image === "string" ? it.image : "",
+      }));
+      if (draftItems.length === 0) return;
+      const ship = d.shippingInfo || {};
+      setOrderNumber(orderId);
+      setConfirmedItems(draftItems);
+      setConfirmedTotal(Number(d.total || 0) || 0);
+      setConfirmedOrderNote(String(d.notes || ""));
+      setConfirmedDiscount(Number(d.discount || 0) || 0);
+      setConfirmedCoupon(
+        typeof d.couponCode === "string" && d.couponCode.trim()
+          ? { campaign: { code: d.couponCode } }
+          : null
+      );
+      setShippingInfo({
+        fullName: String(ship.fullName ?? d.customerName ?? ""),
+        email: String(d.email ?? ""),
+        phone: String(ship.phone ?? d.phone ?? ""),
+        address: String(ship.address ?? ""),
+        city: String(ship.city ?? ""),
+        zipCode: String(ship.zipCode ?? ""),
+        country: String(ship.country ?? ""),
+      });
+      setPaymentMethod("KPay-PWA");
+      setStep("success");
+      setLoading(false);
+    };
+
     (async () => {
       let currentOrderId = "";
       try {
@@ -710,48 +824,6 @@ export function Checkout({
             ? pwaPendingContext.merchantOrderId
             : "");
         currentOrderId = orderId;
-
-        // KBZ redirect: show draft checkout data immediately while order is fetched/finalized.
-        if (
-          orderId &&
-          pwaPendingContext?.merchantOrderId === orderId &&
-          pwaPendingContext?.draftOrder &&
-          step !== "success"
-        ) {
-          const d = pwaPendingContext.draftOrder;
-          const draftItems = (Array.isArray(d.items) ? d.items : []).map((it: any, idx: number) => ({
-            id: String(it?.productId ?? it?.id ?? idx),
-            sku: String(it?.name ?? it?.sku ?? "Item"),
-            quantity: Number(it?.quantity ?? 1) || 1,
-            price: Number(it?.price ?? 0) || 0,
-            image: typeof it?.image === "string" ? it.image : "",
-          }));
-          if (draftItems.length > 0) {
-            const ship = d.shippingInfo || {};
-            setOrderNumber(orderId);
-            setConfirmedItems(draftItems);
-            setConfirmedTotal(Number(d.total || 0) || 0);
-            setConfirmedOrderNote(String(d.notes || ""));
-            setConfirmedDiscount(Number(d.discount || 0) || 0);
-            setConfirmedCoupon(
-              typeof d.couponCode === "string" && d.couponCode.trim()
-                ? { campaign: { code: d.couponCode } }
-                : null
-            );
-            setShippingInfo({
-              fullName: String(ship.fullName ?? d.customerName ?? ""),
-              email: String(d.email ?? ""),
-              phone: String(ship.phone ?? d.phone ?? ""),
-              address: String(ship.address ?? ""),
-              city: String(ship.city ?? ""),
-              zipCode: String(ship.zipCode ?? ""),
-              country: String(ship.country ?? ""),
-            });
-            setPaymentMethod("KPay-PWA");
-            setStep("success");
-            setSummaryResolving(false);
-          }
-        }
 
         let response: Response | null = null;
         if (orderId) {
@@ -764,72 +836,81 @@ export function Checkout({
             pwaPendingContext?.merchantOrderId === orderId &&
             pwaPendingContext?.draftOrder
           ) {
-            const session = await fetchKPaySessionStatus({
-              projectId,
-              publicAnonKey,
-              merchantOrderId: orderId,
-            });
-            if (session.status === "paid") {
+            let session: KPaySession | null = null;
+            try {
+              session = await fetchKPaySessionStatus({
+                projectId,
+                publicAnonKey,
+                merchantOrderId: orderId,
+              });
+            } catch {
+              session = null;
+            }
+            if (session?.status === "pending") {
+              session = await waitForKPayPaidSession(orderId);
+            }
+            if (session?.status === "paid") {
               if (pwaFinalizeInFlightRef.current.has(orderId)) {
-                return;
+                for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
+                  await new Promise((resolve) => setTimeout(resolve, 1000));
+                  const retry = await fetch(orderEndpoint, {
+                    headers: { Authorization: `Bearer ${publicAnonKey}` },
+                  });
+                  if (retry.ok) {
+                    response = retry;
+                    break;
+                  }
+                }
+              } else {
+                pwaFinalizeInFlightRef.current.add(orderId);
+                const d = pwaPendingContext.draftOrder;
+                const finalizePayload = buildPwaFinalizeOrderPayload(
+                  orderId,
+                  d,
+                  session,
+                  pwaPendingContext.prepayId,
+                  storeName,
+                  vendorId,
+                  effectiveUser?.id
+                );
+                const createResponse = await fetch(
+                  `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${publicAnonKey}`,
+                    },
+                    body: JSON.stringify(finalizePayload),
+                  }
+                );
+                const createResult = (await createResponse.json().catch(() => ({}))) as {
+                  error?: string;
+                  message?: string;
+                  stockIssues?: Array<{ productName?: string; issue?: string }>;
+                };
+                if (!createResponse.ok) {
+                  const stockMsg =
+                    createResult.stockIssues?.length &&
+                    createResult.stockIssues
+                      .map((issue) => `${issue.productName}: ${issue.issue}`)
+                      .join("; ");
+                  toast.error(
+                    stockMsg ||
+                      createResult.message ||
+                      createResult.error ||
+                      `Order could not be created (HTTP ${createResponse.status})`
+                  );
+                } else {
+                  notifyAdminOrdersUpdated("pwa-checkout-order-created");
+                  response = await fetch(orderEndpoint, {
+                    headers: { Authorization: `Bearer ${publicAnonKey}` },
+                  });
+                }
+                pwaFinalizeInFlightRef.current.delete(orderId);
               }
-              pwaFinalizeInFlightRef.current.add(orderId);
-              const d = pwaPendingContext.draftOrder;
-              const finalizePayload: any = {
-                orderNumber: orderId,
-                userId: d.userId ?? effectiveUser?.id ?? null,
-                customer: d.customerName || d.shippingInfo?.fullName || "",
-                customerName: d.customerName || d.shippingInfo?.fullName || "",
-                email: d.email || "",
-                phone: d.phone || d.shippingInfo?.phone || "",
-                status: "pending",
-                paymentStatus: "paid",
-                paymentMethod: "KBZPay (PWA)",
-                total: Number(d.total || 0),
-                subtotal: Number(d.subtotal || 0),
-                discount: Number(d.discount || 0),
-                date: new Date().toISOString(),
-                vendor: d.vendor || storeName,
-                vendorId: d.vendorId || undefined,
-                couponCode: d.couponCode || null,
-                couponId: d.couponId || null,
-                couponDiscount: Number(d.discount || 0),
-                items: Array.isArray(d.items) ? d.items : [],
-                address: d.shippingInfo?.address || "",
-                city: d.shippingInfo?.city || "",
-                zipCode: d.shippingInfo?.zipCode || "",
-                country: d.shippingInfo?.country || "",
-                shippingAddress: [
-                  d.shippingInfo?.address || "",
-                  d.shippingInfo?.city || "",
-                  d.shippingInfo?.zipCode || "",
-                  d.shippingInfo?.country || "",
-                ].filter(Boolean).join(", "),
-                notes: d.notes || "",
-                kpay: {
-                  method: "pwa",
-                  merchantOrderId: orderId,
-                  prepayId: session.prepayId || pwaPendingContext.prepayId || "",
-                  status: "paid",
-                  providerStatus: session.providerStatus || "paid",
-                  payUrl: session.payUrl || "",
-                },
-              };
-              const createResponse = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${publicAnonKey}`,
-                },
-                body: JSON.stringify(finalizePayload),
-              });
-              if (!createResponse.ok) {
-                throw new Error(`PWA finalize create failed: HTTP ${createResponse.status}`);
-              }
-              response = await fetch(orderEndpoint, {
-                headers: { Authorization: `Bearer ${publicAnonKey}` },
-              });
-              pwaFinalizeInFlightRef.current.delete(orderId);
+            } else if (session?.status === "failed") {
+              toast.error("KBZPay payment was not completed");
             }
           }
         } else if (effectiveUser?.id) {
@@ -843,7 +924,17 @@ export function Checkout({
           return;
         }
         if (!response) return;
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (
+            !cancelled &&
+            orderId &&
+            pwaPendingContext?.merchantOrderId === orderId &&
+            pwaPendingContext?.draftOrder
+          ) {
+            applyDraftPreview(orderId, pwaPendingContext.draftOrder);
+          }
+          return;
+        }
         const data = (await response.json()) as { order?: any; orders?: any[] };
         const o = orderId
           ? data?.order
@@ -899,6 +990,7 @@ export function Checkout({
         );
         setStep("success");
         setLoading(false);
+        pwaOrderPersistedRef.current = true;
         try {
           const snapshot: CheckoutSummarySnapshot = {
             orderNumber: String(
@@ -923,7 +1015,7 @@ export function Checkout({
           /* ignore snapshot write failure */
         }
       } catch {
-        // leave checkout as-is when server read fails
+        console.error("PWA summary hydrate failed:", currentOrderId);
       } finally {
         if (currentOrderId) {
           pwaFinalizeInFlightRef.current.delete(currentOrderId);
@@ -939,11 +1031,11 @@ export function Checkout({
     summaryQueryOrderId,
     pwaPendingContext,
     effectiveUser?.id,
-    step,
-    confirmedItems.length,
-    orderNumber,
     shippingInfo,
     summarySnapshotStorageKey,
+    vendorId,
+    vendorName,
+    storeName,
   ]);
 
   // Apply coupon code
