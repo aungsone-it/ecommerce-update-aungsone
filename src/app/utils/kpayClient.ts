@@ -467,6 +467,20 @@ export type StartKPayPwaParams = KPayBaseParams & {
   notifyUrl?: string;
   /** Optional URL-encoded business hint that KBZ echoes back in the webhook. */
   callbackInfo?: string;
+  /** Checkout path before KBZ redirect — used to build summary URL on return. */
+  originPath?: string;
+  /** Order summary route, e.g. `/vendor/go-go/summary`. */
+  summaryPath?: string;
+  /** Full cart + shipping payload — stored server-side for post-payment order create. */
+  draftOrder?: Record<string, unknown>;
+};
+
+export type PwaCheckoutDraftResponse = {
+  merchantOrderId?: string;
+  prepayId?: string;
+  originPath?: string;
+  summaryPath?: string;
+  draftOrder?: Record<string, unknown>;
 };
 
 export type KPayPwaSession = {
@@ -507,6 +521,9 @@ export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaS
     title,
     notifyUrl,
     callbackInfo,
+    originPath,
+    summaryPath,
+    draftOrder,
   } = params;
 
   const response = await fetch(
@@ -524,6 +541,9 @@ export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaS
         title,
         notifyUrl,
         callbackInfo,
+        originPath,
+        summaryPath,
+        draftOrder,
       }),
     },
   );
@@ -553,5 +573,38 @@ export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaS
     isUat: Boolean(data.isUat),
     endpointUsed: typeof data.endpointUsed === "string" ? data.endpointUsed : undefined,
     debug: data.debug as KPayPwaSession["debug"],
+  };
+}
+
+export async function fetchPwaCheckoutDraft(
+  params: KPayBaseParams & { merchantOrderId: string }
+): Promise<PwaCheckoutDraftResponse | null> {
+  const { projectId, publicAnonKey, merchantOrderId } = params;
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/pwa/draft/${encodeURIComponent(merchantOrderId)}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+  );
+  if (!response.ok) return null;
+  const data = (await response.json().catch(() => ({}))) as { draft?: PwaCheckoutDraftResponse };
+  return data.draft ?? null;
+}
+
+export async function finalizePwaCheckoutOrderApi(
+  params: KPayBaseParams & { merchantOrderId: string }
+): Promise<{ ok: boolean; created?: boolean; error?: string; message?: string }> {
+  const { projectId, publicAnonKey, merchantOrderId } = params;
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/pwa/finalize/${encodeURIComponent(merchantOrderId)}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    }
+  );
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  return {
+    ok: Boolean(data.success),
+    created: Boolean(data.created),
+    error: typeof data.error === "string" ? data.error : undefined,
+    message: typeof data.message === "string" ? data.message : undefined,
   };
 }

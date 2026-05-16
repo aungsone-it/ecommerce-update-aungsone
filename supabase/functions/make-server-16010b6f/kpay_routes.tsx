@@ -1,5 +1,10 @@
 import { Context } from "npm:hono@4";
 import * as kv from "./kv_store.tsx";
+import {
+  savePwaCheckoutDraft,
+  getPwaCheckoutDraft,
+  finalizePwaCheckoutOrder,
+} from "./pwa_finalize.ts";
 
 type AnyRecord = Record<string, unknown>;
 type PaymentStatus = "pending" | "paid" | "failed";
@@ -1637,6 +1642,23 @@ export async function startKPayPwa(c: Context) {
       wrapRequest: winningWrapRequest,
     });
 
+    const originPath = text(body.originPath);
+    const summaryPath = text(body.summaryPath);
+    const draftOrder =
+      body.draftOrder && typeof body.draftOrder === "object"
+        ? (body.draftOrder as Record<string, unknown>)
+        : undefined;
+    if (draftOrder) {
+      await savePwaCheckoutDraft({
+        merchantOrderId,
+        prepayId,
+        originPath: originPath || undefined,
+        summaryPath: summaryPath || undefined,
+        draftOrder,
+        savedAt: ts2,
+      });
+    }
+
     return c.json({
       success: true,
       merchantOrderId,
@@ -1682,8 +1704,6 @@ export async function handleKPayPwaReturn(c: Context) {
   const merchantOrderId = text(url.searchParams.get("merch_order_id")) || text(url.searchParams.get("merchOrderId"));
   const callbackInfo = text(url.searchParams.get("callback_info"));
 
-  // Where to send the customer in the SPA. Prefer the explicit env var if set; otherwise
-  // fall back to a query-string append on the current request's referer.
   const spaReturnBase = text(Deno.env.get("KPAY_PWA_FRONTEND_RETURN_URL"));
   if (!spaReturnBase) {
     return c.json({
@@ -1692,12 +1712,53 @@ export async function handleKPayPwaReturn(c: Context) {
     }, 500);
   }
 
-  const target = new URL(spaReturnBase);
+  const draft = merchantOrderId ? await getPwaCheckoutDraft(merchantOrderId) : null;
+
+  if (merchantOrderId) {
+    const fin = await finalizePwaCheckoutOrder(merchantOrderId);
+    if (fin.ok && fin.created) {
+      console.log(`✅ PWA order finalized on return for ${merchantOrderId}`);
+    } else if (
+      !fin.ok &&
+      fin.error !== "payment_not_confirmed" &&
+      fin.error !== "no_checkout_draft"
+    ) {
+      console.warn(`PWA finalize on return: ${merchantOrderId}`, fin.error, fin.message);
+    }
+  }
+
+  const summaryPath = text(draft?.summaryPath);
+  const baseUrl = new URL(spaReturnBase);
+  const target = summaryPath.startsWith("/")
+    ? new URL(summaryPath, `${baseUrl.origin}/`)
+    : summaryPath && /^https?:\/\//i.test(summaryPath)
+      ? new URL(summaryPath)
+      : new URL(spaReturnBase);
+
   if (prepayId) target.searchParams.set("prepay_id", prepayId);
   if (merchantOrderId) target.searchParams.set("merch_order_id", merchantOrderId);
   if (callbackInfo) target.searchParams.set("callback_info", callbackInfo);
 
   return c.redirect(target.toString(), 302);
+}
+
+export async function getPwaCheckoutDraftRoute(c: Context) {
+  const merchantOrderId = text(c.req.param("merchantOrderId"));
+  if (!merchantOrderId) return c.json({ error: "merchantOrderId is required" }, 400);
+  const draft = await getPwaCheckoutDraft(merchantOrderId);
+  if (!draft) return c.json({ error: "draft_not_found" }, 404);
+  return c.json({ success: true, draft });
+}
+
+export async function postPwaFinalizeRoute(c: Context) {
+  const merchantOrderId = text(c.req.param("merchantOrderId"));
+  if (!merchantOrderId) return c.json({ error: "merchantOrderId is required" }, 400);
+  const result = await finalizePwaCheckoutOrder(merchantOrderId);
+  if (!result.ok) {
+    const status = result.error === "payment_not_confirmed" ? 409 : 400;
+    return c.json({ success: false, ...result }, status);
+  }
+  return c.json({ success: true, ...result });
 }
 
 export async function getKPayStatus(c: Context) {
@@ -1930,6 +1991,16 @@ export async function handleKPayWebhook(c: Context) {
     });
 
     await upsertOrderPaymentStatus(merchantOrderId, safeStatus, providerStatus, paidAt || undefined);
+
+    if (safeStatus === "paid") {
+      const fin = await finalizePwaCheckoutOrder(merchantOrderId);
+      if (fin.ok && fin.created) {
+        console.log(`✅ PWA order created from webhook for ${merchantOrderId}`);
+      } else if (!fin.ok && fin.error !== "no_checkout_draft" && fin.error !== "payment_not_confirmed") {
+        console.warn(`PWA webhook finalize: ${merchantOrderId}`, fin.error, fin.message);
+      }
+    }
+
     return c.json({ success: true });
   } catch (error: any) {
     console.error("handleKPayWebhook error", error);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -6,37 +6,23 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import {
   KPAY_PWA_PENDING_STORAGE_KEY,
   buildKPaySummaryReturnUrl,
+  buildCheckoutSummaryPath,
   fetchKPaySessionStatus,
+  fetchPwaCheckoutDraft,
+  finalizePwaCheckoutOrderApi,
   type KPaySession,
 } from "../utils/kpayClient";
 
-/**
- * KBZPay PWA return landing page.
- *
- * KBZ redirects the customer's mobile browser back to this route after they finish
- * (or cancel) the payment inside the KBZPay app. KBZ appends two query params:
- *   - prepay_id
- *   - merch_order_id
- *
- * From here we:
- *   1. Read the merch_order_id from the URL.
- *   2. Recover the pending PWA session metadata that the Checkout page stored
- *      in localStorage just before redirecting the user out (so we can show the
- *      amount and link them back to the right page).
- *   3. Poll the backend `/kpay/status/:merchantOrderId` endpoint until the
- *      Supabase Realtime / KBZ webhook flips it to "paid" (or until we hit a
- *      hard timeout — KBZ's `queryorder` is sometimes 404 on the UAT relay,
- *      so we rely primarily on the webhook-driven KV record).
- *   4. Render success / pending / failed UI with a CTA back to the storefront.
- */
 type ReturnState =
   | { kind: "loading" }
   | { kind: "missing_order" }
   | { kind: "ok"; session: KPaySession }
   | { kind: "error"; message: string };
 
-const POLL_INTERVAL_MS = 2500;
-const POLL_TIMEOUT_MS = 60_000;
+const POLL_INTERVAL_MS = 2000;
+const POLL_TIMEOUT_MS = 45_000;
+/** Redirect to summary even if KV still says pending — summary page will keep finalizing. */
+const SUMMARY_REDIRECT_MS = 6_000;
 
 export function KPayReturnPage() {
   const navigate = useNavigate();
@@ -54,25 +40,54 @@ export function KPayReturnPage() {
     [searchParams],
   );
 
-  const pendingContext = useMemo(() => {
+  const [localPending] = useState(() => {
     if (typeof window === "undefined") return null;
     try {
       const raw = localStorage.getItem(KPAY_PWA_PENDING_STORAGE_KEY);
       if (!raw) return null;
       return JSON.parse(raw) as {
         merchantOrderId?: string;
-        prepayId?: string;
-        amount?: number;
-        currency?: string;
-        redirectedAt?: string;
         originPath?: string;
+        summaryPath?: string;
       };
     } catch {
       return null;
     }
-  }, []);
+  });
 
+  const [serverSummaryPath, setServerSummaryPath] = useState<string | null>(null);
   const [state, setState] = useState<ReturnState>({ kind: "loading" });
+  const finalizeAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (!merchantOrderId) return;
+    void fetchPwaCheckoutDraft({ projectId, publicAnonKey, merchantOrderId }).then((draft) => {
+      if (draft?.summaryPath) setServerSummaryPath(draft.summaryPath);
+    });
+  }, [merchantOrderId]);
+
+  const summaryTarget = useMemo(() => {
+    const origin =
+      localPending?.originPath ||
+      (serverSummaryPath
+        ? serverSummaryPath.replace(/\/summary$/, "/checkout")
+        : undefined);
+    if (serverSummaryPath) {
+      const base = serverSummaryPath.startsWith("/")
+        ? serverSummaryPath
+        : buildCheckoutSummaryPath(serverSummaryPath);
+      const qs = new URLSearchParams();
+      if (merchantOrderId) qs.set("merch_order_id", merchantOrderId);
+      if (prepayIdFromUrl) qs.set("prepay_id", prepayIdFromUrl);
+      const q = qs.toString();
+      return q ? `${base}?${q}` : base;
+    }
+    return buildKPaySummaryReturnUrl({
+      originPath: origin,
+      merchantOrderId,
+      prepayId: prepayIdFromUrl,
+    });
+  }, [merchantOrderId, prepayIdFromUrl, localPending?.originPath, serverSummaryPath]);
 
   useEffect(() => {
     if (!merchantOrderId) {
@@ -85,6 +100,15 @@ export function KPayReturnPage() {
 
     const pollOnce = async () => {
       try {
+        if (!finalizeAttemptedRef.current) {
+          finalizeAttemptedRef.current = true;
+          await finalizePwaCheckoutOrderApi({
+            projectId,
+            publicAnonKey,
+            merchantOrderId,
+          });
+        }
+
         const session = await fetchKPaySessionStatus({
           projectId,
           publicAnonKey,
@@ -93,21 +117,18 @@ export function KPayReturnPage() {
         if (cancelled) return;
         setState({ kind: "ok", session });
 
-        // Once the order has reached a terminal state (paid or failed) we can stop
-        // polling. While it remains pending we keep checking until the timeout.
         if (session.status === "paid" || session.status === "failed") {
           return "stop";
         }
         if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
           return "stop";
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         if (cancelled) return;
-        // Don't blow away an already-known session on a transient network error.
         setState((prev) =>
           prev.kind === "ok"
             ? prev
-            : { kind: "error", message: String(error?.message || error) },
+            : { kind: "error", message: String((error as Error)?.message || error) },
         );
       }
       return "continue";
@@ -120,7 +141,6 @@ export function KPayReturnPage() {
       if (result !== "stop") {
         timer = setTimeout(() => void loop(), POLL_INTERVAL_MS);
       }
-      // Pending PWA context is cleared on the summary page after the order is hydrated.
     };
     void loop();
 
@@ -133,20 +153,21 @@ export function KPayReturnPage() {
   const isPaid = state.kind === "ok" && state.session.status === "paid";
   const isFailed = state.kind === "ok" && state.session.status === "failed";
   const isPending = state.kind === "ok" && state.session.status === "pending";
-  const summaryTarget = useMemo(
-    () =>
-      buildKPaySummaryReturnUrl({
-        originPath: pendingContext?.originPath,
-        merchantOrderId,
-        prepayId: prepayIdFromUrl,
-      }),
-    [merchantOrderId, prepayIdFromUrl, pendingContext?.originPath]
-  );
 
   useEffect(() => {
-    if (!isPaid) return;
-    navigate(summaryTarget, { replace: true });
-  }, [isPaid, navigate, summaryTarget]);
+    if (!merchantOrderId) return;
+    if (isFailed) return;
+
+    const go = () => navigate(summaryTarget, { replace: true });
+
+    if (isPaid) {
+      go();
+      return;
+    }
+
+    const t = window.setTimeout(go, SUMMARY_REDIRECT_MS);
+    return () => window.clearTimeout(t);
+  }, [isPaid, isFailed, merchantOrderId, navigate, summaryTarget]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center p-4">
@@ -177,18 +198,18 @@ export function KPayReturnPage() {
                 : isFailed
                   ? "Payment failed"
                   : isPending
-                    ? "Waiting for KBZ confirmation"
+                    ? "Finishing up..."
                     : "Could not load payment status"}
         </h1>
 
         <p className="mt-3 text-center text-sm text-slate-600">
-          {state.kind === "loading" && "Hold on while we verify your transaction with KBZPay."}
-          {state.kind === "missing_order" && (
-            <>This page expects <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px]">prepay_id</code> and <code className="rounded bg-slate-100 px-1 py-0.5 text-[11px]">merch_order_id</code> query params from KBZ.</>
-          )}
-          {isPaid && "KBZ has confirmed your payment. Your order is being processed."}
-          {isFailed && "KBZ reported a failed or cancelled transaction. You can try again from the checkout page."}
-          {isPending && "KBZ has not yet confirmed the payment. We'll keep checking for the next minute."}
+          {state.kind === "loading" && "Creating your order and confirming payment with KBZPay."}
+          {state.kind === "missing_order" &&
+            "This page expects prepay_id and merch_order_id from KBZ."}
+          {isPaid && "Redirecting to your order summary..."}
+          {isFailed && "KBZ reported a failed or cancelled payment."}
+          {isPending &&
+            "Payment may still be confirming. You will be sent to the order summary shortly."}
           {state.kind === "error" && state.message}
         </p>
 
@@ -205,42 +226,26 @@ export function KPayReturnPage() {
               <span className="break-all font-mono text-slate-800">{prepayIdFromUrl}</span>
             </div>
           )}
-          {pendingContext?.amount != null && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium text-slate-500">Amount</span>
-              <span className="font-semibold text-slate-800">
-                {pendingContext.amount.toLocaleString()} {pendingContext.currency || "MMK"}
-              </span>
-            </div>
-          )}
-          {state.kind === "ok" && state.session.providerStatus && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="font-medium text-slate-500">Provider Status</span>
-              <span className="font-mono text-slate-800">{state.session.providerStatus}</span>
-            </div>
-          )}
         </div>
 
-        <div className="mt-6 flex flex-col gap-2 sm:flex-row">
-          <Button
-            type="button"
-            className="flex-1 bg-slate-900 text-white hover:bg-slate-800"
-            onClick={() =>
-              navigate(pendingContext?.originPath || "/")
-            }
-          >
-            {isPaid ? "Continue shopping" : "Go to storefront"}
-          </Button>
-          {pendingContext?.originPath && !isPaid && (
+        <div className="mt-6 flex flex-col gap-2">
+          {merchantOrderId && !isFailed && (
             <Button
               type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => navigate(pendingContext.originPath || "/checkout")}
+              className="w-full bg-slate-900 text-white hover:bg-slate-800"
+              onClick={() => navigate(summaryTarget, { replace: true })}
             >
-              Back to checkout
+              View order summary
             </Button>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={() => navigate(localPending?.originPath?.split("?")[0] || "/")}
+          >
+            Back to store
+          </Button>
         </div>
       </div>
     </div>

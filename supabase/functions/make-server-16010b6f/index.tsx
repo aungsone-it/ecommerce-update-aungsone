@@ -13,6 +13,8 @@ import {
   handleKPayWebhook,
   startKPayPwa,
   handleKPayPwaReturn,
+  getPwaCheckoutDraftRoute,
+  postPwaFinalizeRoute,
   refundKPayOrder,
 } from "./kpay_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
@@ -772,6 +774,8 @@ app.get("/make-server-16010b6f/kpay/status/:merchantOrderId", getKPayStatus);
 app.post("/make-server-16010b6f/kpay/webhook", handleKPayWebhook);
 app.post("/make-server-16010b6f/kpay/pwa/start", startKPayPwa);
 app.get("/make-server-16010b6f/kpay/pwa/return", handleKPayPwaReturn);
+app.get("/make-server-16010b6f/kpay/pwa/draft/:merchantOrderId", getPwaCheckoutDraftRoute);
+app.post("/make-server-16010b6f/kpay/pwa/finalize/:merchantOrderId", postPwaFinalizeRoute);
 
 // Retry wrapper for database operations with exponential backoff
 async function withRetry<T>(
