@@ -425,6 +425,60 @@ export async function fetchKPaySessionStatus(
 // once they come back from KBZPay.
 export const KPAY_PWA_PENDING_STORAGE_KEY = "kpay_pwa_pending_order";
 
+/** KBZ echoes `callback_info` on PWA return — survives in-app WebView when localStorage is cleared. */
+export function buildPwaCallbackInfo(params: {
+  storefrontOrigin: string;
+  summaryPath?: string;
+}): string {
+  const origin = params.storefrontOrigin.trim().replace(/\/$/, "");
+  if (!origin) return "";
+  const qs = new URLSearchParams();
+  qs.set("so", origin);
+  const sp = (params.summaryPath || "/summary").trim();
+  if (sp) qs.set("sp", sp.startsWith("/") ? sp : `/${sp}`);
+  return qs.toString();
+}
+
+export function parsePwaCallbackInfo(
+  raw: string | null | undefined,
+): { storefrontOrigin?: string; summaryPath?: string } | null {
+  const s = String(raw ?? "").trim();
+  if (!s) return null;
+  try {
+    const decoded = s.includes("%") ? decodeURIComponent(s) : s;
+    const params = new URLSearchParams(
+      decoded.includes("so=") || decoded.includes("storefrontOrigin=") ? decoded : s,
+    );
+    const origin =
+      params.get("so")?.trim() || params.get("storefrontOrigin")?.trim() || "";
+    if (origin) {
+      const sp = params.get("sp")?.trim() || params.get("summaryPath")?.trim();
+      return { storefrontOrigin: origin, summaryPath: sp || undefined };
+    }
+    const json = JSON.parse(decoded) as Record<string, unknown>;
+    const fromJson =
+      (typeof json.so === "string" && json.so.trim()) ||
+      (typeof json.storefrontOrigin === "string" && json.storefrontOrigin.trim()) ||
+      "";
+    if (fromJson) {
+      const sp =
+        (typeof json.sp === "string" && json.sp.trim()) ||
+        (typeof json.summaryPath === "string" && json.summaryPath.trim()) ||
+        "";
+      return { storefrontOrigin: fromJson, summaryPath: sp || undefined };
+    }
+  } catch {
+    /* ignore malformed callback_info */
+  }
+  return null;
+}
+
+function normalizePwaSummaryPath(path: string | null | undefined): string {
+  const p = String(path ?? "").trim();
+  if (!p || p === "/") return "/summary";
+  return p.startsWith("/") ? p : `/${p}`;
+}
+
 /** Map a checkout (or return) pathname to its order-summary route. */
 export function buildCheckoutSummaryPath(pathname: string): string {
   const path = (pathname.split("?")[0] || "").replace(/\/$/, "") || "/";
@@ -463,13 +517,30 @@ export function buildPwaSummaryAbsoluteUrl(params: {
   if (params.prepayId) qs.set("prepay_id", params.prepayId);
   const q = qs.toString();
 
-  const summaryPath =
+  const summaryPath = normalizePwaSummaryPath(
     (params.summaryPath && params.summaryPath.trim()) ||
-    buildCheckoutSummaryPath(params.originPath || "/checkout");
+      buildCheckoutSummaryPath(params.originPath || "/checkout"),
+  );
 
   const origin = (params.storefrontOrigin || "").trim().replace(/\/$/, "");
   if (origin) {
-    const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
+    let path = summaryPath;
+    try {
+      const host = new URL(origin).hostname.toLowerCase();
+      const isLocal =
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.endsWith(".localhost");
+      if (isLocal && path === "/summary") {
+        const fromOrigin = (params.originPath || "").trim();
+        const m = fromOrigin.match(/^\/vendor\/([^/]+)(?:\/|$)/i);
+        if (m?.[1]) {
+          path = `/vendor/${encodeURIComponent(decodeURIComponent(m[1]))}/summary`;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     return q ? `${origin}${path}?${q}` : `${origin}${path}`;
   }
 

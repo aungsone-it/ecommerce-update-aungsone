@@ -31,6 +31,7 @@ import {
   type KPaySession,
   buildMerchantOrderId,
   buildCheckoutSummaryPath,
+  buildPwaCallbackInfo,
   clearKPayPwaPendingStorage,
   createKPayQrSession,
   fetchKPaySessionStatus,
@@ -39,6 +40,9 @@ import {
   startKPayPwa,
   KPAY_PWA_PENDING_STORAGE_KEY,
 } from "../utils/kpayClient";
+import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
+import { resolveVendorSummaryPath } from "../utils/vendorCheckoutPaths";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -429,9 +433,16 @@ export function Checkout({
   );
   const pwaFinalizeInFlightRef = useRef<Set<string>>(new Set());
   const pwaOrderPersistedRef = useRef(false);
+  const vendorSubdomainSlug = resolveVendorSubdomainStoreSlug();
+  const { slug: customHostSlug } = useResolvedVendorHostSlug();
   const summaryPath = useMemo(
-    () => buildCheckoutSummaryPath(location.pathname),
-    [location.pathname]
+    () =>
+      resolveVendorSummaryPath({
+        pathname: location.pathname,
+        storeName,
+        onVendorHost: vendorSubdomainSlug != null || customHostSlug != null,
+      }),
+    [location.pathname, storeName, vendorSubdomainSlug, customHostSlug],
   );
   const summarySnapshotStorageKey = useMemo(
     () => `checkout-summary:${summaryPath}`,
@@ -1230,6 +1241,7 @@ export function Checkout({
         amount: finalTotal,
         currency: "MMK",
         title: `Order ${merchantOrderId}`,
+        callbackInfo: buildPwaCallbackInfo({ storefrontOrigin, summaryPath }),
         originPath,
         summaryPath,
         storefrontOrigin,
@@ -1251,6 +1263,7 @@ export function Checkout({
             originPath,
             summaryPath,
             storefrontOrigin,
+            storeName,
             draftOrder,
           }),
         );

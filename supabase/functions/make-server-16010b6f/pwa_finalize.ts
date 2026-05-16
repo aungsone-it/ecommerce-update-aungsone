@@ -14,6 +14,56 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+export function parsePwaCallbackInfo(
+  raw: unknown,
+): { storefrontOrigin?: string; summaryPath?: string } | null {
+  const s = text(raw);
+  if (!s) return null;
+  try {
+    const decoded = s.includes("%") ? decodeURIComponent(s) : s;
+    const params = new URLSearchParams(
+      decoded.includes("so=") || decoded.includes("storefrontOrigin=") ? decoded : s,
+    );
+    const origin = text(params.get("so")) || text(params.get("storefrontOrigin"));
+    if (origin) {
+      const sp = text(params.get("sp")) || text(params.get("summaryPath"));
+      return { storefrontOrigin: origin, summaryPath: sp || undefined };
+    }
+    const json = JSON.parse(decoded) as Record<string, unknown>;
+    const fromJson = text(json.so) || text(json.storefrontOrigin);
+    if (fromJson) {
+      return {
+        storefrontOrigin: fromJson,
+        summaryPath: text(json.sp) || text(json.summaryPath) || undefined,
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function enrichPwaDraftWithCallback(
+  draft: PwaCheckoutDraftRecord | null,
+  callbackInfo: string,
+): PwaCheckoutDraftRecord | null {
+  const parsed = parsePwaCallbackInfo(callbackInfo);
+  if (!parsed?.storefrontOrigin) return draft;
+  if (!draft) {
+    return {
+      merchantOrderId: "",
+      summaryPath: parsed.summaryPath,
+      storefrontOrigin: parsed.storefrontOrigin,
+      savedAt: nowIso(),
+    };
+  }
+  return {
+    ...draft,
+    storefrontOrigin: text(draft.storefrontOrigin) || parsed.storefrontOrigin,
+    summaryPath: text(draft.summaryPath) || parsed.summaryPath,
+  };
+}
+
 export type PwaCheckoutDraftRecord = {
   merchantOrderId: string;
   prepayId?: string;
@@ -38,7 +88,8 @@ export function buildPwaSummaryAbsoluteUrl(
   if (merchantOrderId) qs.set("merch_order_id", merchantOrderId);
   const q = qs.toString();
 
-  const summaryPath = text(draft?.summaryPath) || "/summary";
+  const rawSummary = text(draft?.summaryPath);
+  const summaryPath = !rawSummary || rawSummary === "/" ? "/summary" : rawSummary;
   const storefrontOrigin = text(draft?.storefrontOrigin);
 
   if (storefrontOrigin) {

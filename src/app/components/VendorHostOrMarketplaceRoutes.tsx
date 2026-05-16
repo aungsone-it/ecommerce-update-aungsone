@@ -1,6 +1,13 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useLayoutEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
+import {
+  extractStoreSlugFromPathname,
+  isHostRootCheckoutPath,
+  readKpayPendingStoreContext,
+  toMarketplaceVendorCheckoutPath,
+} from "../utils/vendorCheckoutPaths";
 import { RouteLoadingFallback } from "./RouteLoadingFallback";
 import { NotFound } from "../pages/NotFound";
 
@@ -14,11 +21,50 @@ function useVendorHost(): { vendorHost: boolean; loading: boolean } {
   return { vendorHost: sub != null || custom != null, loading: loading && !sub };
 }
 
-/** Vendor subdomain / custom domain only — apex marketplace storefront removed. */
+/**
+ * Checkout, summary, and related routes on vendor subdomain/custom domain (production)
+ * or `/vendor/:storeName/...` on localhost / marketplace apex (local dev).
+ */
 export function VendorHostOnlyStorefront() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { vendorHost, loading } = useVendorHost();
-  if (loading) return <RouteLoadingFallback />;
-  if (!vendorHost) return <NotFound />;
+
+  const marketplaceSlug = useMemo(
+    () => extractStoreSlugFromPathname(location.pathname),
+    [location.pathname],
+  );
+
+  const pendingSlug = useMemo(() => {
+    if (vendorHost || marketplaceSlug) return null;
+    return readKpayPendingStoreContext()?.storeName ?? null;
+  }, [vendorHost, marketplaceSlug]);
+
+  useLayoutEffect(() => {
+    if (vendorHost || loading || marketplaceSlug) return;
+    if (!pendingSlug || !isHostRootCheckoutPath(location.pathname)) return;
+
+    const target = toMarketplaceVendorCheckoutPath(pendingSlug, location.pathname);
+    if (target === location.pathname) return;
+
+    navigate({ pathname: target, search: location.search }, { replace: true });
+  }, [
+    vendorHost,
+    loading,
+    marketplaceSlug,
+    pendingSlug,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
+
+  if (loading && !marketplaceSlug) return <RouteLoadingFallback />;
+
+  const canRender =
+    vendorHost || marketplaceSlug || (pendingSlug && isHostRootCheckoutPath(location.pathname));
+
+  if (!canRender) return <NotFound />;
+
   return (
     <Suspense fallback={<RouteLoadingFallback />}>
       <VendorStorefrontPage />

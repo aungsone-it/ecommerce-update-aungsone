@@ -5,6 +5,7 @@ import { RootLayout } from "./components/RootLayout";
 import { VendorProtectedLayout } from "./components/VendorProtectedLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
+import { KPayVendorReturnRedirect } from "./components/KPayVendorReturnRedirect";
 import { RouteLoadingFallback } from "./components/RouteLoadingFallback";
 import { NotFound } from "./pages/NotFound";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -102,6 +103,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           <VendorAuthProvider>
             <ErrorBoundary>
               <ScrollController />
+              <KPayVendorReturnRedirect />
               <OrderRealtimeBridge />
               {children}
             </ErrorBoundary>
@@ -326,6 +328,10 @@ export const appRouteObjects: RouteObject[] = [
             path: "vendor/:storeName/summary",
             element: <VendorStorefrontPage />,
             errorElement: <NotFound />,
+          },
+          {
+            path: "vendor/:storeName/kpay/return",
+            element: <KPayReturnPage />,
           },
           {
             path: "vendor/:storeName/:categorySlug",

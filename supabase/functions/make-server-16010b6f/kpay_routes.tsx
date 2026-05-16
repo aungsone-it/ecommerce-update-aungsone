@@ -5,6 +5,7 @@ import {
   getPwaCheckoutDraft,
   finalizePwaCheckoutOrder,
   buildPwaSummaryAbsoluteUrl,
+  enrichPwaDraftWithCallback,
 } from "./pwa_finalize.ts";
 
 type AnyRecord = Record<string, unknown>;
@@ -1407,7 +1408,17 @@ export async function startKPayPwa(c: Context) {
     const currency = text(body.currency || "MMK") || "MMK";
     const notifyUrl = text(body.notifyUrl) || cfg.notifyUrl;
     const title = text(body.title) || "Order";
-    const callbackInfo = text(body.callbackInfo);
+    const originPathEarly = text(body.originPath);
+    const summaryPathEarly = text(body.summaryPath);
+    const storefrontOriginEarly = text(body.storefrontOrigin);
+    let callbackInfo = text(body.callbackInfo);
+    if (!callbackInfo && storefrontOriginEarly) {
+      const qs = new URLSearchParams();
+      qs.set("so", storefrontOriginEarly.replace(/\/$/, ""));
+      const sp = summaryPathEarly || "/summary";
+      qs.set("sp", sp.startsWith("/") ? sp : `/${sp}`);
+      callbackInfo = qs.toString();
+    }
 
     if (!text(notifyUrl)) {
       return c.json({
@@ -1643,9 +1654,9 @@ export async function startKPayPwa(c: Context) {
       wrapRequest: winningWrapRequest,
     });
 
-    const originPath = text(body.originPath);
-    const summaryPath = text(body.summaryPath);
-    const storefrontOrigin = text(body.storefrontOrigin);
+    const originPath = originPathEarly;
+    const summaryPath = summaryPathEarly;
+    const storefrontOrigin = storefrontOriginEarly;
     const draftOrder =
       body.draftOrder && typeof body.draftOrder === "object"
         ? (body.draftOrder as Record<string, unknown>)
@@ -1715,7 +1726,8 @@ export async function handleKPayPwaReturn(c: Context) {
     }, 500);
   }
 
-  const draft = merchantOrderId ? await getPwaCheckoutDraft(merchantOrderId) : null;
+  const draftRaw = merchantOrderId ? await getPwaCheckoutDraft(merchantOrderId) : null;
+  const draft = enrichPwaDraftWithCallback(draftRaw, callbackInfo);
 
   if (merchantOrderId) {
     const fin = await finalizePwaCheckoutOrder(merchantOrderId);
