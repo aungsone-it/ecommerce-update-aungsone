@@ -173,6 +173,26 @@ function profileSegmentToMode(seg: string | null): VendorAccountViewMode | null 
   }
 }
 
+function isVendorProfileProtectedRoute(
+  vendorViewMode: VendorAccountViewMode,
+  profileOrderId: string | null | undefined
+): boolean {
+  if (profileOrderId) return true;
+  return vendorViewMode !== "storefront";
+}
+
+function hasVendorCustomerSession(user: unknown): boolean {
+  if (resolveUserIdFromRecord(user)) return true;
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem("migoo-user");
+    if (!raw) return false;
+    return !!resolveUserIdFromRecord(JSON.parse(raw));
+  } catch {
+    return false;
+  }
+}
+
 /** Same shape as main Storefront shipping addresses (KV + `/customers/:id/addresses`). */
 interface MarketplaceAddress {
   id: string;
@@ -1192,6 +1212,15 @@ export function VendorStoreView({
     }
   }, []);
 
+  // Profile routes require a customer session — open sign-in when visiting while logged out.
+  useEffect(() => {
+    if (!isVendorProfileProtectedRoute(vendorViewMode, profileOrderId)) return;
+    if (hasVendorCustomerSession(user)) return;
+    toast.error("Please sign in to access this page");
+    setShowAuthModal(true);
+    setAuthMode("login");
+  }, [vendorViewMode, profileOrderId, user]);
+
   useEffect(() => {
     if (!user) return;
     setProfileForm({
@@ -2005,7 +2034,49 @@ export function VendorStoreView({
   };
 
   const renderVendorAccountPage = () => {
-    if (!user || vendorViewMode === "storefront") return null;
+    if (vendorViewMode === "storefront") return null;
+
+    if (!user) {
+      return (
+        <div className="max-w-md mx-auto w-full py-8 sm:py-12">
+          <Card>
+            <CardContent className="py-12 text-center space-y-6">
+              <UserCircle className="w-16 h-16 text-slate-300 mx-auto" />
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Sign in required</h2>
+                <p className="text-slate-600 mt-2 text-sm">
+                  Sign in or create an account to view your profile and orders.
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  className="bg-slate-900 hover:bg-slate-800 text-white"
+                  onClick={() => {
+                    setShowAuthModal(true);
+                    setAuthMode("login");
+                  }}
+                >
+                  Sign In
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowAuthModal(true);
+                    setAuthMode("register");
+                  }}
+                >
+                  Register
+                </Button>
+              </div>
+              <Button variant="ghost" onClick={() => goToProfileMode("storefront")}>
+                <ChevronLeft className="w-4 h-4 mr-2" />
+                Back to store
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
 
     const orderCount = orderHistory.length;
     const getOrderStatusColor = (status: string) => {

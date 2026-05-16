@@ -41,6 +41,7 @@ export function AnimatedOutlet() {
         pathname === "/saved" ||
         pathname.startsWith("/profile") ||
         pathname === "/checkout" ||
+        pathname === "/summary" ||
         pathname === "/order-confirmation";
       const vendorRootReserved = new Set([
         "admin",

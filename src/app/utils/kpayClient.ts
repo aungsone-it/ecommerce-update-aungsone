@@ -425,6 +425,39 @@ export async function fetchKPaySessionStatus(
 // once they come back from KBZPay.
 export const KPAY_PWA_PENDING_STORAGE_KEY = "kpay_pwa_pending_order";
 
+/** Map a checkout (or return) pathname to its order-summary route. */
+export function buildCheckoutSummaryPath(pathname: string): string {
+  const path = (pathname.split("?")[0] || "").replace(/\/$/, "") || "/";
+  if (path === "/summary" || path.endsWith("/summary")) return path;
+  if (path === "/checkout") return "/summary";
+  if (/\/checkout(?:\/success)?$/.test(path)) {
+    return path.replace(/\/checkout(?:\/success)?$/, "/summary");
+  }
+  return "/summary";
+}
+
+/** Summary URL after KBZ PWA return — preserves vendor path from checkout `originPath`. */
+export function buildKPaySummaryReturnUrl(params: {
+  originPath?: string | null;
+  merchantOrderId?: string;
+  prepayId?: string;
+}): string {
+  const base = buildCheckoutSummaryPath(params.originPath || "/summary");
+  const qs = new URLSearchParams();
+  if (params.merchantOrderId) qs.set("merch_order_id", params.merchantOrderId);
+  if (params.prepayId) qs.set("prepay_id", params.prepayId);
+  const q = qs.toString();
+  return q ? `${base}?${q}` : base;
+}
+
+export function clearKPayPwaPendingStorage(): void {
+  try {
+    localStorage.removeItem(KPAY_PWA_PENDING_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export type StartKPayPwaParams = KPayBaseParams & {
   amount: number;
   merchantOrderId?: string;

@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import {
   KPAY_PWA_PENDING_STORAGE_KEY,
+  buildKPaySummaryReturnUrl,
   fetchKPaySessionStatus,
   type KPaySession,
 } from "../utils/kpayClient";
@@ -118,15 +119,8 @@ export function KPayReturnPage() {
       if (cancelled) return;
       if (result !== "stop") {
         timer = setTimeout(() => void loop(), POLL_INTERVAL_MS);
-      } else {
-        // Once we settle into a terminal state, drop the persisted PWA context so
-        // a stale local entry can't confuse a future redirect.
-        try {
-          localStorage.removeItem(KPAY_PWA_PENDING_STORAGE_KEY);
-        } catch {
-          // ignore
-        }
       }
+      // Pending PWA context is cleared on the summary page after the order is hydrated.
     };
     void loop();
 
@@ -139,14 +133,15 @@ export function KPayReturnPage() {
   const isPaid = state.kind === "ok" && state.session.status === "paid";
   const isFailed = state.kind === "ok" && state.session.status === "failed";
   const isPending = state.kind === "ok" && state.session.status === "pending";
-  const summaryTarget = useMemo(() => {
-    const base = "/summary";
-    const params = new URLSearchParams();
-    if (merchantOrderId) params.set("merch_order_id", merchantOrderId);
-    if (prepayIdFromUrl) params.set("prepay_id", prepayIdFromUrl);
-    const qs = params.toString();
-    return qs ? `${base}?${qs}` : base;
-  }, [merchantOrderId, prepayIdFromUrl]);
+  const summaryTarget = useMemo(
+    () =>
+      buildKPaySummaryReturnUrl({
+        originPath: pendingContext?.originPath,
+        merchantOrderId,
+        prepayId: prepayIdFromUrl,
+      }),
+    [merchantOrderId, prepayIdFromUrl, pendingContext?.originPath]
+  );
 
   useEffect(() => {
     if (!isPaid) return;

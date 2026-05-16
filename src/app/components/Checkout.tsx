@@ -30,6 +30,8 @@ import { invalidateCustomerOrdersCache } from "../utils/module-cache";
 import {
   type KPaySession,
   buildMerchantOrderId,
+  buildCheckoutSummaryPath,
+  clearKPayPwaPendingStorage,
   createKPayQrSession,
   fetchKPaySessionStatus,
   startKPayPwa,
@@ -223,6 +225,29 @@ function readCheckoutSummarySnapshot(key: string): CheckoutSummarySnapshot | nul
   }
 }
 
+/** Latest order for this vendor storefront when `/summary` has no order id in the URL. */
+function pickLatestOrderForVendor(
+  orders: unknown,
+  vendorId?: string,
+  vendorLabel?: string
+): any | null {
+  if (!Array.isArray(orders) || orders.length === 0) return null;
+  const idKey = String(vendorId || "").trim().toLowerCase();
+  const labelKey = String(vendorLabel || "").trim().toLowerCase();
+  const matchesVendor = (o: any) => {
+    if (!idKey && !labelKey) return true;
+    const ov = String(o?.vendorId ?? o?.vendor ?? "").trim().toLowerCase();
+    const on = String(o?.vendorName ?? o?.storeName ?? "").trim().toLowerCase();
+    if (idKey && ov && (ov === idKey || ov.includes(idKey) || idKey.includes(ov))) return true;
+    if (labelKey && on && (on === labelKey || on.includes(labelKey) || labelKey.includes(on))) {
+      return true;
+    }
+    return false;
+  };
+  const vendorOrders = orders.filter(matchesVendor);
+  return (vendorOrders.length > 0 ? vendorOrders : orders)[0] ?? null;
+}
+
 function summaryPaymentMethodLabel(
   method: "Card" | "KPay" | "KPay-PWA" | "BankTransfer"
 ): string {
@@ -325,15 +350,10 @@ export function Checkout({
     () => /\/summary$/.test(location.pathname) && !initialSummarySnapshot
   );
   const pwaFinalizeInFlightRef = useRef<Set<string>>(new Set());
-  const summaryPath = useMemo(() => {
-    const path = location.pathname;
-    if (path.endsWith("/summary") || path === "/summary") {
-      return path;
-    }
-    if (path === "/checkout") return "/summary";
-    if (path === "/checkout") return "/summary";
-    return path.replace(/\/checkout(?:\/success)?$/, "/summary");
-  }, [location.pathname]);
+  const summaryPath = useMemo(
+    () => buildCheckoutSummaryPath(location.pathname),
+    [location.pathname]
+  );
   const summarySnapshotStorageKey = useMemo(
     () => `checkout-summary:${summaryPath}`,
     [summaryPath]
@@ -666,6 +686,7 @@ export function Checkout({
       setPaymentMethod(normalizeCheckoutPaymentMethod(snapshot.paymentMethod));
       setStep("success");
       setLoading(false);
+      clearKPayPwaPendingStorage();
     } catch {
       // ignore corrupted snapshot and fall back to normal checkout
     } finally {
@@ -689,6 +710,49 @@ export function Checkout({
             ? pwaPendingContext.merchantOrderId
             : "");
         currentOrderId = orderId;
+
+        // KBZ redirect: show draft checkout data immediately while order is fetched/finalized.
+        if (
+          orderId &&
+          pwaPendingContext?.merchantOrderId === orderId &&
+          pwaPendingContext?.draftOrder &&
+          step !== "success"
+        ) {
+          const d = pwaPendingContext.draftOrder;
+          const draftItems = (Array.isArray(d.items) ? d.items : []).map((it: any, idx: number) => ({
+            id: String(it?.productId ?? it?.id ?? idx),
+            sku: String(it?.name ?? it?.sku ?? "Item"),
+            quantity: Number(it?.quantity ?? 1) || 1,
+            price: Number(it?.price ?? 0) || 0,
+            image: typeof it?.image === "string" ? it.image : "",
+          }));
+          if (draftItems.length > 0) {
+            const ship = d.shippingInfo || {};
+            setOrderNumber(orderId);
+            setConfirmedItems(draftItems);
+            setConfirmedTotal(Number(d.total || 0) || 0);
+            setConfirmedOrderNote(String(d.notes || ""));
+            setConfirmedDiscount(Number(d.discount || 0) || 0);
+            setConfirmedCoupon(
+              typeof d.couponCode === "string" && d.couponCode.trim()
+                ? { campaign: { code: d.couponCode } }
+                : null
+            );
+            setShippingInfo({
+              fullName: String(ship.fullName ?? d.customerName ?? ""),
+              email: String(d.email ?? ""),
+              phone: String(ship.phone ?? d.phone ?? ""),
+              address: String(ship.address ?? ""),
+              city: String(ship.city ?? ""),
+              zipCode: String(ship.zipCode ?? ""),
+              country: String(ship.country ?? ""),
+            });
+            setPaymentMethod("KPay-PWA");
+            setStep("success");
+            setSummaryResolving(false);
+          }
+        }
+
         let response: Response | null = null;
         if (orderId) {
           const orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(orderId)}`;
@@ -783,9 +847,11 @@ export function Checkout({
         const data = (await response.json()) as { order?: any; orders?: any[] };
         const o = orderId
           ? data?.order
-          : Array.isArray(data?.orders) && data.orders.length > 0
-            ? data.orders[0]
-            : null;
+          : pickLatestOrderForVendor(
+              data?.orders,
+              vendorId,
+              vendorName || storeName
+            );
         if (!o || cancelled) return;
         const itemsFromOrder = Array.isArray(o.items)
           ? o.items.map((it: any, idx: number) => ({
@@ -852,6 +918,7 @@ export function Checkout({
           };
           localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
           localStorage.setItem(CHECKOUT_LATEST_SUMMARY_KEY, JSON.stringify(snapshot));
+          clearKPayPwaPendingStorage();
         } catch {
           /* ignore snapshot write failure */
         }
@@ -878,17 +945,6 @@ export function Checkout({
     shippingInfo,
     summarySnapshotStorageKey,
   ]);
-
-  if (/\/summary$/.test(location.pathname) && step !== "success" && summaryResolving) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-        <div className="text-center space-y-3">
-          <Loader2 className="mx-auto h-10 w-10 animate-spin text-slate-600" />
-          <p className="text-sm text-slate-600">Loading latest order summary...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Apply coupon code
   const handleApplyCoupon = async () => {
@@ -1143,6 +1199,9 @@ export function Checkout({
     orderNote,
     effectiveUser?.email,
   ]);
+
+  const onSummaryRoute = /\/summary$/.test(location.pathname);
+  const showSummaryLoading = onSummaryRoute && step !== "success" && summaryResolving;
 
   // After a QR is issued, payment completion is written to KV by the public `kpay-webhook`
   // (and optionally refreshed via `queryorder` in `getKPayStatus`). We still subscribe to
@@ -1501,6 +1560,17 @@ export function Checkout({
       clearCart();
     }, 500);
   };
+
+  if (showSummaryLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <div className="text-center space-y-3">
+          <Loader2 className="mx-auto h-10 w-10 animate-spin text-slate-600" />
+          <p className="text-sm text-slate-600">Loading latest order summary...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Success Screen
   if (step === "success") {
