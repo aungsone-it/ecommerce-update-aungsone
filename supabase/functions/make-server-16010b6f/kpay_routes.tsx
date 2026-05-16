@@ -4,6 +4,7 @@ import {
   savePwaCheckoutDraft,
   getPwaCheckoutDraft,
   finalizePwaCheckoutOrder,
+  buildPwaSummaryAbsoluteUrl,
 } from "./pwa_finalize.ts";
 
 type AnyRecord = Record<string, unknown>;
@@ -1644,6 +1645,7 @@ export async function startKPayPwa(c: Context) {
 
     const originPath = text(body.originPath);
     const summaryPath = text(body.summaryPath);
+    const storefrontOrigin = text(body.storefrontOrigin);
     const draftOrder =
       body.draftOrder && typeof body.draftOrder === "object"
         ? (body.draftOrder as Record<string, unknown>)
@@ -1654,6 +1656,7 @@ export async function startKPayPwa(c: Context) {
         prepayId,
         originPath: originPath || undefined,
         summaryPath: summaryPath || undefined,
+        storefrontOrigin: storefrontOrigin || undefined,
         draftOrder,
         savedAt: ts2,
       });
@@ -1727,19 +1730,19 @@ export async function handleKPayPwaReturn(c: Context) {
     }
   }
 
-  const summaryPath = text(draft?.summaryPath);
-  const baseUrl = new URL(spaReturnBase);
-  const target = summaryPath.startsWith("/")
-    ? new URL(summaryPath, `${baseUrl.origin}/`)
-    : summaryPath && /^https?:\/\//i.test(summaryPath)
-      ? new URL(summaryPath)
-      : new URL(spaReturnBase);
+  let targetUrl = buildPwaSummaryAbsoluteUrl(
+    draft,
+    spaReturnBase,
+    prepayId,
+    merchantOrderId,
+  );
+  if (callbackInfo) {
+    const u = new URL(targetUrl);
+    u.searchParams.set("callback_info", callbackInfo);
+    targetUrl = u.toString();
+  }
 
-  if (prepayId) target.searchParams.set("prepay_id", prepayId);
-  if (merchantOrderId) target.searchParams.set("merch_order_id", merchantOrderId);
-  if (callbackInfo) target.searchParams.set("callback_info", callbackInfo);
-
-  return c.redirect(target.toString(), 302);
+  return c.redirect(targetUrl, 302);
 }
 
 export async function getPwaCheckoutDraftRoute(c: Context) {

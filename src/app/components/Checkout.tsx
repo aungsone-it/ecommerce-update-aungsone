@@ -126,6 +126,8 @@ type KPayPwaPendingContext = {
   currency?: string;
   redirectedAt?: string;
   originPath?: string;
+  summaryPath?: string;
+  storefrontOrigin?: string;
   draftOrder?: {
     userId?: string | null;
     customerName?: string;
@@ -839,6 +841,8 @@ export function Checkout({
               merchantOrderId: orderId,
               prepayId: serverDraft.prepayId,
               originPath: serverDraft.originPath,
+              summaryPath: serverDraft.summaryPath,
+              storefrontOrigin: serverDraft.storefrontOrigin,
               draftOrder: serverDraft.draftOrder as KPayPwaPendingContext["draftOrder"],
             };
           }
@@ -1188,6 +1192,8 @@ export function Checkout({
       const merchantOrderId = buildMerchantOrderId("ORD");
       const originPath =
         typeof window !== "undefined" ? window.location.pathname + window.location.search : "";
+      const storefrontOrigin =
+        typeof window !== "undefined" ? window.location.origin : "";
       const draftOrder = {
         userId: effectiveUser?.id ?? null,
         customerName: shippingInfo.fullName,
@@ -1226,6 +1232,7 @@ export function Checkout({
         title: `Order ${merchantOrderId}`,
         originPath,
         summaryPath,
+        storefrontOrigin,
         draftOrder,
       });
       // Persist enough context for the /kpay/return route to finalize the order.
@@ -1243,6 +1250,7 @@ export function Checkout({
             redirectedAt: new Date().toISOString(),
             originPath,
             summaryPath,
+            storefrontOrigin,
             draftOrder,
           }),
         );

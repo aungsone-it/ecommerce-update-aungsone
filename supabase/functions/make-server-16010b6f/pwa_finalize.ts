@@ -18,10 +18,46 @@ export type PwaCheckoutDraftRecord = {
   merchantOrderId: string;
   prepayId?: string;
   originPath?: string;
+  /** e.g. `/summary` on vendor host or `/vendor/go-go/summary` on marketplace */
   summaryPath?: string;
+  /** Storefront origin where checkout started, e.g. `https://gogo.walwal.online` */
+  storefrontOrigin?: string;
   draftOrder?: Record<string, unknown>;
   savedAt: string;
 };
+
+/** Absolute URL for post-payment summary (vendor subdomain / custom domain safe). */
+export function buildPwaSummaryAbsoluteUrl(
+  draft: PwaCheckoutDraftRecord | null,
+  fallbackSpaBase: string,
+  prepayId: string,
+  merchantOrderId: string,
+): string {
+  const qs = new URLSearchParams();
+  if (prepayId) qs.set("prepay_id", prepayId);
+  if (merchantOrderId) qs.set("merch_order_id", merchantOrderId);
+  const q = qs.toString();
+
+  const summaryPath = text(draft?.summaryPath) || "/summary";
+  const storefrontOrigin = text(draft?.storefrontOrigin);
+
+  if (storefrontOrigin) {
+    const base = storefrontOrigin.replace(/\/$/, "");
+    const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
+    return q ? `${base}${path}?${q}` : `${base}${path}`;
+  }
+
+  if (/^https?:\/\//i.test(summaryPath)) {
+    const u = new URL(summaryPath);
+    if (prepayId) u.searchParams.set("prepay_id", prepayId);
+    if (merchantOrderId) u.searchParams.set("merch_order_id", merchantOrderId);
+    return u.toString();
+  }
+
+  const spa = new URL(fallbackSpaBase);
+  const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
+  return q ? `${spa.origin}${path}?${q}` : `${spa.origin}${path}`;
+}
 
 export async function savePwaCheckoutDraft(record: PwaCheckoutDraftRecord): Promise<void> {
   const id = text(record.merchantOrderId);

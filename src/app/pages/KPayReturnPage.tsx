@@ -5,8 +5,7 @@ import { Button } from "../components/ui/button";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import {
   KPAY_PWA_PENDING_STORAGE_KEY,
-  buildKPaySummaryReturnUrl,
-  buildCheckoutSummaryPath,
+  buildPwaSummaryAbsoluteUrl,
   fetchKPaySessionStatus,
   fetchPwaCheckoutDraft,
   finalizePwaCheckoutOrderApi,
@@ -21,8 +20,20 @@ type ReturnState =
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 45_000;
-/** Redirect to summary even if KV still says pending — summary page will keep finalizing. */
-const SUMMARY_REDIRECT_MS = 6_000;
+const SUMMARY_REDIRECT_MS = 4_000;
+
+function navigateToSummary(url: string, navigate: ReturnType<typeof useNavigate>) {
+  if (/^https?:\/\//i.test(url)) {
+    const target = new URL(url);
+    const here = new URL(window.location.href);
+    if (target.origin !== here.origin || target.pathname !== here.pathname) {
+      window.location.replace(url);
+      return;
+    }
+  }
+  const path = url.startsWith("http") ? new URL(url).pathname + new URL(url).search : url;
+  navigate(path, { replace: true });
+}
 
 export function KPayReturnPage() {
   const navigate = useNavigate();
@@ -49,45 +60,48 @@ export function KPayReturnPage() {
         merchantOrderId?: string;
         originPath?: string;
         summaryPath?: string;
+        storefrontOrigin?: string;
       };
     } catch {
       return null;
     }
   });
 
-  const [serverSummaryPath, setServerSummaryPath] = useState<string | null>(null);
+  const [serverDraft, setServerDraft] = useState<{
+    summaryPath?: string;
+    storefrontOrigin?: string;
+    originPath?: string;
+  } | null>(null);
   const [state, setState] = useState<ReturnState>({ kind: "loading" });
   const finalizeAttemptedRef = useRef(false);
 
   useEffect(() => {
     if (!merchantOrderId) return;
     void fetchPwaCheckoutDraft({ projectId, publicAnonKey, merchantOrderId }).then((draft) => {
-      if (draft?.summaryPath) setServerSummaryPath(draft.summaryPath);
+      if (draft) {
+        setServerDraft({
+          summaryPath: draft.summaryPath,
+          storefrontOrigin: draft.storefrontOrigin,
+          originPath: draft.originPath,
+        });
+      }
     });
   }, [merchantOrderId]);
 
-  const summaryTarget = useMemo(() => {
-    const origin =
-      localPending?.originPath ||
-      (serverSummaryPath
-        ? serverSummaryPath.replace(/\/summary$/, "/checkout")
-        : undefined);
-    if (serverSummaryPath) {
-      const base = serverSummaryPath.startsWith("/")
-        ? serverSummaryPath
-        : buildCheckoutSummaryPath(serverSummaryPath);
-      const qs = new URLSearchParams();
-      if (merchantOrderId) qs.set("merch_order_id", merchantOrderId);
-      if (prepayIdFromUrl) qs.set("prepay_id", prepayIdFromUrl);
-      const q = qs.toString();
-      return q ? `${base}?${q}` : base;
-    }
-    return buildKPaySummaryReturnUrl({
-      originPath: origin,
-      merchantOrderId,
-      prepayId: prepayIdFromUrl,
-    });
-  }, [merchantOrderId, prepayIdFromUrl, localPending?.originPath, serverSummaryPath]);
+  const summaryTarget = useMemo(
+    () =>
+      buildPwaSummaryAbsoluteUrl({
+        storefrontOrigin:
+          serverDraft?.storefrontOrigin ||
+          localPending?.storefrontOrigin ||
+          (typeof window !== "undefined" ? window.location.origin : ""),
+        summaryPath: serverDraft?.summaryPath || localPending?.summaryPath || "/summary",
+        originPath: serverDraft?.originPath || localPending?.originPath,
+        merchantOrderId,
+        prepayId: prepayIdFromUrl,
+      }),
+    [merchantOrderId, prepayIdFromUrl, localPending, serverDraft],
+  );
 
   useEffect(() => {
     if (!merchantOrderId) {
@@ -155,10 +169,9 @@ export function KPayReturnPage() {
   const isPending = state.kind === "ok" && state.session.status === "pending";
 
   useEffect(() => {
-    if (!merchantOrderId) return;
-    if (isFailed) return;
+    if (!merchantOrderId || isFailed) return;
 
-    const go = () => navigate(summaryTarget, { replace: true });
+    const go = () => navigateToSummary(summaryTarget, navigate);
 
     if (isPaid) {
       go();
@@ -168,6 +181,16 @@ export function KPayReturnPage() {
     const t = window.setTimeout(go, SUMMARY_REDIRECT_MS);
     return () => window.clearTimeout(t);
   }, [isPaid, isFailed, merchantOrderId, navigate, summaryTarget]);
+
+  const backToStore = useMemo(() => {
+    const origin =
+      serverDraft?.storefrontOrigin ||
+      localPending?.storefrontOrigin ||
+      (typeof window !== "undefined" ? window.location.origin : "");
+    const path = (serverDraft?.originPath || localPending?.originPath || "/").split("?")[0] || "/";
+    if (origin) return `${origin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+    return path;
+  }, [serverDraft, localPending]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 flex items-center justify-center p-4">
@@ -209,7 +232,7 @@ export function KPayReturnPage() {
           {isPaid && "Redirecting to your order summary..."}
           {isFailed && "KBZ reported a failed or cancelled payment."}
           {isPending &&
-            "Payment may still be confirming. You will be sent to the order summary shortly."}
+            "Payment may still be confirming. You will be sent to your order summary shortly."}
           {state.kind === "error" && state.message}
         </p>
 
@@ -233,7 +256,7 @@ export function KPayReturnPage() {
             <Button
               type="button"
               className="w-full bg-slate-900 text-white hover:bg-slate-800"
-              onClick={() => navigate(summaryTarget, { replace: true })}
+              onClick={() => navigateToSummary(summaryTarget, navigate)}
             >
               View order summary
             </Button>
@@ -242,7 +265,13 @@ export function KPayReturnPage() {
             type="button"
             variant="outline"
             className="w-full"
-            onClick={() => navigate(localPending?.originPath?.split("?")[0] || "/")}
+            onClick={() => {
+              if (/^https?:\/\//i.test(backToStore)) {
+                window.location.href = backToStore;
+              } else {
+                navigate(backToStore);
+              }
+            }}
           >
             Back to store
           </Button>

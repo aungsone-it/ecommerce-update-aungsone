@@ -442,12 +442,49 @@ export function buildKPaySummaryReturnUrl(params: {
   merchantOrderId?: string;
   prepayId?: string;
 }): string {
-  const base = buildCheckoutSummaryPath(params.originPath || "/summary");
+  return buildPwaSummaryAbsoluteUrl({
+    storefrontOrigin: null,
+    summaryPath: buildCheckoutSummaryPath(params.originPath || "/checkout"),
+    merchantOrderId: params.merchantOrderId,
+    prepayId: params.prepayId,
+  });
+}
+
+/** Full URL for summary after PWA pay — required for vendor subdomains (gogo.walwal.online/summary). */
+export function buildPwaSummaryAbsoluteUrl(params: {
+  storefrontOrigin?: string | null;
+  summaryPath?: string | null;
+  originPath?: string | null;
+  merchantOrderId?: string;
+  prepayId?: string;
+}): string {
   const qs = new URLSearchParams();
   if (params.merchantOrderId) qs.set("merch_order_id", params.merchantOrderId);
   if (params.prepayId) qs.set("prepay_id", params.prepayId);
   const q = qs.toString();
-  return q ? `${base}?${q}` : base;
+
+  const summaryPath =
+    (params.summaryPath && params.summaryPath.trim()) ||
+    buildCheckoutSummaryPath(params.originPath || "/checkout");
+
+  const origin = (params.storefrontOrigin || "").trim().replace(/\/$/, "");
+  if (origin) {
+    const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
+    return q ? `${origin}${path}?${q}` : `${origin}${path}`;
+  }
+
+  if (/^https?:\/\//i.test(summaryPath)) {
+    const u = new URL(summaryPath);
+    if (params.merchantOrderId) u.searchParams.set("merch_order_id", params.merchantOrderId);
+    if (params.prepayId) u.searchParams.set("prepay_id", params.prepayId);
+    return u.toString();
+  }
+
+  const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
+  if (typeof window !== "undefined") {
+    return q ? `${window.location.origin}${path}?${q}` : `${window.location.origin}${path}`;
+  }
+  return q ? `${path}?${q}` : path;
 }
 
 export function clearKPayPwaPendingStorage(): void {
@@ -469,8 +506,10 @@ export type StartKPayPwaParams = KPayBaseParams & {
   callbackInfo?: string;
   /** Checkout path before KBZ redirect — used to build summary URL on return. */
   originPath?: string;
-  /** Order summary route, e.g. `/vendor/go-go/summary`. */
+  /** Order summary route, e.g. `/summary` or `/vendor/go-go/summary`. */
   summaryPath?: string;
+  /** Where checkout started, e.g. `https://gogo.walwal.online`. */
+  storefrontOrigin?: string;
   /** Full cart + shipping payload — stored server-side for post-payment order create. */
   draftOrder?: Record<string, unknown>;
 };
@@ -480,6 +519,7 @@ export type PwaCheckoutDraftResponse = {
   prepayId?: string;
   originPath?: string;
   summaryPath?: string;
+  storefrontOrigin?: string;
   draftOrder?: Record<string, unknown>;
 };
 
@@ -523,6 +563,7 @@ export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaS
     callbackInfo,
     originPath,
     summaryPath,
+    storefrontOrigin,
     draftOrder,
   } = params;
 
@@ -543,6 +584,7 @@ export async function startKPayPwa(params: StartKPayPwaParams): Promise<KPayPwaS
         callbackInfo,
         originPath,
         summaryPath,
+        storefrontOrigin,
         draftOrder,
       }),
     },
