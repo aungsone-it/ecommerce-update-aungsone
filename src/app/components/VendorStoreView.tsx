@@ -4991,34 +4991,6 @@ export function VendorStoreView({
         vendorViewMode !== "storefront" ? "bg-slate-50" : "bg-white"
       }`}
     >
-      {/* Show error banner ONLY when server is unhealthy */}
-      {serverStatus === 'unhealthy' && (
-        <div className="fixed top-0 left-0 right-0 z-40 bg-gradient-to-r from-amber-50 to-orange-50 border-b-2 border-amber-300 shadow-lg">
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Clock className="h-6 w-6 flex-shrink-0 text-amber-600" aria-hidden />
-                <div>
-                  <p className="text-sm font-semibold text-amber-900">
-                    Server Starting - Please wait...
-                  </p>
-                  <p className="text-xs text-amber-700 mt-0.5">
-                    The storefront will load automatically within 30-60 seconds.
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={() => loadVendorData(true)}
-                variant="outline"
-                size="sm"
-                className="border-amber-400 hover:bg-amber-100 text-amber-900 font-medium flex-shrink-0"
-              >
-                Retry Now
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
       
       <CartDrawer 
         isOpen={cartOpen} 
@@ -5378,20 +5350,27 @@ export function VendorStoreView({
               <ProductDetailSkeleton />
             ) : (
               <>
-            {/* Failed load: main area was empty (only header/footer) — always show retry */}
+            {/* Network / timeout — not an empty catalog or app bug */}
             {serverStatus === 'unhealthy' && (
-              <div className="text-center py-16 sm:py-24 max-w-lg mx-auto px-4">
-                <Store className="w-16 h-16 text-amber-400 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Couldn&apos;t load this store</h3>
-                <p className="text-slate-600 mb-6 text-sm sm:text-base">
-                  The product catalog didn&apos;t load. Check your connection, wait a moment, or tap retry.
+              <div className="flex flex-col items-center justify-center py-16 sm:py-24 max-w-md mx-auto px-4 text-center">
+                <div className="w-20 h-20 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-6">
+                  <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                    <X className="w-8 h-8 text-red-600" aria-hidden />
+                  </div>
+                </div>
+                <h2 className="text-lg font-bold text-slate-900 mb-2">Connection Timeout</h2>
+                <p className="text-slate-600 text-sm mb-6">
+                  Unable to connect to the server. Please check your internet connection and try again.
                 </p>
                 <Button
-                  onClick={() => loadVendorData(true)}
-                  className="bg-amber-600 hover:bg-amber-700"
+                  onClick={() => {
+                    setServerStatus('checking');
+                    void loadVendorData(true);
+                  }}
+                  className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white px-8 py-3 rounded-lg"
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Retry
+                  Retry Connection
                 </Button>
               </div>
             )}

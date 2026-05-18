@@ -15,6 +15,10 @@ import { compressImageToDataURL, compressMultipleImagesToDataURL } from "../../u
 import { RichTextEditor } from "./RichTextEditor";
 import { productsApi } from "../../utils/api";
 import { apiCache } from "../utils/cache";
+import {
+  invalidateAdminAllProductsCache,
+  invalidateProductByIdCache,
+} from "../utils/module-cache";
 import { CategorySelect } from "./CategorySelect";
 import { useLanguage } from "../contexts/LanguageContext";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
@@ -406,6 +410,28 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
     setVariants(newVariants);
   }, [hasVariants, variantOptions, isInitializing, mode]); // ⚠️ Don't include 'variants' to avoid infinite loop
 
+  const handleProductStatusChange = async (newStatus: string) => {
+    const previousStatus = status;
+    setStatus(newStatus);
+
+    if (mode !== "edit" || !initialData?.id || isReadOnly || newStatus === previousStatus) {
+      return;
+    }
+
+    try {
+      await productsApi.update(initialData.id, { status: newStatus });
+      invalidateProductByIdCache(initialData.id);
+      invalidateAdminAllProductsCache();
+      toast.success(
+        newStatus === "off-shelf" ? "Product moved off shelf" : "Product is now active"
+      );
+    } catch (error) {
+      console.error("Failed to update product status:", error);
+      setStatus(previousStatus);
+      toast.error("Failed to update product status");
+    }
+  };
+
   const handleSubmit = async () => {
     // Validation: Check required fields based on whether variants are enabled
     if (!title) {
@@ -413,32 +439,34 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
       return;
     }
 
-    // If variants are enabled, check variant data
-    if (hasVariants) {
-      if (variants.length === 0) {
-        toast.error("Please add at least one variant");
-        return;
-      }
-      const hasValidVariant = variants.some(v => v.sku && v.sku.trim() !== '');
-      if (!hasValidVariant) {
-        toast.error("Please fill in SKU for at least one variant");
-        return;
-      }
-      // Check if at least one variant has a price
-      const hasVariantWithPrice = variants.some(v => v.price && parseFloat(v.price) > 0);
-      if (!hasVariantWithPrice) {
-        toast.error("Please fill in price for at least one variant");
-        return;
-      }
-    } else {
-      // If no variants, check main product price and SKU
-      if (!price) {
-        toast.error("Please fill in all required fields: Title, Price, and SKU");
-        return;
-      }
-      if (!sku) {
-        toast.error("Please fill in all required fields: Title, Price, and SKU");
-        return;
+    const isOffShelf = status === "off-shelf";
+
+    // Off-shelf products can be saved without price/SKU checks (hide from storefront only)
+    if (!isOffShelf) {
+      if (hasVariants) {
+        if (variants.length === 0) {
+          toast.error("Please add at least one variant");
+          return;
+        }
+        const hasValidVariant = variants.some(v => v.sku && v.sku.trim() !== '');
+        if (!hasValidVariant) {
+          toast.error("Please fill in SKU for at least one variant");
+          return;
+        }
+        const hasVariantWithPrice = variants.some(v => v.price && parseFloat(v.price) > 0);
+        if (!hasVariantWithPrice) {
+          toast.error("Please fill in price for at least one variant");
+          return;
+        }
+      } else {
+        if (!price) {
+          toast.error("Please fill in all required fields: Title, Price, and SKU");
+          return;
+        }
+        if (!sku) {
+          toast.error("Please fill in all required fields: Title, Price, and SKU");
+          return;
+        }
       }
     }
     
@@ -1327,7 +1355,11 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
                 <CardTitle>{t('addProduct.productStatus')}</CardTitle>
               </CardHeader>
               <CardContent>
-                <Select value={status} onValueChange={setStatus} disabled={isReadOnly}>
+                <Select
+                  value={status}
+                  onValueChange={(value) => void handleProductStatusChange(value)}
+                  disabled={isReadOnly}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>

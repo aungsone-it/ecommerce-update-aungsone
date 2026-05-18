@@ -3,13 +3,9 @@ import {
   Plus,
   Edit,
   Trash2,
-  Filter,
-  Users,
-  TrendingUp,
   CalendarDays,
   MoreVertical,
   Eye,
-  RefreshCw,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -109,6 +105,25 @@ function resolveVendorsFromSelectionEntries(
   return out;
 }
 
+function normalizeAdminProductStatus(status: unknown): string {
+  return String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+function productMatchesAdminStatusFilter(product: Product, filter: string): boolean {
+  if (filter === "all") return true;
+  const status = normalizeAdminProductStatus(product.status);
+  if (filter === "active") {
+    return status === "active" || status === "published";
+  }
+  if (filter === "off-shelf") {
+    return status === "off-shelf" || status === "offshelf";
+  }
+  return true;
+}
+
 /** Bust vendor shop cache + broadcast so open storefronts refetch after assign/unassign on product edit. */
 function invalidateVendorStorefrontsForProductVendorSelectionChange(
   previousSelectedVendors: unknown,
@@ -145,12 +160,8 @@ export function ProductList({
   const [adminTotal, setAdminTotal] = useState(0);
   const [adminHasMore, setAdminHasMore] = useState(false);
   const [statusCounts, setStatusCounts] = useState({ all: 0, active: 0, offShelf: 0 });
-  const [vendorFilterOptions, setVendorFilterOptions] = useState<string[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<string>("all");
-  const [vendorFilter, setVendorFilter] = useState<string>("all");
-  const [collaboratorFilter, setCollaboratorFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("newest");
   const [vendorsMap, setVendorsMap] = useState<Record<string, string>>({}); // 🔥 Map vendor ID to name
   /** Raw vendor rows from admin API — used to gate badges (active only) while labels use full `vendorsMap`. */
@@ -196,15 +207,7 @@ export function ProductList({
 
   useEffect(() => {
     setAdminPage(1);
-  }, [
-    committedSearchQuery,
-    statusFilter,
-    activeTab,
-    vendorFilter,
-    collaboratorFilter,
-    sortBy,
-    adminPageSize,
-  ]);
+  }, [committedSearchQuery, sortBy, adminPageSize]);
 
   const loadProductPage = useCallback(
     async (forceRefresh: boolean, opts?: { silent?: boolean }) => {
@@ -219,10 +222,10 @@ export function ProductList({
             page: adminPage,
             pageSize: adminPageSize,
             q: committedSearchQuery,
-            status: statusFilter,
-            tab: activeTab,
-            vendor: vendorFilter,
-            collaborator: collaboratorFilter,
+            status: "all",
+            tab: "all",
+            vendor: "all",
+            collaborator: "all",
             sort: sortBy,
           },
           forceRefresh
@@ -253,10 +256,6 @@ export function ProductList({
       adminPage,
       adminPageSize,
       committedSearchQuery,
-      statusFilter,
-      activeTab,
-      vendorFilter,
-      collaboratorFilter,
       sortBy,
     ]
   );
@@ -265,14 +264,6 @@ export function ProductList({
     if (!Array.isArray(vendorsList)) return;
     setAdminVendorsRows(vendorsList);
     setVendorsMap(buildVendorDisplayLookup(vendorsList));
-    const names = [
-      ...new Set(
-        vendorsList
-          .map((vendor: any) => String(vendor.name || vendor.id || "").trim())
-          .filter(Boolean)
-      ),
-    ].sort();
-    setVendorFilterOptions(names);
   }, []);
 
   const loadVendors = useCallback(async (forceRefresh = false) => {
@@ -439,10 +430,10 @@ export function ProductList({
           page: 1,
           pageSize: adminPageSize,
           q: committedSearchQuery,
-          status: statusFilter,
-          tab: activeTab,
-          vendor: vendorFilter,
-          collaborator: collaboratorFilter,
+          status: "all",
+          tab: "all",
+          vendor: "all",
+          collaborator: "all",
           sort: sortBy,
         },
         true
@@ -664,11 +655,18 @@ export function ProductList({
     }
   };
 
-  /** Instant filter on the current server page + narrowing while debounced `q` is in flight. */
+  /** Search narrows the loaded page; status tabs filter client-side only (no refetch). */
+  const productsMatchingSearch = useMemo(
+    () => products.filter((product) => productMatchesAdminLiveSearch(product, searchQuery)),
+    [products, searchQuery]
+  );
+
   const displayProducts = useMemo(
     () =>
-      products.filter((product) => productMatchesAdminLiveSearch(product, searchQuery)),
-    [products, searchQuery]
+      productsMatchingSearch.filter((product) =>
+        productMatchesAdminStatusFilter(product, statusFilter)
+      ),
+    [productsMatchingSearch, statusFilter]
   );
 
   const toggleSelectAll = () => {
@@ -691,10 +689,10 @@ export function ProductList({
   };
 
   const getStatusCount = (status: string) => {
-    if (status === "all") return statusCounts.all;
-    if (status === "active") return statusCounts.active;
-    if (status === "off-shelf") return statusCounts.offShelf;
-    return 0;
+    if (status === "all") return productsMatchingSearch.length;
+    return productsMatchingSearch.filter((product) =>
+      productMatchesAdminStatusFilter(product, status)
+    ).length;
   };
 
   const adminTotalPages = Math.max(1, Math.ceil(adminTotal / adminPageSize) || 1);
@@ -747,16 +745,6 @@ export function ProductList({
               <p className="text-slate-500 mt-1">{t('products.subtitle')}</p>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={listRefreshing || loading}
-                onClick={() => void loadProductPage(true)}
-                className="border-slate-300"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
               <Button className="bg-slate-900 hover:bg-slate-800" onClick={() => setCurrentView("add")}>
                 {t('products.addProduct')}
               </Button>
@@ -833,27 +821,7 @@ export function ProductList({
           {/* Products Content */}
           {!loading && (
             <>
-              {/* Main Tabs - Category Filter */}
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-3 lg:w-[450px]">
-                  <TabsTrigger value="all" className="flex items-center gap-2">
-                    <Filter className="w-4 h-4" />
-                    {t('products.allProducts')}
-                  </TabsTrigger>
-                  <TabsTrigger value="vendor" className="flex items-center gap-2">
-                    <Users className="w-4 h-4" />
-                    {t('products.vendor')}
-                  </TabsTrigger>
-                  <TabsTrigger value="sales" className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4" />
-                    {t('products.salesVolume')}
-                  </TabsTrigger>
-                </TabsList>
-
-                {/* All Products Tab */}
-                <TabsContent value="all" className="space-y-6 mt-6">
-                  {/* Filters Bar - All in one row */}
-                  <Card className="p-4">
+              <Card className="p-4">
                     <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
                       {/* Search */}
                       <div className="flex-1 min-w-[280px]">
@@ -903,121 +871,6 @@ export function ProductList({
                       </Select>
                     </div>
                   </Card>
-                </TabsContent>
-
-                {/* Vendor Tab */}
-                <TabsContent value="vendor" className="space-y-6 mt-6">
-                  {/* Filters Bar - All in one row */}
-                  <Card className="p-4">
-                    <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
-                      {/* Search */}
-                      <div className="flex-1 min-w-[280px]">
-                        <AdminClearableSearchInput
-                          placeholder="Search by name or SKU — press Enter to search"
-                          value={searchQuery}
-                          onValueChange={handleSearchInputChange}
-                          onKeyDown={onSearchKeyDown}
-                          onClear={() => setCommittedSearchQuery("")}
-                        />
-                      </div>
-                      
-                      {/* Status Tabs */}
-                      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                        <TabsList>
-                          <TabsTrigger value="all" className="gap-2">
-                            {t('products.allStatus')}
-                            <Badge variant="secondary" className="bg-slate-200 text-slate-700 text-xs">
-                              {getStatusCount("all")}
-                            </Badge>
-                          </TabsTrigger>
-                          <TabsTrigger value="active" className="gap-2">
-                            {t('products.active')}
-                            <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
-                              {getStatusCount("active")}
-                            </Badge>
-                          </TabsTrigger>
-                          <TabsTrigger value="off-shelf" className="gap-2">
-                            {t('products.offShelf')}
-                            <Badge variant="secondary" className="bg-slate-200 text-slate-700 text-xs">
-                              {getStatusCount("off-shelf")}
-                            </Badge>
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
-
-                      {/* Vendor Filter */}
-                      <Select value={vendorFilter} onValueChange={setVendorFilter}>
-                        <SelectTrigger className="w-full lg:w-[220px]">
-                          <SelectValue placeholder={t('vendors.filterByVendor')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{t('vendors.allVendors')}</SelectItem>
-                          {vendorFilterOptions.map((vendor) => (
-                            <SelectItem key={vendor} value={vendor}>
-                              {vendor}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      {/* Sort Dropdown */}
-                      <Select value={sortBy} onValueChange={setSortBy}>
-                        <SelectTrigger className="w-full lg:w-[200px]">
-                          <CalendarDays className="w-4 h-4 mr-2" />
-                          <SelectValue placeholder={t('products.sortByDate')} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="newest">{t('products.newestFirst')}</SelectItem>
-                          <SelectItem value="oldest">{t('products.oldestFirst')}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </Card>
-                </TabsContent>
-
-                {/* Sales Volume Tab */}
-                <TabsContent value="sales" className="space-y-6 mt-6">
-                  {/* Filters Bar - All in one row */}
-                  <Card className="p-4">
-                    <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
-                      {/* Search */}
-                      <div className="flex-1 min-w-[280px]">
-                        <AdminClearableSearchInput
-                          placeholder="Search by name or SKU — press Enter to search"
-                          value={searchQuery}
-                          onValueChange={handleSearchInputChange}
-                          onKeyDown={onSearchKeyDown}
-                          onClear={() => setCommittedSearchQuery("")}
-                        />
-                      </div>
-                      
-                      {/* Status Tabs */}
-                      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                        <TabsList>
-                          <TabsTrigger value="all" className="gap-2">
-                            {t('products.allStatus')}
-                            <Badge variant="secondary" className="bg-slate-200 text-slate-700 text-xs">
-                              {getStatusCount("all")}
-                            </Badge>
-                          </TabsTrigger>
-                          <TabsTrigger value="active" className="gap-2">
-                            {t('products.active')}
-                            <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
-                              {getStatusCount("active")}
-                            </Badge>
-                          </TabsTrigger>
-                          <TabsTrigger value="off-shelf" className="gap-2">
-                            {t('products.offShelf')}
-                            <Badge variant="secondary" className="bg-slate-200 text-slate-700 text-xs">
-                              {getStatusCount("off-shelf")}
-                            </Badge>
-                          </TabsTrigger>
-                        </TabsList>
-                      </Tabs>
-                    </div>
-                  </Card>
-                </TabsContent>
-              </Tabs>
 
               {/* Bulk Actions Bar */}
               {selectedProducts.length > 0 && (
@@ -1060,9 +913,6 @@ export function ProductList({
                         <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Vendor</th>
                         <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Price</th>
                         <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Commission</th>
-                        {activeTab === "sales" && (
-                          <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Sales</th>
-                        )}
                         <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Actions</th>
                       </tr>
                     </thead>
@@ -1190,9 +1040,6 @@ export function ProductList({
                               {product.commissionRate || 0}%
                             </span>
                           </td>
-                          {activeTab === "sales" && (
-                            <td className="py-3 px-4 text-slate-700">{product.salesVolume}</td>
-                          )}
                           <td className="py-3 px-4">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>

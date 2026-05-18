@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import type { DateRange } from "react-day-picker";
-import { Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, TrendingUp, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, ChevronLeft, ChevronRight } from "lucide-react";
 import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -935,10 +935,9 @@ export function Orders({
     const orderIds = [...selectedOrders];
     setSelectedOrders([]);
     for (const id of orderIds) pendingOrderStatusDrafts.set(id, { status: bulkStatus, at: Date.now() });
-    markOrderSaving(orderIds);
+    clearOrderSaveState(orderIds);
 
-    // Show instant feedback for optimistic update (server confirmation follows)
-    toast.message(`${updatedCount} orders updating...`, { duration: 1500 });
+    toast.success(`${updatedCount} order${updatedCount === 1 ? "" : "s"} updated to ${bulkStatus}`);
     onOrderUpdate?.();
 
     // Instant inventory / Products + Inventory pages — mirror stock before network completes
@@ -952,7 +951,8 @@ export function Orders({
     }
     dispatchAdminProductsCachePatched();
 
-    // Sync with server in background
+    // Sync with server in background (UI already reflects the new status)
+    void (async () => {
     try {
       await Promise.all(
         orderIds.map(orderId => 
@@ -960,7 +960,6 @@ export function Orders({
         )
       );
       console.log(`✅ ${updatedCount} orders synced to server: ${bulkStatus}`);
-      markOrderSaved(orderIds);
       for (const orderId of orderIds) {
         void broadcastOrderStatusUpdate({
           orderId,
@@ -1002,10 +1001,11 @@ export function Orders({
       clearOrderSaveState(orderIds);
       onOrderUpdate?.();
     }
+    })();
   };
 
   // Handle status change for single order
-  const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+  const handleStatusChange = (orderId: string, newStatus: OrderStatus) => {
     // Find the order being updated
     const orderBeingUpdated = orders.find(o => o.id === orderId);
     const wasNotCancelled = orderBeingUpdated?.status !== 'cancelled';
@@ -1020,17 +1020,15 @@ export function Orders({
       )
     );
     pendingOrderStatusDrafts.set(orderId, { status: newStatus, at: Date.now() });
-    // Optimistic row feedback: show "Saving…" until server confirms.
-    markOrderSaving([orderId]);
+    clearOrderSaveState([orderId]);
 
-    // Show instant feedback with stock restoration notice
     if (wasNotCancelled && isNowCancelled) {
-      toast.message("Order cancellation is saving…", {
-        duration: 3000,
-        description: "Refund + status update are being confirmed on the server."
+      toast.message("Order cancelled", {
+        duration: 2500,
+        description: "Refund confirmation may take a moment on KPay orders.",
       });
     } else {
-      toast.message("Status update is saving…", { duration: 1500 });
+      toast.success(`Status updated to ${newStatus}`);
     }
     onOrderUpdate?.();
 
@@ -1038,7 +1036,7 @@ export function Orders({
       syncAdminInventoryCacheAfterOrderStatusChange(toInventorySyncSnapshot(orderBeingUpdated), newStatus);
     }
 
-    // Sync with server in background
+    void (async () => {
     try {
       const result = (await ordersApi.update(orderId, { status: newStatus })) as {
         order?: {
@@ -1049,7 +1047,6 @@ export function Orders({
         };
       };
       console.log(`✅ Order ${orderId} status synced to server: ${newStatus}`);
-      markOrderSaved([orderId]);
       const srv = result?.order as
         | {
             inventoryDeducted?: boolean;
@@ -1079,10 +1076,8 @@ export function Orders({
         } else if (rf === "processing") {
           toast.success("Cancelled — refund processing at bank");
         } else {
-          toast.success("Status saved");
+          toast.success("Cancellation saved");
         }
-      } else {
-        toast.success("Status saved");
       }
       void broadcastOrderStatusUpdate({
         orderId,
@@ -1136,24 +1131,7 @@ export function Orders({
       clearOrderSaveState([orderId]);
       onOrderUpdate?.();
     }
-  };
-
-  // Clear all test orders
-  const handleClearAllOrders = async () => {
-    if (!confirm("⚠️ Are you sure you want to delete ALL orders? This action cannot be undone!")) {
-      return;
-    }
-
-    try {
-      const response = await ordersApi.deleteAll();
-      toast.success(response.message || "All orders cleared successfully!");
-      setOrders([]);
-      invalidateAdminOrdersCache();
-      onOrderUpdate?.();
-    } catch (error) {
-      console.error("❌ Failed to clear orders:", error);
-      toast.error("Failed to delete orders");
-    }
+    })();
   };
 
   const clearFilters = () => {
@@ -1329,17 +1307,6 @@ export function Orders({
                       </Button>
                     </>
                   )}
-                  {ordersTotal > 0 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={handleClearAllOrders}
-                      className="border-red-300 text-red-600 hover:bg-red-50"
-                    >
-                      <X className="w-4 h-4 mr-2" />
-                      Clear All ({ordersTotal})
-                    </Button>
-                  )}
                   {hasActiveFilters && (
                     <Button variant="outline" size="sm" onClick={clearFilters}>
                       <X className="w-4 h-4 mr-2" />
@@ -1349,16 +1316,6 @@ export function Orders({
                   <Button variant="outline" size="sm" onClick={exportOrders}>
                     <Download className="w-4 h-4 mr-2" />
                     Export
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={listRefreshing || isLoading}
-                    onClick={() => loadOrders(true)}
-                    className="border-slate-300"
-                  >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
-                    Refresh
                   </Button>
                 </div>
               </div>
