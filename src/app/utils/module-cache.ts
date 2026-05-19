@@ -2064,6 +2064,85 @@ export function invalidateAdminAllCategoriesCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_ALL_CATEGORIES);
 }
 
+const LS_ADMIN_CATEGORIES_PENDING_DELETE = 'migoo-admin-categories-pending-delete-v1';
+
+let pendingAdminCategoryDeletes = loadPendingAdminCategoryDeletesFromStorage();
+
+function loadPendingAdminCategoryDeletesFromStorage(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = sessionStorage.getItem(LS_ADMIN_CATEGORIES_PENDING_DELETE);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.map(String).filter(Boolean) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistPendingAdminCategoryDeletes(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(
+      LS_ADMIN_CATEGORIES_PENDING_DELETE,
+      JSON.stringify([...pendingAdminCategoryDeletes])
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+export function getPendingAdminCategoryDeleteIds(): string[] {
+  return [...pendingAdminCategoryDeletes];
+}
+
+export function addPendingAdminCategoryDeletes(ids: string[]): void {
+  for (const id of ids) {
+    const s = String(id ?? '').trim();
+    if (s) pendingAdminCategoryDeletes.add(s);
+  }
+  persistPendingAdminCategoryDeletes();
+}
+
+export function clearPendingAdminCategoryDeletes(ids: string[]): void {
+  for (const id of ids) {
+    pendingAdminCategoryDeletes.delete(String(id));
+  }
+  persistPendingAdminCategoryDeletes();
+}
+
+export function filterOutPendingAdminCategoryDeletes<T extends { id?: string }>(list: T[]): T[] {
+  if (pendingAdminCategoryDeletes.size === 0) return list;
+  return list.filter((item) => !pendingAdminCategoryDeletes.has(String(item?.id)));
+}
+
+let suppressAdminCategoriesRealtimeUntil = 0;
+
+export function suppressAdminCategoriesRealtimeReload(ms = 5000): void {
+  suppressAdminCategoriesRealtimeUntil = Date.now() + ms;
+}
+
+export function shouldSuppressAdminCategoriesRealtimeReload(): boolean {
+  return (
+    Date.now() < suppressAdminCategoriesRealtimeUntil ||
+    pendingAdminCategoryDeletes.size > 0
+  );
+}
+
+/** Super Admin delete — patch session cache without forcing a list refetch. */
+export function removeAdminCategoriesFromCaches(categoryIds: string[]): void {
+  const idSet = new Set(categoryIds.map(String).filter(Boolean));
+  if (idSet.size === 0) return;
+
+  const prev = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_ALL_CATEGORIES);
+  if (prev && Array.isArray(prev)) {
+    moduleCache.prime(
+      CACHE_KEYS.ADMIN_ALL_CATEGORIES,
+      prev.filter((c) => !idSet.has(String(c?.id)))
+    );
+  }
+}
+
 export async function getCachedAdminCustomersPayload(forceRefresh = false) {
   return moduleCache.get(CACHE_KEYS.ADMIN_CUSTOMERS, () => fetchAdminCustomersPayload(), forceRefresh);
 }

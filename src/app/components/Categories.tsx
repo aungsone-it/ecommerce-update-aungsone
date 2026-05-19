@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Plus, Edit, Trash2, Folder } from "lucide-react";
 import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
@@ -17,16 +17,23 @@ import {
   AlertDialogTitle 
 } from "./ui/alert-dialog";
 import { CheckCircle2, XCircle, AlertCircle, Info } from "lucide-react";
+import { toast } from "sonner";
 import { categoriesApi } from "../../utils/api";
 import { CategoryForm } from "./CategoryForm";
 import { useLanguage } from "../contexts/LanguageContext";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
-import { getAdminOperationHeaders } from "../../utils/api-client";
 import { cacheManager } from "../utils/cacheManager";
 import {
   getCachedAdminAllCategories,
   primeAdminAllCategoriesCache,
   invalidateAdminAllCategoriesCache,
+  removeAdminCategoriesFromCaches,
+  addPendingAdminCategoryDeletes,
+  clearPendingAdminCategoryDeletes,
+  filterOutPendingAdminCategoryDeletes,
+  getPendingAdminCategoryDeleteIds,
+  suppressAdminCategoriesRealtimeReload,
+  shouldSuppressAdminCategoriesRealtimeReload,
   moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
@@ -51,7 +58,13 @@ export function Categories() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const peeked = moduleCache.peek<Category[]>(MODULE_CACHE_KEYS.ADMIN_ALL_CATEGORIES);
+    if (peeked != null && Array.isArray(peeked)) {
+      return filterOutPendingAdminCategoryDeletes(peeked);
+    }
+    return [];
+  });
   const [isLoading, setIsLoading] = useState(
     () => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_ALL_CATEGORIES)
   );
@@ -71,48 +84,72 @@ export function Categories() {
     type: "info",
   });
 
-  // Load categories from database
-  useEffect(() => {
-    loadCategories();
-    
-    // Listen for vendor data updates to refresh category vendor names
-    const handleVendorUpdate = () => {
-      console.log("📣 Vendor data updated, reloading categories...");
-      loadCategories(true);
-    };
-    const handleCategoryRealtime = () => {
-      loadCategories(true);
-    };
-    
-    window.addEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
-    window.addEventListener('categoryDataUpdated', handleCategoryRealtime as EventListener);
-    
-    // Register cache invalidation
-    const clearCache = () => {
-      console.log("🗑️ Clearing categories cache");
-      invalidateAdminAllCategoriesCache();
-      loadCategories(true);
-    };
-    
-    cacheManager.registerInvalidation('categories', clearCache);
-    
-    return () => {
-      window.removeEventListener('vendorDataUpdated', handleVendorUpdate as EventListener);
-      window.removeEventListener('categoryDataUpdated', handleCategoryRealtime as EventListener);
-    };
+  const applyOptimisticCategoryRemoval = useCallback(
+    (idsToRemove: string[], sourceList: Category[]) => {
+      const idSet = new Set(idsToRemove.map(String).filter(Boolean));
+      if (idSet.size === 0) return sourceList;
+      const next = sourceList.filter((cat) => !idSet.has(cat.id));
+      setCategories(next);
+      primeAdminAllCategoriesCache(next);
+      cacheManager.set("categories", next);
+      removeAdminCategoriesFromCaches([...idSet]);
+      addPendingAdminCategoryDeletes([...idSet]);
+      suppressAdminCategoriesRealtimeReload();
+      return next;
+    },
+    []
+  );
+
+  const deleteCategoryOnServer = async (id: string): Promise<void> => {
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/categories/${id}`,
+      {
+        method: "DELETE",
+        keepalive: true,
+        headers: {
+          Authorization: `Bearer ${publicAnonKey}`,
+        },
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || data.message || "Failed to delete category");
+    }
+  };
+
+  const resumePendingCategoryDeletes = useCallback(async () => {
+    const pending = getPendingAdminCategoryDeleteIds();
+    if (pending.length === 0) return;
+
+    await Promise.allSettled(
+      pending.map(async (id) => {
+        try {
+          await deleteCategoryOnServer(id);
+          clearPendingAdminCategoryDeletes([id]);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (message.includes("not found") || message.includes("404")) {
+            clearPendingAdminCategoryDeletes([id]);
+          }
+        }
+      })
+    );
   }, []);
 
-  const loadCategories = async (forceRefresh = false) => {
-    let showLoadingTimer: NodeJS.Timeout | null = null;
-    showLoadingTimer = setTimeout(() => {
-      setIsLoading(true);
-    }, 300);
+  const loadCategories = useCallback(async (forceRefresh = false, opts?: { silent?: boolean }) => {
+    let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
+    if (!opts?.silent) {
+      showLoadingTimer = setTimeout(() => {
+        setIsLoading(true);
+      }, 300);
+    }
 
     if (!forceRefresh) {
       const peeked = moduleCache.peek<Category[]>(MODULE_CACHE_KEYS.ADMIN_ALL_CATEGORIES);
       if (peeked != null && Array.isArray(peeked)) {
-        setCategories(peeked);
-        cacheManager.set("categories", peeked);
+        const filtered = filterOutPendingAdminCategoryDeletes(peeked);
+        setCategories(filtered);
+        cacheManager.set("categories", filtered);
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
         setIsLoading(false);
         return;
@@ -121,19 +158,55 @@ export function Categories() {
 
     try {
       const list = await getCachedAdminAllCategories(forceRefresh);
-      console.log("Categories loaded:", list?.length);
-      setCategories(list);
-      cacheManager.set("categories", list);
-    } catch (error: any) {
+      const filtered = filterOutPendingAdminCategoryDeletes(list);
+      setCategories(filtered);
+      cacheManager.set("categories", filtered);
+    } catch (error: unknown) {
       console.error("Failed to load categories:", error);
-      setCategories([]);
+      if (!opts?.silent) {
+        setCategories([]);
+      }
     } finally {
       if (showLoadingTimer) {
         clearTimeout(showLoadingTimer);
       }
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // Load categories from database + finish any in-flight deletes (e.g. after hard refresh)
+  useEffect(() => {
+    void loadCategories();
+    void resumePendingCategoryDeletes();
+
+    const handleVendorUpdate = () => {
+      void loadCategories(true, { silent: true });
+    };
+    const handleCategoryRealtime = () => {
+      if (shouldSuppressAdminCategoriesRealtimeReload()) {
+        return;
+      }
+      void loadCategories(true, { silent: true });
+    };
+
+    window.addEventListener("vendorDataUpdated", handleVendorUpdate as EventListener);
+    window.addEventListener("categoryDataUpdated", handleCategoryRealtime as EventListener);
+
+    const clearCache = () => {
+      if (shouldSuppressAdminCategoriesRealtimeReload()) {
+        return;
+      }
+      invalidateAdminAllCategoriesCache();
+      void loadCategories(true, { silent: true });
+    };
+
+    cacheManager.registerInvalidation("categories", clearCache);
+
+    return () => {
+      window.removeEventListener("vendorDataUpdated", handleVendorUpdate as EventListener);
+      window.removeEventListener("categoryDataUpdated", handleCategoryRealtime as EventListener);
+    };
+  }, [loadCategories, resumePendingCategoryDeletes]);
 
   const filteredCategories = categories.filter(category =>
     category.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -160,49 +233,63 @@ export function Categories() {
       `${selectedCategories.length} ${selectedCategories.length === 1 ? 'category' : 'categories'} will be permanently deleted.`,
       "warning",
       async () => {
-        // Optimistic update: remove categories immediately
         const previousCategories = [...categories];
-        const previousSelected = [...selectedCategories];
-        
-        setCategories(categories.filter(cat => !selectedCategories.includes(cat.id)));
+        const idsToDelete = [...selectedCategories];
+
+        applyOptimisticCategoryRemoval(idsToDelete, previousCategories);
         setSelectedCategories([]);
         setAlertOpen(false);
 
         try {
-          // Use bulk delete endpoint
-          const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/categories/bulk-delete`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${publicAnonKey}`,
-                ...getAdminOperationHeaders(),
-              },
-              body: JSON.stringify({ ids: previousSelected }),
-            }
+          const results = await Promise.allSettled(
+            idsToDelete.map((categoryId) => deleteCategoryOnServer(categoryId))
           );
-          
-          if (!response.ok) {
-            throw new Error('Failed to delete categories');
+          const failedIds = idsToDelete.filter(
+            (_, index) => results[index].status === "rejected"
+          );
+          const succeededIds = idsToDelete.filter(
+            (_, index) => results[index].status === "fulfilled"
+          );
+          clearPendingAdminCategoryDeletes(succeededIds);
+
+          if (failedIds.length > 0) {
+            clearPendingAdminCategoryDeletes(failedIds);
+            const failedRows = previousCategories.filter((cat) =>
+              failedIds.includes(cat.id)
+            );
+            setCategories((prev) => {
+              const merged = [...prev];
+              for (const row of failedRows) {
+                if (!merged.some((c) => c.id === row.id)) merged.push(row);
+              }
+              return merged;
+            });
+            setSelectedCategories(failedIds);
+            const next =
+              succeededIds.length > 0
+                ? previousCategories.filter((cat) => !succeededIds.includes(cat.id))
+                : previousCategories;
+            primeAdminAllCategoriesCache(next);
+            cacheManager.set("categories", next);
+            const successCount = succeededIds.length;
+            showAlert(
+              successCount > 0 ? "Partial Delete" : "Failed to Delete Categories",
+              successCount > 0
+                ? `${successCount} categor${successCount === 1 ? "y" : "ies"} deleted. ${failedIds.length} could not be removed.`
+                : "An error occurred. Please try again.",
+              successCount > 0 ? "warning" : "error"
+            );
+            return;
           }
-          
-          console.log(`✅ Deleted ${previousSelected.length} categories successfully`);
-          
-          const next = previousCategories.filter((cat) => !previousSelected.includes(cat.id));
-          primeAdminAllCategoriesCache(next);
-          cacheManager.set("categories", next);
-          
-          showAlert(
-            "Categories Deleted Successfully!",
-            `${previousSelected.length} ${previousSelected.length === 1 ? 'category has' : 'categories have'} been removed.`,
-            "success"
+
+          toast.success(
+            `${idsToDelete.length} ${idsToDelete.length === 1 ? "category" : "categories"} deleted`
           );
         } catch (error) {
-          // Revert on error
+          clearPendingAdminCategoryDeletes(idsToDelete);
           console.error("Failed to delete categories:", error);
           setCategories(previousCategories);
-          setSelectedCategories(previousSelected);
+          setSelectedCategories(idsToDelete);
           primeAdminAllCategoriesCache(previousCategories);
           cacheManager.set("categories", previousCategories);
           showAlert(
@@ -261,39 +348,16 @@ export function Categories() {
       "This action cannot be undone. Products in this category will not be affected.",
       "warning",
       async () => {
-        // Optimistic update: remove category immediately
         const previousCategories = [...categories];
-        setCategories(categories.filter(cat => cat.id !== id));
+        applyOptimisticCategoryRemoval([id], previousCategories);
         setAlertOpen(false);
 
         try {
-          const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/categories/${id}`,
-            {
-              method: 'DELETE',
-              headers: {
-                Authorization: `Bearer ${publicAnonKey}`,
-              },
-            }
-          );
-          
-          if (!response.ok) {
-            throw new Error('Failed to delete category');
-          }
-          
-          console.log("✅ Category deleted successfully");
-          
-          const next = previousCategories.filter((cat) => cat.id !== id);
-          primeAdminAllCategoriesCache(next);
-          cacheManager.set("categories", next);
-          
-          showAlert(
-            "Category Deleted Successfully!",
-            "The category has been removed.",
-            "success"
-          );
+          await deleteCategoryOnServer(id);
+          clearPendingAdminCategoryDeletes([id]);
+          toast.success("Category deleted");
         } catch (error) {
-          // Revert on error
+          clearPendingAdminCategoryDeletes([id]);
           console.error("Failed to delete category:", error);
           setCategories(previousCategories);
           primeAdminAllCategoriesCache(previousCategories);
@@ -327,7 +391,7 @@ export function Categories() {
     setShowForm(false);
     setEditingCategory(null);
     invalidateAdminAllCategoriesCache();
-    loadCategories(true);
+    void loadCategories(true, { silent: true });
   };
 
   // 🎯 Alert Modal Helper Functions
@@ -565,9 +629,6 @@ export function Categories() {
                   Category
                 </th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-slate-600">
-                  Vendor
-                </th>
-                <th className="text-left py-3 px-6 text-sm font-medium text-slate-600">
                   Description
                 </th>
                 <th className="text-left py-3 px-6 text-sm font-medium text-slate-600">
@@ -594,9 +655,6 @@ export function Categories() {
                         <div className="w-10 h-10 bg-slate-200 rounded-lg"></div>
                         <div className="h-4 bg-slate-200 rounded w-32"></div>
                       </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="h-4 bg-slate-200 rounded w-24"></div>
                     </td>
                     <td className="py-4 px-6">
                       <div className="h-4 bg-slate-200 rounded w-40"></div>
@@ -654,17 +712,6 @@ export function Categories() {
                         </div>
                         <span className="text-sm font-medium text-slate-900">{category.name}</span>
                       </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      {category.vendorName ? (
-                        <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                          {category.vendorName}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
-                          SECURE Platform
-                        </Badge>
-                      )}
                     </td>
                     <td className="py-4 px-6">
                       <p className="text-sm text-slate-600 max-w-xs truncate">

@@ -3,7 +3,7 @@ import {
   Filter,
   Download,
   MoreVertical,
-  Mail,
+  MessageSquare,
   Phone,
   MapPin,
   Calendar,
@@ -16,8 +16,6 @@ import {
   CheckCircle,
   TrendingUp,
   Users as UsersIcon,
-  Tag,
-  FileText,
   Send,
   BarChart3,
   Activity,
@@ -539,6 +537,17 @@ export function CustomersEnhanced({
     }
   };
 
+  const handleOpenChatWithCustomer = (customer: Customer) => {
+    if (!onOpenChatWithCustomer) return;
+    const email = (customer.email || "").trim();
+    if (!email) return;
+    onOpenChatWithCustomer({
+      name: customer.name || "Customer",
+      email,
+      avatar: customer.avatar || undefined,
+    });
+  };
+
   // 🔥 BLOCK CUSTOMER ACTION
   const handleBlockCustomer = async (customerId: string, customerName: string) => {
     try {
@@ -793,13 +802,7 @@ export function CustomersEnhanced({
         onMessageCustomer={
           onOpenChatWithCustomer
             ? () => {
-                const email = (viewingCustomer.email || "").trim();
-                if (!email) return;
-                onOpenChatWithCustomer({
-                  name: viewingCustomer.name || "Customer",
-                  email,
-                  avatar: viewingCustomer.avatar || undefined,
-                });
+                handleOpenChatWithCustomer(viewingCustomer);
                 setViewingCustomer(null);
               }
             : undefined
@@ -988,7 +991,6 @@ export function CustomersEnhanced({
                     <TableHead>Segment</TableHead>
                     <TableHead>Orders</TableHead>
                     <TableHead>Avg Order</TableHead>
-                    <TableHead>Tags</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
@@ -1020,9 +1022,6 @@ export function CustomersEnhanced({
                           <div className="h-4 bg-slate-200 rounded w-20"></div>
                         </TableCell>
                         <TableCell>
-                          <div className="h-6 bg-slate-200 rounded-full w-16"></div>
-                        </TableCell>
-                        <TableCell>
                           <div className="h-6 bg-slate-200 rounded-full w-20"></div>
                         </TableCell>
                         <TableCell>
@@ -1032,7 +1031,7 @@ export function CustomersEnhanced({
                     ))
                   ) : visibleCustomers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-12">
+                      <TableCell colSpan={7} className="text-center py-12">
                         <div className="flex flex-col items-center gap-3">
                           <UsersIcon className="w-12 h-12 text-slate-300" />
                           <div>
@@ -1126,24 +1125,6 @@ export function CustomersEnhanced({
                           <MmkInline value={customer.avgOrderValue || 0} />
                         </span>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 flex-wrap max-w-[150px]">
-                          {(customer.tags || []).slice(0, 2).map((tag) => (
-                            <Badge
-                              key={`${customer.id}-${tag}`}
-                              variant="outline"
-                              className="text-xs bg-slate-50"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
-                          {(customer.tags || []).length > 2 && (
-                            <Badge variant="outline" className="text-xs bg-slate-50">
-                              +{(customer.tags || []).length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
                       <TableCell>{getStatusBadge(customer.status)}</TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -1159,18 +1140,15 @@ export function CustomersEnhanced({
                               <Eye className="w-4 h-4 mr-2" />
                               View Profile
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Mail className="w-4 h-4 mr-2" />
-                              Send Email
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <FileText className="w-4 h-4 mr-2" />
-                              Add Note
-                            </DropdownMenuItem>
-                            <DropdownMenuItem>
-                              <Tag className="w-4 h-4 mr-2" />
-                              Manage Tags
-                            </DropdownMenuItem>
+                            {onOpenChatWithCustomer && (
+                              <DropdownMenuItem
+                                onClick={() => handleOpenChatWithCustomer(customer)}
+                                disabled={!(customer.email || "").trim()}
+                              >
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                Send Message
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => handleBlockCustomer(customer.id, customer.name)}>
                               <Ban className="w-4 h-4 mr-2" />
