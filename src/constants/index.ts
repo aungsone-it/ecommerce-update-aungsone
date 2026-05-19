@@ -5,6 +5,8 @@
 export const API_TIMEOUTS = {
   /** Default GET/POST — long cold starts are rare; 90s avoids “stuck skeleton” UIs */
   DEFAULT: 90000,
+  /** Order status PUT — server returns immediately; refund runs in background */
+  ORDER_STATUS: 25000,
   /** List/dashboard reads — fail fast; user can refresh */
   LIST: 45000,
   LARGE_PAYLOAD: 240000,

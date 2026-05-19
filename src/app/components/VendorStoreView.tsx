@@ -115,6 +115,10 @@ import { getEffectiveVariantOptions } from "./ProductVariantChips";
 import { useLoading } from "../contexts/LoadingContext";
 import { applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
 import { buildVendorStorefrontDocumentTitle } from "../utils/vendorStorefrontDocumentTitle";
+import {
+  buildVendorStoreHomePath,
+  resolveVendorPathSlug,
+} from "../utils/vendorStorePaths";
 import { supabase } from "../contexts/AuthContext";
 
 interface Product {
@@ -508,6 +512,68 @@ const VENDOR_SEARCH_MIN_SERVER_CHARS = 3;
 /** Ms after last keystroke before server catalog fetch (with `q`); category changes refetch immediately. */
 const VENDOR_SEARCH_DEBOUNCE_MS = 450;
 
+function isVendorCheckoutOrSummaryPath(pathname: string, storeBase: string): boolean {
+  if (
+    pathname === "/checkout" ||
+    pathname === "/summary" ||
+    pathname === `${storeBase}/checkout` ||
+    pathname === `${storeBase}/summary`
+  ) {
+    return true;
+  }
+  return (
+    matchPath({ path: "/vendor/:storeName/checkout", end: true }, pathname) != null ||
+    matchPath({ path: "/vendor/:storeName/summary", end: true }, pathname) != null ||
+    matchPath({ path: "/vendor-:storeName/checkout", end: true }, pathname) != null ||
+    matchPath({ path: "/vendor-:storeName/summary", end: true }, pathname) != null
+  );
+}
+
+function vendorHomeStateFromCatalogPayload(
+  fromLs: Record<string, unknown>,
+  vendorId: string,
+  vendorCategories: any[],
+): {
+  products: Product[];
+  vendorCategories: any[];
+  serverStatus: "healthy";
+  vendorCatalogTotal: number;
+  vendorCatalogPage: number;
+  vendorCatalogHasMore: boolean;
+  storeName: string;
+  storeLogo: string;
+  storePhone: string;
+  canonicalVendorId: string | null;
+} {
+  const products = Array.isArray(fromLs.products) ? (fromLs.products as Product[]) : [];
+  const pageSize = VENDOR_BROWSE_PAGE_SIZE;
+  const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, "", "all", pageSize);
+  moduleCache.prime(cacheKey, fromLs);
+  const rid =
+    typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
+      ? fromLs.resolvedVendorId.trim()
+      : null;
+  const sp =
+    typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()
+      ? fromLs.storePhone.trim()
+      : VENDOR_DEFAULT_STORE_PHONE;
+  return {
+    products,
+    vendorCategories,
+    serverStatus: "healthy",
+    vendorCatalogTotal: typeof fromLs.total === "number" ? fromLs.total : 0,
+    vendorCatalogPage: typeof fromLs.page === "number" ? fromLs.page : 1,
+    vendorCatalogHasMore: !!fromLs.hasMore,
+    storeName:
+      typeof fromLs.storeName === "string" && fromLs.storeName.trim()
+        ? fromLs.storeName.trim()
+        : "Vendor Store",
+    storeLogo: typeof fromLs.logo === "string" ? fromLs.logo : "",
+    storePhone: sp,
+    canonicalVendorId: rid ?? vendorId,
+  };
+}
+
 /**
  * First paint for vendor home: read the same LS keys as `refetchVendorCatalogPage1` + categories
  * so production (slow edge) does not flash a full-page skeleton while waiting for sequential fetches.
@@ -599,35 +665,21 @@ function getVendorHomepageInitialState(
     const lsKey = lsVendorCatalogPage1Key(vendorId, "", "all", VENDOR_BROWSE_PAGE_SIZE);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
     if (fromLs && typeof fromLs === "object") {
-      const products = Array.isArray(fromLs.products) ? (fromLs.products as Product[]) : [];
-      const qk = "";
-      const cat = "all";
-      const pageSize = VENDOR_BROWSE_PAGE_SIZE;
-      const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
-      moduleCache.prime(cacheKey, fromLs);
-      const rid =
-        typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
-          ? fromLs.resolvedVendorId.trim()
-          : null;
-      const sp =
-        typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()
-          ? fromLs.storePhone.trim()
-          : VENDOR_DEFAULT_STORE_PHONE;
-      return {
-        products,
-        vendorCategories,
-        serverStatus: "healthy",
-        vendorCatalogTotal: typeof fromLs.total === "number" ? fromLs.total : 0,
-        vendorCatalogPage: typeof fromLs.page === "number" ? fromLs.page : 1,
-        vendorCatalogHasMore: !!fromLs.hasMore,
-        storeName:
-          typeof fromLs.storeName === "string" && fromLs.storeName.trim()
-            ? fromLs.storeName.trim()
-            : "Vendor Store",
-        storeLogo: typeof fromLs.logo === "string" ? fromLs.logo : "",
-        storePhone: sp,
-        canonicalVendorId: rid ?? vendorId,
-      };
+      return vendorHomeStateFromCatalogPayload(fromLs, vendorId, vendorCategories);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, "", "all", VENDOR_BROWSE_PAGE_SIZE);
+    const fromMem = moduleCache.peek<Record<string, unknown>>(cacheKey);
+    if (fromMem && typeof fromMem === "object") {
+      const products = Array.isArray(fromMem.products) ? (fromMem.products as Product[]) : [];
+      const total = typeof fromMem.total === "number" ? fromMem.total : 0;
+      if (products.length > 0 || total > 0) {
+        return vendorHomeStateFromCatalogPayload(fromMem, vendorId, vendorCategories);
+      }
     }
   } catch {
     /* ignore */
@@ -662,17 +714,63 @@ export function VendorStoreView({
   const location = useLocation();
   const { chatUnreadCount, openFloatingChat } = useChatNotification();
 
+  const [canonicalStoreSlug, setCanonicalStoreSlug] = useState<string | null>(() => {
+    const resolved = resolveVendorPathSlug(storeSlug || vendorId);
+    return resolved || null;
+  });
+
+  const canonicalPathSlug = useMemo(
+    () => resolveVendorPathSlug(storeSlug || vendorId, canonicalStoreSlug),
+    [storeSlug, vendorId, canonicalStoreSlug]
+  );
+
   const storeBase = useMemo(() => {
-    if (hostRootStorePaths) return "";
-    const slug = encodeURIComponent(storeSlug || vendorId);
-    if (location.pathname.startsWith("/vendor-")) return `/vendor-${slug}`;
-    return `/vendor/${slug}`;
-  }, [hostRootStorePaths, location.pathname, storeSlug, vendorId]);
+    return buildVendorStoreHomePath({
+      pathSlug: canonicalPathSlug || storeSlug || vendorId,
+      hostRootStorePaths,
+      useVendorDashPrefix: location.pathname.startsWith("/vendor-"),
+    });
+  }, [hostRootStorePaths, location.pathname, canonicalPathSlug, storeSlug, vendorId]);
   const checkoutPath = `${storeBase}/checkout`;
 
   const navigateStoreHome = useCallback(() => {
-    navigate(storeBase || "/");
-  }, [navigate, storeBase]);
+    navigate(
+      buildVendorStoreHomePath({
+        pathSlug: canonicalPathSlug || storeSlug || vendorId,
+        hostRootStorePaths,
+        useVendorDashPrefix: location.pathname.startsWith("/vendor-"),
+      }),
+      { replace: true }
+    );
+  }, [navigate, canonicalPathSlug, storeSlug, vendorId, hostRootStorePaths, location.pathname]);
+
+  useEffect(() => {
+    if (hostRootStorePaths || !canonicalPathSlug) return;
+    const urlSegment = decodeURIComponent(String(storeSlug || vendorId || "").trim());
+    if (!urlSegment || urlSegment === canonicalPathSlug) return;
+    if (resolveVendorPathSlug(urlSegment) !== canonicalPathSlug) return;
+    const encUrl = encodeURIComponent(urlSegment);
+    const encCanon = encodeURIComponent(canonicalPathSlug);
+    if (encUrl === encCanon) return;
+    const path = location.pathname;
+    const next = path
+      .replace(`/vendor/${encUrl}`, `/vendor/${encCanon}`)
+      .replace(`/vendor-${encUrl}`, `/vendor-${encCanon}`)
+      .replace(`/vendor/${urlSegment}`, `/vendor/${encCanon}`)
+      .replace(`/vendor-${urlSegment}`, `/vendor-${encCanon}`);
+    if (next !== path) {
+      navigate(`${next}${location.search}${location.hash}`, { replace: true });
+    }
+  }, [
+    hostRootStorePaths,
+    canonicalPathSlug,
+    storeSlug,
+    vendorId,
+    location.pathname,
+    location.search,
+    location.hash,
+    navigate,
+  ]);
 
   const categoryPathForName = useCallback(
     (categoryName: string) => {
@@ -855,20 +953,16 @@ export function VendorStoreView({
   const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
   const [vendorProductImageIndex, setVendorProductImageIndex] = useState(0);
 
+  const isCheckoutRoute = useMemo(
+    () => isVendorCheckoutOrSummaryPath(location.pathname, storeBase),
+    [location.pathname, storeBase]
+  );
+
   useEffect(() => {
-    const isCheckoutRoute =
-      location.pathname === "/checkout" ||
-      location.pathname === "/summary" ||
-      location.pathname === `${storeBase}/checkout` ||
-      location.pathname === `${storeBase}/summary` ||
-      matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor/:storeName/summary", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor-:storeName/checkout", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor-:storeName/summary", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor/:storeName/checkout", end: true }, location.pathname) != null ||
-      matchPath({ path: "/vendor/:storeName/summary", end: true }, location.pathname) != null;
     setShowCheckout(isCheckoutRoute);
-  }, [location.pathname, storeBase]);
+  }, [isCheckoutRoute]);
+
+  const wasCheckoutRouteRef = useRef(false);
 
   const { addToCart, totalItems, clearCart } = useCart();
 
@@ -3037,6 +3131,9 @@ export function VendorStoreView({
                 ? fromLs.resolvedVendorId.trim()
                 : undefined;
             setCanonicalVendorId(rid ?? vendorId);
+            if (typeof fromLs.storeSlug === "string" && fromLs.storeSlug.trim()) {
+              setCanonicalStoreSlug(fromLs.storeSlug.trim());
+            }
             return true;
           }
         }
@@ -3062,6 +3159,9 @@ export function VendorStoreView({
       setStoreLogo(productsData.logo || "");
       setStorePhone(productsData.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
       setCanonicalVendorId(productsData.resolvedVendorId ?? vendorId);
+      if (productsData.storeSlug) {
+        setCanonicalStoreSlug(productsData.storeSlug);
+      }
 
       if (persistEligible && productsData && typeof productsData === "object") {
         writePersistedJson(lsKey, productsData);
@@ -3070,6 +3170,40 @@ export function VendorStoreView({
     },
     [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
   );
+
+  // Sibling routes (/summary vs /) remount VendorStorefrontPage — warm catalog while checkout is open.
+  useEffect(() => {
+    if (savedPage || !isCheckoutRoute) return;
+    if (productsRef.current.length > 0) return;
+    void refetchVendorCatalogPage1(false);
+  }, [isCheckoutRoute, savedPage, vendorId, refetchVendorCatalogPage1]);
+
+  // Continue Shopping → home (same instance or route remount): refill catalog when grid is empty.
+  useEffect(() => {
+    if (savedPage) {
+      wasCheckoutRouteRef.current = isCheckoutRoute;
+      return;
+    }
+    const leavingCheckout = wasCheckoutRouteRef.current && !isCheckoutRoute;
+    const homeWithEmptyCatalog = !isCheckoutRoute && productsRef.current.length === 0;
+    if (leavingCheckout || homeWithEmptyCatalog) {
+      void (async () => {
+        if (productsRef.current.length === 0) {
+          setServerStatus("checking");
+          try {
+            await refetchVendorCatalogPage1(true);
+            setServerStatus("healthy");
+          } catch {
+            if (productsRef.current.length === 0) setServerStatus("unhealthy");
+            else setServerStatus("healthy");
+          }
+        } else {
+          void refetchVendorCatalogPage1(true);
+        }
+      })();
+    }
+    wasCheckoutRouteRef.current = isCheckoutRoute;
+  }, [isCheckoutRoute, savedPage, refetchVendorCatalogPage1]);
 
   // Super-admin product delete: drop rows immediately on every vendor shop (no slug/id key matching).
   useEffect(() => {
@@ -3328,6 +3462,7 @@ export function VendorStoreView({
 
   useEffect(() => {
     setCanonicalVendorId(null);
+    setCanonicalStoreSlug(resolveVendorPathSlug(storeSlug || vendorId) || null);
     loadVendorData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vendorId]);

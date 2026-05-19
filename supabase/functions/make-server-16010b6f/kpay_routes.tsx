@@ -927,6 +927,8 @@ type KPayRefundResult =
       endpoint?: string;
       details?: AnyRecord;
       networkError?: string;
+      /** VPS/KBZ did not respond before our fetch budget (cancel may still proceed). */
+      timedOut?: boolean;
     };
 
 function refundEndpointCandidates(baseUrl: string): string[] {
@@ -991,12 +993,48 @@ function resolveVpsRefundUrl(baseUrl: string): string {
   return candidates.find((u) => u.includes("refund.php")) || candidates[0] || "";
 }
 
+function isVpsRefundTransportTimeout(response: {
+  networkError?: string;
+  status: number;
+}): boolean {
+  return (
+    response.networkError === "kpay-timeout" ||
+    String(response.networkError || "").includes("abort") ||
+    response.status === 504
+  );
+}
+
+/** VPS refund.php → KBZ mTLS is slow; sync cancel path must stay under order PUT budget (~65s). */
+function resolveVpsRefundTimeoutMs(opts?: { background?: boolean }): number {
+  const fromEnv = Number(resolveEnv("KPAY_VPS_REFUND_TIMEOUT_MS"));
+  if (opts?.background) {
+    return Number.isFinite(fromEnv) && fromEnv >= 10_000
+      ? Math.min(fromEnv, 120_000)
+      : 90_000;
+  }
+  if (Number.isFinite(fromEnv) && fromEnv >= 10_000) {
+    return Math.min(fromEnv, 48_000);
+  }
+  return 42_000;
+}
+
+function edgeWaitUntil(task: Promise<unknown>): void {
+  const er = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } })
+    .EdgeRuntime;
+  if (er?.waitUntil) {
+    er.waitUntil(task);
+    return;
+  }
+  void task;
+}
+
 async function refundKPayOrderViaVpsProxy(args: {
   merchantOrderId: string;
   refundRequestNo: string;
   refundAmount: string;
   reason: string;
   existingTxn: AnyRecord | null;
+  timeoutMsOverride?: number;
 }): Promise<KPayRefundResult> {
   const { merchantOrderId, refundRequestNo, refundAmount, reason, existingTxn } = args;
   const cfg = kpayConfig();
@@ -1012,16 +1050,34 @@ async function refundKPayOrderViaVpsProxy(args: {
     };
   }
 
-  const response = await postJson(
+  const vpsTimeoutMs = args.timeoutMsOverride ?? resolveVpsRefundTimeoutMs();
+  let response = await postJson(
     vpsUrl,
     {
       merch_order_id: merchantOrderId,
       refund_request_no: refundRequestNo,
       refund_reason: text(reason).slice(0, 128) || "Order cancelled by admin",
     },
-    cfg.timeoutMs || 12000,
+    vpsTimeoutMs,
     { Authorization: `Bearer ${secret}` },
   );
+
+  if (
+    !providerIndicatesRefundAccepted(response.body) &&
+    isVpsRefundTransportTimeout(response)
+  ) {
+    console.log("[kpay] VPS refund timed out — one immediate retry");
+    response = await postJson(
+      vpsUrl,
+      {
+        merch_order_id: merchantOrderId,
+        refund_request_no: refundRequestNo,
+        refund_reason: text(reason).slice(0, 128) || "Order cancelled by admin",
+      },
+      Math.min(28_000, vpsTimeoutMs),
+      { Authorization: `Bearer ${secret}` },
+    );
+  }
 
   if (!providerIndicatesRefundAccepted(response.body)) {
     const now = nowIso();
@@ -1039,15 +1095,23 @@ async function refundKPayOrderViaVpsProxy(args: {
       },
       updatedAt: now,
     });
+    const timedOut = isVpsRefundTransportTimeout(response);
     return {
       ok: false,
       merchantOrderId,
       refundRequestNo,
       refundAmount,
-      message: text(response.body.error) || "KBZPay refund request failed",
-      status: response.status || 502,
+      timedOut,
+      message: timedOut
+        ? "Refund timed out waiting for VPS/KBZPay (gateway may still be processing)."
+        : text(response.body.error) || "KBZPay refund request failed",
+      status: timedOut ? 504 : response.status || 502,
       endpoint: vpsUrl,
-      details: response.body,
+      details: {
+        ...response.body,
+        vpsTimeoutMs,
+        networkError: response.networkError,
+      },
       networkError: response.networkError,
     };
   }
@@ -1180,11 +1244,89 @@ function refundStatusFrom(payload: AnyRecord): string {
   return status;
 }
 
+async function patchOrderKvAfterRefund(
+  merchantOrderId: string,
+  result: KPayRefundResult,
+): Promise<void> {
+  if (!result.ok) return;
+  const found = await findOrderByOrderNumber(merchantOrderId);
+  if (!found) return;
+  const now = nowIso();
+  const refundState = result.refundState;
+  const nextOrder: AnyRecord = {
+    ...found.order,
+    paymentStatus: refundState === "success" ? "refunded" : "pending_refund",
+    updatedAt: now,
+    kpay: {
+      ...(found.order.kpay as AnyRecord || {}),
+      merchantOrderId: result.merchantOrderId,
+      status: refundState === "success" ? "refunded" : "pending_refund",
+      refund: {
+        status: result.alreadyRefunded
+          ? "already_refunded"
+          : refundState === "success"
+            ? "success"
+            : "processing",
+        refundRequestNo: result.refundRequestNo,
+        amount: result.refundAmount,
+        providerStatus: result.providerStatus,
+        endpointUsed: result.endpointUsed || "",
+        refundedAt: refundState === "success" ? now : "",
+        acceptedAt: now,
+      },
+    },
+  };
+  await kv.set(found.key, nextOrder);
+}
+
+/** Fire-and-forget refund after cancel — order PUT must not wait on VPS/KBZ. */
+export function enqueueKPayRefundAndPatchOrder(params: {
+  merchantOrderId: string;
+  amount: unknown;
+  reason?: string;
+  refundRequestNo?: string;
+}): void {
+  const merchantOrderId = text(params.merchantOrderId);
+  if (!merchantOrderId) return;
+
+  const run = async () => {
+    const refundRequestNo =
+      text(params.refundRequestNo) || `RFND-${merchantOrderId}-${Date.now()}`;
+    const result = await refundKPayOrder({
+      merchantOrderId,
+      amount: params.amount,
+      reason: text(params.reason) || "Order cancelled by admin",
+      refundRequestNo,
+      timeoutMsOverride: resolveVpsRefundTimeoutMs({ background: true }),
+    });
+    if (!result.ok) {
+      console.error("[kpay] Background refund failed:", result.message);
+      return;
+    }
+    await patchOrderKvAfterRefund(merchantOrderId, result);
+    console.log(`[kpay] Background refund OK for ${merchantOrderId}`);
+  };
+
+  edgeWaitUntil(run());
+}
+
+/** @deprecated Use enqueueKPayRefundAndPatchOrder */
+export function scheduleVpsRefundRetryAndPatchOrder(params: {
+  merchantOrderId: string;
+  amount: unknown;
+  reason?: string;
+  refundRequestNo?: string;
+}): void {
+  enqueueKPayRefundAndPatchOrder(params);
+}
+
 export async function refundKPayOrder(params: {
   merchantOrderId: string;
   amount: unknown;
   reason?: string;
   refundRequestNo?: string;
+  /** VPS/KBZ calls can exceed the order PUT budget; background jobs use a longer limit. */
+  timeoutMsOverride?: number;
 }): Promise<KPayRefundResult> {
   const merchantOrderId = text(params.merchantOrderId);
   if (!merchantOrderId) {
@@ -1237,6 +1379,7 @@ export async function refundKPayOrder(params: {
       refundAmount,
       reason: refundReason,
       existingTxn,
+      timeoutMsOverride: params.timeoutMsOverride,
     });
   }
 

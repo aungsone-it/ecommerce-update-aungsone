@@ -15,7 +15,7 @@ import {
   handleKPayPwaReturn,
   getPwaCheckoutDraftRoute,
   postPwaFinalizeRoute,
-  refundKPayOrder,
+  enqueueKPayRefundAndPatchOrder,
 } from "./kpay_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import {
@@ -5073,45 +5073,81 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     let inventoryRestored = false;
     let inventoryDeducted = false;
 
-    // If admin is cancelling a paid KBZPay order, force refund first (idempotent).
+    let refundPendingAfterTimeout = false;
+
+    // Paid KPay cancel: never block the order PUT on VPS/KBZ refund (runs in background).
     if (!wasCancelled && isNowCancelled && isPaidOrder && isKPayOrder) {
       const merchantOrderId = String(
         existingOrder?.kpay?.merchantOrderId || existingOrder.orderNumber || orderKvId || ""
       ).trim();
-      const refund = await refundKPayOrder({
-        merchantOrderId,
-        amount: existingOrder.total,
-        reason: "Order cancelled by admin",
-      });
-      if (!refund.ok) {
-        return c.json(
-          {
-            success: false,
-            error: "KBZPay refund failed",
-            message: refund.message,
-            refund: {
-              merchantOrderId: refund.merchantOrderId,
-              refundRequestNo: refund.refundRequestNo,
-              amount: refund.refundAmount,
-              status: refund.status || 502,
-              endpoint: refund.endpoint || "",
-              networkError: refund.networkError || "",
-              details: refund.details || {},
-            },
-          },
-          400
-        );
+      const refundRequestNo = `RFND-${merchantOrderId}-${Date.now()}`;
+      const existingTxn = (await kv.get(`kpay_txn:${merchantOrderId}`)) as Record<string, unknown> | null;
+      const prevTxnRefund =
+        existingTxn?.refund && typeof existingTxn.refund === "object"
+          ? (existingTxn.refund as Record<string, unknown>)
+          : {};
+      const orderKpay =
+        existingOrder?.kpay && typeof existingOrder.kpay === "object"
+          ? (existingOrder.kpay as Record<string, unknown>)
+          : {};
+      const orderKpayRefund =
+        orderKpay.refund && typeof orderKpay.refund === "object"
+          ? (orderKpay.refund as Record<string, unknown>)
+          : {};
+      const payStatus = String(existingOrder?.paymentStatus || "").toLowerCase();
+      const prevStatus = String(prevTxnRefund.status || "").toLowerCase();
+      const orderRefundStatus = String(orderKpayRefund.status || "").toLowerCase();
+
+      if (
+        prevStatus === "success" ||
+        orderRefundStatus === "success" ||
+        payStatus === "refunded"
+      ) {
+        refundResult = {
+          ok: true,
+          alreadyRefunded: true,
+          refundState: "success",
+          merchantOrderId,
+          refundRequestNo: String(orderKpayRefund.refundRequestNo || prevTxnRefund.refundRequestNo || refundRequestNo),
+          refundAmount: String(orderKpayRefund.amount || prevTxnRefund.amount || existingOrder.total || ""),
+          providerStatus: String(orderKpayRefund.providerStatus || prevTxnRefund.providerStatus || "REFUNDED"),
+          endpointUsed: String(orderKpayRefund.endpointUsed || prevTxnRefund.endpointUsed || ""),
+        };
+      } else if (
+        payStatus === "pending_refund" ||
+        orderRefundStatus === "processing" ||
+        prevStatus === "processing"
+      ) {
+        refundPendingAfterTimeout = true;
+        refundResult = {
+          ok: true,
+          alreadyRefunded: false,
+          refundState: "processing",
+          merchantOrderId,
+          refundRequestNo: String(orderKpayRefund.refundRequestNo || prevTxnRefund.refundRequestNo || refundRequestNo),
+          refundAmount: String(orderKpayRefund.amount || existingOrder.total || ""),
+          providerStatus: String(orderKpayRefund.providerStatus || "REFUND_PENDING"),
+          endpointUsed: String(orderKpayRefund.endpointUsed || ""),
+        };
+      } else {
+        enqueueKPayRefundAndPatchOrder({
+          merchantOrderId,
+          amount: existingOrder.total,
+          reason: "Order cancelled by admin",
+          refundRequestNo,
+        });
+        refundPendingAfterTimeout = true;
+        refundResult = {
+          ok: true,
+          alreadyRefunded: false,
+          refundState: "processing",
+          merchantOrderId,
+          refundRequestNo,
+          refundAmount: String(existingOrder.total ?? ""),
+          providerStatus: "REFUND_ENQUEUED",
+          endpointUsed: "",
+        };
       }
-      refundResult = {
-        ok: true,
-        alreadyRefunded: refund.alreadyRefunded,
-        refundState: refund.refundState,
-        merchantOrderId: refund.merchantOrderId,
-        refundRequestNo: refund.refundRequestNo,
-        refundAmount: refund.refundAmount,
-        providerStatus: refund.providerStatus,
-        endpointUsed: refund.endpointUsed,
-      };
     }
 
     // 1) Cancel → restore only if inventory had already been reduced (legacy checkout deduct or admin commit)
@@ -5227,7 +5263,10 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     return c.json({ 
       success: true,
       order: updatedOrder,
-      message: "Order updated successfully"
+      refundPending: refundPendingAfterTimeout,
+      message: refundPendingAfterTimeout
+        ? "Order cancelled. KBZPay refund is still processing — we will retry automatically."
+        : "Order updated successfully",
     });
   } catch (error) {
     console.error("❌ Error updating order:", error);
@@ -10636,10 +10675,16 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
     const totalLegacy = vendorList.length;
     const slice = vendorList.slice((page - 1) * pageSize, page * pageSize);
     const vendorProducts = slice.map(mapVendorStorefrontProductRow);
+    const storeSlug =
+      String(storefrontSettings?.storeSlug || "").trim() ||
+      String(vendorSettings?.storeSlug || "").trim() ||
+      String(vendorData?.storeSlug || "").trim() ||
+      "";
 
     return c.json({
       products: vendorProducts,
       storeName,
+      storeSlug,
       logo,
       storePhone,
       resolvedVendorId: actualVendorId,

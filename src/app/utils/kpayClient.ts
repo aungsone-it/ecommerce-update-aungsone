@@ -1,3 +1,5 @@
+import { resolveVendorPathSlug } from "./vendorStorePaths";
+
 export type KPaySession = {
   merchantOrderId: string;
   status: "pending" | "paid" | "failed";
@@ -535,7 +537,7 @@ export function buildPwaSummaryAbsoluteUrl(params: {
         const fromOrigin = (params.originPath || "").trim();
         const m = fromOrigin.match(/^\/vendor\/([^/]+)(?:\/|$)/i);
         if (m?.[1]) {
-          path = `/vendor/${encodeURIComponent(decodeURIComponent(m[1]))}/summary`;
+          path = `/vendor/${encodeURIComponent(resolveVendorPathSlug(decodeURIComponent(m[1])))}/summary`;
         }
       }
     } catch {

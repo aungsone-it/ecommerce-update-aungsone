@@ -1,6 +1,7 @@
 import { matchPath } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "./vendorSubdomainHooks";
 import { buildCheckoutSummaryPath, KPAY_PWA_PENDING_STORAGE_KEY } from "./kpayClient";
+import { resolveVendorPathSlug } from "./vendorStorePaths";
 
 export function isLocalDevHostname(hostname?: string): boolean {
   const h = (
@@ -92,10 +93,11 @@ export function resolveVendorSummaryPath(params: {
   onVendorHost?: boolean;
 }): string {
   const path = (params.pathname.split("?")[0] || "").replace(/\/$/, "") || "/";
-  const slug =
+  const rawSlug =
     (params.storeName && params.storeName.trim()) ||
     extractStoreSlugFromPathname(path) ||
     null;
+  const slug = rawSlug ? resolveVendorPathSlug(rawSlug) : null;
 
   if (slug && (path === "/summary" || path.endsWith("/summary"))) {
     return path.startsWith("/vendor/") || path.startsWith("/vendor-")
@@ -122,7 +124,7 @@ export function toMarketplaceVendorCheckoutPath(
   storeName: string,
   rootPath: string,
 ): string {
-  const enc = encodeURIComponent(storeName.trim());
+  const enc = encodeURIComponent(resolveVendorPathSlug(storeName.trim()));
   const p = (rootPath.split("?")[0] || "").replace(/\/$/, "") || "/";
   if (p === "/checkout/success") return `/vendor/${enc}/checkout/success`;
   if (p === "/checkout") return `/vendor/${enc}/checkout`;
@@ -151,11 +153,12 @@ export function resolveSummaryRedirectTarget(params: {
     return null;
   }
 
-  const slug =
+  const rawSlug =
     params.storeName ||
     extractStoreSlugFromPathname(path) ||
     readKpayPendingStoreContext()?.storeName ||
     null;
+  const slug = rawSlug ? resolveVendorPathSlug(rawSlug) : null;
 
   if (params.onVendorHost) {
     return `/summary${params.search}`;

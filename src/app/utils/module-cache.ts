@@ -30,6 +30,7 @@ import {
 } from './persistedLocalCache';
 import {
   getCanonicalSubdomainLabelIfSlugForm,
+  hyphenSlugFromDisplayName,
   parseSubdomainSlugMap,
 } from './subdomainSlugMap';
 
@@ -1211,6 +1212,7 @@ export async function fetchAdminDashboardStatsRaw(filters: AdminDashboardFilters
 export type VendorStorefrontProductsResult = {
   products: any[];
   storeName: string;
+  storeSlug?: string;
   logo: string;
   /** Public contact from vendor storefront settings (matches marketplace header). */
   storePhone?: string;
@@ -1238,6 +1240,10 @@ function vendorIdentifierCandidates(vendorId: string): string[] {
   }
 
   if (raw.includes("-")) out.add(raw.replace(/-/g, ""));
+
+  const hyphen = hyphenSlugFromDisplayName(raw);
+  if (hyphen) out.add(hyphen);
+
   return Array.from(out).filter(Boolean);
 }
 
@@ -1283,6 +1289,10 @@ export async function fetchVendorProducts(
   return {
     products: list,
     storeName: data.storeName || "Vendor Store",
+    storeSlug:
+      typeof data.storeSlug === "string" && data.storeSlug.trim()
+        ? data.storeSlug.trim()
+        : undefined,
     logo: data.logo || "",
     storePhone:
       typeof data.storePhone === "string" && data.storePhone.trim()

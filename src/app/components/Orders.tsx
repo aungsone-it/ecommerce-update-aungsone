@@ -1043,6 +1043,9 @@ export function Orders({
     void (async () => {
     try {
       const result = (await ordersApi.update(orderId, { status: newStatus })) as {
+        success?: boolean;
+        refundPending?: boolean;
+        message?: string;
         order?: {
           inventoryDeducted?: boolean;
           paymentStatus?: string;
@@ -1074,13 +1077,22 @@ export function Orders({
         );
       }
       if (wasNotCancelled && isNowCancelled) {
-        const rf = String(srv?.kpay?.refund?.status || "").toLowerCase();
-        if (rf === "success" || rf === "already_refunded") {
-          toast.success("Cancelled — refund submitted to KPay");
-        } else if (rf === "processing") {
-          toast.success("Cancelled — refund processing at bank");
+        if (result?.refundPending) {
+          toast.message("Order cancelled", {
+            duration: 6000,
+            description:
+              result.message ||
+              "KBZPay refund is still processing. We will retry automatically; check the order in a minute.",
+          });
         } else {
-          toast.success("Cancellation saved");
+          const rf = String(srv?.kpay?.refund?.status || "").toLowerCase();
+          if (rf === "success" || rf === "already_refunded") {
+            toast.success("Cancelled — refund submitted to KPay");
+          } else if (rf === "processing") {
+            toast.success("Cancelled — refund processing at bank");
+          } else {
+            toast.success("Cancellation saved");
+          }
         }
       }
       void broadcastOrderStatusUpdate({

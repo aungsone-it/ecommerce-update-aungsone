@@ -6,6 +6,7 @@ import {
   useResolvedVendorHostSlug,
 } from "../utils/vendorHostResolution";
 import { resetDocumentFavicon, applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
+import { resolveVendorPathSlug } from "../utils/vendorStorePaths";
 import {
   buildVendorStorefrontDocumentTitle,
   vendorProfileSegmentToDocTitleMode,
@@ -191,7 +192,7 @@ export function VendorStorefrontPage() {
 
   const storeBaseNav = useMemo(() => {
     if (hostRootStorePathsNav || !storeName) return "";
-    const enc = encodeURIComponent(storeName);
+    const enc = encodeURIComponent(resolveVendorPathSlug(storeName));
     if (location.pathname.startsWith("/vendor-")) return `/vendor-${enc}`;
     return `/vendor/${enc}`;
   }, [hostRootStorePathsNav, storeName, location.pathname]);

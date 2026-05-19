@@ -3,6 +3,7 @@
 // Version: 2.0 - Blog Engagement Features Added
 // ============================================
 
+import { API_TIMEOUTS } from '../constants';
 import { apiClient } from './api-client';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import type {
@@ -199,6 +200,14 @@ export const ordersApi = {
     id: string,
     orderData: Partial<Order>
   ): Promise<ApiResponse<Order>> => {
+    const keys = Object.keys(orderData ?? {});
+    const statusOnly = keys.length === 1 && keys[0] === 'status';
+    if (statusOnly) {
+      return apiClient.put<ApiResponse<Order>>(`/orders/${id}`, orderData, {
+        keepalive: true,
+        timeout: API_TIMEOUTS.ORDER_STATUS,
+      });
+    }
     return apiClient.putWithRetry<ApiResponse<Order>>(`/orders/${id}`, orderData, {
       /** Survives tab refresh/navigation so status changes persist server-side. */
       keepalive: true,
