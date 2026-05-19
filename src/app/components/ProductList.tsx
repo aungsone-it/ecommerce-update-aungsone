@@ -49,6 +49,10 @@ import {
   invalidateAdminAllProductsCache,
   getCachedAdminVendorsForProductList,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
+  removeAdminProductsFromCaches,
+  removeProductsFromVendorAdminCaches,
+  notifyVendorStorefrontProductsRemoved,
+  broadcastPlatformProductsDeleted,
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
@@ -124,6 +128,106 @@ function productMatchesAdminStatusFilter(product: Product, filter: string): bool
   return true;
 }
 
+function countAdminProductsByStatus(rows: Product[]): { all: number; active: number; offShelf: number } {
+  let active = 0;
+  let offShelf = 0;
+  for (const row of rows) {
+    const status = normalizeAdminProductStatus(row.status);
+    if (status === "active" || status === "published") active++;
+    else if (status === "off-shelf" || status === "offshelf") offShelf++;
+  }
+  return { all: rows.length, active, offShelf };
+}
+
+/** Fix stale paginated cache totals (e.g. footer/breadcrumb «6» while only 2 rows remain). */
+function reconcileAdminProductsPagePayload(
+  payload: {
+    products?: Product[];
+    total?: number;
+    hasMore?: boolean;
+    counts?: { all: number; active: number; offShelf: number };
+  },
+  page: number
+): { rows: Product[]; total: number; counts?: { all: number; active: number; offShelf: number } } {
+  const rows = (payload.products || []) as Product[];
+  let total = Math.max(0, Number(payload.total ?? rows.length));
+  let counts = payload.counts ? { ...payload.counts } : undefined;
+  const singlePage = page === 1 && !payload.hasMore;
+
+  if (singlePage && rows.length < total) {
+    total = rows.length;
+    counts = countAdminProductsByStatus(rows);
+  } else if (singlePage && counts && counts.all > rows.length) {
+    total = rows.length;
+    counts = countAdminProductsByStatus(rows);
+  }
+
+  return { rows, total, counts };
+}
+
+const LS_ADMIN_PRODUCTS_PAGE_SIZE = "migoo-admin-products-page-size-v1";
+
+function readPersistedAdminProductsPageSize(): number {
+  if (typeof sessionStorage === "undefined") return ADMIN_PRODUCTS_INITIAL_PAGE_SIZE;
+  try {
+    const n = Number(sessionStorage.getItem(LS_ADMIN_PRODUCTS_PAGE_SIZE));
+    if ([10, 15, 20, 50].includes(n)) return n;
+  } catch {
+    /* ignore */
+  }
+  return ADMIN_PRODUCTS_INITIAL_PAGE_SIZE;
+}
+
+/** Resolve vendor catalog cache keys affected by deleting these products. */
+function collectCatalogKeysForDeletedProducts(
+  deletedProducts: Product[],
+  vendorsList: unknown[]
+): { catalogKeys: string[]; vendorIds: string[] } {
+  const catalogKeys = new Set<string>();
+  const vendorIds = new Set<string>();
+  const list = Array.isArray(vendorsList) ? vendorsList : [];
+
+  for (const product of deletedProducts) {
+    const fromSelection = resolveVendorsFromSelectionEntries(product.selectedVendors, list);
+    for (const [id, meta] of fromSelection) {
+      vendorIds.add(id);
+      catalogKeys.add(id);
+      if (meta.storeSlug) catalogKeys.add(meta.storeSlug);
+    }
+    if (Array.isArray(product.selectedVendors)) {
+      for (const entry of product.selectedVendors) {
+        const raw = String(entry ?? "").trim();
+        if (raw) {
+          catalogKeys.add(raw);
+          vendorIds.add(raw);
+        }
+      }
+    }
+    for (const rawVendor of [product.vendorId, product.vendor]) {
+      const vid = String(rawVendor ?? "").trim();
+      if (!vid) continue;
+      vendorIds.add(vid);
+      catalogKeys.add(vid);
+      const row = findVendorRowForProductSelectionEntry(vid, list);
+      const slug = String(row?.storeSlug || "").trim();
+      if (slug) catalogKeys.add(slug);
+    }
+  }
+
+  return {
+    catalogKeys: [...catalogKeys],
+    vendorIds: [...vendorIds],
+  };
+}
+
+function statusCountDeltaForProduct(product: Product): { active: number; offShelf: number } {
+  const status = normalizeAdminProductStatus(product.status);
+  return {
+    active: status === "active" || status === "published" ? 1 : 0,
+    offShelf: status === "off-shelf" || status === "offshelf" ? 1 : 0,
+  };
+}
+
 /** Bust vendor shop cache + broadcast so open storefronts refetch after assign/unassign on product edit. */
 function invalidateVendorStorefrontsForProductVendorSelectionChange(
   previousSelectedVendors: unknown,
@@ -155,8 +259,10 @@ export function ProductList({
   /** Sent to `getCachedAdminProductsPage` as `q` — only updated on Enter (inline or TopNav). */
   const [committedSearchQuery, setCommittedSearchQuery] = useState("");
   const lastHeaderCommitTick = useRef(0);
+  const skipCacheSoftReloadRef = useRef(false);
+  const prevAdminPageSizeRef = useRef<number | null>(null);
   const [adminPage, setAdminPage] = useState(1);
-  const [adminPageSize, setAdminPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const [adminPageSize, setAdminPageSize] = useState(readPersistedAdminProductsPageSize);
   const [adminTotal, setAdminTotal] = useState(0);
   const [adminHasMore, setAdminHasMore] = useState(false);
   const [statusCounts, setStatusCounts] = useState({ all: 0, active: 0, offShelf: 0 });
@@ -230,17 +336,18 @@ export function ProductList({
           },
           forceRefresh
         );
-        setProducts((payload.products || []) as Product[]);
-        setAdminTotal(payload.total);
+        const reconciled = reconcileAdminProductsPagePayload(payload, adminPage);
+        setProducts(reconciled.rows);
+        setAdminTotal(reconciled.total);
         setAdminHasMore(!!payload.hasMore);
-        if (payload.counts) {
+        if (reconciled.counts) {
           setStatusCounts({
-            all: payload.counts.all,
-            active: payload.counts.active,
-            offShelf: payload.counts.offShelf,
+            all: reconciled.counts.all,
+            active: reconciled.counts.active,
+            offShelf: reconciled.counts.offShelf,
           });
         }
-        SmartCache.set(CACHE_KEYS.PRODUCTS, (payload.products || []) as Product[]);
+        SmartCache.set(CACHE_KEYS.PRODUCTS, reconciled.rows);
       } catch (error: any) {
         console.error("❌ Failed to load products:", error);
         setProducts([]);
@@ -287,8 +394,11 @@ export function ProductList({
   }, [applyVendorsListToState]);
 
   useEffect(() => {
-    void loadProductPage(false);
-  }, [loadProductPage]);
+    const pageSizeChanged =
+      prevAdminPageSizeRef.current != null && prevAdminPageSizeRef.current !== adminPageSize;
+    prevAdminPageSizeRef.current = adminPageSize;
+    void loadProductPage(pageSizeChanged, { silent: pageSizeChanged });
+  }, [loadProductPage, adminPageSize]);
 
   useEffect(() => {
     if (!onListingCountChange) return;
@@ -313,7 +423,13 @@ export function ProductList({
 
   useEffect(() => {
     /** Silent = merged session cache; avoids skeleton blink after order-driven stock patches. */
-    const softReload = () => void loadProductPage(false, { silent: true });
+    const softReload = () => {
+      if (skipCacheSoftReloadRef.current) {
+        skipCacheSoftReloadRef.current = false;
+        return;
+      }
+      void loadProductPage(false, { silent: true });
+    };
     const hardReload = () => void loadProductPage(true);
     const onStorage = (e: StorageEvent) => {
       if (e.key !== adminOrdersUpdatedStorageKey()) return;
@@ -329,6 +445,53 @@ export function ProductList({
     };
   }, [loadProductPage]);
 
+  const applyOptimisticProductRemoval = useCallback(
+    (removedIds: Set<string>, sourceProducts: Product[]) => {
+      if (removedIds.size === 0) return;
+      const deletedRows = sourceProducts.filter((p) => removedIds.has(p.id));
+
+      setProducts((prev) => prev.filter((p) => !removedIds.has(p.id)));
+      setAdminTotal((prev) => Math.max(0, prev - deletedRows.length));
+      setSelectedProducts((prev) => prev.filter((id) => !removedIds.has(id)));
+
+      if (deletedRows.length > 0) {
+        setStatusCounts((prev) => {
+          let active = prev.active;
+          let offShelf = prev.offShelf;
+          for (const row of deletedRows) {
+            const delta = statusCountDeltaForProduct(row);
+            active = Math.max(0, active - delta.active);
+            offShelf = Math.max(0, offShelf - delta.offShelf);
+          }
+          return {
+            all: Math.max(0, prev.all - deletedRows.length),
+            active,
+            offShelf,
+          };
+        });
+      }
+
+      const remaining = sourceProducts.filter((p) => !removedIds.has(p.id));
+      SmartCache.set(CACHE_KEYS.PRODUCTS, remaining);
+      SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+      skipCacheSoftReloadRef.current = true;
+      removeAdminProductsFromCaches([...removedIds]);
+      broadcastPlatformProductsDeleted([...removedIds]);
+
+      const { catalogKeys, vendorIds } = collectCatalogKeysForDeletedProducts(
+        deletedRows,
+        adminVendorsRows
+      );
+      if (vendorIds.length > 0) {
+        removeProductsFromVendorAdminCaches(vendorIds, [...removedIds]);
+      }
+      if (catalogKeys.length > 0) {
+        notifyVendorStorefrontProductsRemoved(catalogKeys, [...removedIds]);
+      }
+    },
+    [adminVendorsRows]
+  );
+
   // Realtime bridge: product pool + vendor profile/settings (badge labels stay in sync).
   useEffect(() => {
     let debounceProducts: ReturnType<typeof setTimeout> | undefined;
@@ -336,7 +499,7 @@ export function ProductList({
     const scheduleProducts = () => {
       window.clearTimeout(debounceProducts);
       debounceProducts = window.setTimeout(() => {
-        void loadProductPage(true);
+        void loadProductPage(true, { silent: true });
       }, 280);
     };
     const scheduleVendors = () => {
@@ -363,6 +526,25 @@ export function ProductList({
         (payload: any) => {
           const key = String(payload?.new?.key || payload?.old?.key || "");
           if (key.startsWith("product:")) {
+            if (payload.eventType === "DELETE") {
+              const id = key.slice("product:".length);
+              setProducts((prev) => {
+                const deleted = prev.find((p) => p.id === id);
+                if (!deleted) return prev;
+                const delta = statusCountDeltaForProduct(deleted);
+                setAdminTotal((total) => Math.max(0, total - 1));
+                setStatusCounts((counts) => ({
+                  all: Math.max(0, counts.all - 1),
+                  active: Math.max(0, counts.active - delta.active),
+                  offShelf: Math.max(0, counts.offShelf - delta.offShelf),
+                }));
+                return prev.filter((p) => p.id !== id);
+              });
+              removeAdminProductsFromCaches([id]);
+              broadcastPlatformProductsDeleted([id]);
+              SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+              return;
+            }
             scheduleProducts();
             return;
           }
@@ -500,28 +682,23 @@ export function ProductList({
 
   const handleDeleteProduct = async (id: string) => {
     const previous = products;
-    const updatedProducts = products.filter((p) => p.id !== id);
-    setProducts(updatedProducts);
-    SmartCache.set(CACHE_KEYS.PRODUCTS, updatedProducts);
-    SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
+    const removedIds = new Set([id]);
+    applyOptimisticProductRemoval(removedIds, previous);
     toast.success("Product deleted!", { duration: 2000 });
     try {
       await productsApi.delete(id, sessionUser?.id);
       invalidateProductByIdCache(id);
-      invalidateAdminAllProductsCache();
-      await loadProductPage(true);
       onProductsChanged?.();
     } catch (error) {
       console.error("Failed to delete product:", error);
       const errorMessage = error instanceof Error ? error.message : "Failed to delete product";
       if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
-        invalidateAdminAllProductsCache();
-        await loadProductPage(true);
         onProductsChanged?.();
       } else {
         toast.error(`Failed to delete: ${errorMessage}`);
         setProducts(previous);
         SmartCache.set(CACHE_KEYS.PRODUCTS, previous);
+        void loadProductPage(true, { silent: true });
       }
     }
   };
@@ -537,33 +714,58 @@ export function ProductList({
   const executeDelete = async () => {
     try {
       if (productToDelete === "BULK_DELETE") {
+        const idsToDelete = [...selectedProducts];
+        const previous = products;
+        applyOptimisticProductRemoval(new Set(idsToDelete), previous);
+
         let successCount = 0;
         let errorCount = 0;
         let alreadyDeletedCount = 0;
-        const removedIds = new Set<string>();
+        const failedIds = new Set<string>();
 
-        for (const productId of selectedProducts) {
+        for (const productId of idsToDelete) {
           try {
             await productsApi.delete(productId, sessionUser?.id);
             invalidateProductByIdCache(productId);
             successCount++;
-            removedIds.add(productId);
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "";
             if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
               alreadyDeletedCount++;
-              removedIds.add(productId);
             } else {
               console.error(`Failed to delete product ${productId}:`, error);
               errorCount++;
+              failedIds.add(productId);
             }
           }
         }
 
-        if (removedIds.size > 0) {
-          SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-          invalidateAdminAllProductsCache();
-          await loadProductPage(true);
+        if (failedIds.size > 0) {
+          const restore = previous.filter((p) => failedIds.has(p.id));
+          setProducts((prev) => {
+            const merged = [...prev];
+            for (const row of restore) {
+              if (!merged.some((p) => p.id === row.id)) merged.unshift(row);
+            }
+            return merged;
+          });
+          setAdminTotal((prev) => prev + restore.length);
+          setStatusCounts((prev) => {
+            let active = prev.active;
+            let offShelf = prev.offShelf;
+            for (const row of restore) {
+              const delta = statusCountDeltaForProduct(row);
+              active += delta.active;
+              offShelf += delta.offShelf;
+            }
+            return {
+              all: prev.all + restore.length,
+              active,
+              offShelf,
+            };
+          });
+          SmartCache.set(CACHE_KEYS.PRODUCTS, previous.filter((p) => !failedIds.has(p.id)));
+          void loadProductPage(true, { silent: true });
         }
 
         if (successCount > 0) {
@@ -574,29 +776,25 @@ export function ProductList({
         }
         if (errorCount > 0) {
           toast.error(`${errorCount} product(s) could not be deleted`);
-          await loadProductPage(true);
         }
         setSelectedProducts([]);
       } else if (productToDelete) {
-        let removedOk = false;
+        const previous = products;
+        applyOptimisticProductRemoval(new Set([productToDelete]), previous);
         try {
           await productsApi.delete(productToDelete, sessionUser?.id);
           invalidateProductByIdCache(productToDelete);
-          removedOk = true;
           toast.success("Product deleted successfully!");
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "";
           if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
             toast.info("Product already deleted");
-            removedOk = true;
           } else {
+            setProducts(previous);
+            SmartCache.set(CACHE_KEYS.PRODUCTS, previous);
+            void loadProductPage(true, { silent: true });
             throw error;
           }
-        }
-        if (removedOk) {
-          SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-          invalidateAdminAllProductsCache();
-          await loadProductPage(true);
         }
       }
       if (onProductsChanged) onProductsChanged();
@@ -607,7 +805,6 @@ export function ProductList({
 
       if (errorMessage.includes("Product not found") || errorMessage.includes("404")) {
         toast.info("Product already deleted");
-        await loadProductPage(true);
       } else {
         console.error("Failed to delete product(s):", error);
         toast.error(errorMessage);
@@ -689,11 +886,26 @@ export function ProductList({
   };
 
   const getStatusCount = (status: string) => {
+    if (!committedSearchQuery.trim()) {
+      if (status === "all") return statusCounts.all;
+      if (status === "active") return statusCounts.active;
+      if (status === "off-shelf") return statusCounts.offShelf;
+    }
     if (status === "all") return productsMatchingSearch.length;
     return productsMatchingSearch.filter((product) =>
       productMatchesAdminStatusFilter(product, status)
     ).length;
   };
+
+  const handleAdminPageSizeChange = useCallback((value: string) => {
+    const next = Number(value);
+    setAdminPageSize(next);
+    try {
+      sessionStorage.setItem(LS_ADMIN_PRODUCTS_PAGE_SIZE, String(next));
+    } catch {
+      /* ignore quota/private mode */
+    }
+  }, []);
 
   const adminTotalPages = Math.max(1, Math.ceil(adminTotal / adminPageSize) || 1);
 
@@ -1075,7 +1287,7 @@ export function ProductList({
                     <span>Rows per page</span>
                     <Select
                       value={String(adminPageSize)}
-                      onValueChange={(v) => setAdminPageSize(Number(v))}
+                      onValueChange={handleAdminPageSizeChange}
                     >
                       <SelectTrigger className="w-[88px] h-8">
                         <SelectValue />

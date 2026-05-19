@@ -208,6 +208,136 @@ class ModuleCache {
       });
     }
   }
+
+  /**
+   * Drop deleted rows from each cached admin paginated page and adjust totals/counts in place.
+   * `deletedSnapshots` supplies status metadata when the row is no longer on this page slice.
+   */
+  removeProductsFromPaginatedAdminCaches(
+    pageKeyPrefix: string,
+    productIds: Set<string>,
+    deletedSnapshots: any[] = []
+  ): void {
+    if (productIds.size === 0) return;
+    const snapshotById = new Map<string, any>();
+    for (const row of deletedSnapshots) {
+      if (row?.id != null) snapshotById.set(String(row.id), row);
+    }
+    const deleteCount = productIds.size;
+
+    for (const key of [...this.cache.keys()]) {
+      if (!key.startsWith(pageKeyPrefix)) continue;
+      const entry = this.cache.get(key);
+      const raw = entry?.data as {
+        products?: any[];
+        total?: number;
+        counts?: { all: number; active: number; offShelf: number };
+        page?: number;
+        pageSize?: number;
+        hasMore?: boolean;
+        [k: string]: unknown;
+      } | undefined;
+      if (!raw || !Array.isArray(raw.products)) continue;
+
+      const removedRows = raw.products.filter((row) => productIds.has(String(row?.id)));
+      const products = raw.products.filter((row) => !productIds.has(String(row?.id)));
+
+      let counts = raw.counts;
+      if (counts) {
+        for (const id of productIds) {
+          const row =
+            snapshotById.get(id) ||
+            removedRows.find((r) => String(r?.id) === id) ||
+            raw.products.find((r) => String(r?.id) === id);
+          if (!row) continue;
+          const status = String(row?.status ?? "active").trim().toLowerCase().replace(/\s+/g, "-");
+          const isActive = status === "active" || status === "published";
+          const isOffShelf = status === "off-shelf" || status === "offshelf";
+          counts = {
+            all: Math.max(0, counts.all - 1),
+            active: Math.max(0, counts.active - (isActive ? 1 : 0)),
+            offShelf: Math.max(0, counts.offShelf - (isOffShelf ? 1 : 0)),
+          };
+        }
+      }
+
+      const total = Math.max(0, Number(raw.total ?? 0) - deleteCount);
+      const page = Math.max(1, Number(raw.page ?? 1));
+      const pageSize = Math.max(1, Number(raw.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
+      this.cache.set(key, {
+        data: {
+          ...raw,
+          products,
+          total,
+          counts,
+          hasMore: page * pageSize < total,
+        },
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  /** Drop deleted rows from cached vendor storefront catalog pages (`vendor-products-{id}-*`). */
+  removeProductsFromVendorCatalogPaginatedCaches(
+    catalogKeys: string[],
+    productIds: Set<string>,
+    deleteCount: number
+  ): void {
+    if (productIds.size === 0 || catalogKeys.length === 0) return;
+    const prefixes = catalogKeys
+      .map((k) => String(k).trim())
+      .filter(Boolean)
+      .map((k) => `vendor-products-${k}-`);
+
+    for (const key of [...this.cache.keys()]) {
+      if (!prefixes.some((prefix) => key.startsWith(prefix))) continue;
+      this.patchVendorCatalogCacheEntry(key, productIds, deleteCount);
+    }
+  }
+
+  /** Drop deleted product ids from every cached vendor storefront catalog page. */
+  removeProductIdsFromAllVendorCatalogCaches(productIds: Set<string>): void {
+    if (productIds.size === 0) return;
+    const deleteCount = productIds.size;
+    for (const key of [...this.cache.keys()]) {
+      if (!key.startsWith("vendor-products-")) continue;
+      this.patchVendorCatalogCacheEntry(key, productIds, deleteCount);
+    }
+  }
+
+  private patchVendorCatalogCacheEntry(
+    key: string,
+    productIds: Set<string>,
+    deleteCount: number
+  ): void {
+    const entry = this.cache.get(key);
+    const raw = entry?.data as {
+      products?: any[];
+      total?: number;
+      page?: number;
+      pageSize?: number;
+      hasMore?: boolean;
+      [k: string]: unknown;
+    } | undefined;
+    if (!raw || !Array.isArray(raw.products)) return;
+
+    const removedOnPage = raw.products.filter((row) => productIds.has(String(row?.id))).length;
+    if (removedOnPage === 0 && deleteCount === 0) return;
+
+    const products = raw.products.filter((row) => !productIds.has(String(row?.id)));
+    const total = Math.max(0, Number(raw.total ?? 0) - deleteCount);
+    const page = Math.max(1, Number(raw.page ?? 1));
+    const pageSize = Math.max(1, Number(raw.pageSize ?? 24));
+    this.cache.set(key, {
+      data: {
+        ...raw,
+        products,
+        total,
+        hasMore: page * pageSize < total,
+      },
+      timestamp: Date.now(),
+    });
+  }
 }
 
 // Singleton instance
@@ -1441,6 +1571,36 @@ export function invalidateVendorSavedWishlistCaches(userId: string, vendorId: st
 /** Same-tab + cross-tab signal so open `VendorStoreView` refetches immediately after assign/unassign. */
 export const VENDOR_CATALOG_MUTATION_EVENT = "migoo-vendor-catalog-mutation";
 
+/** Any super-admin product delete — all vendor storefront tabs listen (no vendor key matching). */
+export const PLATFORM_PRODUCTS_DELETED_EVENT = "migoo-platform-products-deleted";
+
+/**
+ * Super-admin deleted products: bust every vendor storefront LS snapshot + module cache,
+ * then broadcast ids so open `/vendor/*` tabs drop rows instantly and refetch.
+ */
+export function broadcastPlatformProductsDeleted(productIds: string[]): void {
+  if (typeof window === "undefined") return;
+  const ids = [...new Set(productIds.map(String).filter(Boolean))];
+  if (ids.length === 0) return;
+
+  moduleCache.removeProductIdsFromAllVendorCatalogCaches(new Set(ids));
+  removePersistedKeysPrefix("migoo-ls-vendor-p1-");
+
+  const detail = { productIds: ids };
+  try {
+    window.dispatchEvent(new CustomEvent(PLATFORM_PRODUCTS_DELETED_EVENT, { detail }));
+  } catch {
+    /* ignore */
+  }
+  try {
+    const bc = new BroadcastChannel(PLATFORM_PRODUCTS_DELETED_EVENT);
+    bc.postMessage({ productIds: ids });
+    bc.close();
+  } catch {
+    /* ignore */
+  }
+}
+
 function notifyVendorCatalogMutation(catalogKeys: string[]): void {
   if (typeof window === "undefined") return;
   const keys = [...new Set(catalogKeys.map((k) => String(k).trim()).filter(Boolean))];
@@ -1481,6 +1641,83 @@ export function invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(
     invalidateVendorStorefrontCatalogCache(k);
   }
   notifyVendorCatalogMutation(keyList);
+}
+
+/** Super Admin delete — patch session + paginated caches without forcing a grid refetch. */
+export function removeAdminProductsFromCaches(productIds: string[]): void {
+  const idSet = new Set(productIds.map(String).filter(Boolean));
+  if (idSet.size === 0) return;
+
+  const deletedSnapshots: any[] = [];
+  const full = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+  if (full && Array.isArray(full)) {
+    deletedSnapshots.push(...full.filter((p) => idSet.has(String(p?.id))));
+    moduleCache.prime(
+      CACHE_KEYS.ADMIN_PRODUCTS,
+      full.filter((p) => !idSet.has(String(p?.id)))
+    );
+  }
+
+  moduleCache.removeProductsFromPaginatedAdminCaches(
+    ADMIN_PRODUCTS_PAGE_CACHE_PREFIX,
+    idSet,
+    deletedSnapshots
+  );
+
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix("migoo-ls-admin-p1-");
+  }
+
+  dispatchAdminProductsCachePatched();
+}
+
+/** Vendor admin product list — drop deleted rows from cached payload for each vendor. */
+export function removeProductsFromVendorAdminCaches(
+  vendorIds: string[],
+  productIds: string[]
+): void {
+  const idSet = new Set(productIds.map(String).filter(Boolean));
+  if (idSet.size === 0) return;
+  for (const vendorId of vendorIds) {
+    const key = CACHE_KEYS.vendorProductsAdmin(String(vendorId));
+    const prev = moduleCache.peek<{ products?: unknown[] }>(key);
+    if (!prev?.products || !Array.isArray(prev.products)) continue;
+    const next = prev.products.filter((p: any) => !idSet.has(String(p?.id)));
+    if (next.length === prev.products.length) continue;
+    primeVendorProductsAdminCache(String(vendorId), next);
+  }
+}
+
+/** Instant vendor storefront removal + cache bust (same-tab + cross-tab). */
+export function notifyVendorStorefrontProductsRemoved(
+  catalogKeys: string[],
+  productIds: string[]
+): void {
+  if (typeof window === "undefined") return;
+  const keys = [...new Set(catalogKeys.map((k) => String(k).trim()).filter(Boolean))];
+  const ids = [...new Set(productIds.map(String).filter(Boolean))];
+  if (ids.length === 0) return;
+
+  if (keys.length > 0) {
+    moduleCache.removeProductsFromVendorCatalogPaginatedCaches(keys, new Set(ids), ids.length);
+    for (const k of keys) {
+      removePersistedKeysPrefix(`migoo-ls-vendor-p1-${encodeURIComponent(k)}`);
+    }
+  }
+
+  const detail = { keys, productIds: ids };
+  try {
+    window.dispatchEvent(new CustomEvent(VENDOR_CATALOG_MUTATION_EVENT, { detail }));
+  } catch {
+    /* ignore */
+  }
+  try {
+    const bc = new BroadcastChannel(VENDOR_CATALOG_MUTATION_EVENT);
+    bc.postMessage({ type: "products-deleted", keys, productIds: ids });
+    bc.close();
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Super Admin `/products` grid — one fetch per session until Refresh or invalidation */

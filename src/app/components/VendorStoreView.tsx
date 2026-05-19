@@ -11,6 +11,7 @@ import {
   invalidateAdminCustomersCache,
   fetchCustomerOrdersList,
   VENDOR_CATALOG_MUTATION_EVENT,
+  PLATFORM_PRODUCTS_DELETED_EVENT,
   type VendorWishlistVendorPageResult,
 } from "../utils/module-cache";
 import {
@@ -3087,6 +3088,42 @@ export function VendorStoreView({
     [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
   );
 
+  // Super-admin product delete: drop rows immediately on every vendor shop (no slug/id key matching).
+  useEffect(() => {
+    if (savedPage) return;
+
+    const applyPlatformDeleted = (productIds: string[]) => {
+      const idSet = new Set(productIds.map(String));
+      if (idSet.size === 0) return;
+      setProducts((prev) => prev.filter((p) => !idSet.has(String(p.id))));
+      void refetchVendorCatalogPage1(true);
+    };
+
+    const onPlatformDeleted = (e: Event) => {
+      const ids = (e as CustomEvent<{ productIds?: string[] }>).detail?.productIds;
+      if (Array.isArray(ids) && ids.length > 0) applyPlatformDeleted(ids);
+    };
+
+    window.addEventListener(PLATFORM_PRODUCTS_DELETED_EVENT, onPlatformDeleted as EventListener);
+
+    let platformBc: BroadcastChannel | null = null;
+    try {
+      platformBc = new BroadcastChannel(PLATFORM_PRODUCTS_DELETED_EVENT);
+      platformBc.onmessage = (ev: MessageEvent<{ productIds?: string[] }>) => {
+        if (Array.isArray(ev.data?.productIds) && ev.data.productIds.length > 0) {
+          applyPlatformDeleted(ev.data.productIds);
+        }
+      };
+    } catch {
+      /* ignore */
+    }
+
+    return () => {
+      window.removeEventListener(PLATFORM_PRODUCTS_DELETED_EVENT, onPlatformDeleted as EventListener);
+      platformBc?.close();
+    };
+  }, [savedPage, refetchVendorCatalogPage1]);
+
   // Assign/unassign from vendor admin or super admin: refetch this shop immediately (same tab, other tabs, or no LS yet).
   useEffect(() => {
     if (savedPage) return;
@@ -3123,9 +3160,20 @@ export function VendorStoreView({
       scheduleRefetch();
     };
 
+    const applyDeletedProducts = (productIds: string[]) => {
+      const idSet = new Set(productIds.map(String));
+      if (idSet.size === 0) return;
+      setProducts((prev) => prev.filter((p) => !idSet.has(String(p.id))));
+      setVendorCatalogTotal((prev) => Math.max(0, prev - idSet.size));
+    };
+
     const onWindowMutation = (e: Event) => {
-      const ce = e as CustomEvent<{ keys?: string[] }>;
+      const ce = e as CustomEvent<{ keys?: string[]; productIds?: string[] }>;
       if (!matchesMutationKeys(ce.detail?.keys)) return;
+      if (Array.isArray(ce.detail?.productIds) && ce.detail.productIds.length > 0) {
+        applyDeletedProducts(ce.detail.productIds);
+        return;
+      }
       scheduleRefetch();
     };
 
@@ -3135,7 +3183,12 @@ export function VendorStoreView({
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(VENDOR_CATALOG_MUTATION_EVENT);
-      bc.onmessage = (ev: MessageEvent<{ keys?: string[] }>) => {
+      bc.onmessage = (ev: MessageEvent<{ type?: string; keys?: string[]; productIds?: string[] }>) => {
+        if (ev.data?.type === "products-deleted") {
+          if (!matchesMutationKeys(ev.data?.keys)) return;
+          applyDeletedProducts(ev.data.productIds || []);
+          return;
+        }
         if (!matchesMutationKeys(ev.data?.keys)) return;
         scheduleRefetch();
       };
@@ -3168,6 +3221,13 @@ export function VendorStoreView({
         (payload: any) => {
           const key = String(payload?.new?.key || payload?.old?.key || "");
           if (!key.startsWith("product:")) return;
+          if (payload.eventType === "DELETE") {
+            const id = key.slice("product:".length);
+            setProducts((prev) => prev.filter((p) => String(p.id) !== id));
+            setVendorCatalogTotal((prev) => Math.max(0, prev - 1));
+            void refetchVendorCatalogPage1(true);
+            return;
+          }
           scheduleRefetch();
         }
       )
@@ -3262,6 +3322,11 @@ export function VendorStoreView({
 
       setVendorCategories(categoriesData);
       setServerStatus("healthy");
+
+      // Stale-while-revalidate: LS paints instantly; always reconcile with server so deleted products vanish.
+      if (!savedPage && !forceRefresh) {
+        void refetchVendorCatalogPage1(true);
+      }
     } catch (error) {
       console.error("❌ [VENDOR STORE] Error loading vendor data:", error);
       if (productsRef.current.length > 0) setServerStatus("healthy");

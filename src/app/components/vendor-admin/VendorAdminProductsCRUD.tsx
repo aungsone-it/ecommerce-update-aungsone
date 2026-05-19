@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import {
   getCachedVendorProductsAdmin,
   invalidateVendorProductsAdminCache,
+  removeProductsFromVendorAdminCaches,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
   moduleCache,
   CACHE_KEYS,
@@ -186,6 +187,9 @@ export function VendorAdminProductsCRUD({
         void loadProducts(true);
       }, 320);
     };
+    const applyDeletedProduct = (productId: string) => {
+      setProducts((prev) => prev.filter((p) => p.id !== productId));
+    };
     const channel = supabase
       .channel(`vendor-admin-products-kv-${vendorId}`)
       .on(
@@ -194,6 +198,11 @@ export function VendorAdminProductsCRUD({
         (payload: any) => {
           const key = String(payload?.new?.key || payload?.old?.key || "");
           if (!key.startsWith("product:")) return;
+          if (payload.eventType === "DELETE") {
+            applyDeletedProduct(key.slice("product:".length));
+            removeProductsFromVendorAdminCaches([vendorId], [key.slice("product:".length)]);
+            return;
+          }
           schedule();
         }
       )

@@ -3816,8 +3816,9 @@ app.delete("/make-server-16010b6f/products/:id", async (c) => {
 
     await deleteOwnedStorageRefs(supabase, collectProductImageRefs(existingProduct));
     
-    // 🗑️ Invalidate dashboard cache since we deleted a product
+    // 🗑️ Invalidate dashboard + product list caches since we deleted a product
     invalidateDashboardCache();
+    clearCache("products");
     
     return c.json({ 
       success: true,
