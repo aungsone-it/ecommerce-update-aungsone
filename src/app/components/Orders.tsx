@@ -44,6 +44,7 @@ import { useLanguage } from "../contexts/LanguageContext";
 import {
   getCachedAdminOrdersPage,
   invalidateAdminOrdersCache,
+  patchAdminOrdersCacheStatuses,
   ADMIN_ORDERS_PAGE_DEFAULT,
   type AdminOrdersPagePayload,
 } from "../utils/module-cache";
@@ -928,11 +929,13 @@ export function Orders({
         selectedOrders.includes(order.id) ? { ...order, status: bulkStatus } : order
       )
     );
+
+    const orderIds = [...selectedOrders];
+    patchAdminOrdersCacheStatuses(orderIds.map((id) => ({ orderId: id, status: bulkStatus })));
     
     // Close dialog and clear selection immediately
     setIsStatusDialogOpen(false);
-    const updatedCount = selectedOrders.length;
-    const orderIds = [...selectedOrders];
+    const updatedCount = orderIds.length;
     setSelectedOrders([]);
     for (const id of orderIds) pendingOrderStatusDrafts.set(id, { status: bulkStatus, at: Date.now() });
     clearOrderSaveState(orderIds);
@@ -1019,6 +1022,7 @@ export function Orders({
         order.id === orderId ? { ...order, status: newStatus } : order
       )
     );
+    patchAdminOrdersCacheStatuses([{ orderId, status: newStatus }]);
     pendingOrderStatusDrafts.set(orderId, { status: newStatus, at: Date.now() });
     clearOrderSaveState([orderId]);
 
@@ -1113,6 +1117,11 @@ export function Orders({
       const stillHere = ordersSurfaceActiveRef.current;
       if (stillHere) {
         setOrders(previousOrders);
+        if (orderBeingUpdated) {
+          patchAdminOrdersCacheStatuses([
+            { orderId, status: orderBeingUpdated.status },
+          ]);
+        }
         void refetchAdminProductsInventoryCaches();
         toast.error("Failed to save status. Changes reverted.", {
           description: detail,

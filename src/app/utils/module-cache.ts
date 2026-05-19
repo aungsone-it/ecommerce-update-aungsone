@@ -1977,6 +1977,31 @@ export async function getCachedAdminOrdersPayload(forceRefresh = false) {
   return moduleCache.get(CACHE_KEYS.ADMIN_ORDERS, () => fetchAdminOrdersPayload(), forceRefresh);
 }
 
+/** Optimistic status change — keeps pending-order badge in sync before server round-trip. */
+export function patchAdminOrdersCacheStatuses(
+  updates: Array<{ orderId: string; status: string }>
+): void {
+  if (updates.length === 0) return;
+  const payload = moduleCache.peek<{ orders?: unknown[] }>(CACHE_KEYS.ADMIN_ORDERS);
+  if (!payload?.orders || !Array.isArray(payload.orders)) return;
+
+  const byId = new Map(updates.map((u) => [String(u.orderId), String(u.status)]));
+  const now = new Date().toISOString();
+  const orders = payload.orders.map((raw) => {
+    const o = raw as Record<string, unknown>;
+    const id = String(o?.id ?? "");
+    const nextStatus = byId.get(id);
+    if (!nextStatus) return raw;
+    return { ...o, status: nextStatus, updatedAt: now };
+  });
+
+  moduleCache.prime(CACHE_KEYS.ADMIN_ORDERS, { ...payload, orders });
+  SmartCache.delete("badge_counts");
+  if (typeof window !== "undefined") {
+    notifyAdminOrdersUpdated("patch-admin-orders-status");
+  }
+}
+
 export function invalidateAdminOrdersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_ORDERS);
   moduleCache.invalidatePrefix(ADMIN_ORDERS_PAGE_CACHE_PREFIX);

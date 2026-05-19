@@ -96,6 +96,10 @@ import {
   createKPayQrSession,
   fetchKPaySessionStatus,
 } from "../utils/kpayClient";
+import {
+  getCustomerOrderStatusColor,
+  getCustomerOrderStatusLabel,
+} from "../utils/normalizeOrderBadgeStatus";
 
 // 🚀 MODULE-LEVEL CACHE - These persist across all navigations and component remounts
 // This is critical for reducing Supabase API calls from 20k → ~100-500
@@ -3765,7 +3769,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         couponType: appliedCoupon?.discountType || null,
         total: (orderTotal - (appliedCoupon?.discountAmount || 0)).toFixed(2),
         totalFormatted: `$${(orderTotal - (appliedCoupon?.discountAmount || 0)).toFixed(2)}`,
-        status: paymentMethod === "KPay" ? "pending_payment" : 'pending',
+        status: 'pending',
         paymentStatus:
           paymentMethod === "KPay"
             ? (kpaySession?.status === "paid" ? "paid" : "pending")
@@ -5613,24 +5617,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           {!ordersLoading && !ordersError && userOrders.length > 0 && (
             <div className="space-y-4">
               {userOrders.map((order) => {
-                const getStatusColor = (status: string) => {
-                  switch (status?.toLowerCase()) {
-                    case 'delivered': return 'bg-emerald-600';
-                    case 'processing': return 'bg-blue-600';
-                    case 'shipped': return 'bg-amber-600';
-                    case 'ready-to-ship': return 'bg-blue-600';
-                    case 'cancelled': return 'bg-red-600';
-                    default: return 'bg-slate-600';
-                  }
-                };
-
-                const getStatusLabel = (status: string) => {
-                  if (status?.toLowerCase() === 'ready-to-ship') {
-                    return 'Shipping';
-                  }
-                  return status || 'Pending';
-                };
-
                 return (
                   <Card key={order.id} className="hover:shadow-md transition-shadow">
                     <CardContent className="p-4 sm:p-6">
@@ -5643,9 +5629,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           </h3>
                           <Badge 
                             variant="default"
-                            className={`${getStatusColor(order.status)} shrink-0 text-xs`}
+                            className={`${getCustomerOrderStatusColor(order.status)} shrink-0 text-xs`}
                           >
-                            {getStatusLabel(order.status)}
+                            {getCustomerOrderStatusLabel(order.status)}
                           </Badge>
                         </div>
                         

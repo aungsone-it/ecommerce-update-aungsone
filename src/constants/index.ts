@@ -125,11 +125,8 @@ export const ORDER_STATUS_OPTIONS = [
   { value: ORDER_STATUSES.CANCELLED, label: 'Cancelled', color: 'red' },
 ] as const;
 
-export const PENDING_ORDER_STATUSES = [
-  ORDER_STATUSES.PENDING,
-  ORDER_STATUSES.PROCESSING,
-  ORDER_STATUSES.CONFIRMED,
-] as const;
+/** Super-admin bell/sidebar: brand-new orders only (not processing/confirmed — those already had action). */
+export const PENDING_ORDER_STATUSES = [ORDER_STATUSES.PENDING] as const;
 
 // ============================================
 // PAYMENT

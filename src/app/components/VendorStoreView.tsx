@@ -23,6 +23,10 @@ import {
   lsVendorSavedWishlistPageKey,
   lsWishlistProductIdsKey,
 } from "../utils/persistedLocalCache";
+import {
+  getCustomerOrderStatusColor,
+  getCustomerOrderStatusLabel,
+} from "../utils/normalizeOrderBadgeStatus";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
@@ -2080,27 +2084,6 @@ export function VendorStoreView({
     }
 
     const orderCount = orderHistory.length;
-    const getOrderStatusColor = (status: string) => {
-      switch (status?.toLowerCase()) {
-        case "delivered":
-        case "fulfilled":
-          return "bg-emerald-600";
-        case "processing":
-          return "bg-blue-600";
-        case "shipped":
-          return "bg-amber-600";
-        case "ready-to-ship":
-          return "bg-blue-600";
-        case "cancelled":
-          return "bg-red-600";
-        default:
-          return "bg-slate-600";
-      }
-    };
-    const getOrderStatusLabel = (status: string) => {
-      if (status?.toLowerCase() === "ready-to-ship") return "Shipping";
-      return status || "Pending";
-    };
 
     if (profileOrderId) {
       const want = String(profileOrderId).trim();
@@ -2463,8 +2446,8 @@ export function VendorStoreView({
                         <h3 className="text-base sm:text-lg font-bold text-slate-900 break-all">
                           {order.orderNumber || order.id}
                         </h3>
-                        <Badge variant="default" className={`${getOrderStatusColor(order.status)} shrink-0 text-xs`}>
-                          {getOrderStatusLabel(order.status)}
+                        <Badge variant="default" className={`${getCustomerOrderStatusColor(order.status)} shrink-0 text-xs`}>
+                          {getCustomerOrderStatusLabel(order.status)}
                         </Badge>
                       </div>
                       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-slate-600">

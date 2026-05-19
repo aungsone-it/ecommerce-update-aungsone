@@ -228,6 +228,10 @@ function providerIndicatesRefundAccepted(body: AnyRecord): boolean {
     return true;
   }
 
+  // VPS refund.php proxy (MIGOO relay) — { "ok": true, "kbz": { ... } }
+  if (body.ok === true) return true;
+  if (body.success === true) return true;
+
   return false;
 }
 
@@ -542,6 +546,22 @@ function buildProviderHeaders(cfg: ReturnType<typeof kpayConfig>): Record<string
     const headerName = text(cfg.proxyAuthHeader) || "Authorization";
     const scheme = text(cfg.proxyAuthScheme);
     headers[headerName] = scheme ? `${scheme} ${cfg.proxyAuthToken}` : cfg.proxyAuthToken;
+  }
+  return headers;
+}
+
+/** Refund-only headers — adds VPS proxy auth without changing QR/PWA gateway headers. */
+function buildRefundProviderHeaders(cfg: ReturnType<typeof kpayConfig>): Record<string, string> {
+  const headers = buildProviderHeaders(cfg);
+  const vpsSecret = resolveEnv("KBZ_VPS_API_SECRET");
+  if (!vpsSecret) return headers;
+
+  const headerName = text(resolveEnv("KBZ_VPS_API_SECRET_HEADER")) || "Authorization";
+  const scheme = text(resolveEnv("KBZ_VPS_API_SECRET_SCHEME")) || "Bearer";
+  if (headerName.toLowerCase() === "authorization") {
+    headers.Authorization = scheme ? `${scheme} ${vpsSecret}` : vpsSecret;
+  } else {
+    headers[headerName] = vpsSecret;
   }
   return headers;
 }
@@ -910,30 +930,167 @@ type KPayRefundResult =
     };
 
 function refundEndpointCandidates(baseUrl: string): string[] {
-  const primary = text(resolveEnv("KPAY_PATH_REFUND", "KPAY_REFUND_PATH")) || "/payment/gateway/uat/refund";
-  const withSlash = primary.endsWith("/") ? primary : `${primary}/`;
-  const candidates = [
-    primary,
-    withSlash,
-    "/payment/gateway/uat/refund",
-    "/payment/gateway/uat/refund/",
-  ];
   const out: string[] = [];
   const seen = new Set<string>();
-  if (text(baseUrl)) {
-    for (const p of candidates) {
+  const add = (url: string) => {
+    const u = text(url);
+    if (!u || seen.has(u)) return;
+    seen.add(u);
+    out.push(u);
+  };
+
+  // Full refund URL (refund-only) — e.g. https://150.109.123.187/api/refund.php
+  const refundUrl =
+    text(resolveEnv("KBZ_VPS_REFUND_URL")) || text(resolveEnv("KPAY_REFUND_URL"));
+  if (refundUrl) add(refundUrl);
+
+  const configuredPath = text(resolveEnv("KPAY_PATH_REFUND", "KPAY_REFUND_PATH"));
+  if (configuredPath) {
+    if (/^https?:\/\//i.test(configuredPath)) {
+      add(configuredPath);
+    } else if (text(baseUrl)) {
       try {
-        const url = new URL(p, baseUrl).toString();
-        if (!seen.has(url)) {
-          seen.add(url);
-          out.push(url);
-        }
+        add(new URL(configuredPath, baseUrl).toString());
       } catch {
-        // ignore malformed endpoint candidate
+        // ignore malformed path
       }
     }
   }
+
+  // Default: VPS refund.php on the same host as QR/PWA (does not change create/query paths).
+  if (out.length === 0 && text(baseUrl)) {
+    for (const p of ["/api/refund.php", "/payment/gateway/uat/refund"]) {
+      try {
+        add(new URL(p, baseUrl).toString());
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   return out;
+}
+
+/** KBZ PHP SDK VPS proxy — simple JSON to /api/refund.php (not signed KBZ gateway payloads). */
+function shouldUseVpsRefundProxy(): boolean {
+  if (!text(resolveEnv("KBZ_VPS_API_SECRET"))) return false;
+  if (text(resolveEnv("KBZ_VPS_REFUND_URL")) || text(resolveEnv("KPAY_REFUND_URL"))) {
+    return true;
+  }
+  const path = text(resolveEnv("KPAY_PATH_REFUND", "KPAY_REFUND_PATH"));
+  if (path.includes("refund.php")) return true;
+  return resolveEnv("KPAY_USE_VPS_REFUND") === "1";
+}
+
+function resolveVpsRefundUrl(baseUrl: string): string {
+  const direct =
+    text(resolveEnv("KBZ_VPS_REFUND_URL")) ||
+    text(resolveEnv("KPAY_REFUND_URL"));
+  if (direct) return direct;
+  const candidates = refundEndpointCandidates(baseUrl);
+  return candidates.find((u) => u.includes("refund.php")) || candidates[0] || "";
+}
+
+async function refundKPayOrderViaVpsProxy(args: {
+  merchantOrderId: string;
+  refundRequestNo: string;
+  refundAmount: string;
+  reason: string;
+  existingTxn: AnyRecord | null;
+}): Promise<KPayRefundResult> {
+  const { merchantOrderId, refundRequestNo, refundAmount, reason, existingTxn } = args;
+  const cfg = kpayConfig();
+  const vpsUrl = resolveVpsRefundUrl(cfg.baseUrl);
+  const secret = resolveEnv("KBZ_VPS_API_SECRET");
+  if (!vpsUrl || !secret) {
+    return {
+      ok: false,
+      merchantOrderId,
+      refundRequestNo,
+      refundAmount,
+      message: "VPS refund proxy is not configured (KBZ_VPS_REFUND_URL + KBZ_VPS_API_SECRET)",
+    };
+  }
+
+  const response = await postJson(
+    vpsUrl,
+    {
+      merch_order_id: merchantOrderId,
+      refund_request_no: refundRequestNo,
+      refund_reason: text(reason).slice(0, 128) || "Order cancelled by admin",
+    },
+    cfg.timeoutMs || 12000,
+    { Authorization: `Bearer ${secret}` },
+  );
+
+  if (!providerIndicatesRefundAccepted(response.body)) {
+    const now = nowIso();
+    await kv.set(`kpay_txn:${merchantOrderId}`, {
+      ...(existingTxn || {}),
+      merchantOrderId,
+      refund: {
+        status: "failed",
+        refundRequestNo,
+        amount: refundAmount,
+        failedAt: now,
+        endpointUsed: vpsUrl,
+        networkError: response.networkError || "",
+        details: response.body,
+      },
+      updatedAt: now,
+    });
+    return {
+      ok: false,
+      merchantOrderId,
+      refundRequestNo,
+      refundAmount,
+      message: text(response.body.error) || "KBZPay refund request failed",
+      status: response.status || 502,
+      endpoint: vpsUrl,
+      details: response.body,
+      networkError: response.networkError,
+    };
+  }
+
+  const kbzPayload = asRecord(response.body.kbz);
+  const providerStatus = providerStatusFrom(kbzPayload) || providerStatusFrom(response.body);
+  const refundGatewayStatus =
+    refundStatusFrom(kbzPayload) || refundStatusFrom(response.body) || "REFUND_SUCCESS";
+  const refundState: "success" | "processing" =
+    refundGatewayStatus === "REFUND_SUCCESS" || response.body.ok === true
+      ? "success"
+      : "processing";
+  const now = nowIso();
+  await kv.set(`kpay_txn:${merchantOrderId}`, {
+    ...(existingTxn || {}),
+    merchantOrderId,
+    status: refundState === "success" ? "refunded" : "pending",
+    providerStatus: providerStatus || text(existingTxn?.providerStatus),
+    refund: {
+      status: refundState,
+      refundRequestNo,
+      amount: refundAmount,
+      refundedAt: refundState === "success" ? now : "",
+      acceptedAt: now,
+      providerStatus,
+      refundStatus: refundGatewayStatus,
+      endpointUsed: vpsUrl,
+      rawResponse: response.body,
+    },
+    updatedAt: now,
+  });
+
+  return {
+    ok: true,
+    alreadyRefunded: false,
+    merchantOrderId,
+    refundRequestNo,
+    refundAmount,
+    refundState,
+    providerStatus,
+    endpointUsed: vpsUrl,
+    rawResponse: response.body,
+  };
 }
 
 /**
@@ -1054,16 +1211,6 @@ export async function refundKPayOrder(params: {
 
   const refundRequestNo = text(params.refundRequestNo) || `RFND-${merchantOrderId}-${Date.now()}`;
   const cfg = kpayConfig();
-  if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
-    return {
-      ok: false,
-      merchantOrderId,
-      refundRequestNo,
-      refundAmount,
-      message: "KBZPay gateway is not configured for refund",
-    };
-  }
-
   const existingTxn = (await kv.get(`kpay_txn:${merchantOrderId}`)) as AnyRecord | null;
   const previousRefund = asRecord(existingTxn?.refund);
   if (text(previousRefund.status).toLowerCase() === "success") {
@@ -1080,12 +1227,40 @@ export async function refundKPayOrder(params: {
     };
   }
 
+  const refundReason = text(params.reason) || "Order cancelled by admin";
+
+  // VPS PHP SDK proxy (/api/refund.php) — separate from QR/PWA signed gateway calls.
+  if (shouldUseVpsRefundProxy()) {
+    return refundKPayOrderViaVpsProxy({
+      merchantOrderId,
+      refundRequestNo,
+      refundAmount,
+      reason: refundReason,
+      existingTxn,
+    });
+  }
+
+  if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
+    return {
+      ok: false,
+      merchantOrderId,
+      refundRequestNo,
+      refundAmount,
+      message: "KBZPay gateway is not configured for refund",
+    };
+  }
+
   const subType = text(resolveEnv("KPAY_REFUND_SUB_TYPE")) || "5000";
   const subIdentifierType = text(resolveEnv("KPAY_REFUND_SUB_IDENTIFIER_TYPE")) || "04";
   const subIdentifier = text(resolveEnv("KPAY_REFUND_SUB_IDENTIFIER")) || "20006";
   const transCurrency = text(resolveEnv("KPAY_REFUND_TRANS_CURRENCY")) || "MMK";
 
   const endpoints = refundEndpointCandidates(cfg.baseUrl);
+  const refundWrapRaw = resolveEnv("KPAY_REFUND_WRAP_REQUEST");
+  const wrapRefund =
+    refundWrapRaw === ""
+      ? cfg.wrapRequest
+      : refundWrapRaw !== "0";
   const payloads = refundPayloadCandidates(
     {
       appId: cfg.appId,
@@ -1093,7 +1268,7 @@ export async function refundKPayOrder(params: {
       merchantOrderId,
       refundAmount,
       refundRequestNo,
-      refundReason: text(params.reason) || "Order cancelled by admin",
+      refundReason,
       subType,
       subIdentifierType,
       subIdentifier,
@@ -1107,8 +1282,8 @@ export async function refundKPayOrder(params: {
     payloads,
     signKey: cfg.signKey,
     timeoutMs: cfg.timeoutMs,
-    wrapRequest: cfg.wrapRequest,
-    extraHeaders: buildProviderHeaders(cfg),
+    wrapRequest: wrapRefund,
+    extraHeaders: buildRefundProviderHeaders(cfg),
     acceptBody: providerIndicatesRefundAccepted,
   });
 

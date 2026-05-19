@@ -1465,7 +1465,7 @@ export function Checkout({
         customerName: shippingInfo.fullName,
         email: orderEmail,
         phone: shippingInfo.phone,
-        status: paymentMethod === "KPay" ? "pending_payment" : "pending",
+        status: "pending",
         paymentStatus:
           paymentMethod === "KPay"
             ? (
