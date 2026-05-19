@@ -277,6 +277,85 @@ class ModuleCache {
     }
   }
 
+  /** Drop deleted rows from each cached admin customers page and adjust totals/stats in place. */
+  removeCustomersFromPaginatedAdminCaches(
+    pageKeyPrefix: string,
+    customerIds: Set<string>,
+    deletedSnapshots: any[] = []
+  ): void {
+    if (customerIds.size === 0) return;
+    const snapshotById = new Map<string, any>();
+    for (const row of deletedSnapshots) {
+      if (row?.id != null) snapshotById.set(String(row.id), row);
+    }
+    const deleteCount = customerIds.size;
+
+    for (const key of [...this.cache.keys()]) {
+      if (!key.startsWith(pageKeyPrefix)) continue;
+      const entry = this.cache.get(key);
+      const raw = entry?.data as {
+        customers?: any[];
+        total?: number;
+        stats?: {
+          total?: number;
+          active?: number;
+          vip?: number;
+          newThisMonth?: number;
+          totalRevenue?: number;
+          avgLTV?: number;
+          champions?: number;
+          atRisk?: number;
+        };
+        page?: number;
+        pageSize?: number;
+        hasMore?: boolean;
+        [k: string]: unknown;
+      } | undefined;
+      if (!raw || !Array.isArray(raw.customers)) continue;
+
+      const removedRows = raw.customers.filter((row) => customerIds.has(String(row?.id)));
+      const customers = raw.customers.filter((row) => !customerIds.has(String(row?.id)));
+
+      let stats = raw.stats;
+      if (stats) {
+        let activeDrop = 0;
+        let vipDrop = 0;
+        let revenueDrop = 0;
+        for (const id of customerIds) {
+          const row =
+            snapshotById.get(id) ||
+            removedRows.find((r) => String(r?.id) === id) ||
+            raw.customers.find((r) => String(r?.id) === id);
+          if (!row) continue;
+          if (String(row.status ?? "").toLowerCase() === "active") activeDrop += 1;
+          if (String(row.tier ?? "").toLowerCase() === "vip") vipDrop += 1;
+          revenueDrop += Number(row.totalSpent ?? 0);
+        }
+        stats = {
+          ...stats,
+          total: Math.max(0, Number(stats.total ?? 0) - deleteCount),
+          active: Math.max(0, Number(stats.active ?? 0) - activeDrop),
+          vip: Math.max(0, Number(stats.vip ?? 0) - vipDrop),
+          totalRevenue: Math.max(0, Number(stats.totalRevenue ?? 0) - revenueDrop),
+        };
+      }
+
+      const total = Math.max(0, Number(raw.total ?? 0) - deleteCount);
+      const page = Math.max(1, Number(raw.page ?? 1));
+      const pageSize = Math.max(1, Number(raw.pageSize ?? ADMIN_CUSTOMERS_PAGE_DEFAULT));
+      this.cache.set(key, {
+        data: {
+          ...raw,
+          customers,
+          total,
+          stats,
+          hasMore: page * pageSize < total,
+        },
+        timestamp: Date.now(),
+      });
+    }
+  }
+
   /** Drop deleted rows from cached vendor storefront catalog pages (`vendor-products-{id}-*`). */
   removeProductsFromVendorCatalogPaginatedCaches(
     catalogKeys: string[],
@@ -1992,6 +2071,33 @@ export async function getCachedAdminCustomersPayload(forceRefresh = false) {
 export function invalidateAdminCustomersCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_CUSTOMERS);
   moduleCache.invalidatePrefix(ADMIN_CUSTOMERS_PAGE_CACHE_PREFIX);
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix("migoo-ls-admin-customers-p1-");
+  }
+}
+
+/** Super Admin delete — patch session + paginated caches without forcing a list refetch. */
+export function removeAdminCustomersFromCaches(
+  customerIds: string[],
+  deletedSnapshots: any[] = []
+): void {
+  const idSet = new Set(customerIds.map(String).filter(Boolean));
+  if (idSet.size === 0) return;
+
+  const full = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_CUSTOMERS);
+  if (full && Array.isArray(full)) {
+    moduleCache.prime(
+      CACHE_KEYS.ADMIN_CUSTOMERS,
+      full.filter((c) => !idSet.has(String(c?.id)))
+    );
+  }
+
+  moduleCache.removeCustomersFromPaginatedAdminCaches(
+    ADMIN_CUSTOMERS_PAGE_CACHE_PREFIX,
+    idSet,
+    deletedSnapshots
+  );
+
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix("migoo-ls-admin-customers-p1-");
   }

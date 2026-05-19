@@ -21,7 +21,6 @@ import {
   Plus,
   Image,
   X,
-  RefreshCw,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -1218,19 +1217,6 @@ export function Settings() {
                 <span>{users.filter(u => u.status === "active").length} {t('settings.users.active')}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  onClick={() => loadUsers(true)}
-                  disabled={usersLoading || usersListRefreshing}
-                  className="text-slate-700 hover:bg-slate-50"
-                >
-                  {usersListRefreshing ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                  )}
-                  Refresh
-                </Button>
                 <Button className="bg-slate-900 hover:bg-slate-800 text-white" onClick={openAddDialog}>
                   {t('settings.users.addUser')}
                 </Button>

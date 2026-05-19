@@ -588,8 +588,12 @@ export const chatApi = {
   /**
    * Get messages for a specific conversation
    */
-  getMessages: async (conversationId: string) => {
-    return apiClient.get(`/chat/messages/${conversationId}`);
+  getMessages: async (conversationId: string, customerEmail?: string) => {
+    const q =
+      customerEmail && String(customerEmail).trim()
+        ? `?customerEmail=${encodeURIComponent(String(customerEmail).trim())}`
+        : "";
+    return apiClient.get(`/chat/messages/${conversationId}${q}`, { silent: true });
   },
 
   /**

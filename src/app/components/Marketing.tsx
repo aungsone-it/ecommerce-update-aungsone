@@ -9,7 +9,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
-import { getAdminOperationHeaders } from "../../utils/api-client";
 import { POLLING_INTERVALS_MS } from "../../constants";
 import {
   Select,
@@ -685,41 +684,6 @@ export function Marketing() {
     }
   };
 
-  const handleClearAllCampaigns = async () => {
-    if (!confirm('⚠️ Are you sure you want to delete ALL campaigns? This cannot be undone!')) {
-      return;
-    }
-    
-    try {
-      console.log('🗑️ Clearing all campaigns...');
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns-clear-all`,
-        {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-            ...getAdminOperationHeaders(),
-          },
-        }
-      );
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        console.log(`✅ ${data.deleted} campaigns deleted`);
-        alert(`✅ Success! ${data.deleted} campaigns deleted.`);
-        await fetchCampaigns(); // Refresh list
-      } else {
-        alert(`❌ Error: ${data.error}`);
-      }
-    } catch (error) {
-      console.error('❌ Error clearing campaigns:', error);
-      alert('Failed to clear campaigns');
-    }
-  };
-
   const handleSaveAnnouncementSettings = async () => {
     try {
       const response = await fetch(
@@ -1325,16 +1289,6 @@ export function Marketing() {
                     <Plus className="w-4 h-4 mr-2" />
                     {t('marketing.createCampaign')}
                   </Button>
-                  {campaigns.length > 0 && (
-                    <Button 
-                      variant="outline" 
-                      className="h-9 border-red-200 text-red-600 hover:bg-red-50" 
-                      onClick={handleClearAllCampaigns}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Clear All
-                    </Button>
-                  )}
                   <Button variant="outline" className="h-9" onClick={exportCampaigns}>
                     <Download className="w-4 h-4 mr-2" />
                     {t('marketing.export')}

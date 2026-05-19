@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { MessageCircle, X, Send, Minimize2, Paperclip, Smile, Image as ImageIcon, Loader2, Headset, MessageCircleMore, Lock } from "lucide-react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { MessageCircle, X, Send, Paperclip, Smile, Image as ImageIcon, Loader2, Headset, MessageCircleMore, Lock } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Textarea } from "./ui/textarea";
@@ -15,8 +15,10 @@ import {
 } from "../../constants";
 import {
   broadcastConversationMessage,
+  broadcastCustomerChatMessage,
   broadcastInboxPing,
   subscribeConversationBroadcast,
+  subscribeCustomerChatBroadcast,
 } from "../utils/chatRealtime";
 import imageCompression from "browser-image-compression";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -94,15 +96,10 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       return false;
     }
   });
-  
-  const [isMinimized, setIsMinimized] = useState(() => {
-    const saved = localStorage.getItem("migoo-chat-isMinimized");
-    return saved ? JSON.parse(saved) : false;
-  });
-  
+
   // Animation trigger state for first load
   const [isMounted, setIsMounted] = useState(false);
-  
+
   const conversationStorageKey = vendorId
     ? `migoo-chat-conversationId-vendor-${vendorId}`
     : "migoo-chat-conversationId";
@@ -201,6 +198,28 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const lastMessageIdRef = useRef<string | null>(null);
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
+
+  const appendAdminMessage = useCallback((msg: Record<string, unknown>) => {
+    if (String(msg.sender) !== "admin") return;
+    setMessages((prev) => {
+      const id = String(msg.id ?? "");
+      if (!id || prev.some((m) => m.id === id)) return prev;
+      const withoutWelcome =
+        prev.length === 1 && prev[0]?.id === "welcome-1" ? [] : prev;
+      const next = [...withoutWelcome, msg as unknown as Message];
+      const sorted = next.sort(
+        (a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      );
+      lastMessageIdRef.current = sorted[sorted.length - 1]?.id || null;
+      return sorted;
+    });
+    if (!isOpenRef.current) {
+      setUnreadCount((c) => c + 1);
+    }
+  }, []);
 
   const scrollDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -229,7 +248,10 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const loadMessages = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const response = await chatApi.getMessages(conversationId);
+      const response = await chatApi.getMessages(
+        conversationId,
+        customerEmail?.trim() || undefined
+      );
       if (response.messages && Array.isArray(response.messages)) {
         const sortedMessages = response.messages.sort(
           (a: Message, b: Message) =>
@@ -259,7 +281,10 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   // Only poll for NEW messages from admin (check if there are messages after our last known ID)
   const pollForNewMessages = async () => {
     try {
-      const response = await chatApi.getMessages(conversationId);
+      const response = await chatApi.getMessages(
+        conversationId,
+        customerEmail?.trim() || undefined
+      );
       if (response.messages && Array.isArray(response.messages)) {
         const sortedMessages = response.messages.sort(
           (a: Message, b: Message) =>
@@ -276,7 +301,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
 
         if (newMessages.length > 0) {
           setMessages(prev => [...prev, ...newMessages]);
-          if (!isOpen || isMinimized) {
+          if (!isOpen) {
             setUnreadCount(prev => prev + newMessages.length);
           }
         }
@@ -334,8 +359,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       void pollForNewMessages();
     };
 
-    const intervalMs =
-      !isOpen || isMinimized
+    const intervalMs = !isOpen
         ? POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK_DOCKET
         : POLLING_INTERVALS_MS.CHAT_HTTP_FALLBACK;
 
@@ -351,7 +375,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         pollingIntervalRef.current = null;
       }
     };
-  }, [isOpen, isMinimized, conversationId, docVisible, isAuthenticated]);
+  }, [isOpen, conversationId, docVisible, isAuthenticated]);
 
   // Header “Mark all read” clears widget unread without opening the panel.
   useEffect(() => {
@@ -363,38 +387,34 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     return () => window.removeEventListener(MIGOO_CHAT_DISMISS_UNREAD_EVENT, onDismiss);
   }, [onUnreadCountChange]);
 
-  // Refs keep Realtime subscription stable (avoid unsubscribe/resubscribe on every open/minimize)
-  const isOpenRef = useRef(isOpen);
-  const isMinimizedRef = useRef(isMinimized);
-  isOpenRef.current = isOpen;
-  isMinimizedRef.current = isMinimized;
-
-  // Realtime: admin replies without tight polling (keep channel while conversation exists, even if tab background)
+  // Realtime: admin replies on this thread id + account-wide channel (all vendor tabs).
   useEffect(() => {
     if (!conversationId) return;
-    return subscribeConversationBroadcast(conversationId, (msg) => {
-      if (String(msg.sender) !== "admin") return;
-      setMessages((prev) => {
-        const id = String(msg.id ?? "");
-        if (!id || prev.some((m) => m.id === id)) return prev;
-        const next = [...prev, msg as unknown as Message];
-        return next.sort(
-          (a, b) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        );
-      });
-      if (!isOpenRef.current || isMinimizedRef.current) {
-        setUnreadCount((c) => c + 1);
+    const unsubs: Array<() => void> = [
+      subscribeConversationBroadcast(conversationId, appendAdminMessage),
+    ];
+
+    const email = (customerEmail || "").trim();
+    if (email && (hasMigooCustomerSession() || isAuthenticated)) {
+      unsubs.push(subscribeCustomerChatBroadcast(email, appendAdminMessage));
+
+      const mainThreadId = canonicalChatThreadId(email);
+      if (mainThreadId && mainThreadId !== conversationId) {
+        unsubs.push(subscribeConversationBroadcast(mainThreadId, appendAdminMessage));
       }
-    });
-  }, [conversationId]);
+    }
+
+    return () => {
+      for (const off of unsubs) off();
+    };
+  }, [conversationId, customerEmail, isAuthenticated, isCustomerAuthenticated, appendAdminMessage]);
 
   // Reset unread count when chat is opened
   useEffect(() => {
-    if (isOpen && !isMinimized) {
+    if (isOpen) {
       setUnreadCount(0);
     }
-  }, [isOpen, isMinimized]);
+  }, [isOpen]);
 
   // Handle forceOpen prop — still require a customer or app auth session
   useEffect(() => {
@@ -405,7 +425,6 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       return;
     }
     setIsOpen(true);
-    setIsMinimized(false);
     onOpen?.();
   }, [forceOpen, onOpen, isAuthenticated]);
 
@@ -415,7 +434,6 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       setIsOpen((open) => {
         if (!open) return open;
         if (hasMigooCustomerSession() || isAuthenticated) return open;
-        setIsMinimized(false);
         try {
           localStorage.setItem("migoo-chat-isOpen", JSON.stringify(false));
         } catch {
@@ -475,11 +493,6 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     localStorage.setItem("migoo-chat-isOpen", JSON.stringify(isOpen));
   }, [isOpen]);
 
-  // 💾 PERSISTENCE: Save isMinimized state to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem("migoo-chat-isMinimized", JSON.stringify(isMinimized));
-  }, [isMinimized]);
-  
   // 🔒 Sync auth: other tabs + window focus; merge with Supabase-backed AuthContext user
   useEffect(() => {
     const checkAuth = () => {
@@ -503,7 +516,6 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     if (!hasMigooCustomerSession() && !isAuthenticated) {
       toast.error("Please sign in to send messages");
       setIsOpen(false);
-      setIsMinimized(false);
       try {
         localStorage.setItem("migoo-chat-isOpen", JSON.stringify(false));
       } catch {
@@ -802,11 +814,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     <>
     <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 w-full sm:w-auto min-w-0 max-w-full sm:max-w-none">
       <div 
-        className={`bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 flex flex-col min-h-0 overflow-hidden ${
-          isMinimized 
-            ? 'w-full sm:w-80 h-16 shrink-0' 
-            : 'w-full sm:w-96 h-[100dvh] max-h-[100dvh] sm:h-[600px] sm:max-h-[min(600px,calc(100dvh-3rem))]'
-        }`}
+        className="bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 flex flex-col min-h-0 overflow-hidden w-full sm:w-96 h-[100dvh] max-h-[100dvh] sm:h-[600px] sm:max-h-[min(600px,calc(100dvh-3rem))]"
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 sm:rounded-t-2xl flex items-center justify-between shrink-0">
@@ -831,14 +839,6 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsMinimized(!isMinimized)}
-              className="text-white hover:bg-white/20 h-8 w-8 p-0"
-            >
-              <Minimize2 className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
               onClick={() => setIsOpen(false)}
               className="text-white hover:bg-white/20 h-8 w-8 p-0"
             >
@@ -848,8 +848,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
         </div>
 
         {/* Chat Body */}
-        {!isMinimized && (
-          <>
+        <>
             {/* Messages: flex-1 fills shell; inner min-h-full + justify-end pins short threads above composer */}
             <div className="flex-1 min-h-0 min-w-0 overflow-y-auto bg-slate-50">
               <div className="min-h-full flex flex-col justify-end gap-4 p-4">
@@ -1004,7 +1003,6 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
               </div>
             </div>
           </>
-        )}
       </div>
     </div>
     {signInRequiredDialog}

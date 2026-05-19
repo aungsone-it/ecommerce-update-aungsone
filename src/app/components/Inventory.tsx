@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type KeyboardEvent } from "react";
-import { Package, Loader2, RefreshCw, Plus, Minus, Check, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { Package, Plus, Minus, Check, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -411,32 +411,10 @@ export function Inventory({
     <div className="p-8">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">{t('inventory.title')}</h1>
-            <p className="text-sm text-slate-600 mt-1">
-              {productTotal} product{productTotal !== 1 ? "s" : ""} total · server-paginated ({itemsPerPage} per page)
-            </p>
-          </div>
-          <Button
-            onClick={() => loadInventory(true)}
-            variant="outline"
-            disabled={listRefreshing}
-            className="border-slate-300"
-          >
-            {listRefreshing ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Refreshing...
-              </>
-            ) : (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
-              </>
-            )}
-          </Button>
-        </div>
+        <h1 className="text-2xl font-semibold text-slate-900">{t('inventory.title')}</h1>
+        <p className="text-sm text-slate-600 mt-1">
+          {productTotal} product{productTotal !== 1 ? "s" : ""} total · server-paginated ({itemsPerPage} per page)
+        </p>
       </div>
 
       {/* Stats Cards */}

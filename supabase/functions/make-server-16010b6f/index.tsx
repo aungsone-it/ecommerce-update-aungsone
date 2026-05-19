@@ -8907,6 +8907,7 @@ app.get("/make-server-16010b6f/chat/conversations", async (c) => {
 app.get("/make-server-16010b6f/chat/messages/:conversationId", async (c) => {
   try {
     const conversationId = c.req.param("conversationId");
+    const queryEmail = normalizeChatEmail(c.req.query("customerEmail"));
     
     // Return empty array immediately if query would timeout
     // This allows localStorage to work without blocking
@@ -8922,6 +8923,10 @@ app.get("/make-server-16010b6f/chat/messages/:conversationId", async (c) => {
       kv.get(`chat:conversation:${conversationId}`),
       5000
     ).catch(() => null) as any;
+
+    const resolvedEmail = normalizeChatEmail(
+      conversation?.customerEmail || queryEmail || ""
+    );
 
     // Merge alias conversation streams for the same customer+vendor bucket
     // so duplicated historic ids still appear as one continuous thread.
@@ -8941,6 +8946,30 @@ app.get("/make-server-16010b6f/chat/messages/:conversationId", async (c) => {
         ).catch(() => []);
         if (Array.isArray(aliasMessages) && aliasMessages.length > 0) {
           messages = [...messages, ...aliasMessages];
+        }
+      }
+    }
+
+    // Super-admin replies on the main-store thread must appear on vendor storefront threads too.
+    if (resolvedEmail) {
+      const allConversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 10000).catch(() => []);
+      const peerIds = (allConversations || [])
+        .filter((conv: any) => {
+          const id = String(conv?.id || "").trim();
+          if (!id || id === conversationId) return false;
+          return normalizeChatEmail(conv?.customerEmail) === resolvedEmail;
+        })
+        .map((conv: any) => String(conv.id));
+
+      for (const peerId of peerIds) {
+        const peerMessages = await withTimeout(
+          kv.getByPrefix(`chat:message:${peerId}:`),
+          8000
+        ).catch(() => []);
+        if (!Array.isArray(peerMessages) || peerMessages.length === 0) continue;
+        const adminOnly = peerMessages.filter((m: any) => String(m?.sender) === "admin");
+        if (adminOnly.length > 0) {
+          messages = [...messages, ...adminOnly];
         }
       }
     }
@@ -9138,6 +9167,42 @@ app.post("/make-server-16010b6f/chat/messages", async (c) => {
       kv.set(`chat:conversation:${message.conversationId}`, conversation),
       5000
     );
+
+    // Fan-out admin replies to every thread for this customer (main store + each vendor storefront).
+    if (sender === "admin" && resolvedCustomerEmail) {
+      const emailNorm = normalizeChatEmail(resolvedCustomerEmail);
+      const allConversations = await withTimeout(kv.getByPrefix("chat:conversation:"), 10000).catch(
+        () => []
+      );
+      const peerWrites: Promise<unknown>[] = [];
+      for (const peer of allConversations || []) {
+        const peerId = String(peer?.id || "").trim();
+        if (!peerId || peerId === message.conversationId) continue;
+        if (normalizeChatEmail(peer?.customerEmail) !== emailNorm) continue;
+
+        const peerMsg = { ...message, conversationId: peerId };
+        peerWrites.push(
+          withTimeout(kv.set(`chat:message:${peerId}:${messageId}`, peerMsg), 5000).catch(
+            () => undefined
+          )
+        );
+
+        const peerUnread = Number(peer?.unread) || 0;
+        const peerConv = {
+          ...peer,
+          lastMessage: text,
+          timestamp,
+          unread: peerUnread + 1,
+          customerName: resolvedCustomerName || peer?.customerName,
+          customerEmail: resolvedCustomerEmail || peer?.customerEmail,
+          customerProfileImage: resolvedCustomerImage || peer?.customerProfileImage,
+        };
+        peerWrites.push(
+          withTimeout(kv.set(`chat:conversation:${peerId}`, peerConv), 5000).catch(() => undefined)
+        );
+      }
+      await Promise.all(peerWrites);
+    }
 
     console.log(`✅ Message sent: ${messageId} in conversation ${message.conversationId} (source: ${vendorSource})`);
     return c.json({ message, success: true });

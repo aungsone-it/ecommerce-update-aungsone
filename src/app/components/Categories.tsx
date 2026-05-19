@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Edit, Trash2, Folder, RefreshCw } from "lucide-react";
+import { Plus, Edit, Trash2, Folder } from "lucide-react";
 import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -55,7 +55,6 @@ export function Categories() {
   const [isLoading, setIsLoading] = useState(
     () => !moduleCache.peek(MODULE_CACHE_KEYS.ADMIN_ALL_CATEGORIES)
   );
-  const [listRefreshing, setListRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
@@ -116,12 +115,10 @@ export function Categories() {
         cacheManager.set("categories", peeked);
         if (showLoadingTimer) clearTimeout(showLoadingTimer);
         setIsLoading(false);
-        setListRefreshing(false);
         return;
       }
     }
 
-    setListRefreshing(forceRefresh);
     try {
       const list = await getCachedAdminAllCategories(forceRefresh);
       console.log("Categories loaded:", list?.length);
@@ -135,7 +132,6 @@ export function Categories() {
         clearTimeout(showLoadingTimer);
       }
       setIsLoading(false);
-      setListRefreshing(false);
     }
   };
 
@@ -304,141 +300,6 @@ export function Categories() {
           cacheManager.set("categories", previousCategories);
           showAlert(
             "Failed to Delete Category",
-            "An error occurred. Please try again.",
-            "error"
-          );
-        }
-      }
-    );
-  };
-
-  const handleDeleteAllCategories = async () => {
-    const categoryCount = categories.length;
-    showAlert(
-      "Delete All Categories?",
-      `All ${categoryCount} categories will be permanently deleted. This action cannot be undone.`,
-      "error",
-      async () => {
-        const previousCategories = [...categories];
-        setAlertOpen(false);
-        
-        try {
-          setIsLoading(true);
-          
-          const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/categories/all`,
-            {
-              method: 'DELETE',
-              headers: {
-                Authorization: `Bearer ${publicAnonKey}`,
-                ...getAdminOperationHeaders(),
-              },
-            }
-          );
-          
-          if (!response.ok) {
-            throw new Error('Failed to delete all categories');
-          }
-          
-          console.log(`✅ Deleted all ${categoryCount} categories successfully`);
-          
-          setCategories([]);
-          setSelectedCategories([]);
-          primeAdminAllCategoriesCache([]);
-          cacheManager.set("categories", []);
-          
-          showAlert(
-            "All Categories Deleted!",
-            `${categoryCount} ${categoryCount === 1 ? 'category has' : 'categories have'} been removed.`,
-            "success"
-          );
-        } catch (error) {
-          console.error("Failed to delete all categories:", error);
-          setCategories(previousCategories);
-          primeAdminAllCategoriesCache(previousCategories);
-          cacheManager.set("categories", previousCategories);
-          showAlert(
-            "Failed to Delete All Categories",
-            "An error occurred. Please try again.",
-            "error"
-          );
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    );
-  };
-
-  const handleDeleteTestCategories = async () => {
-    const testCategoryNames = [
-      "Electronics", "Clothing", "Home & Garden", "Sports & Outdoors",
-      "Books", "Toys & Games", "Beauty & Personal Care", "Food & Beverages",
-      "Automotive", "Health & Wellness", "Jewelry & Accessories",
-      "Pet Supplies", "Office Supplies", "Other"
-    ];
-
-    const testCategories = categories.filter(cat => 
-      testCategoryNames.includes(cat.name)
-    );
-
-    if (testCategories.length === 0) {
-      showAlert(
-        "No Test Categories Found",
-        "All your categories are custom.",
-        "info"
-      );
-      return;
-    }
-    
-    showAlert(
-      "Delete Test Categories?",
-      `${testCategories.length} test ${testCategories.length === 1 ? 'category' : 'categories'} will be permanently deleted.`,
-      "warning",
-      async () => {
-        // Optimistic update: remove test categories immediately
-        const previousCategories = [...categories];
-        const testCategoryIds = testCategories.map(c => c.id);
-        
-        setCategories(categories.filter(cat => !testCategoryIds.includes(cat.id)));
-        setAlertOpen(false);
-
-        try {
-          const response = await fetch(
-            `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/categories/bulk-delete`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${publicAnonKey}`,
-                ...getAdminOperationHeaders(),
-              },
-              body: JSON.stringify({ ids: testCategoryIds }),
-            }
-          );
-          
-          if (!response.ok) {
-            throw new Error('Failed to delete test categories');
-          }
-          
-          console.log(`✅ Deleted ${testCategories.length} test categories successfully`);
-          
-          const next = previousCategories.filter((cat) => !testCategoryIds.includes(cat.id));
-          primeAdminAllCategoriesCache(next);
-          cacheManager.set("categories", next);
-          
-          showAlert(
-            "Test Categories Deleted Successfully!",
-            `${testCategories.length} test ${testCategories.length === 1 ? 'category has' : 'categories have'} been removed.`,
-            "success"
-          );
-        } catch (error) {
-          // Revert on error
-          console.error("Failed to delete test categories:", error);
-          setCategories(previousCategories);
-          primeAdminAllCategoriesCache(previousCategories);
-          cacheManager.set("categories", previousCategories);
-          showAlert(
-            "Failed to Delete Test Categories",
             "An error occurred. Please try again.",
             "error"
           );
@@ -637,35 +498,6 @@ export function Categories() {
             />
           </div>
           <div className="flex items-center gap-2">
-            {categories.length > 0 && (
-              <>
-                <Button 
-                  variant="outline"
-                  className="text-orange-600 border-orange-200 hover:bg-orange-50 hover:border-orange-300"
-                  onClick={handleDeleteTestCategories}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {t('categories.deleteTestData')}
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300"
-                  onClick={handleDeleteAllCategories}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  {t('categories.deleteAll')} ({categories.length})
-                </Button>
-              </>
-            )}
-            <Button
-              variant="outline"
-              className="border-slate-300"
-              disabled={listRefreshing || isLoading}
-              onClick={() => loadCategories(true)}
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
             <Button 
               className="bg-slate-900 hover:bg-slate-800 text-white"
               onClick={handleAddCategory}

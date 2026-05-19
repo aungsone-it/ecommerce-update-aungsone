@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Filter,
   Download,
@@ -19,7 +19,6 @@ import {
   Tag,
   FileText,
   Send,
-  Edit,
   BarChart3,
   Activity,
   Target,
@@ -78,11 +77,11 @@ import {
 import { CustomerProfile } from "./CustomerProfile";
 import { useNavigate } from "react-router";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
-import { getAdminOperationHeaders } from "../../utils/api-client";
 import { ConfirmDialog } from "./ConfirmDialog";
 import {
   getCachedAdminCustomersPage,
   invalidateAdminCustomersCache,
+  removeAdminCustomersFromCaches,
   ADMIN_CUSTOMERS_PAGE_DEFAULT,
   type AdminCustomersPagePayload,
 } from "../utils/module-cache";
@@ -140,7 +139,6 @@ export function CustomersEnhanced({
   const [filterSegment, setFilterSegment] = useState("all");
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState("list");
-  const [showBulkActions, setShowBulkActions] = useState(false);
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
   const [customersList, setCustomersList] = useState<Customer[]>([]);
@@ -151,6 +149,7 @@ export function CustomersEnhanced({
   const [customersHasMore, setCustomersHasMore] = useState(false);
   const [serverListStats, setServerListStats] = useState<AdminCustomersPagePayload["stats"]>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const skipCustomersRealtimeReloadRef = useRef(false);
 
   // 🎯 Alert Modal State
   const [alertOpen, setAlertOpen] = useState(false);
@@ -188,9 +187,11 @@ export function CustomersEnhanced({
   };
 
   const fetchCustomers = useCallback(
-    async (forceRefresh = false) => {
+    async (forceRefresh = false, opts?: { silent?: boolean }) => {
       let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
-      showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
+      if (!opts?.silent) {
+        showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
+      }
       try {
         const data = await getCachedAdminCustomersPage(
           {
@@ -242,8 +243,12 @@ export function CustomersEnhanced({
 
   useEffect(() => {
     const refreshCustomers = () => {
+      if (skipCustomersRealtimeReloadRef.current) {
+        skipCustomersRealtimeReloadRef.current = false;
+        return;
+      }
       invalidateAdminCustomersCache();
-      void fetchCustomers(true);
+      void fetchCustomers(true, { silent: true });
     };
 
     const onStorage = (e: StorageEvent) => {
@@ -577,101 +582,158 @@ export function CustomersEnhanced({
   };
 
   // 🔥 DELETE CUSTOMER ACTION
+  const deleteCustomerOnServer = async (customerId: string): Promise<void> => {
+    const response = await fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${customerId}`,
+      {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${publicAnonKey}`,
+        },
+      }
+    );
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.error || data.message || "Failed to delete customer");
+    }
+  };
+
   const handleDeleteCustomer = async (customerId: string, customerName: string) => {
+    const previous = customersList;
+    const previousTotal = customersTotal;
+    const previousStats = serverListStats;
+    const deletedRow = previous.find((c) => c.id === customerId);
+
+    skipCustomersRealtimeReloadRef.current = true;
+
+    setCustomersList((prev) => prev.filter((c) => c.id !== customerId));
+    setCustomersTotal((prev) => Math.max(0, prev - 1));
+    setServerListStats((prev) => {
+      if (!prev) return prev;
+      const row = deletedRow;
+      const activeDrop = row?.status === "active" ? 1 : 0;
+      return {
+        ...prev,
+        total: Math.max(0, prev.total - 1),
+        active: Math.max(0, prev.active - activeDrop),
+      };
+    });
+    setSelectedCustomers((prev) => prev.filter((id) => id !== customerId));
+    removeAdminCustomersFromCaches([customerId], deletedRow ? [deletedRow] : []);
+
+    const titleCaseName = (customerName || "Customer")
+      .toLowerCase()
+      .split(" ")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
     try {
       console.log(`🗑️ Deleting customer: ${customerId}`);
-      
-      // 🎯 INSTANTLY UPDATE UI - Remove from local state first
-      setCustomersList((prev) => prev.filter((c) => c.id !== customerId));
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${customerId}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        await fetchCustomers(true);
-        throw new Error(data.error || "Failed to delete customer");
-      }
-
+      await deleteCustomerOnServer(customerId);
       console.log(`✅ Customer deleted from backend: ${customerId}`);
-      invalidateAdminCustomersCache();
-      
-      // Convert customer name to Title Case
-      const titleCaseName = (customerName || 'Customer')
-        .toLowerCase()
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-      
-      showAlert(
-        "Customer Deleted",
-        `${titleCaseName} has been deleted`,
-        "error"
-      );
+      toast.success(`${titleCaseName} has been deleted`);
     } catch (error: any) {
       console.error("❌ Error deleting customer:", error);
-      showAlert(
-        "Failed to Delete Customer",
-        error.message || "An unexpected error occurred",
-        "error"
-      );
+      skipCustomersRealtimeReloadRef.current = false;
+      invalidateAdminCustomersCache();
+      setCustomersList(previous);
+      setCustomersTotal(previousTotal);
+      setServerListStats(previousStats);
+      toast.error(error.message || "Failed to delete customer");
     }
   };
 
   // 🔥 BULK DELETE CUSTOMERS ACTION
   const handleBulkDelete = async () => {
     if (selectedCustomers.length === 0) return;
-    
-    const count = selectedCustomers.length;
-    
+
+    const ids = [...selectedCustomers];
+    const count = ids.length;
+    const previous = customersList;
+    const previousTotal = customersTotal;
+    const previousStats = serverListStats;
+    const deletedRows = previous.filter((c) => ids.includes(c.id));
+
+    setConfirmDialog((d) => ({ ...d, isOpen: false }));
+    skipCustomersRealtimeReloadRef.current = true;
+    setCustomersList((prev) => prev.filter((c) => !ids.includes(c.id)));
+    setCustomersTotal((prev) => Math.max(0, prev - count));
+    setServerListStats((prev) => {
+      if (!prev) return prev;
+      let activeDrop = 0;
+      for (const row of deletedRows) {
+        if (row.status === "active") activeDrop += 1;
+      }
+      return {
+        ...prev,
+        total: Math.max(0, prev.total - count),
+        active: Math.max(0, prev.active - activeDrop),
+      };
+    });
+    setSelectedCustomers([]);
+    // Cache patched after server confirms deletions (avoids double-adjust on partial failure).
+
     try {
       console.log(`🗑️ Bulk deleting ${count} customers...`);
-      
-      // 🎯 INSTANTLY UPDATE UI - Remove from local state first
-      setCustomersList((prev) => prev.filter((c) => !selectedCustomers.includes(c.id)));
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/bulk-delete`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-            ...getAdminOperationHeaders(),
-          },
-          body: JSON.stringify({ customerIds: selectedCustomers }),
+      const results = await Promise.allSettled(ids.map((id) => deleteCustomerOnServer(id)));
+      const failedIds = ids.filter((_, index) => results[index].status === "rejected");
+      const successIds = ids.filter((id) => !failedIds.includes(id));
+
+      if (failedIds.length > 0) {
+        const failedRows = previous.filter((c) => failedIds.includes(c.id));
+        setCustomersList((prev) => {
+          const merged = [...prev];
+          for (const row of failedRows) {
+            if (!merged.some((c) => c.id === row.id)) merged.push(row);
+          }
+          return merged;
+        });
+        const successCount = successIds.length;
+        if (successCount > 0) {
+          setCustomersTotal(Math.max(0, previousTotal - successCount));
+          setServerListStats((prev) => {
+            if (!prev) return prev;
+            let activeDrop = 0;
+            for (const row of deletedRows) {
+              if (!successIds.includes(row.id)) continue;
+              if (row.status === "active") activeDrop += 1;
+            }
+            return {
+              ...prev,
+              total: Math.max(0, prev.total - successCount),
+              active: Math.max(0, prev.active - activeDrop),
+            };
+          });
+          removeAdminCustomersFromCaches(
+            successIds,
+            deletedRows.filter((r) => successIds.includes(r.id))
+          );
+        } else {
+          skipCustomersRealtimeReloadRef.current = false;
+          setCustomersTotal(previousTotal);
+          setServerListStats(previousStats);
         }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        await fetchCustomers(true);
-        throw new Error(data.error || "Failed to delete customers");
+        showAlert(
+          "Partial Delete",
+          successCount > 0
+            ? `${successCount} customer(s) deleted. ${failedIds.length} could not be removed.`
+            : "No customers could be deleted. Please try again.",
+          successCount > 0 ? "warning" : "error"
+        );
+        return;
       }
 
+      removeAdminCustomersFromCaches(ids, deletedRows);
       console.log(`✅ Bulk deleted ${count} customers from backend`);
-      invalidateAdminCustomersCache();
-      
-      // Clear selection
-      setSelectedCustomers([]);
-      
-      showAlert(
-        "Bulk Delete Successful!",
-        `${count} customer(s) have been permanently removed from the system`,
-        "success"
-      );
+      toast.success(`${count} customer(s) deleted`);
     } catch (error: any) {
       console.error("❌ Error bulk deleting customers:", error);
+      skipCustomersRealtimeReloadRef.current = false;
+      invalidateAdminCustomersCache();
+      setCustomersList(previous);
+      setCustomersTotal(previousTotal);
+      setServerListStats(previousStats);
       showAlert(
         "Failed to Delete Customers",
         error.message || "An unexpected error occurred",
@@ -683,54 +745,35 @@ export function CustomersEnhanced({
   // 🐛 CLEAN UP GHOST CUSTOMERS (customers with missing name/email)
   const handleCleanupGhostCustomers = async () => {
     try {
-      // Find all ghost customers (missing name or email)
       const ghostCustomers = customersList.filter((c) => !c.name || !c.email);
-      
+
       if (ghostCustomers.length === 0) {
-        showAlert(
-          "No Ghost Customers Found",
-          "All customers have valid data",
-          "info"
-        );
+        showAlert("No Ghost Customers Found", "All customers have valid data", "info");
         return;
       }
-      
-      const count = ghostCustomers.length;
+
       const ghostIds = ghostCustomers.map((c) => c.id);
-      
-      console.log(`👻 Cleaning up ${count} ghost customers...`, ghostIds);
-      
-      // 🎯 INSTANTLY UPDATE UI - Remove from local state first
+      const previous = customersList;
+      const previousTotal = customersTotal;
+      const previousStats = serverListStats;
+
+      skipCustomersRealtimeReloadRef.current = true;
       setCustomersList((prev) => prev.filter((c) => !ghostIds.includes(c.id)));
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/bulk-delete`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-            ...getAdminOperationHeaders(),
-          },
-          body: JSON.stringify({ customerIds: ghostIds }),
-        }
-      );
+      setCustomersTotal((prev) => Math.max(0, prev - ghostIds.length));
 
-      const data = await response.json();
+      const results = await Promise.allSettled(ghostIds.map((id) => deleteCustomerOnServer(id)));
+      const failedIds = ghostIds.filter((_, index) => results[index].status === "rejected");
 
-      if (!response.ok) {
-        await fetchCustomers(true);
-        throw new Error(data.error || "Failed to delete ghost customers");
+      if (failedIds.length > 0) {
+        skipCustomersRealtimeReloadRef.current = false;
+        setCustomersList(previous);
+        setCustomersTotal(previousTotal);
+        setServerListStats(previousStats);
+        throw new Error(`Failed to remove ${failedIds.length} ghost customer(s)`);
       }
 
-      console.log(`✅ Cleaned up ${count} ghost customers`);
-      invalidateAdminCustomersCache();
-      
-      showAlert(
-        "Ghost Customers Cleaned Up!",
-        `${count} invalid customer record(s) have been permanently removed`,
-        "success"
-      );
+      removeAdminCustomersFromCaches(ghostIds, ghostCustomers);
+      toast.success(`${ghostIds.length} invalid customer record(s) removed`);
     } catch (error: any) {
       console.error("❌ Error cleaning up ghost customers:", error);
       showAlert(
@@ -814,52 +857,6 @@ export function CustomersEnhanced({
                   <AlertCircle className="w-4 h-4" />
                   Clean Ghost Data
                 </Button>
-              )}
-              {selectedCustomers.length > 0 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="bg-slate-900 hover:bg-slate-800 text-white gap-2">
-                      <Zap className="w-4 h-4" />
-                      Bulk Actions
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
-                      <Send className="w-4 h-4 mr-2" />
-                      Send Email Campaign
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Tag className="w-4 h-4 mr-2" />
-                      Add Tags
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Edit className="w-4 h-4 mr-2" />
-                      Update Status
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => {
-                        const rows = customersList.filter((c) => selectedCustomers.includes(c.id));
-                        downloadCustomerCsv(rows, "selected");
-                      }}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      Export Selected
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      className="text-red-600" 
-                      onClick={() => {
-                        setConfirmDialog({
-                          isOpen: true,
-                          type: "bulkDelete",
-                        });
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Delete Selected
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               )}
             </div>
           </div>

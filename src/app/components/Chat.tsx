@@ -12,7 +12,6 @@ import {
   Check,
   CheckCheck,
   Clock,
-  RefreshCw,
   Loader2,
   X,
   ArrowUpDown,
@@ -32,9 +31,10 @@ import {
 } from "./ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { chatApi } from "../../utils/api";
-import { conversationBucketKeyClient, mainStoreConversationIdFromEmail } from "../../utils/chatConversation";
+import { conversationBucketKeyClient, canonicalChatThreadId, mainStoreConversationIdFromEmail } from "../../utils/chatConversation";
 import {
   broadcastConversationMessage,
+  broadcastCustomerChatMessage,
   broadcastInboxPing,
   subscribeAdminInbox,
   subscribeConversationBroadcast,
@@ -112,6 +112,39 @@ function mergeConversationAvatarsByEmail(conversations: Conversation[]): Convers
     }
     return conv;
   });
+}
+
+function conversationRowMatchesId(conv: Conversation, id: string | null | undefined): boolean {
+  if (!id) return false;
+  return (
+    conv.id === id ||
+    (Array.isArray(conv.aliasConversationIds) && conv.aliasConversationIds.includes(id))
+  );
+}
+
+/** Keep the open thread in the sidebar when GET /conversations omits a not-yet-persisted handoff row. */
+function preserveSelectedConversationInList(
+  next: Conversation[],
+  sources: Conversation[],
+  selectedId: string | null
+): Conversation[] {
+  if (!selectedId) return next;
+  if (next.some((c) => conversationRowMatchesId(c, selectedId))) return next;
+  const pinned = sources.find((c) => conversationRowMatchesId(c, selectedId));
+  if (!pinned) return next;
+  return mergeConversationAvatarsByEmail([pinned, ...next]);
+}
+
+function findConversationRow(
+  conversations: Conversation[],
+  selectedId: string | null,
+  pinned: Conversation | null
+): Conversation | undefined {
+  if (!selectedId) return undefined;
+  const fromList = conversations.find((c) => conversationRowMatchesId(c, selectedId));
+  if (fromList) return fromList;
+  if (pinned && conversationRowMatchesId(pinned, selectedId)) return pinned;
+  return undefined;
 }
 
 type InboxMergeResult =
@@ -212,6 +245,20 @@ let chatAdminInboxCache: Conversation[] | null = null;
 const chatAdminMessagesCache = new Map<string, Message[]>();
 let chatAdminSelectedConversationCache: string | null = null;
 
+/** Delay before showing the thread spinner — avoids flash on fast GET /messages. */
+const CHAT_MESSAGES_SPINNER_DELAY_MS = 120;
+
+function getCachedThreadMessages(conversationId: string): Message[] | undefined {
+  if (chatAdminMessagesCache.has(conversationId)) {
+    return chatAdminMessagesCache.get(conversationId);
+  }
+  return undefined;
+}
+
+function primeCachedThreadMessages(conversationId: string, messages: Message[]): void {
+  chatAdminMessagesCache.set(conversationId, messages);
+}
+
 type ChatInboxLoadMode = "initial" | "refresh" | "silent";
 
 export function Chat({
@@ -251,6 +298,8 @@ export function Chat({
   selectedConversationRef.current = selectedConversation;
   const conversationsRef = useRef<Conversation[]>(conversations);
   conversationsRef.current = conversations;
+  const handoffPinnedConversationRef = useRef<Conversation | null>(null);
+  const messagesLoadInFlightRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -282,9 +331,27 @@ export function Chat({
       }
       const response = await chatApi.getConversations();
       if (response.conversations && Array.isArray(response.conversations)) {
-        const merged = mergeConversationAvatarsByEmail(response.conversations as Conversation[]);
+        let merged = mergeConversationAvatarsByEmail(response.conversations as Conversation[]);
+        const sel = selectedConversationRef.current;
+        merged = preserveSelectedConversationInList(merged, conversationsRef.current, sel);
+        if (handoffPinnedConversationRef.current) {
+          merged = preserveSelectedConversationInList(
+            merged,
+            [handoffPinnedConversationRef.current],
+            sel
+          );
+        }
         chatAdminInboxCache = merged;
         setConversations(merged);
+        if (sel) {
+          const row = findConversationRow(merged, sel, handoffPinnedConversationRef.current);
+          if (row && row.id !== sel) {
+            setSelectedConversation(row.id);
+          }
+          if (row && handoffPinnedConversationRef.current?.id === row.id) {
+            handoffPinnedConversationRef.current = null;
+          }
+        }
         const totalUnread = response.conversations.reduce(
           (sum: number, conv: Conversation) => sum + (Number(conv.unread) || 0),
           0
@@ -318,16 +385,23 @@ export function Chat({
       markRead: boolean | "auto" = "auto"
     ) => {
       const shouldMarkRead = markRead === "auto" ? !silentUi : markRead;
+      const cached = getCachedThreadMessages(conversationId);
 
+      if (messagesLoadInFlightRef.current.has(conversationId) && silentUi) {
+        return;
+      }
+
+      let spinnerTimer: ReturnType<typeof setTimeout> | null = null;
       if (!silentUi) {
-        const cached = chatAdminMessagesCache.get(conversationId);
-        if (cached && cached.length > 0) {
+        if (cached !== undefined) {
           setMessages(cached);
           setLoadingMessages(false);
         } else {
-          setLoadingMessages(true);
+          spinnerTimer = setTimeout(() => setLoadingMessages(true), CHAT_MESSAGES_SPINNER_DELAY_MS);
         }
       }
+
+      messagesLoadInFlightRef.current.add(conversationId);
       try {
         const response = await chatApi.getMessages(conversationId);
         if (response.messages && Array.isArray(response.messages)) {
@@ -335,32 +409,35 @@ export function Chat({
             (a: Message, b: Message) =>
               new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
           );
-          chatAdminMessagesCache.set(conversationId, sortedMessages);
+          primeCachedThreadMessages(conversationId, sortedMessages);
           setMessages(sortedMessages);
 
           if (shouldMarkRead) {
-            await chatApi.markAsRead(conversationId);
-            setConversations((prev) => {
-              const next = prev.map((conv) =>
-                conv.id === conversationId ||
-                (Array.isArray(conv.aliasConversationIds) &&
-                  conv.aliasConversationIds.includes(conversationId))
-                  ? { ...conv, unread: 0 }
-                  : conv
-              );
-              chatAdminInboxCache = mergeConversationAvatarsByEmail(next);
-              const totalUnread = next.reduce(
-                (sum, c) => sum + (Number(c.unread) || 0),
-                0
-              );
-              queueMicrotask(() =>
-                window.dispatchEvent(
-                  new CustomEvent("admin-chat-unread-updated", {
-                    detail: { total: totalUnread },
-                  })
-                )
-              );
-              return next;
+            void chatApi.markAsRead(conversationId).then(() => {
+              setConversations((prev) => {
+                const next = prev.map((conv) =>
+                  conv.id === conversationId ||
+                  (Array.isArray(conv.aliasConversationIds) &&
+                    conv.aliasConversationIds.includes(conversationId))
+                    ? { ...conv, unread: 0 }
+                    : conv
+                );
+                chatAdminInboxCache = mergeConversationAvatarsByEmail(next);
+                const totalUnread = next.reduce(
+                  (sum, c) => sum + (Number(c.unread) || 0),
+                  0
+                );
+                queueMicrotask(() =>
+                  window.dispatchEvent(
+                    new CustomEvent("admin-chat-unread-updated", {
+                      detail: { total: totalUnread },
+                    })
+                  )
+                );
+                return next;
+              });
+            }).catch((err) => {
+              console.warn("Failed to mark conversation as read:", err);
             });
           }
         }
@@ -372,6 +449,8 @@ export function Chat({
           });
         }
       } finally {
+        messagesLoadInFlightRef.current.delete(conversationId);
+        if (spinnerTimer) clearTimeout(spinnerTimer);
         if (!silentUi) setLoadingMessages(false);
       }
     },
@@ -530,9 +609,22 @@ export function Chat({
   useEffect(() => {
     if (initialCustomer?.email?.trim()) return;
     if (chatAdminInboxCache && chatAdminInboxCache.length > 0) {
-      setConversations(mergeConversationAvatarsByEmail([...chatAdminInboxCache]));
+      const sel = selectedConversationRef.current;
+      let list = mergeConversationAvatarsByEmail([...chatAdminInboxCache]);
+      list = preserveSelectedConversationInList(list, conversationsRef.current, sel);
+      if (handoffPinnedConversationRef.current) {
+        list = preserveSelectedConversationInList(
+          list,
+          [handoffPinnedConversationRef.current],
+          sel
+        );
+      }
+      chatAdminInboxCache = list;
+      setConversations(list);
       setLoading(false);
-      void loadConversations("silent");
+      if (!handoffPinnedConversationRef.current) {
+        void loadConversations("silent");
+      }
     } else {
       void loadConversations("initial");
     }
@@ -547,10 +639,10 @@ export function Chat({
       prevSelectedConversationRef.current = null;
       return;
     }
-    const selectedRow = conversations.find(
-      (c) =>
-        c.id === selectedConversation ||
-        (Array.isArray(c.aliasConversationIds) && c.aliasConversationIds.includes(selectedConversation))
+    const selectedRow = findConversationRow(
+      conversations,
+      selectedConversation,
+      handoffPinnedConversationRef.current
     );
     if (!selectedRow) return;
     const canonicalConversationId = selectedRow.id;
@@ -559,9 +651,9 @@ export function Chat({
     prevSelectedConversationRef.current = selectedConversation;
 
     const cached =
-      chatAdminMessagesCache.get(canonicalConversationId) ||
-      chatAdminMessagesCache.get(selectedConversation);
-    if (cached && cached.length > 0) {
+      getCachedThreadMessages(canonicalConversationId) ??
+      getCachedThreadMessages(selectedConversation);
+    if (cached !== undefined) {
       setMessages(cached);
       setLoadingMessages(false);
       if (selectionChanged) {
@@ -582,35 +674,45 @@ export function Chat({
       setSearchQuery("");
       const email = initialCustomer.email.trim();
       const name = initialCustomer.name?.trim() || "Customer";
-      const convId = mainStoreConversationIdFromEmail(email);
+      const convId =
+        canonicalChatThreadId(email) ?? mainStoreConversationIdFromEmail(email);
 
       try {
-        const response = await chatApi.getConversations();
-        if (cancelled) return;
-        const raw = response.conversations || [];
-        let list = [...raw];
+        let list: Conversation[] | null =
+          chatAdminInboxCache && chatAdminInboxCache.length > 0
+            ? [...chatAdminInboxCache]
+            : null;
 
-        const match = list.find(
+        if (!list) {
+          const response = await chatApi.getConversations();
+          if (cancelled) return;
+          list = [...((response.conversations || []) as Conversation[])];
+        }
+
+        const raw = list;
+
+        const match = raw.find(
           (c) =>
             c.id === convId ||
             (c.customerEmail &&
               c.customerEmail.toLowerCase() === email.toLowerCase())
         );
 
+        let syntheticRow: Conversation | null = null;
         if (!match) {
-          list = [
-            ...list,
-            {
-              id: convId,
-              customerName: name,
-              customerEmail: email,
-              customerProfileImage: initialCustomer.avatar || "",
-              lastMessage: "—",
-              timestamp: new Date().toISOString(),
-              unread: 0,
-              status: "offline" as const,
-            },
-          ];
+          syntheticRow = {
+            id: convId,
+            customerName: name,
+            customerEmail: email,
+            customerProfileImage: initialCustomer.avatar || "",
+            lastMessage: "—",
+            timestamp: new Date().toISOString(),
+            unread: 0,
+            status: "offline" as const,
+          };
+          list = [...raw, syntheticRow];
+        } else {
+          list = raw;
         }
 
         const mergedHandoff = mergeConversationAvatarsByEmail(list as Conversation[]);
@@ -618,8 +720,16 @@ export function Chat({
         setConversations(mergedHandoff);
         setLoading(false);
         const idToUse = match?.id ?? convId;
+        const pinnedRow =
+          mergedHandoff.find((c) => conversationRowMatchesId(c, idToUse)) ??
+          syntheticRow;
+        if (pinnedRow) {
+          handoffPinnedConversationRef.current = pinnedRow;
+        }
+        if (!match) {
+          primeCachedThreadMessages(idToUse, []);
+        }
         setSelectedConversation(idToUse);
-        await loadMessages(idToUse, false);
         if (cancelled) return;
       } catch (e) {
         console.error("Chat handoff failed:", e);
@@ -645,7 +755,7 @@ export function Chat({
     return () => {
       cancelled = true;
     };
-  }, [initialCustomer, loadMessages, onInitialCustomerHandled]);
+  }, [initialCustomer, onInitialCustomerHandled]);
 
   // Rare HTTP reconcile: long-interval fallback + one debounced sync when tab becomes visible
   useEffect(() => {
@@ -765,17 +875,23 @@ export function Chat({
   const handleSelectConversation = (conversationId: string) => {
     chatAdminSelectedConversationCache = conversationId;
     setSelectedConversation(conversationId);
-    const hasCached = !!chatAdminMessagesCache.get(conversationId)?.length;
-    void loadMessages(conversationId, hasCached, true);
+    const cached = getCachedThreadMessages(conversationId);
+    if (cached !== undefined) {
+      setMessages(cached);
+      setLoadingMessages(false);
+      void loadMessages(conversationId, true, true);
+      return;
+    }
+    void loadMessages(conversationId, false, true);
   };
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() || !selectedConversation) return;
 
-    const selectedConv = conversations.find(
-      (c) =>
-        c.id === selectedConversation ||
-        (Array.isArray(c.aliasConversationIds) && c.aliasConversationIds.includes(selectedConversation))
+    const selectedConv = findConversationRow(
+      conversations,
+      selectedConversation,
+      handoffPinnedConversationRef.current
     );
     if (!selectedConv) return;
 
@@ -846,6 +962,12 @@ export function Chat({
         void chatApi.markAsRead(canonicalConversationId).catch(() => undefined);
 
         void broadcastConversationMessage(canonicalConversationId, response.message);
+        if (selectedConv.customerEmail?.trim()) {
+          void broadcastCustomerChatMessage(
+            selectedConv.customerEmail.trim(),
+            response.message
+          );
+        }
         const pingConversationId =
           String((response.message as { conversationId?: unknown }).conversationId || "").trim() ||
           canonicalConversationId;
@@ -993,10 +1115,10 @@ export function Chat({
     return sortOrder === "new-old" ? timeB - timeA : timeA - timeB;
   });
 
-  const selectedConv = conversations.find(
-    (c) =>
-      c.id === selectedConversation ||
-      (Array.isArray(c.aliasConversationIds) && c.aliasConversationIds.includes(selectedConversation))
+  const selectedConv = findConversationRow(
+    conversations,
+    selectedConversation,
+    handoffPinnedConversationRef.current
   );
   const selectedVendorHeaderBadge = selectedConv
     ? resolveChatVendorLabel(selectedConv.vendorSource, selectedConv.vendorId, vendorLookup)
@@ -1005,10 +1127,7 @@ export function Chat({
 
   /** Sidebar row matches current thread (primary id or merged alias ids). */
   const conversationRowIsSelected = (conv: Conversation) =>
-    selectedConversation != null &&
-    (conv.id === selectedConversation ||
-      (Array.isArray(conv.aliasConversationIds) &&
-        conv.aliasConversationIds.includes(selectedConversation)));
+    conversationRowMatchesId(conv, selectedConversation);
 
   useEffect(() => {
     chatAdminSelectedConversationCache = selectedConversation;
@@ -1090,24 +1209,6 @@ export function Chat({
                 {totalUnread} Unread
               </Badge>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void loadConversations("refresh")}
-              className="gap-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Refresh
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearAllHistory}
-              className="gap-2 border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400"
-            >
-              <Trash2 className="w-4 h-4" />
-              Clear All
-            </Button>
           </div>
         </div>
       </div>

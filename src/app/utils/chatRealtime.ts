@@ -5,8 +5,15 @@
  * HTTP polling in those components remains as a slow fallback.
  */
 import { supabase } from "../contexts/AuthContext";
+import { normalizeChatEmailClient, sanitizeChatTokenClient } from "../../utils/chatConversation";
 
 const INBOX_CHANNEL = "sec-chat-admin-inbox-v1";
+
+/** Cross-vendor / cross-tab delivery: every signed-in storefront for this email listens here. */
+export function customerChatChannelName(email: string): string {
+  const token = sanitizeChatTokenClient(normalizeChatEmailClient(email));
+  return token ? `sec-chat-customer-${token.slice(0, 80)}` : "";
+}
 
 /** Payload for admin inbox sidebar updates (avoids refetching full conversation list on every ping). */
 export type InboxBroadcastPayload = {
@@ -173,6 +180,70 @@ export function subscribeAdminInbox(onInbox: (payload: InboxBroadcastPayload) =>
  * Subscribe to new messages for one conversation (customer widget or admin thread).
  * `self: false` avoids echoing your own ephemeral broadcast back into state.
  */
+/** Admin → customer fan-out (vendor storefront A/B, marketplace, multiple tabs). */
+export async function broadcastCustomerChatMessage(
+  customerEmail: string,
+  message: unknown
+): Promise<void> {
+  const channelName = customerChatChannelName(customerEmail);
+  if (typeof window === "undefined" || !channelName || message == null) return;
+  const ch = supabase.channel(channelName, {
+    config: { broadcast: { ack: false } },
+  });
+  const ok = await waitSubscribed(ch);
+  if (!ok) {
+    try {
+      await supabase.removeChannel(ch);
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+  try {
+    await ch.send({
+      type: "broadcast",
+      event: "admin-message",
+      payload: { message },
+    });
+  } finally {
+    try {
+      await supabase.removeChannel(ch);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/** Customer floating chat: receive admin replies on any vendor store / tab for this account. */
+export function subscribeCustomerChatBroadcast(
+  customerEmail: string,
+  onMessage: (message: Record<string, unknown>) => void
+): () => void {
+  const channelName = customerChatChannelName(customerEmail);
+  if (!channelName) return () => undefined;
+  const ch = supabase
+    .channel(channelName, { config: { broadcast: { ack: false } } })
+    .on("broadcast", { event: "admin-message" }, (ctx: unknown) => {
+      const raw = extractBroadcastPayload<{ message?: unknown }>(ctx)?.message;
+      const fallback =
+        ctx && typeof ctx === "object" && "message" in ctx
+          ? (ctx as { message?: unknown }).message
+          : undefined;
+      const msg = raw ?? fallback;
+      if (msg && typeof msg === "object" && !Array.isArray(msg)) {
+        onMessage(msg as Record<string, unknown>);
+      }
+    });
+  ch.subscribe();
+  return () => {
+    try {
+      void supabase.removeChannel(ch);
+    } catch {
+      /* ignore */
+    }
+  };
+}
+
 export function subscribeConversationBroadcast(
   conversationId: string,
   onMessage: (message: Record<string, unknown>) => void
