@@ -9501,6 +9501,17 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
       settings = rest as typeof settings;
     }
 
+    const rawLogoIn = typeof settings.logo === "string" ? settings.logo.trim() : "";
+    if (rawLogoIn.startsWith("data:") && rawLogoIn.length > 450_000) {
+      return c.json(
+        {
+          error:
+            "Logo is too large to save as inline data. Pick the image again — it will upload to storage first.",
+        },
+        413
+      );
+    }
+
     // Store settings in KV store with vendor ID as key
     const key = `vendor_storefront_${settings.vendorId}`;
     const prevStorefront = await kv.get(key);
@@ -9638,6 +9649,86 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
   }
 });
 
+/** Vendor admin: upload logo to Storage (avoid huge data: URLs in KV / request body limits). */
+app.post("/make-server-16010b6f/vendor/storefront/upload-logo", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const vendorId = String((body as { vendorId?: string }).vendorId || "").trim();
+    const imageData = String((body as { imageData?: string }).imageData || "").trim();
+    const fileName = String((body as { fileName?: string }).fileName || "logo.jpg").trim();
+    if (!vendorId || !imageData) {
+      return c.json({ error: "vendorId and imageData are required" }, 400);
+    }
+    const vendor = await kv.get(`vendor:${vendorId}`);
+    if (!vendor || typeof vendor !== "object") {
+      return c.json({ error: "Vendor not found" }, 404);
+    }
+    if (!vendorProfileAllowsPublicStorefront(vendor)) {
+      return c.json({ error: "Vendor account is not active" }, 403);
+    }
+
+    const base64Data = imageData.includes(",") ? imageData.split(",")[1] || imageData : imageData;
+    let buffer: Uint8Array;
+    try {
+      buffer = Uint8Array.from(atob(base64Data), (ch) => ch.charCodeAt(0));
+    } catch {
+      return c.json({ error: "Invalid image data" }, 400);
+    }
+    if (buffer.length > 600 * 1024) {
+      return c.json({ error: "Image too large (max ~600KB)" }, 400);
+    }
+
+    const BUCKET_NAME = "make-16010b6f-store-logos";
+    try {
+      await ensureBucket(supabase, BUCKET_NAME, {
+        public: false,
+        fileSizeLimit: 629145,
+      });
+    } catch (bucketErr: unknown) {
+      console.error("❌ vendor storefront logo bucket:", bucketErr);
+      return c.json({ error: "Failed to ensure storage bucket" }, 500);
+    }
+
+    const safeId = vendorId.replace(/[^a-z0-9_-]/gi, "_").slice(0, 80);
+    const ext = (fileName.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+    const objectPath = `v_${safeId}/${Date.now()}_${Math.random().toString(36).slice(2, 10)}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(objectPath, buffer, {
+        contentType: (() => {
+          const head = imageData.slice(0, 48).toLowerCase();
+          if (head.includes("image/png")) return "image/png";
+          if (head.includes("image/webp")) return "image/webp";
+          if (head.includes("image/gif")) return "image/gif";
+          return "image/jpeg";
+        })(),
+        upsert: false,
+      });
+    if (uploadError) {
+      console.error("❌ vendor logo upload:", uploadError);
+      return c.json({ error: uploadError.message || "Upload failed" }, 500);
+    }
+
+    const { data: urlData, error: urlError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .createSignedUrl(objectPath, 315360000);
+
+    if (urlError || !urlData?.signedUrl) {
+      return c.json({ error: urlError?.message || "Failed to sign logo URL" }, 500);
+    }
+
+    return c.json({
+      success: true,
+      imageUrl: urlData.signedUrl,
+      objectPath,
+    });
+  } catch (error: unknown) {
+    console.error("❌ vendor storefront upload-logo:", error);
+    return c.json({ error: String((error as Error)?.message || error) }, 500);
+  }
+});
+
 // Get vendor storefront settings by vendor ID
 app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
   try {
@@ -9662,6 +9753,10 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
 
     // Get vendor settings
     const settings = await kv.get(key);
+    const vendorSettingsRow = (await withTimeout(
+      kv.get(`vendor_settings:${actualVendorId}`),
+      5000
+    ).catch(() => null)) as Record<string, unknown> | null;
 
     // Get vendor data to populate contact fields from application
     
@@ -9672,14 +9767,19 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
           ? vendor.logo.trim()
           : "";
 
+    const displayName = String(vendor?.name || (vendor as { businessName?: string })?.businessName || "Vendor Store").trim() || "Vendor Store";
+    const slugFromVendorSettings =
+      typeof vendorSettingsRow?.storeSlug === "string" ? vendorSettingsRow.storeSlug.trim() : "";
+    const slugFromStoreName = storeSlugFromBusinessName(displayName);
+
     if (!settings) {
       console.log(`⚠️ No settings found for vendor ${actualVendorId}, returning defaults`);
       // Return default settings if none exist, populated with vendor data if available
       return c.json({ 
         settings: {
           vendorId: actualVendorId,
-          storeName: vendor?.name || "Vendor Store",
-          storeSlug: `vendor-${actualVendorId}`,
+          storeName: displayName,
+          storeSlug: slugFromVendorSettings || slugFromStoreName,
           storeDescription: "Welcome to our store",
           storeTagline: "",
           logo: resolvedVendorLogo,
@@ -9706,8 +9806,22 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
     }
 
     // Populate empty contact fields from vendor data if they're missing
+    const rawSlug =
+      typeof (settings as { storeSlug?: unknown }).storeSlug === "string"
+        ? String((settings as { storeSlug: string }).storeSlug).trim()
+        : "";
+    const rawStoreName =
+      typeof (settings as { storeName?: unknown }).storeName === "string"
+        ? String((settings as { storeName: string }).storeName).trim()
+        : "";
+    const resolvedStoreSlug =
+      rawSlug ||
+      slugFromVendorSettings ||
+      storeSlugFromBusinessName(rawStoreName || displayName);
+
     const populatedSettings = {
       ...settings,
+      storeSlug: resolvedStoreSlug,
       logo:
         typeof settings.logo === "string" && settings.logo.trim()
           ? settings.logo

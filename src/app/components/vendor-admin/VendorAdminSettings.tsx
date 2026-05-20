@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Save,
   Eye,
@@ -25,6 +25,8 @@ import {
 } from "../../utils/vendorAuthCookie";
 import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
 import { isRenderableImageSrc, pickStoreLogo } from "../../utils/renderableImageSrc";
+import { supabase } from "../../contexts/AuthContext";
+import { getEffectiveVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
 
 interface StoreSettings {
   vendorId: string;
@@ -93,6 +95,7 @@ export function VendorAdminSettings({
   });
   const [loading, setLoading] = useState(!cachedSettings);
   const [saving, setSaving] = useState(false);
+  const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [domainBusy, setDomainBusy] = useState<"prepare" | "verify" | "remove" | null>(null);
   const [domainDraft, setDomainDraft] = useState("");
   const [domainHints, setDomainHints] = useState<{
@@ -101,16 +104,20 @@ export function VendorAdminSettings({
     txtValue: string;
     cnameTarget: string;
   } | null>(null);
+  const subdomainBase = getEffectiveVendorSubdomainBase() || "walwal.online";
 
   useEffect(() => {
     loadSettings();
   }, [vendorId, vendorLogo]);
 
-  const loadSettings = async () => {
+  const loadSettings = async (forceRefresh = false) => {
     if (!cacheManager.get(settingsCacheKey)) {
       setLoading(true);
     }
     try {
+      if (forceRefresh) {
+        cacheManager.clear(settingsCacheKey);
+      }
       const data = await cacheManager.fetch(
         settingsCacheKey,
         async () => {
@@ -136,6 +143,11 @@ export function VendorAdminSettings({
           ...data.settings,
           logo: pickStoreLogo(rawLogo, vendorLogo),
         };
+        if (!String(nextSettings.storeSlug || "").trim()) {
+          nextSettings.storeSlug = storeSlugFromBusinessName(
+            String(nextSettings.storeName || vendorName || "store")
+          );
+        }
         setSettings(nextSettings);
         cacheManager.set(settingsCacheKey, nextSettings);
         setDomainDraft(String(data.settings.customDomain || "").trim() || "");
@@ -155,6 +167,42 @@ export function VendorAdminSettings({
       setLoading(false);
     }
   };
+
+  // Live sync: vendor settings/logo updates from other tabs/devices should appear immediately.
+  useEffect(() => {
+    const storefrontKey = `vendor_storefront_${vendorId}`;
+    const vendorSettingsKey = `vendor_settings:${vendorId}`;
+    const vendorKey = `vendor:${vendorId}`;
+    const scheduleReload = () => {
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+      realtimeDebounceRef.current = setTimeout(() => {
+        realtimeDebounceRef.current = null;
+        void loadSettings(true);
+      }, 240);
+    };
+    const channel = supabase
+      .channel(`vendor-admin-settings-kv-realtime-${vendorId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kv_store_16010b6f" },
+        (payload: any) => {
+          const key = String(payload?.new?.key || payload?.old?.key || "");
+          if (!key) return;
+          if (key === storefrontKey || key === vendorSettingsKey || key === vendorKey) {
+            scheduleReload();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current);
+        realtimeDebounceRef.current = null;
+      }
+      void supabase.removeChannel(channel);
+    };
+  }, [vendorId]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -490,17 +538,82 @@ export function VendorAdminSettings({
                   accept="image/*"
                   className="hidden"
                   onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
+                    const input = e.currentTarget;
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    try {
+                      const compressedDataUrl = await compressImage(file, 200);
+                      // Optimistic preview immediately; persisted URL replaces this on success.
+                      setSettings({ ...settings, logo: compressedDataUrl });
+
+                      const uploadViaVendorEndpoint = async (): Promise<string> => {
+                        const res = await fetch(`${API_BASE_URL}/vendor/storefront/upload-logo`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${publicAnonKey}`,
+                          },
+                          body: JSON.stringify({
+                            vendorId,
+                            imageData: compressedDataUrl,
+                            fileName: file.name || "logo.jpg",
+                          }),
+                        });
+                        const data = (await res.json().catch(() => ({}))) as {
+                          imageUrl?: string;
+                          error?: string;
+                        };
+                        if (!res.ok || !data.imageUrl) {
+                          throw new Error(
+                            typeof data.error === "string" ? data.error : "Vendor logo endpoint failed"
+                          );
+                        }
+                        return data.imageUrl;
+                      };
+
+                      const uploadViaLegacyEndpoint = async (): Promise<string> => {
+                        const response = await fetch(compressedDataUrl);
+                        const blob = await response.blob();
+                        const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+                        const uploadFile = new File([blob], `logo.${ext}`, {
+                          type: blob.type || "image/jpeg",
+                        });
+                        const fd = new FormData();
+                        fd.append("image", uploadFile);
+                        fd.append("storeName", settings.storeName || vendorName || "Vendor Store");
+                        const res = await fetch(`${API_BASE_URL}/settings/upload-logo`, {
+                          method: "POST",
+                          headers: { Authorization: `Bearer ${publicAnonKey}` },
+                          body: fd,
+                        });
+                        const data = (await res.json().catch(() => ({}))) as {
+                          imageUrl?: string;
+                          error?: string;
+                        };
+                        if (!res.ok || !data.imageUrl) {
+                          throw new Error(
+                            typeof data.error === "string" ? data.error : "Legacy logo endpoint failed"
+                          );
+                        }
+                        return data.imageUrl;
+                      };
+
+                      let uploadedUrl = "";
                       try {
-                        // Compress logo to max 100KB for optimal performance
-                        const compressedDataUrl = await compressImage(file, 100);
-                        setSettings({ ...settings, logo: compressedDataUrl });
-                        toast.success("Logo compressed and uploaded successfully!");
-                      } catch (error) {
-                        console.error("Logo compression error:", error);
-                        toast.error("Failed to compress logo. Please try a smaller file.");
+                        uploadedUrl = await uploadViaVendorEndpoint();
+                      } catch {
+                        uploadedUrl = await uploadViaLegacyEndpoint();
                       }
+
+                      setSettings((prev) => ({ ...prev, logo: uploadedUrl }));
+                      toast.success("Logo uploaded");
+                    } catch (error) {
+                      console.error("Logo upload error:", error);
+                      toast.error(
+                        error instanceof Error ? error.message : "Failed to upload logo"
+                      );
+                    } finally {
+                      input.value = "";
                     }
                   }}
                 />
@@ -531,7 +644,7 @@ export function VendorAdminSettings({
             <p className="text-xs text-slate-500 mt-1.5">
               Public path: <span className="font-mono">/vendor/{settings.storeSlug || "…"}</span>. On save, the slug is
               finalized from this name (letters and digits only). With a wildcard DNS record, your host can use{" "}
-              <span className="font-mono">{settings.storeSlug || "yourstore"}.yourdomain.com</span>.
+              <span className="font-mono">{settings.storeSlug || "yourstore"}.{subdomainBase}</span>.
             </p>
           </div>
 
