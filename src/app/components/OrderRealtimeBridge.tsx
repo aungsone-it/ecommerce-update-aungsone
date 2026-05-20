@@ -1,7 +1,10 @@
 import { useEffect, useRef } from "react";
 import { supabase } from "../contexts/AuthContext";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
-import { dispatchAdminProductsCachePatched } from "../utils/module-cache";
+import {
+  dispatchAdminProductsCachePatched,
+  notifyAdminVendorApplicationsUpdated,
+} from "../utils/module-cache";
 
 const PULSE_TABLE = "app_order_pulse";
 const DEBOUNCE_MS = 400;
@@ -15,6 +18,8 @@ const DEBOUNCE_MS = 400;
 export function OrderRealtimeBridge() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kvDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** `vendor_application:*` KV rows were touched — fan out to applications listeners + badge. */
+  const vendorApplicationKvPendingRef = useRef(false);
 
   useEffect(() => {
     const bump = () => {
@@ -66,6 +71,8 @@ export function OrderRealtimeBridge() {
     const flush = () => {
       if (domains.size === 0) return;
       const list = [...domains];
+      const shouldNotifyVendorApplications = vendorApplicationKvPendingRef.current;
+      vendorApplicationKvPendingRef.current = false;
       domains.clear();
       if (list.includes("orders")) {
         notifyAdminOrdersUpdated("realtime-order-pulse");
@@ -82,6 +89,9 @@ export function OrderRealtimeBridge() {
         }
         if (list.includes("vendors")) {
           window.dispatchEvent(new CustomEvent("vendorDataUpdated"));
+          if (shouldNotifyVendorApplications) {
+            notifyAdminVendorApplicationsUpdated("realtime-kv");
+          }
         }
         if (list.includes("marketing")) {
           window.dispatchEvent(new CustomEvent("marketingDataUpdated"));
@@ -106,6 +116,10 @@ export function OrderRealtimeBridge() {
         (payload: any) => {
           const key = String(payload?.new?.key || payload?.old?.key || "");
           if (!key) return;
+          if (key.startsWith("vendor_application:")) {
+            vendorApplicationKvPendingRef.current = true;
+            return schedule("vendors");
+          }
           if (key.startsWith("order:")) return schedule("orders");
           if (key.startsWith("product:")) return schedule("products");
           if (key.startsWith("category:")) return schedule("categories");
