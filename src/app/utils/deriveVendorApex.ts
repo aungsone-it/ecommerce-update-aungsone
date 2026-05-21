@@ -21,9 +21,13 @@ const MULTI_TENANT_PLATFORM_APEX = new Set([
 
 export function deriveNaiveVendorApexFromHost(host: string): string | null {
   const h = host.split(":")[0].toLowerCase();
-  if (h === "localhost" || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return null;
   const parts = h.split(".").filter(Boolean);
-  if (parts.length < 3) return null;
+  // Local dev: gogo.localhost → apex "localhost" (matches VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN=localhost).
+  if (parts.length >= 2 && parts[parts.length - 1] === "localhost") {
+    return "localhost";
+  }
+  if (h === "localhost" || parts.length < 3) return null;
   const naive = parts.slice(-2).join(".");
   if (MULTI_TENANT_PLATFORM_APEX.has(naive)) return null;
   return naive;

@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from "react";
 import { resolveVendorSubdomainStoreSlug } from "./vendorSubdomainHooks";
+import { deriveNaiveVendorApexFromHost } from "./deriveVendorApex";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 
@@ -24,12 +25,17 @@ export function shouldResolveCustomDomainHost(host: string): boolean {
   // Important: only use explicit env-configured platform apex for exclusion.
   // Using runtime-derived apex here can misclassify a true custom domain
   // (e.g. "migoo.store") as the platform host and skip by-domain resolution.
-  const base = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
+  const envBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
     .trim()
     .toLowerCase();
+  const derivedBase = deriveNaiveVendorApexFromHost(h);
+  const base = derivedBase || envBase;
   if (base) {
     if (h === base || h === `www.${base}`) return false;
-    if (h.endsWith(`.${base}`)) return false;
+    if (h.endsWith(`.${base}`)) {
+      const label = h.slice(0, -(base.length + 1));
+      if (label && !label.includes(".")) return false;
+    }
   }
   return true;
 }

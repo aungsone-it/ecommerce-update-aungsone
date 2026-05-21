@@ -13,16 +13,59 @@ const RESERVED_SUBDOMAINS = new Set([
   "preview",
 ]);
 
+export type VendorSubdomainHostContext = {
+  /** e.g. gogo.walwal.online — any non-reserved single-label subdomain on the platform apex. */
+  isVendorSubdomainHost: boolean;
+  /** Host label before the apex (e.g. gogo, gogot). */
+  label: string | null;
+  /** Mapped store slug candidate for API lookup (e.g. go-go), or null when not a vendor host. */
+  storeSlugCandidate: string | null;
+};
+
+/** Parse vendor subdomain host from hostname + configured/derived apex. */
+export function resolveVendorSubdomainHostContext(
+  hostname?: string,
+): VendorSubdomainHostContext {
+  const base = getVendorSubdomainBase();
+  if (!base || typeof window === "undefined") {
+    return { isVendorSubdomainHost: false, label: null, storeSlugCandidate: null };
+  }
+  const host = (hostname ?? window.location.hostname).toLowerCase();
+  if (!host.endsWith(`.${base}`)) {
+    return { isVendorSubdomainHost: false, label: null, storeSlugCandidate: null };
+  }
+  if (host === base || host === `www.${base}`) {
+    return { isVendorSubdomainHost: false, label: null, storeSlugCandidate: null };
+  }
+  const label = host.slice(0, -(base.length + 1)).toLowerCase();
+  if (!label || label.includes(".") || RESERVED_SUBDOMAINS.has(label)) {
+    return { isVendorSubdomainHost: false, label: null, storeSlugCandidate: null };
+  }
+  return {
+    isVendorSubdomainHost: true,
+    label,
+    storeSlugCandidate: getStoreSlugFromSubdomainLabel(label),
+  };
+}
+
+/** True on vendor subdomain hosts like gogo.walwal.online (including unknown labels). */
+export function isOnVendorSubdomainHost(hostname?: string): boolean {
+  return resolveVendorSubdomainHostContext(hostname).isVendorSubdomainHost;
+}
+
+/** Marketplace home URL when leaving an invalid/unknown vendor subdomain storefront. */
+export function getVendorSubdomainMarketplaceHomeUrl(): string {
+  if (typeof window === "undefined") return "/";
+  const base = getVendorSubdomainBase();
+  if (base && base !== "localhost") {
+    return `${window.location.protocol}//${base}/`;
+  }
+  return "/";
+}
+
 /** Real store slug for the current vendor subdomain host (e.g. gogo.walwal.online → go-go), or null if not a vendor host. */
 export function resolveVendorSubdomainStoreSlug(): string | null {
-  const base = getVendorSubdomainBase();
-  if (!base || typeof window === "undefined") return null;
-  const host = window.location.hostname.toLowerCase();
-  if (!host.endsWith(`.${base}`)) return null;
-  if (host === base || host === `www.${base}`) return null;
-  const label = host.slice(0, -(base.length + 1));
-  if (!label || RESERVED_SUBDOMAINS.has(label)) return null;
-  return getStoreSlugFromSubdomainLabel(label);
+  return resolveVendorSubdomainHostContext().storeSlugCandidate;
 }
 
 /** `/admin` or `/admin/...` (avoids matching `/administrator`). Case- and trailing-slash tolerant. */

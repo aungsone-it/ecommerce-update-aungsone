@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
-import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import {
+  resolveVendorSubdomainStoreSlug,
+  getVendorSubdomainMarketplaceHomeUrl,
+  isOnVendorSubdomainHost,
+} from "../utils/vendorSubdomainHooks";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 import {
@@ -174,6 +178,7 @@ export function VendorStorefrontPage() {
   const location = useLocation();
   const vendorDash = parseVendorDashPath(location.pathname);
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
+  const onVendorSubdomainHost = isOnVendorSubdomainHost();
   const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
   const vendorHostSlug = subdomainSlug ?? customHostSlug ?? null;
   const pathBasedStoreName = params.storeName ?? vendorDash?.storeName ?? undefined;
@@ -197,22 +202,28 @@ export function VendorStorefrontPage() {
     void (async () => {
       try {
         const res = await fetch(
-          `${API_BASE_URL}/vendors/by-slug/${encodeURIComponent(slugToVerify)}`,
+          `${API_BASE_URL}/vendor/store/${encodeURIComponent(slugToVerify)}`,
           { headers: { Authorization: `Bearer ${publicAnonKey}` } }
         );
         if (cancelled) return;
-        const data = (await res.json().catch(() => ({}))) as { vendor?: { storeSlug?: string; id?: string } };
-        const vendor = data?.vendor;
+        const data = (await res.json().catch(() => ({}))) as {
+          settings?: { storeSlug?: string; vendorId?: string };
+          storeUnavailable?: boolean;
+        };
+        const settings = data?.settings;
         const hasVendor =
-          res.ok && vendor != null && typeof vendor === "object" && Boolean(vendor.id || vendor.storeSlug);
+          res.ok &&
+          settings != null &&
+          typeof settings === "object" &&
+          Boolean(settings.vendorId || settings.storeSlug);
         if (!hasVendor) {
           setVendorExistence("not_found");
           setCanonicalStoreSlug(null);
           return;
         }
         const slug =
-          typeof vendor.storeSlug === "string" && vendor.storeSlug.trim()
-            ? vendor.storeSlug.trim()
+          typeof settings.storeSlug === "string" && settings.storeSlug.trim()
+            ? settings.storeSlug.trim()
             : slugToVerify;
         setCanonicalStoreSlug(slug);
         setVendorExistence("found");
@@ -323,17 +334,26 @@ export function VendorStorefrontPage() {
     };
   }, []);
 
-  if (customHostLoading && !params.storeName && !subdomainSlug) {
+  if (customHostLoading && !params.storeName && !onVendorSubdomainHost) {
     return <VendorStorefrontFullSkeleton />;
   }
 
+  const backToMarketplaceHome = () => {
+    const target = getVendorSubdomainMarketplaceHomeUrl();
+    if (target.startsWith("http")) {
+      window.location.assign(target);
+      return;
+    }
+    navigate(target);
+  };
+
   let storefrontGate: ReactNode = null;
   if (!resolvedStoreName) {
-    storefrontGate = <VendorStoreNotFoundPanel onBackHome={() => navigate("/")} />;
+    storefrontGate = <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />;
   } else if (slugToVerify && vendorExistence !== "found") {
     storefrontGate =
       vendorExistence === "not_found" ? (
-        <VendorStoreNotFoundPanel onBackHome={() => navigate("/")} />
+        <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />
       ) : (
         <VendorStorefrontFullSkeleton />
       );

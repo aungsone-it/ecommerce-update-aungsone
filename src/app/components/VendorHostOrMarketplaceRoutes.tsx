@@ -1,6 +1,6 @@
 import { Suspense, lazy, useLayoutEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import { resolveVendorSubdomainStoreSlug, isOnVendorSubdomainHost } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import {
   extractStoreSlugFromPathname,
@@ -16,9 +16,13 @@ const VendorStorefrontPage = lazy(() =>
 );
 
 function useVendorHost(): { vendorHost: boolean; loading: boolean } {
+  const onVendorSubdomainHost = isOnVendorSubdomainHost();
   const sub = resolveVendorSubdomainStoreSlug();
   const { slug: custom, loading } = useResolvedVendorHostSlug();
-  return { vendorHost: sub != null || custom != null, loading: loading && !sub };
+  return {
+    vendorHost: onVendorSubdomainHost || sub != null || custom != null,
+    loading: loading && !onVendorSubdomainHost && !sub,
+  };
 }
 
 /**

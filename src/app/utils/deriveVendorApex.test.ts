@@ -10,7 +10,12 @@ describe("deriveNaiveVendorApexFromHost", () => {
     expect(deriveNaiveVendorApexFromHost("walwal.online")).toBeNull();
   });
 
-  it("returns null for localhost", () => {
+  it("returns localhost apex for vendor subdomain (local dev)", () => {
+    expect(deriveNaiveVendorApexFromHost("gogo.localhost")).toBe("localhost");
+    expect(deriveNaiveVendorApexFromHost("gogot.localhost:5173")).toBe("localhost");
+  });
+
+  it("returns null for bare localhost", () => {
     expect(deriveNaiveVendorApexFromHost("localhost")).toBeNull();
   });
 

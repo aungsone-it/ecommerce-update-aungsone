@@ -13,7 +13,10 @@ import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { resolveVendorSubdomainStoreSlug } from "./utils/vendorSubdomainHooks";
+import {
+  resolveVendorSubdomainStoreSlug,
+  isOnVendorSubdomainHost,
+} from "./utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "./utils/vendorHostResolution";
 import {
   AdminEntryLayout,
@@ -79,12 +82,13 @@ const KPayReturnPage = lazy(() =>
 );
 
 function VendorSubdomainIndexOrLanding() {
+  const onVendorSubdomainHost = isOnVendorSubdomainHost();
   const sub = resolveVendorSubdomainStoreSlug();
   const { slug: customSlug, loading } = useResolvedVendorHostSlug();
-  if (loading && !sub) {
+  if (loading && !onVendorSubdomainHost) {
     return <RouteLoadingFallback />;
   }
-  if (sub || customSlug) {
+  if (onVendorSubdomainHost || sub || customSlug) {
     return <VendorStorefrontPage />;
   }
   return <LandingPage />;

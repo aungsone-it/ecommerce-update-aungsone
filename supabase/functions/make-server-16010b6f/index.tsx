@@ -5949,6 +5949,38 @@ app.post("/make-server-16010b6f/vendors/validate", async (c) => {
   }
 });
 
+function compactPublicSlug(value: string): string {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function vendorProfileMatchesPublicSlug(v: any, slug: string): boolean {
+  const target = String(slug || "").trim().toLowerCase();
+  if (!target) return false;
+  if (v.id === target) return true;
+  const profileSlug = String(v.storeSlug || "").trim().toLowerCase();
+  if (profileSlug && profileSlug === target) return true;
+  const hyphenStoreName = v.storeName?.toLowerCase().replace(/\s+/g, "-");
+  if (hyphenStoreName === target) return true;
+  const hyphenBusinessName = v.businessName?.toLowerCase().replace(/\s+/g, "-");
+  if (hyphenBusinessName === target) return true;
+  const compactTarget = compactPublicSlug(target);
+  if (profileSlug && compactPublicSlug(profileSlug) === compactTarget) return true;
+  const compactFromName = storeSlugFromBusinessName(v.storeName || v.businessName || "");
+  return compactFromName === compactTarget;
+}
+
+function vendorSettingsMatchesPublicSlug(s: any, slug: string): boolean {
+  const target = String(slug || "").trim().toLowerCase();
+  if (!target) return false;
+  const settingsSlug = String(s.storeSlug || "").trim().toLowerCase();
+  if (settingsSlug && settingsSlug === target) return true;
+  const hyphenStoreName = s.storeName?.toLowerCase().replace(/\s+/g, "-");
+  if (hyphenStoreName === target) return true;
+  const compactTarget = compactPublicSlug(target);
+  if (settingsSlug && compactPublicSlug(settingsSlug) === compactTarget) return true;
+  return storeSlugFromBusinessName(s.storeName || "") === compactTarget;
+}
+
 // Get vendor by store slug
 app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
   try {
@@ -5973,8 +6005,22 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
     
     console.log(`🔍 Searching ${validVendors.length} vendors for slug: ${slug}`);
     
-    // Try to find vendor by storeSlug, storeName, businessName, or ID
-    let vendor = validVendors.find((v: any) => {
+    let vendor: any = null;
+
+    // Fast path: canonical slug → vendorId mapping (same index as /vendor/store/:storeSlug)
+    const slugMapping = await withTimeout(kv.get(`vendor_slug_${slug}`), 5000).catch(() => null);
+    if (slugMapping?.vendorId) {
+      vendor =
+        validVendors.find((v: any) => v.id === slugMapping.vendorId) ??
+        (await withTimeout(kv.get(`vendor:${slugMapping.vendorId}`), 5000).catch(() => null));
+      if (vendor) {
+        console.log(`✅ Found vendor by vendor_slug_ mapping: ${slugMapping.vendorId}`);
+      }
+    }
+
+    // Try to find vendor by storeSlug, storeName, businessName, subdomain label, or ID
+    if (!vendor) {
+      vendor = validVendors.find((v: any) => {
       console.log(`🔎 Checking vendor:`, {
         id: v.id,
         businessName: v.businessName,
@@ -5982,35 +6028,13 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
         storeSlug: v.storeSlug,
         email: v.email
       });
-      
-      // Check if slug matches vendor ID directly
-      if (v.id === slug) {
-        console.log(`✅ Found vendor by ID: ${v.id}`);
+      if (vendorProfileMatchesPublicSlug(v, slug)) {
+        console.log(`✅ Found vendor by public slug match: ${v.id}`);
         return true;
       }
-      
-      // Check storeSlug
-      if (v.storeSlug === slug) {
-        console.log(`✅ Found vendor by storeSlug: ${v.storeSlug}`);
-        return true;
-      }
-      
-      // Check if slug is constructed from storeName
-      const storeName = v.storeName?.toLowerCase().replace(/\s+/g, '-');
-      if (storeName === slug) {
-        console.log(`✅ Found vendor by storeName: ${v.storeName}`);
-        return true;
-      }
-      
-      // Check if slug is constructed from businessName
-      const businessName = v.businessName?.toLowerCase().replace(/\s+/g, '-');
-      if (businessName === slug) {
-        console.log(`✅ Found vendor by businessName: ${v.businessName}`);
-        return true;
-      }
-      
       return false;
-    });
+      });
+    }
     
     // If not found by settings, check vendor_settings
     if (!vendor) {
@@ -6019,9 +6043,7 @@ app.get("/make-server-16010b6f/vendors/by-slug/:slug", async (c) => {
       
       console.log(`🔍 Checking ${validSettings.length} vendor settings for slug: ${slug}`);
       
-      const matchingSettings = validSettings.find((s: any) => 
-        s.storeSlug === slug || s.storeName?.toLowerCase().replace(/\s+/g, '-') === slug
-      );
+      const matchingSettings = validSettings.find((s: any) => vendorSettingsMatchesPublicSlug(s, slug));
       
       if (matchingSettings) {
         console.log(`✅ Found matching settings for vendorId: ${matchingSettings.vendorId}`);
