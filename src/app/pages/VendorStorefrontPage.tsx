@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { publicAnonKey } from "../../../utils/supabase/info";
@@ -185,7 +185,7 @@ export function VendorStorefrontPage() {
   );
   const [canonicalStoreSlug, setCanonicalStoreSlug] = useState<string | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!slugToVerify) {
       setVendorExistence("idle");
       setCanonicalStoreSlug(null);
@@ -201,15 +201,18 @@ export function VendorStorefrontPage() {
           { headers: { Authorization: `Bearer ${publicAnonKey}` } }
         );
         if (cancelled) return;
-        if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { vendor?: { storeSlug?: string; id?: string } };
+        const vendor = data?.vendor;
+        const hasVendor =
+          res.ok && vendor != null && typeof vendor === "object" && Boolean(vendor.id || vendor.storeSlug);
+        if (!hasVendor) {
           setVendorExistence("not_found");
           setCanonicalStoreSlug(null);
           return;
         }
-        const data = (await res.json()) as { vendor?: { storeSlug?: string } };
         const slug =
-          typeof data.vendor?.storeSlug === "string" && data.vendor.storeSlug.trim()
-            ? data.vendor.storeSlug.trim()
+          typeof vendor.storeSlug === "string" && vendor.storeSlug.trim()
+            ? vendor.storeSlug.trim()
             : slugToVerify;
         setCanonicalStoreSlug(slug);
         setVendorExistence("found");
@@ -324,13 +327,18 @@ export function VendorStorefrontPage() {
     return <VendorStorefrontFullSkeleton />;
   }
 
-  if (slugToVerify && vendorExistence === "checking") {
-    return <VendorStorefrontFullSkeleton />;
+  let storefrontGate: ReactNode = null;
+  if (!resolvedStoreName) {
+    storefrontGate = <VendorStoreNotFoundPanel onBackHome={() => navigate("/")} />;
+  } else if (slugToVerify && vendorExistence !== "found") {
+    storefrontGate =
+      vendorExistence === "not_found" ? (
+        <VendorStoreNotFoundPanel onBackHome={() => navigate("/")} />
+      ) : (
+        <VendorStorefrontFullSkeleton />
+      );
   }
-
-  if (!resolvedStoreName || (slugToVerify && vendorExistence === "not_found")) {
-    return <VendorStoreNotFoundPanel onBackHome={() => navigate("/")} />;
-  }
+  if (storefrontGate) return storefrontGate;
 
   const handleBack = () => {
     const vendorAdminPath =
