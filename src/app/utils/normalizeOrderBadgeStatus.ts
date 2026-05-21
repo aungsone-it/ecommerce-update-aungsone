@@ -9,7 +9,7 @@ export type AdminOrderBadgeStatus =
 
 export type AdminPaymentBadgeStatus = "paid" | "unpaid" | "refunded" | "pending-refund";
 
-export type AdminShippingBadgeStatus = "pending" | "shipped" | "delivered";
+export type AdminShippingBadgeStatus = "pending" | "shipped" | "delivered" | "cancelled";
 
 export function normalizeAdminOrderStatusForBadge(raw: unknown): AdminOrderBadgeStatus {
   const s = String(raw ?? "pending")
@@ -46,6 +46,61 @@ export function normalizeShippingBadgeStatus(raw: unknown): AdminShippingBadgeSt
     .replace(/_/g, "-");
   if (s === "delivered" || s === "delivery") return "delivered";
   if (s === "shipped" || s === "shipping" || s === "in-transit") return "shipped";
+  if (s === "cancelled" || s === "canceled" || s === "cancel") return "cancelled";
+  return "pending";
+}
+
+type OrderLikeForBadges = {
+  status?: unknown;
+  paymentStatus?: unknown;
+  paymentMethod?: unknown;
+  shippingStatus?: unknown;
+  kpay?: {
+    status?: string;
+    refund?: { status?: string };
+  };
+};
+
+/** Payment badge value for admin order rows (cancelled → Refund, not Unpaid). */
+export function derivePaymentStatusFromOrder(order: OrderLikeForBadges): string {
+  const cancelled = normalizeAdminOrderStatusForBadge(order.status) === "cancelled";
+  const raw = String(order.paymentStatus || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+
+  if (cancelled) {
+    if (raw === "refunded") return "refunded";
+    const kpayRefund = String(order.kpay?.refund?.status || "").toLowerCase();
+    if (kpayRefund === "success" || kpayRefund === "already-refunded" || kpayRefund === "already_refunded") {
+      return "refunded";
+    }
+    return "pending_refund";
+  }
+
+  if (raw === "pending-refund" || raw === "pendingrefund") return "pending_refund";
+  if (raw === "refunded" || raw === "refund") return "refunded";
+  if (raw === "paid" || raw === "complete") return "paid";
+  if (raw === "unpaid") return "unpaid";
+  if (order.paymentMethod === "Cash on Delivery" || order.paymentMethod === "cod") return "unpaid";
+  return "paid";
+}
+
+/** Shipping badge value for admin order rows (cancelled → Cancel, not Pending). */
+export function deriveShippingStatusFromOrder(order: OrderLikeForBadges): AdminShippingBadgeStatus {
+  if (normalizeAdminOrderStatusForBadge(order.status) === "cancelled") {
+    return "cancelled";
+  }
+  const stored = normalizeShippingBadgeStatus(order.shippingStatus);
+  if (order.shippingStatus != null && String(order.shippingStatus).trim() !== "") {
+    return stored;
+  }
+  const st = String(order.status || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+  if (st === "delivered" || st === "fulfilled") return "delivered";
+  if (st === "shipped") return "shipped";
   return "pending";
 }
 

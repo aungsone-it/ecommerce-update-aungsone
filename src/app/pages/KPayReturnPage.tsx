@@ -18,6 +18,7 @@ import {
   extractStoreSlugFromPathname,
   resolveVendorSummaryPath,
 } from "../utils/vendorCheckoutPaths";
+import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 
 type ReturnState =
   | { kind: "loading" }
@@ -87,7 +88,7 @@ export function KPayReturnPage() {
   } | null>(null);
   const [draftFetchDone, setDraftFetchDone] = useState(false);
   const [state, setState] = useState<ReturnState>({ kind: "loading" });
-  const finalizeAttemptedRef = useRef(false);
+  const finalizeDoneRef = useRef(false);
   const redirectDoneRef = useRef(false);
 
   useEffect(() => {
@@ -179,15 +180,6 @@ export function KPayReturnPage() {
 
     const pollOnce = async () => {
       try {
-        if (!finalizeAttemptedRef.current) {
-          finalizeAttemptedRef.current = true;
-          await finalizePwaCheckoutOrderApi({
-            projectId,
-            publicAnonKey,
-            merchantOrderId,
-          });
-        }
-
         const session = await fetchKPaySessionStatus({
           projectId,
           publicAnonKey,
@@ -195,6 +187,18 @@ export function KPayReturnPage() {
         });
         if (cancelled) return;
         setState({ kind: "ok", session });
+
+        if (session.status === "paid" && !finalizeDoneRef.current) {
+          const fin = await finalizePwaCheckoutOrderApi({
+            projectId,
+            publicAnonKey,
+            merchantOrderId,
+          });
+          if (fin.ok) {
+            finalizeDoneRef.current = true;
+            notifyAdminOrdersUpdated("pwa-return-order-finalized");
+          }
+        }
 
         if (session.status === "paid" || session.status === "failed") {
           return "stop";

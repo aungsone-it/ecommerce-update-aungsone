@@ -5219,18 +5219,28 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
       console.log(`✅ Stock deduction complete for order ${existingOrder.orderNumber}`);
     }
 
+    const prevPaymentStatus = String(existingOrder.paymentStatus || "").toLowerCase();
+    const resolvedPaymentStatus =
+      refundResult && isNowCancelled
+        ? refundResult.refundState === "success"
+          ? "refunded"
+          : "pending_refund"
+        : !wasCancelled && isNowCancelled
+          ? prevPaymentStatus === "refunded"
+            ? "refunded"
+            : "pending_refund"
+          : (body.paymentStatus ?? existingOrder.paymentStatus);
+
     const updatedOrder = {
       ...existingOrder,
       ...body,
       id: orderKvId,
       updatedAt: new Date().toISOString(),
       inventoryDeducted: nextInventoryFlag,
-      paymentStatus:
-        refundResult && isNowCancelled
-          ? refundResult.refundState === "success"
-            ? "refunded"
-            : "pending_refund"
-          : (body.paymentStatus ?? existingOrder.paymentStatus),
+      shippingStatus: isNowCancelled
+        ? "cancelled"
+        : (body.shippingStatus ?? existingOrder.shippingStatus ?? "pending"),
+      paymentStatus: resolvedPaymentStatus,
       kpay:
         refundResult && isNowCancelled
           ? {

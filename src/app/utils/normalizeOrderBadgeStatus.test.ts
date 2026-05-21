@@ -4,6 +4,8 @@ import {
   normalizePaymentBadgeStatus,
   normalizeShippingBadgeStatus,
   getCustomerOrderStatusLabel,
+  derivePaymentStatusFromOrder,
+  deriveShippingStatusFromOrder,
 } from "./normalizeOrderBadgeStatus";
 
 describe("normalizeOrderBadgeStatus", () => {
@@ -18,5 +20,16 @@ describe("normalizeOrderBadgeStatus", () => {
   it("normalizes payment and shipping", () => {
     expect(normalizePaymentBadgeStatus("")).toBe("unpaid");
     expect(normalizeShippingBadgeStatus("")).toBe("pending");
+    expect(normalizeShippingBadgeStatus("cancelled")).toBe("cancelled");
+  });
+
+  it("derives cancelled order badges", () => {
+    expect(
+      derivePaymentStatusFromOrder({ status: "cancelled", paymentStatus: "unpaid" })
+    ).toBe("pending_refund");
+    expect(deriveShippingStatusFromOrder({ status: "cancelled" })).toBe("cancelled");
+    expect(
+      derivePaymentStatusFromOrder({ status: "cancelled", paymentStatus: "refunded" })
+    ).toBe("refunded");
   });
 });

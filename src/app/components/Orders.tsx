@@ -63,7 +63,10 @@ import {
   normalizeAdminOrderStatusForBadge,
   normalizePaymentBadgeStatus,
   normalizeShippingBadgeStatus,
+  derivePaymentStatusFromOrder,
+  deriveShippingStatusFromOrder,
 } from "../utils/normalizeOrderBadgeStatus";
+import { deriveOrderPaymentMethodKey } from "../utils/orderPaymentMethod";
 import {
   broadcastOrderStatusUpdate,
   subscribeOrderStatusUpdates,
@@ -71,7 +74,7 @@ import {
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded" | "pending_refund";
-type ShippingStatus = "pending" | "shipped" | "delivered";
+type ShippingStatus = "pending" | "shipped" | "delivered" | "cancelled";
 function isFinanciallyAccruedOrderStatus(status: string | undefined): boolean {
   const normalized = String(status || "")
     .trim()
@@ -113,7 +116,7 @@ interface OrderItem {
   notes?: string;
   deliveryService?: string;
   deliveryServiceLogo?: string;
-  paymentMethod?: "credit-card" | "cod" | "bank-transfer";
+  paymentMethod?: "credit-card" | "cod" | "bank-transfer" | "kbz-qr" | "kbz-pwa";
   timeline: {
     status: string;
     date: string;
@@ -125,6 +128,7 @@ interface OrderItem {
   refundRequestNo?: string;
   refundAmount?: number;
   refundedAt?: string;
+  kpay?: unknown;
 }
 
 type PendingOrderStatusDraft = {
@@ -414,7 +418,7 @@ const getPaymentBadge = (status: PaymentStatus | string) => {
     refunded: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Refunded" },
     "pending-refund": {
       color: "bg-orange-100 text-orange-800 border-orange-200",
-      label: "Refund pending",
+      label: "Refund",
     },
   } as const;
   const key = normalizePaymentBadgeStatus(status);
@@ -459,15 +463,16 @@ const getRefundBadge = (status?: string) => {
 
 const getShippingBadge = (status: ShippingStatus | string) => {
   const variants = {
-    pending: { color: "bg-slate-100 text-slate-700 border-slate-200" },
-    shipped: { color: "bg-blue-100 text-blue-700 border-blue-200" },
-    delivered: { color: "bg-green-100 text-green-700 border-green-200" },
+    pending: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Pending" },
+    shipped: { color: "bg-blue-100 text-blue-700 border-blue-200", label: "Shipped" },
+    delivered: { color: "bg-green-100 text-green-700 border-green-200", label: "Delivered" },
+    cancelled: { color: "bg-red-100 text-red-700 border-red-200", label: "Cancel" },
   } as const;
   const key = normalizeShippingBadgeStatus(status);
   const v = variants[key];
   return (
     <Badge variant="secondary" className={`${v.color} hover:${v.color} border text-xs`}>
-      {key.charAt(0).toUpperCase() + key.slice(1)}
+      {v.label}
     </Badge>
   );
 };
@@ -493,14 +498,8 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
     couponCode: order.couponCode,
     items: order.items?.length || 0,
     status: order.status || 'pending',
-    paymentStatus:
-      (order.paymentStatus as PaymentStatus) ||
-      (order.paymentMethod === "Cash on Delivery"
-        ? "unpaid"
-        : order.status === "cancelled" && order.kpay?.status === "pending_refund"
-          ? "pending_refund"
-          : "paid"),
-    shippingStatus: order.status === 'delivered' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
+    paymentStatus: derivePaymentStatusFromOrder(order) as PaymentStatus,
+    shippingStatus: deriveShippingStatusFromOrder(order),
     products: (order.items || []).map((item: any) => ({
       id: normalizeOrderLineParentProductId(item.productId ?? item.id),
       name: item.name || 'Product',
@@ -514,7 +513,8 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
     notes: order.notes,
     deliveryService: order.deliveryService,
     deliveryServiceLogo: order.deliveryServiceLogo,
-    paymentMethod: order.paymentMethod === 'Cash on Delivery' ? 'cod' : 'credit-card',
+    paymentMethod: deriveOrderPaymentMethodKey(order),
+    kpay: order.kpay,
     timeline: [
       { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
       ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
@@ -1019,7 +1019,19 @@ export function Orders({
     
     setOrders(prevOrders =>
       prevOrders.map(order =>
-        order.id === orderId ? { ...order, status: newStatus } : order
+        order.id === orderId
+          ? {
+              ...order,
+              status: newStatus,
+              ...(isNowCancelled
+                ? {
+                    paymentStatus:
+                      order.paymentStatus === "refunded" ? "refunded" : ("pending_refund" as PaymentStatus),
+                    shippingStatus: "cancelled" as ShippingStatus,
+                  }
+                : {}),
+            }
+          : order
       )
     );
     patchAdminOrdersCacheStatuses([{ orderId, status: newStatus }]);

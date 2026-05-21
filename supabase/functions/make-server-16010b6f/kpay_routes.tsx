@@ -2048,6 +2048,7 @@ export async function handleKPayPwaReturn(c: Context) {
   const draft = enrichPwaDraftWithCallback(draftRaw, callbackInfo);
 
   if (merchantOrderId) {
+    await syncKPayTxnStatusFromProvider(merchantOrderId);
     const fin = await finalizePwaCheckoutOrder(merchantOrderId);
     if (fin.ok && fin.created) {
       console.log(`✅ PWA order finalized on return for ${merchantOrderId}`);
@@ -2075,6 +2076,82 @@ export async function handleKPayPwaReturn(c: Context) {
   return c.redirect(targetUrl, 302);
 }
 
+async function maybeFinalizePwaOrderAfterPaid(merchantOrderId: string): Promise<void> {
+  const fin = await finalizePwaCheckoutOrder(merchantOrderId);
+  if (fin.ok && fin.created) {
+    console.log(`✅ PWA order finalized for ${merchantOrderId}`);
+  } else if (
+    !fin.ok &&
+    fin.error !== "no_checkout_draft" &&
+    fin.error !== "payment_not_confirmed"
+  ) {
+    console.warn(`PWA finalize: ${merchantOrderId}`, fin.error, fin.message);
+  }
+}
+
+/** Query KBZ and merge into kpay_txn (best-effort). Used before PWA order finalize. */
+export async function syncKPayTxnStatusFromProvider(
+  merchantOrderId: string,
+): Promise<AnyRecord | null> {
+  const id = text(merchantOrderId);
+  if (!id) return null;
+
+  const cfg = kpayConfig();
+  const existing = (await kv.get(`kpay_txn:${id}`)) as AnyRecord | null;
+  if (!cfg.baseUrl || !cfg.appId || !cfg.merchCode || !cfg.signKey) {
+    return existing;
+  }
+
+  const endpoints = endpointCandidates(cfg.baseUrl, cfg.queryPath, "query", false);
+  const payloads = queryPayloadCandidates({
+    appId: cfg.appId,
+    merchCode: cfg.merchCode,
+    merchantOrderId: id,
+  });
+  const provider = await tryProviderVariants({
+    endpoints,
+    payloads,
+    signKey: cfg.signKey,
+    timeoutMs: cfg.timeoutMs,
+    wrapRequest: cfg.wrapRequest,
+    extraHeaders: buildProviderHeaders(cfg),
+  });
+
+  if (!provider.success) return existing;
+
+  const providerStatus = providerStatusFrom(provider.body);
+  const nextStatus = mapProviderStatus(providerStatus);
+  const safeStatus = canDowngrade(existing, nextStatus) ? nextStatus : "paid";
+  const qr = extractQrPayload(provider.body);
+  const paidAt = safeStatus === "paid" ? nowIso() : text(existing?.paidAt);
+  const updatedAt = nowIso();
+
+  const merged: AnyRecord = {
+    ...(existing || {}),
+    merchantOrderId: id,
+    status: safeStatus,
+    providerStatus,
+    qrContent: qr.qrContent || text(existing?.qrContent),
+    qrImageUrl: qr.qrImageUrl || text(existing?.qrImageUrl),
+    payUrl: qr.payUrl || text(existing?.payUrl),
+    rawStatusResponse: provider.body,
+    endpointUsed: text(existing?.endpointUsed) || provider.endpoint,
+    queryEndpointUsed: provider.endpoint,
+    wrapRequest: cfg.wrapRequest,
+    paidAt: paidAt || undefined,
+    createdAt: text(existing?.createdAt) || updatedAt,
+    updatedAt,
+  };
+
+  await kv.set(`kpay_txn:${id}`, merged);
+
+  if (safeStatus === "paid" || safeStatus === "failed") {
+    await upsertOrderPaymentStatus(id, safeStatus, providerStatus, paidAt || undefined);
+  }
+
+  return merged;
+}
+
 export async function getPwaCheckoutDraftRoute(c: Context) {
   const merchantOrderId = text(c.req.param("merchantOrderId"));
   if (!merchantOrderId) return c.json({ error: "merchantOrderId is required" }, 400);
@@ -2086,6 +2163,7 @@ export async function getPwaCheckoutDraftRoute(c: Context) {
 export async function postPwaFinalizeRoute(c: Context) {
   const merchantOrderId = text(c.req.param("merchantOrderId"));
   if (!merchantOrderId) return c.json({ error: "merchantOrderId is required" }, 400);
+  await syncKPayTxnStatusFromProvider(merchantOrderId);
   const result = await finalizePwaCheckoutOrder(merchantOrderId);
   if (!result.ok) {
     const status = result.error === "payment_not_confirmed" ? 409 : 400;
@@ -2216,6 +2294,10 @@ export async function getKPayStatus(c: Context) {
 
     if (safeStatus === "paid" || safeStatus === "failed") {
       await upsertOrderPaymentStatus(merchantOrderId, safeStatus, providerStatus, paidAt || undefined);
+    }
+
+    if (safeStatus === "paid") {
+      await maybeFinalizePwaOrderAfterPaid(merchantOrderId);
     }
 
     return c.json({

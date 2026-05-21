@@ -52,12 +52,18 @@ import {
   normalizeOrderLineParentProductId,
   isMainMarketplaceVendorName,
 } from "../../utils/orderInventoryCacheSync";
-import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
+import { deriveOrderPaymentMethodKey } from "../../utils/orderPaymentMethod";
 import { adminOrdersUpdatedStorageKey } from "../../utils/adminOrdersRealtime";
+import {
+  derivePaymentStatusFromOrder,
+  deriveShippingStatusFromOrder,
+  normalizePaymentBadgeStatus,
+  normalizeShippingBadgeStatus,
+} from "../../utils/normalizeOrderBadgeStatus";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";
-type ShippingStatus = "pending" | "shipped" | "delivered";
+type ShippingStatus = "pending" | "shipped" | "delivered" | "cancelled";
 
 interface Product {
   id: string;
@@ -128,8 +134,8 @@ function mapVendorApiOrdersToItems(apiOrders: any[]): OrderItem[] {
         : undefined,
     items: order.items?.length || 0,
     status: order.status || 'pending',
-    paymentStatus: order.paymentMethod === 'Cash on Delivery' ? 'unpaid' : order.paymentStatus === 'paid' ? 'paid' : 'unpaid',
-    shippingStatus: order.status === 'fulfilled' ? 'delivered' : order.status === 'shipped' ? 'shipped' : 'pending',
+    paymentStatus: derivePaymentStatusFromOrder(order) as PaymentStatus,
+    shippingStatus: deriveShippingStatusFromOrder(order),
     products: (order.items || []).map((item: any) => ({
       id: normalizeOrderLineParentProductId(item.productId ?? item.id),
       name: item.productName || item.name || 'Product',
@@ -143,7 +149,8 @@ function mapVendorApiOrdersToItems(apiOrders: any[]): OrderItem[] {
     notes: order.notes,
     deliveryService: order.deliveryService,
     deliveryServiceLogo: order.deliveryServiceLogo,
-    paymentMethod: order.paymentMethod === 'Cash on Delivery' ? 'cod' : 'credit-card',
+    paymentMethod: deriveOrderPaymentMethodKey(order),
+    kpay: order.kpay,
     timeline: [
       { status: "Order Placed", date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : '', time: order.createdAt ? new Date(order.createdAt).toLocaleTimeString() : '' },
       ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
@@ -174,30 +181,34 @@ const getStatusBadge = (status: OrderStatus) => {
   );
 };
 
-const getPaymentBadge = (status: PaymentStatus) => {
+const getPaymentBadge = (status: PaymentStatus | string) => {
   const variants = {
-    paid: { color: "bg-green-100 text-green-700 border-green-200" },
-    unpaid: { color: "bg-amber-100 text-amber-700 border-amber-200" },
-    refunded: { color: "bg-slate-100 text-slate-700 border-slate-200" },
-  };
-  
+    paid: { color: "bg-green-100 text-green-700 border-green-200", label: "Paid" },
+    unpaid: { color: "bg-amber-100 text-amber-700 border-amber-200", label: "Unpaid" },
+    refunded: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Refunded" },
+    "pending-refund": { color: "bg-orange-100 text-orange-800 border-orange-200", label: "Refund" },
+  } as const;
+  const key = normalizePaymentBadgeStatus(status);
+  const v = variants[key] ?? variants.unpaid;
   return (
-    <Badge variant="secondary" className={`${variants[status].color} hover:${variants[status].color} border text-xs`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <Badge variant="secondary" className={`${v.color} hover:${v.color} border text-xs`}>
+      {v.label}
     </Badge>
   );
 };
 
-const getShippingBadge = (status: ShippingStatus) => {
+const getShippingBadge = (status: ShippingStatus | string) => {
   const variants = {
-    pending: { color: "bg-slate-100 text-slate-700 border-slate-200" },
-    shipped: { color: "bg-blue-100 text-blue-700 border-blue-200" },
-    delivered: { color: "bg-green-100 text-green-700 border-green-200" },
-  };
-  
+    pending: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Pending" },
+    shipped: { color: "bg-blue-100 text-blue-700 border-blue-200", label: "Shipped" },
+    delivered: { color: "bg-green-100 text-green-700 border-green-200", label: "Delivered" },
+    cancelled: { color: "bg-red-100 text-red-700 border-red-200", label: "Cancel" },
+  } as const;
+  const key = normalizeShippingBadgeStatus(status);
+  const v = variants[key] ?? variants.pending;
   return (
-    <Badge variant="secondary" className={`${variants[status].color} hover:${variants[status].color} border text-xs`}>
-      {status.charAt(0).toUpperCase() + status.slice(1)}
+    <Badge variant="secondary" className={`${v.color} hover:${v.color} border text-xs`}>
+      {v.label}
     </Badge>
   );
 };

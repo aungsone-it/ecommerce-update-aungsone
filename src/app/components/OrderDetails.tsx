@@ -15,9 +15,21 @@ import {
 } from "../utils/orderInventoryCacheSync";
 import { invalidateAdminOrdersCache } from "../utils/module-cache";
 
+import {
+  derivePaymentStatusFromOrder,
+  deriveShippingStatusFromOrder,
+  normalizeAdminOrderStatusForBadge,
+  normalizePaymentBadgeStatus,
+  normalizeShippingBadgeStatus,
+} from "../utils/normalizeOrderBadgeStatus";
+import {
+  deriveOrderPaymentMethodKey,
+  formatOrderPaymentMethodFromOrder,
+} from "../utils/orderPaymentMethod";
+
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
-type PaymentStatus = "paid" | "unpaid" | "refunded";
-type ShippingStatus = "pending" | "shipped" | "delivered";
+type PaymentStatus = "paid" | "unpaid" | "refunded" | "pending_refund";
+type ShippingStatus = "pending" | "shipped" | "delivered" | "cancelled";
 
 interface Product {
   id: string;
@@ -50,7 +62,8 @@ interface OrderItem {
   notes?: string;
   deliveryService?: string;
   deliveryServiceLogo?: string;
-  paymentMethod?: "credit-card" | "cod" | "bank-transfer";
+  paymentMethod?: "credit-card" | "cod" | "bank-transfer" | "kbz-qr" | "kbz-pwa";
+  kpay?: unknown;
   timeline: {
     status: string;
     date: string;
@@ -79,48 +92,58 @@ const getStatusBadge = (status: OrderStatus) => {
 };
 
 function normalizeOrderStatus(status: unknown): OrderStatus {
-  const s = String(status || "").trim().toLowerCase().replace(/\s+/g, "-");
-  if (s === "pending" || s === "processing" || s === "fulfilled" || s === "cancelled" || s === "ready-to-ship") {
-    return s;
-  }
-  return "pending";
+  const key = normalizeAdminOrderStatusForBadge(status);
+  if (key === "ready-to-ship") return "ready-to-ship";
+  return key;
 }
 
 function normalizePaymentStatus(status: unknown): PaymentStatus {
-  const s = String(status || "").trim().toLowerCase();
-  if (s === "paid" || s === "unpaid" || s === "refunded") return s;
-  return "unpaid";
+  const key = normalizePaymentBadgeStatus(status);
+  if (key === "pending-refund") return "pending_refund";
+  return key;
 }
 
 function normalizeShippingStatus(status: unknown): ShippingStatus {
-  const s = String(status || "").trim().toLowerCase();
-  if (s === "pending" || s === "shipped" || s === "delivered") return s;
-  return "pending";
+  return normalizeShippingBadgeStatus(status);
 }
 
-const getPaymentBadge = (status: PaymentStatus) => {
+const getPaymentBadge = (status: PaymentStatus | string) => {
   const statusConfig = {
     paid: { label: "Paid", className: "bg-green-100 text-green-700 border-green-300" },
     unpaid: { label: "Unpaid", className: "bg-red-100 text-red-700 border-red-300" },
     refunded: { label: "Refunded", className: "bg-slate-100 text-slate-700 border-slate-300" },
+    pending_refund: { label: "Refund", className: "bg-orange-100 text-orange-800 border-orange-300" },
+    "pending-refund": { label: "Refund", className: "bg-orange-100 text-orange-800 border-orange-300" },
   };
-  const config = statusConfig[status];
+  const normalized = normalizePaymentStatus(status);
+  const config =
+    statusConfig[normalized as keyof typeof statusConfig] ||
+    statusConfig[String(status).replace(/_/g, "-") as keyof typeof statusConfig] ||
+    statusConfig.unpaid;
   return <Badge className={`${config.className} border`}>{config.label}</Badge>;
 };
 
-const getShippingBadge = (status: ShippingStatus) => {
+const getShippingBadge = (status: ShippingStatus | string) => {
   const statusConfig = {
     pending: { label: "Pending", className: "bg-yellow-100 text-yellow-700 border-yellow-300" },
     shipped: { label: "Shipped", className: "bg-blue-100 text-blue-700 border-blue-300" },
     delivered: { label: "Delivered", className: "bg-green-100 text-green-700 border-green-300" },
+    cancelled: { label: "Cancel", className: "bg-red-100 text-red-700 border-red-300" },
   };
-  const config = statusConfig[status];
+  const normalized = normalizeShippingStatus(status);
+  const config = statusConfig[normalized];
   return <Badge className={`${config.className} border`}>{config.label}</Badge>;
 };
 
 export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProps) {
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [orderStatus, setOrderStatus] = useState<OrderStatus>(normalizeOrderStatus(order.status));
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
+    () => normalizePaymentStatus(derivePaymentStatusFromOrder(order)) as PaymentStatus
+  );
+  const [shippingStatus, setShippingStatus] = useState<ShippingStatus>(() =>
+    deriveShippingStatusFromOrder(order)
+  );
   const [statusSaving, setStatusSaving] = useState(false);
   const orderProducts = (Array.isArray(order.products) ? order.products : []).filter(
     (p): p is Product => !!p && typeof p === "object"
@@ -128,12 +151,14 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
   const orderTimeline = (Array.isArray(order.timeline) ? order.timeline : []).filter(
     (e): e is { status: string; date: string; time: string } => !!e && typeof e === "object"
   );
-  const paymentBadgeStatus = normalizePaymentStatus(order.paymentStatus);
-  const shippingBadgeStatus = normalizeShippingStatus(order.shippingStatus);
+  const paymentBadgeStatus = paymentStatus;
+  const shippingBadgeStatus = shippingStatus;
 
   useEffect(() => {
     setOrderStatus(normalizeOrderStatus(order.status));
-  }, [order.id, order.status]);
+    setPaymentStatus(normalizePaymentStatus(derivePaymentStatusFromOrder(order)) as PaymentStatus);
+    setShippingStatus(deriveShippingStatusFromOrder(order));
+  }, [order.id, order.status, order.paymentStatus, order.shippingStatus]);
 
   // Calculate actual product total from individual product prices with safety checks
   const calculateProductTotal = () => {
@@ -169,13 +194,30 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
     };
     setStatusSaving(true);
     try {
-      await ordersApi.update(order.id, { status: newStatus });
+      const result = (await ordersApi.update(order.id, { status: newStatus })) as {
+        order?: {
+          status?: string;
+          paymentStatus?: string;
+          shippingStatus?: string;
+          kpay?: { refund?: { status?: string }; status?: string };
+        };
+      };
       try {
         await refreshAdminInventoryAfterOrderStatusPut(snapshot, newStatus);
       } catch (invErr) {
         console.warn("[inventory] post-status cache sync failed:", invErr);
       }
       setOrderStatus(newStatus);
+      const srv = result?.order;
+      if (srv) {
+        setPaymentStatus(
+          normalizePaymentStatus(derivePaymentStatusFromOrder({ ...order, ...srv, status: newStatus })) as PaymentStatus
+        );
+        setShippingStatus(deriveShippingStatusFromOrder({ ...order, ...srv, status: newStatus }));
+      } else if (newStatus === "cancelled") {
+        setPaymentStatus(order.paymentStatus === "refunded" ? "refunded" : "pending_refund");
+        setShippingStatus("cancelled");
+      }
       // Keep Orders/Finances views consistent across quick navigation and tabs.
       invalidateAdminOrdersCache();
       toast.success("Order status updated");
@@ -471,10 +513,11 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm text-slate-500 mb-1">Method</p>
-                      <p className="font-medium text-slate-900 capitalize">
-                        {order.paymentMethod === "cod" ? "Cash on Delivery" : 
-                         order.paymentMethod === "credit-card" ? "Credit Card" : 
-                         order.paymentMethod === "bank-transfer" ? "Bank Transfer" : "N/A"}
+                      <p className="font-medium text-slate-900">
+                        {formatOrderPaymentMethodFromOrder({
+                          paymentMethod: order.paymentMethod,
+                          kpay: order.kpay,
+                        })}
                       </p>
                     </div>
                     <div>
