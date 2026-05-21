@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import type { DateRange } from "react-day-picker";
 import type { LucideIcon } from "lucide-react";
 import { Search, Download, Eye, Printer, Package, Clock, CheckCircle, XCircle, Calendar, DollarSign, ShoppingCart, X, Truck, CreditCard, MapPin, Phone, Mail, FileText, User, RefreshCw, BadgePercent, ChevronDown, ArrowUpRight, ArrowDownRight } from "lucide-react";
@@ -40,6 +40,11 @@ import { toast } from "sonner";
 import { publicAnonKey } from "../../../../utils/supabase/info";
 import { API_BASE_URL } from "../../../utils/api-client";
 import { ordersApi } from "../../../utils/api";
+import { ApiError } from "../../../utils/api-client";
+import {
+  isKPayPaidOrderLike,
+  pollKPayRefundAfterCancel,
+} from "../../utils/kpayRefundPolling";
 import { Skeleton } from "../ui/skeleton";
 import {
   getCachedVendorOrders,
@@ -63,6 +68,7 @@ import {
   isVendorOrderActive,
   isVendorOrderFinanciallyAccrued,
 } from "../../utils/vendorAdminAnalytics";
+import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
   syncAdminInventoryCacheAfterOrderStatusChange,
@@ -123,7 +129,7 @@ async function fetchVendorContractCommissionPercent(slugOrId: string | undefined
 type OrdersStatFilterKey = "revenue" | "commission" | "pending" | "fulfilled";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
-type PaymentStatus = "paid" | "unpaid" | "refunded";
+type PaymentStatus = "paid" | "unpaid" | "refunded" | "pending_refund";
 type ShippingStatus = "pending" | "shipped" | "delivered" | "cancelled";
 
 interface Product {
@@ -156,7 +162,13 @@ interface OrderItem {
   notes?: string;
   deliveryService?: string;
   deliveryServiceLogo?: string;
-  paymentMethod?: "credit-card" | "cod" | "bank-transfer";
+  paymentMethod?: "credit-card" | "cod" | "bank-transfer" | "kbz-qr" | "kbz-pwa";
+  kpay?: unknown;
+  refundStatus?: "success" | "already_refunded" | "processing" | "failed" | "";
+  refundRequestNo?: string;
+  refundAmount?: number;
+  refundedAt?: string;
+  vendor?: string;
   timeline: {
     status: string;
     date: string;
@@ -217,6 +229,14 @@ function mapVendorMgmtApiOrders(apiOrders: any[]): OrderItem[] {
       ...(order.status !== 'pending' ? [{ status: "Processing", date: order.updatedAt ? new Date(order.updatedAt).toISOString().split('T')[0] : '', time: order.updatedAt ? new Date(order.updatedAt).toLocaleTimeString() : '' }] : [])
     ],
     inventoryDeducted: order.inventoryDeducted,
+    vendor: order.vendor ?? order.vendorName ?? "",
+    refundStatus:
+      (String(order.refundStatus || order.kpay?.refund?.status || "")
+        .trim()
+        .toLowerCase() as OrderItem["refundStatus"]) || "",
+    refundRequestNo: order.refundRequestNo || order.kpay?.refund?.refundRequestNo || "",
+    refundAmount: Number(order.refundAmount || order.kpay?.refund?.amount || 0) || 0,
+    refundedAt: order.refundedAt || order.kpay?.refund?.refundedAt || order.kpay?.refund?.failedAt || "",
   }));
 }
 
@@ -255,6 +275,37 @@ const getPaymentBadge = (status: PaymentStatus | string) => {
   return (
     <Badge variant="secondary" className={`${v.color} hover:${v.color} border text-xs`}>
       {v.label}
+    </Badge>
+  );
+};
+
+const getRefundBadge = (status?: string) => {
+  const key = String(status || "").trim().toLowerCase();
+  if (!key) return null;
+  if (key === "success" || key === "already_refunded") {
+    return (
+      <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[11px]">
+        {key === "already_refunded" ? "Refund Already Done" : "Refund Success"}
+      </Badge>
+    );
+  }
+  if (key === "failed") {
+    return (
+      <Badge variant="secondary" className="bg-rose-100 text-rose-700 border-rose-200 text-[11px]">
+        Refund Failed
+      </Badge>
+    );
+  }
+  if (key === "processing") {
+    return (
+      <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+        Refund Processing
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-200 text-[11px]">
+      Refund {key}
     </Badge>
   );
 };
@@ -317,6 +368,14 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     pending: "Last 30 days",
     fulfilled: "Last 30 days",
   });
+  const vendorOrdersSurfaceActiveRef = useRef(true);
+
+  useEffect(() => {
+    vendorOrdersSurfaceActiveRef.current = true;
+    return () => {
+      vendorOrdersSurfaceActiveRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -731,55 +790,150 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
     }
   };
 
-  const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+  const handleStatusChange = (orderId: string, newStatus: OrderStatus) => {
     const orderBeingUpdated = orders.find((o) => o.id === orderId);
+    const wasNotCancelled = orderBeingUpdated?.status !== "cancelled";
+    const isNowCancelled = newStatus === "cancelled";
     const previousOrders = [...orders];
-    
-    setOrders(prevOrders =>
-      prevOrders.map(order =>
-        order.id === orderId ? { ...order, status: newStatus } : order
+
+    setOrders((prevOrders) =>
+      prevOrders.map((order) =>
+        order.id === orderId
+          ? {
+              ...order,
+              status: newStatus,
+              ...(isNowCancelled
+                ? {
+                    paymentStatus:
+                      order.paymentStatus === "refunded"
+                        ? "refunded"
+                        : ("pending_refund" as PaymentStatus),
+                    shippingStatus: "cancelled" as ShippingStatus,
+                    refundStatus: order.refundStatus || "processing",
+                  }
+                : {}),
+            }
+          : order
       )
     );
-    
-    if (selectedOrder && selectedOrder.id === orderId) {
-      setSelectedOrder({ ...selectedOrder, status: newStatus });
-    }
-    
-    toast.success(`Order status updated to ${newStatus}`);
 
-    try {
-      const result = (await ordersApi.update(orderId, { status: newStatus })) as {
-        order?: { inventoryDeducted?: boolean };
-      };
-      if (orderBeingUpdated) {
-        await refreshAdminInventoryAfterOrderStatusPut(
-          {
-            status: orderBeingUpdated.status,
-            inventoryDeducted: orderBeingUpdated.inventoryDeducted,
-            vendor: orderBeingUpdated.vendor,
-            products: orderBeingUpdated.products,
-          },
-          newStatus
-        );
-      }
-      if (result?.order?.inventoryDeducted !== undefined) {
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.id === orderId ? { ...o, inventoryDeducted: result.order!.inventoryDeducted } : o
-          )
-        );
-        if (selectedOrder?.id === orderId) {
-          setSelectedOrder((s) =>
-            s ? { ...s, inventoryDeducted: result.order!.inventoryDeducted } : s
+    if (selectedOrder && selectedOrder.id === orderId) {
+      setSelectedOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: newStatus,
+              ...(isNowCancelled
+                ? {
+                    paymentStatus:
+                      prev.paymentStatus === "refunded" ? "refunded" : "pending_refund",
+                    shippingStatus: "cancelled",
+                    refundStatus: prev.refundStatus || "processing",
+                  }
+                : {}),
+            }
+          : prev
+      );
+    }
+
+    if (wasNotCancelled && isNowCancelled) {
+      toast.message("Order cancelled", {
+        duration: 2500,
+        description: "KBZPay refund may take a moment to confirm.",
+      });
+    } else {
+      toast.success(`Order status updated to ${newStatus}`);
+    }
+
+    void (async () => {
+      try {
+        const result = (await ordersApi.update(orderId, { status: newStatus })) as {
+          success?: boolean;
+          refundPending?: boolean;
+          message?: string;
+          order?: {
+            inventoryDeducted?: boolean;
+            paymentStatus?: string;
+            shippingStatus?: string;
+            kpay?: { refund?: { status?: string } };
+          };
+        };
+        const srv = result?.order;
+        if (srv && vendorOrdersSurfaceActiveRef.current) {
+          const mapped = mapVendorMgmtApiOrders([{ ...srv, id: orderId, status: newStatus }])[0];
+          setOrders((prev) =>
+            prev.map((o) => (o.id === orderId ? { ...o, ...mapped, status: newStatus } : o))
+          );
+          if (selectedOrder?.id === orderId) {
+            setSelectedOrder((s) =>
+              s?.id === orderId ? { ...s, ...mapped, status: newStatus } : s
+            );
+          }
+        }
+        if (orderBeingUpdated) {
+          await refreshAdminInventoryAfterOrderStatusPut(
+            {
+              status: orderBeingUpdated.status,
+              inventoryDeducted: orderBeingUpdated.inventoryDeducted,
+              vendor: orderBeingUpdated.vendor,
+              products: orderBeingUpdated.products,
+            },
+            newStatus
           );
         }
+        if (wasNotCancelled && isNowCancelled) {
+          if (result?.refundPending) {
+            toast.message("Order cancelled", {
+              duration: 6000,
+              description:
+                result.message ||
+                "KBZPay refund is still processing. Status will update automatically.",
+            });
+          }
+          if (isKPayPaidOrderLike(orderBeingUpdated)) {
+            pollKPayRefundAfterCancel({
+              orderId,
+              orderNumber: orderBeingUpdated?.orderNumber,
+              shouldContinue: () => vendorOrdersSurfaceActiveRef.current,
+              onSuccess: (orderData) => {
+                const mapped = mapVendorMgmtApiOrders([
+                  { ...orderData, id: orderId, status: "cancelled" },
+                ])[0];
+                setOrders((prev) =>
+                  prev.map((o) =>
+                    o.id === orderId ? { ...o, ...mapped, status: "cancelled" } : o
+                  )
+                );
+                setSelectedOrder((s) =>
+                  s?.id === orderId ? { ...s, ...mapped, status: "cancelled" } : s
+                );
+                invalidateVendorOrdersCache(vendorId);
+              },
+            });
+          }
+        }
+        invalidateVendorOrdersCache(vendorId);
+      } catch (error) {
+        console.error("Failed to update order:", error);
+        const detail =
+          error instanceof ApiError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Unknown error";
+        if (vendorOrdersSurfaceActiveRef.current) {
+          setOrders(previousOrders);
+          if (selectedOrder?.id === orderId) {
+            const prev = previousOrders.find((o) => o.id === orderId);
+            if (prev) setSelectedOrder(prev);
+          }
+          toast.error("Failed to update order on server", {
+            description: detail,
+            duration: 8000,
+          });
+        }
       }
-      invalidateVendorOrdersCache(vendorId);
-    } catch (error) {
-      console.error("Failed to update order:", error);
-      setOrders(previousOrders);
-      toast.error("Failed to update order on server");
-    }
+    })();
   };
 
   const clearFilters = () => {
@@ -883,7 +1037,6 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                 <Select
                   value={selectedOrder.status}
                   onValueChange={(value) => handleStatusChange(selectedOrder.id, value as OrderStatus)}
-                  disabled
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -899,7 +1052,10 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
               </div>
               <div className="flex-1">
                 <Label>Payment Status</Label>
-                <div className="pt-2">{getPaymentBadge(selectedOrder.paymentStatus)}</div>
+                <div className="pt-2 flex flex-col gap-1">
+                  {getPaymentBadge(selectedOrder.paymentStatus)}
+                  {getRefundBadge(selectedOrder.refundStatus)}
+                </div>
               </div>
               <div className="flex-1">
                 <Label>Shipping Status</Label>
@@ -1342,6 +1498,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                     <SelectItem value="all">All Payment</SelectItem>
                     <SelectItem value="paid">Paid</SelectItem>
                     <SelectItem value="unpaid">Unpaid</SelectItem>
+                    <SelectItem value="pending_refund">Refund pending</SelectItem>
                     <SelectItem value="refunded">Refunded</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1451,13 +1608,42 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                           <MmkTiny value={order.total} unitClassName="text-[7px] leading-none align-super text-slate-400" />
                         </td>
                         <td className="py-3 px-4">{getStatusBadge(order.status)}</td>
-                        <td className="py-3 px-4">{getPaymentBadge(order.paymentStatus)}</td>
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col gap-1">
+                            {getPaymentBadge(order.paymentStatus)}
+                            {getRefundBadge(order.refundStatus)}
+                          </div>
+                        </td>
                         <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)} title="View Details">
                               <Eye className="w-4 h-4" />
                             </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" title="Update status">
+                                  <Package className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "pending")}>
+                                  Mark as Pending
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "processing")}>
+                                  Mark as Processing
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "fulfilled")}>
+                                  Mark as Fulfilled
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "ready-to-ship")}>
+                                  Mark as Ready to Ship
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "cancelled")}>
+                                  Mark as Cancelled
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </td>
                       </tr>

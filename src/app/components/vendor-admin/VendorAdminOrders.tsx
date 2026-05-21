@@ -60,6 +60,7 @@ import {
   normalizePaymentBadgeStatus,
   normalizeShippingBadgeStatus,
 } from "../../utils/normalizeOrderBadgeStatus";
+import { vendorOrderGrandTotalDisplay } from "../../utils/vendorOrderTotals";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded";

@@ -14,6 +14,10 @@ import {
   normalizeOrderLineParentProductId,
 } from "../utils/orderInventoryCacheSync";
 import { invalidateAdminOrdersCache } from "../utils/module-cache";
+import {
+  isKPayPaidOrderLike,
+  pollKPayRefundAfterCancel,
+} from "../utils/kpayRefundPolling";
 
 import {
   derivePaymentStatusFromOrder,
@@ -182,6 +186,9 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
 
   const handleOrderStatusChange = async (newStatus: OrderStatus) => {
     if (newStatus === orderStatus) return;
+    const wasNotCancelled = orderStatus !== "cancelled";
+    const isNowCancelled = newStatus === "cancelled";
+    const wasKPayPaid = isKPayPaidOrderLike(order);
     const snapshot = {
       status: orderStatus,
       inventoryDeducted: order.inventoryDeducted,
@@ -220,7 +227,29 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
       }
       // Keep Orders/Finances views consistent across quick navigation and tabs.
       invalidateAdminOrdersCache();
-      toast.success("Order status updated");
+      if (wasNotCancelled && isNowCancelled && wasKPayPaid) {
+        toast.message("Order cancelled", {
+          duration: 4000,
+          description: "KBZPay refund is processing — status will update automatically.",
+        });
+        pollKPayRefundAfterCancel({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          onSuccess: (orderData) => {
+            setPaymentStatus(
+              normalizePaymentStatus(
+                derivePaymentStatusFromOrder({ ...order, ...orderData, status: "cancelled" })
+              ) as PaymentStatus
+            );
+            setShippingStatus(
+              deriveShippingStatusFromOrder({ ...order, ...orderData, status: "cancelled" })
+            );
+            onOrderUpdated?.();
+          },
+        });
+      } else {
+        toast.success("Order status updated");
+      }
       onOrderUpdated?.();
     } catch (e) {
       console.error(e);

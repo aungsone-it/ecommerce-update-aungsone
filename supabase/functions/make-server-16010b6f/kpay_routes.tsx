@@ -432,11 +432,31 @@ function canDowngrade(existing: AnyRecord | null, nextStatus: PaymentStatus): bo
 }
 
 async function findOrderByOrderNumber(orderNumber: string): Promise<{ key: string; order: AnyRecord } | null> {
-  const all = await kv.getByPrefix("order:");
-  const orders = Array.isArray(all) ? all : [];
-  const found = orders.find((entry: any) => String(entry?.orderNumber || "") === orderNumber);
-  if (!found || !found.id) return null;
-  return { key: `order:${found.id}`, order: found };
+  const num = text(orderNumber);
+  if (!num) return null;
+
+  const mappedId = text(await kv.get(`order_num:${num}`));
+  if (mappedId) {
+    const order = (await kv.get(`order:${mappedId}`)) as AnyRecord | null;
+    if (order && typeof order === "object") {
+      return { key: `order:${mappedId}`, order };
+    }
+  }
+
+  try {
+    const rows = await kv.getByPrefixWithKeys("order:");
+    const match = rows.find(({ value: o }) => {
+      if (!o || typeof o !== "object") return false;
+      const orderNum = String(o.orderNumber || "").trim();
+      const kpayMid = String(asRecord(o.kpay).merchantOrderId || "").trim();
+      return orderNum === num || kpayMid === num;
+    });
+    if (!match) return null;
+    return { key: match.key, order: match.value as AnyRecord };
+  } catch (e) {
+    console.error("[kpay] findOrderByOrderNumber failed:", e);
+    return null;
+  }
 }
 
 async function upsertOrderPaymentStatus(
@@ -993,6 +1013,43 @@ function resolveVpsRefundUrl(baseUrl: string): string {
   return candidates.find((u) => u.includes("refund.php")) || candidates[0] || "";
 }
 
+/** What the edge function will call right now (no secret values). */
+export function getKPayResolvedEndpointUrls() {
+  const cfg = kpayConfig();
+  const base = text(cfg.baseUrl);
+  const join = (path: string) => {
+    if (!base || !path) return "";
+    if (/^https?:\/\//i.test(path)) return path;
+    try {
+      return new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
+    } catch {
+      return "";
+    }
+  };
+  const refundDirect =
+    text(resolveEnv("KBZ_VPS_REFUND_URL")) || text(resolveEnv("KPAY_REFUND_URL"));
+  const refundPath = text(resolveEnv("KPAY_PATH_REFUND", "KPAY_REFUND_PATH"));
+  return {
+    proxyBase: base,
+    qrCreate: join(cfg.createPath),
+    orderQuery: join(cfg.queryPath),
+    refund: resolveVpsRefundUrl(base),
+    refundConfiguredVia: refundDirect
+      ? text(resolveEnv("KBZ_VPS_REFUND_URL"))
+        ? "KBZ_VPS_REFUND_URL"
+        : "KPAY_REFUND_URL"
+      : refundPath
+        ? "KPAY_PATH_REFUND"
+        : "default_from_proxy_base",
+    vpsRefundEnabled: shouldUseVpsRefundProxy(),
+    vpsApiSecretSet: Boolean(text(resolveEnv("KBZ_VPS_API_SECRET"))),
+  };
+}
+
+export async function getKPayResolvedUrlsRoute(c: Context) {
+  return c.json({ success: true, urls: getKPayResolvedEndpointUrls() });
+}
+
 function isVpsRefundTransportTimeout(response: {
   networkError?: string;
   status: number;
@@ -1244,21 +1301,20 @@ function refundStatusFrom(payload: AnyRecord): string {
   return status;
 }
 
-async function patchOrderKvAfterRefund(
-  merchantOrderId: string,
+async function patchOrderKvAtKey(
+  storageKey: string,
+  order: AnyRecord,
   result: KPayRefundResult,
-): Promise<void> {
-  if (!result.ok) return;
-  const found = await findOrderByOrderNumber(merchantOrderId);
-  if (!found) return;
+): Promise<boolean> {
+  if (!result.ok) return false;
   const now = nowIso();
   const refundState = result.refundState;
   const nextOrder: AnyRecord = {
-    ...found.order,
+    ...order,
     paymentStatus: refundState === "success" ? "refunded" : "pending_refund",
     updatedAt: now,
     kpay: {
-      ...(found.order.kpay as AnyRecord || {}),
+      ...(order.kpay as AnyRecord || {}),
       merchantOrderId: result.merchantOrderId,
       status: refundState === "success" ? "refunded" : "pending_refund",
       refund: {
@@ -1276,7 +1332,96 @@ async function patchOrderKvAfterRefund(
       },
     },
   };
-  await kv.set(found.key, nextOrder);
+  await kv.set(storageKey, nextOrder);
+  return true;
+}
+
+async function patchOrderKvAfterRefund(
+  merchantOrderId: string,
+  result: KPayRefundResult,
+): Promise<boolean> {
+  if (!result.ok) return false;
+  const found = await findOrderByOrderNumber(merchantOrderId);
+  if (!found) {
+    console.error(`[kpay] patchOrderKvAfterRefund: order not found for ${merchantOrderId}`);
+    return false;
+  }
+  return patchOrderKvAtKey(found.key, found.order, result);
+}
+
+/**
+ * If kpay_txn shows refund success but the order row is still "processing", copy txn → order.
+ * Also retries VPS refund once after a transport timeout (KBZ may have succeeded anyway).
+ */
+/** Copy kpay_txn refund success → order row (fast KV-only). Never blocks on VPS. */
+export async function syncOrderRefundFromTxn(
+  merchantOrderId: string,
+  opts?: { allowVpsRetry?: boolean },
+): Promise<boolean> {
+  const found = await findOrderByOrderNumber(text(merchantOrderId));
+  if (!found) return false;
+  return syncOrderRefundForResolved(
+    { storageKey: found.key, record: found.order },
+    merchantOrderId,
+    opts,
+  );
+}
+
+/** Same as syncOrderRefundFromTxn but uses an already-resolved order row (no prefix scan). */
+export async function syncOrderRefundForResolved(
+  resolved: { storageKey: string; record: AnyRecord },
+  merchantOrderId: string,
+  opts?: { allowVpsRetry?: boolean },
+): Promise<boolean> {
+  const mid = text(merchantOrderId);
+  if (!mid) return false;
+
+  const txn = (await kv.get(`kpay_txn:${mid}`)) as AnyRecord | null;
+  const txnRefund = asRecord(txn?.refund);
+  const txnStatus = text(txnRefund.status).toLowerCase();
+
+  const orderKpay = asRecord(resolved.record.kpay);
+  const orderRefund = asRecord(orderKpay.refund);
+  const orderRefundStatus = text(orderRefund.status).toLowerCase();
+  const payStatus = text(resolved.record.paymentStatus).toLowerCase();
+
+  if (txnStatus === "success" || txnStatus === "already_refunded") {
+    if (
+      orderRefundStatus === "success" ||
+      orderRefundStatus === "already_refunded" ||
+      payStatus === "refunded"
+    ) {
+      return false;
+    }
+    return patchOrderKvAtKey(resolved.storageKey, resolved.record, {
+      ok: true,
+      alreadyRefunded: txnStatus === "already_refunded",
+      merchantOrderId: mid,
+      refundRequestNo: text(txnRefund.refundRequestNo) || `RFND-${mid}`,
+      refundAmount: text(txnRefund.amount) || String(resolved.record.total ?? ""),
+      refundState: "success",
+      providerStatus: text(txnRefund.providerStatus) || "REFUNDED",
+      endpointUsed: text(txnRefund.endpointUsed),
+    });
+  }
+
+  if (opts?.allowVpsRetry !== true) return false;
+
+  const networkErr = text(txnRefund.networkError).toLowerCase();
+  const timedOut =
+    networkErr === "kpay-timeout" ||
+    networkErr.includes("timeout") ||
+    networkErr.includes("abort");
+  if (txnStatus === "failed" && timedOut && orderRefundStatus === "processing") {
+    enqueueKPayRefundAndPatchOrder({
+      merchantOrderId: mid,
+      amount: resolved.record.total,
+      reason: "Order cancelled by admin (reconcile after timeout)",
+      refundRequestNo: text(txnRefund.refundRequestNo) || `RFND-${mid}-RETRY`,
+    });
+  }
+
+  return false;
 }
 
 /** Fire-and-forget refund after cancel — order PUT must not wait on VPS/KBZ. */
@@ -1301,10 +1446,15 @@ export function enqueueKPayRefundAndPatchOrder(params: {
     });
     if (!result.ok) {
       console.error("[kpay] Background refund failed:", result.message);
+      await syncOrderRefundFromTxn(merchantOrderId).catch(() => {});
       return;
     }
-    await patchOrderKvAfterRefund(merchantOrderId, result);
-    console.log(`[kpay] Background refund OK for ${merchantOrderId}`);
+    const patched = await patchOrderKvAfterRefund(merchantOrderId, result);
+    if (!patched) {
+      console.error(`[kpay] Background refund OK but order patch failed for ${merchantOrderId}`);
+    } else {
+      console.log(`[kpay] Background refund OK for ${merchantOrderId}`);
+    }
   };
 
   edgeWaitUntil(run());

@@ -141,7 +141,8 @@ export const ordersApi = {
    * Get normalized refund status/log for an order.
    */
   getRefundStatus: async (
-    id: string
+    id: string,
+    opts?: { sync?: boolean }
   ): Promise<
     ApiResponse<{
       orderId: string;
@@ -163,7 +164,7 @@ export const ordersApi = {
       } | null;
     }>
   > => {
-    return apiClient.getWithRetry<
+    return apiClient.get<
       ApiResponse<{
         orderId: string;
         orderNumber: string;
@@ -183,7 +184,10 @@ export const ordersApi = {
           details: Record<string, unknown>;
         } | null;
       }>
-    >(`/orders/${id}/refund-status`);
+    >(`/orders/${id}/refund-status${opts?.sync === false ? "?sync=0" : ""}`, {
+      timeout: API_TIMEOUTS.DEFAULT,
+      silent: true,
+    });
   },
 
   /**

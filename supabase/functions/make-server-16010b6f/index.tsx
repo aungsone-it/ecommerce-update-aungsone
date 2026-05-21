@@ -16,6 +16,9 @@ import {
   getPwaCheckoutDraftRoute,
   postPwaFinalizeRoute,
   enqueueKPayRefundAndPatchOrder,
+  syncOrderRefundFromTxn,
+  syncOrderRefundForResolved,
+  getKPayResolvedUrlsRoute,
 } from "./kpay_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import {
@@ -776,6 +779,7 @@ app.post("/make-server-16010b6f/kpay/pwa/start", startKPayPwa);
 app.get("/make-server-16010b6f/kpay/pwa/return", handleKPayPwaReturn);
 app.get("/make-server-16010b6f/kpay/pwa/draft/:merchantOrderId", getPwaCheckoutDraftRoute);
 app.post("/make-server-16010b6f/kpay/pwa/finalize/:merchantOrderId", postPwaFinalizeRoute);
+app.get("/make-server-16010b6f/kpay/resolved-urls", getKPayResolvedUrlsRoute);
 
 // Retry wrapper for database operations with exponential backoff
 async function withRetry<T>(
@@ -4446,20 +4450,65 @@ app.get("/make-server-16010b6f/orders/:id", async (c) => {
 app.get("/make-server-16010b6f/orders/:id/refund-status", async (c) => {
   try {
     const id = c.req.param("id");
-    const resolved = await resolveOrderStorage(id);
+    /** Poll requests pass sync=0 — read-only; avoids 504 from VPS retry on every poll. */
+    const syncRequested = c.req.query("sync") !== "0";
+    let resolved = await resolveOrderStorage(id);
     if (!resolved) {
       return c.json({ error: "Order not found" }, 404);
     }
-    const { record, orderKvId } = resolved;
     const merchantOrderId = String(
-      record?.kpay?.merchantOrderId || record?.orderNumber || orderKvId || ""
+      resolved.record?.kpay?.merchantOrderId || resolved.record?.orderNumber || resolved.orderKvId || ""
     ).trim();
+    if (merchantOrderId && syncRequested) {
+      try {
+        const synced = await withTimeout(
+          syncOrderRefundForResolved(
+            { storageKey: resolved.storageKey, record: resolved.record },
+            merchantOrderId,
+            { allowVpsRetry: false },
+          ),
+          8000,
+        );
+        if (synced) {
+          serverCache.delete("orders_minimal");
+          const refreshed = await withTimeout(kv.get(resolved.storageKey), 5000);
+          if (refreshed && typeof refreshed === "object") {
+            resolved = { ...resolved, record: refreshed };
+          }
+        }
+      } catch (syncErr) {
+        console.warn("[kpay] refund-status reconcile skipped:", syncErr);
+      }
+    }
+    const { record, orderKvId } = resolved;
     const txn = merchantOrderId
       ? ((await withTimeout(kv.get(`kpay_txn:${merchantOrderId}`), 5000)) as any)
       : null;
     const orderRefund = record?.kpay?.refund || null;
     const txnRefund = txn?.refund || null;
     const merged = txnRefund || orderRefund || null;
+    const mergedStatus = String(merged?.status || "").toLowerCase();
+    const mergedNetworkErr = String(merged?.networkError || "").toLowerCase();
+    const retryRequested = c.req.query("retry") === "1";
+
+    /** After fixing KPAY_PATH_REFUND, re-queue a failed timeout refund (background — no VPS wait here). */
+    if (
+      syncRequested &&
+      retryRequested &&
+      merchantOrderId &&
+      mergedStatus === "failed" &&
+      (mergedNetworkErr === "kpay-timeout" ||
+        mergedNetworkErr.includes("timeout") ||
+        mergedNetworkErr.includes("abort"))
+    ) {
+      enqueueKPayRefundAndPatchOrder({
+        merchantOrderId,
+        amount: record?.total,
+        reason: "Manual refund retry after timeout",
+        refundRequestNo: `RFND-${merchantOrderId}-${Date.now()}`,
+      });
+    }
+
     return c.json({
       success: true,
       orderId: orderKvId,
@@ -4468,6 +4517,10 @@ app.get("/make-server-16010b6f/orders/:id/refund-status", async (c) => {
       paymentMethod: record?.paymentMethod || "",
       paymentStatus: record?.paymentStatus || "",
       status: record?.status || "",
+      retryEnqueued: Boolean(retryRequested && mergedStatus === "failed"),
+      /** Live config — compare to refund.endpointUsed (last attempt, may be stale). */
+      configuredRefundUrl: getKPayResolvedEndpointUrls().refund,
+      refundConfiguredVia: getKPayResolvedEndpointUrls().refundConfiguredVia,
       refund: merged
         ? {
             status: String(merged.status || "").toLowerCase() || "unknown",
@@ -4603,6 +4656,23 @@ async function resolveOrderStorage(orderIdParam: string): Promise<{
   const direct = await withTimeout(kv.get(`order:${trimmed}`), 5000);
   if (direct && typeof direct === "object") {
     return { record: direct, storageKey: `order:${trimmed}`, orderKvId: trimmed };
+  }
+
+  const mappedRaw = await withTimeout(kv.get(`order_num:${trimmed}`), 5000).catch(() => null);
+  const mappedId = String(mappedRaw ?? "").trim();
+  if (mappedId) {
+    const mapped = await withTimeout(kv.get(`order:${mappedId}`), 5000).catch(() => null);
+    if (mapped && typeof mapped === "object") {
+      return { record: mapped, storageKey: `order:${mappedId}`, orderKvId: mappedId };
+    }
+  }
+
+  const refKvId = `order_ref_${encodeURIComponent(trimmed)}`;
+  if (refKvId !== trimmed) {
+    const refOrder = await withTimeout(kv.get(`order:${refKvId}`), 5000).catch(() => null);
+    if (refOrder && typeof refOrder === "object") {
+      return { record: refOrder, storageKey: `order:${refKvId}`, orderKvId: refKvId };
+    }
   }
 
   try {
@@ -11208,7 +11278,9 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
         phone: order.phone,
         status: normalizeOrderStatus(order.status) || "pending",
         paymentStatus: order.paymentStatus || "pending",
+        shippingStatus: order.shippingStatus || "pending",
         paymentMethod: order.paymentMethod || "",
+        kpay: order.kpay,
         total: vendorDisplayTotal,
         subtotal: Number.isFinite(parsedSubtotal) ? parsedSubtotal : vendorLinesSubtotal,
         discount: Number.isFinite(parsedDiscount) ? parsedDiscount : 0,

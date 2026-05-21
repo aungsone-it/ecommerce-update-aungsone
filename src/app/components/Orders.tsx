@@ -48,6 +48,10 @@ import {
   ADMIN_ORDERS_PAGE_DEFAULT,
   type AdminOrdersPagePayload,
 } from "../utils/module-cache";
+import {
+  isKPayPaidOrderLike,
+  pollKPayRefundAfterCancel,
+} from "../utils/kpayRefundPolling";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 import { supabase } from "../contexts/AuthContext";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
@@ -1105,6 +1109,24 @@ export function Orders({
           } else {
             toast.success("Cancellation saved");
           }
+        }
+        if (isKPayPaidOrderLike(orderBeingUpdated)) {
+          pollKPayRefundAfterCancel({
+            orderId,
+            orderNumber: orderBeingUpdated?.orderNumber,
+            shouldContinue: () => ordersSurfaceActiveRef.current,
+            onSuccess: (orderData) => {
+              setOrders((prev) =>
+                prev.map((o) => {
+                  if (o.id !== orderId) return o;
+                  const row = mapApiOrdersToOrderItems([
+                    { ...orderData, id: orderId, status: "cancelled" },
+                  ])[0];
+                  return row ? { ...o, ...row, status: "cancelled" } : o;
+                })
+              );
+            },
+          });
         }
       }
       void broadcastOrderStatusUpdate({
