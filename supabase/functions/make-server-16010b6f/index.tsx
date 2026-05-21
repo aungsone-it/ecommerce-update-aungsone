@@ -19,6 +19,7 @@ import {
   syncOrderRefundFromTxn,
   syncOrderRefundForResolved,
   getKPayResolvedUrlsRoute,
+  getKPayResolvedEndpointUrls,
 } from "./kpay_routes.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import {
@@ -4509,6 +4510,7 @@ app.get("/make-server-16010b6f/orders/:id/refund-status", async (c) => {
       });
     }
 
+    const liveUrls = getKPayResolvedEndpointUrls();
     return c.json({
       success: true,
       orderId: orderKvId,
@@ -4519,8 +4521,8 @@ app.get("/make-server-16010b6f/orders/:id/refund-status", async (c) => {
       status: record?.status || "",
       retryEnqueued: Boolean(retryRequested && mergedStatus === "failed"),
       /** Live config — compare to refund.endpointUsed (last attempt, may be stale). */
-      configuredRefundUrl: getKPayResolvedEndpointUrls().refund,
-      refundConfiguredVia: getKPayResolvedEndpointUrls().refundConfiguredVia,
+      configuredRefundUrl: liveUrls.refund,
+      refundConfiguredVia: liveUrls.refundConfiguredVia,
       refund: merged
         ? {
             status: String(merged.status || "").toLowerCase() || "unknown",

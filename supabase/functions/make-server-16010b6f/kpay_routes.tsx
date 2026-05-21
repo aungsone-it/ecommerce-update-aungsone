@@ -1005,6 +1005,9 @@ function shouldUseVpsRefundProxy(): boolean {
 }
 
 function resolveVpsRefundUrl(baseUrl: string): string {
+  const pathRefund = text(resolveEnv("KPAY_PATH_REFUND", "KPAY_REFUND_PATH"));
+  if (/^https?:\/\//i.test(pathRefund)) return pathRefund;
+
   const direct =
     text(resolveEnv("KBZ_VPS_REFUND_URL")) ||
     text(resolveEnv("KPAY_REFUND_URL"));

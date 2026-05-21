@@ -16,7 +16,10 @@ const SKIP = /SIGN|SECRET|KEY|APPID|MERCH|TOKEN|TIMEOUT|WRAP|AUTO|STRICT|ENV|TRA
 function pick(secrets, ...names) {
   for (const name of names) {
     const hit = secrets.find((s) => s.name === name);
-    if (hit?.value) return hit.value.trim();
+    const raw = String(hit?.value ?? hit?.secret ?? "").trim();
+    if (!raw) continue;
+    if (/^[a-f0-9]{64}$/i.test(raw)) continue;
+    return raw;
   }
   return "";
 }
@@ -57,8 +60,14 @@ const rows = [
 
 console.log("\nKPay endpoint URLs\n");
 for (const [label, url] of rows) {
-  console.log(`${label.padEnd(24)} ${url || "(not set)"}`);
+  console.log(`${label.padEnd(24)} ${url || "(not set — or only digest visible via API)"}`);
 }
+
+console.log(
+  "\nTip: After deploy, edge runtime URLs (authoritative):\n" +
+    `  curl -s "https://${PROJECT_REF}.supabase.co/functions/v1/make-server-16010b6f/kpay/resolved-urls" \\\n` +
+    '    -H "Authorization: Bearer YOUR_ANON_KEY" | jq .urls\n',
+);
 
 const extras = secrets.filter(
   (s) =>
