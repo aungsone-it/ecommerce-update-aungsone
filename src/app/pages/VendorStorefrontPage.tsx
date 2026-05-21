@@ -1,6 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
+import { publicAnonKey } from "../../../utils/supabase/info";
+import { API_BASE_URL } from "../../utils/api-client";
 import {
   shouldPreserveVendorStorefrontFaviconOnUnload,
   useResolvedVendorHostSlug,
@@ -147,14 +149,86 @@ function readCachedVendorLogoBySlug(slug: string | undefined): string {
   return "";
 }
 
+function VendorStoreNotFoundPanel({ onBackHome }: { onBackHome: () => void }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+      <div className="text-center space-y-6 p-8">
+        <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center mx-auto">
+          <Store className="w-10 h-10 text-slate-400" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold text-slate-900">Vendor Store Not Found</h1>
+          <p className="text-slate-600">The vendor store you're looking for doesn't exist or has been removed.</p>
+        </div>
+        <Button onClick={onBackHome} className="bg-slate-900 hover:bg-slate-800">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Home
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function VendorStorefrontPage() {
   const params = useParams();
   const location = useLocation();
   const vendorDash = parseVendorDashPath(location.pathname);
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
-  const storeName = params.storeName ?? vendorDash?.storeName ?? subdomainSlug ?? customHostSlug ?? undefined;
-  const instantFavicon = useMemo(() => readCachedVendorLogoBySlug(storeName), [storeName]);
+  const vendorHostSlug = subdomainSlug ?? customHostSlug ?? null;
+  const pathBasedStoreName = params.storeName ?? vendorDash?.storeName ?? undefined;
+  const storeName = pathBasedStoreName ?? vendorHostSlug ?? undefined;
+  const slugToVerify = storeName ? resolveVendorPathSlug(storeName) : "";
+
+  const [vendorExistence, setVendorExistence] = useState<"idle" | "checking" | "found" | "not_found">(() =>
+    slugToVerify ? "checking" : "idle"
+  );
+  const [canonicalStoreSlug, setCanonicalStoreSlug] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!slugToVerify) {
+      setVendorExistence("idle");
+      setCanonicalStoreSlug(null);
+      return;
+    }
+
+    let cancelled = false;
+    setVendorExistence("checking");
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE_URL}/vendors/by-slug/${encodeURIComponent(slugToVerify)}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+        );
+        if (cancelled) return;
+        if (!res.ok) {
+          setVendorExistence("not_found");
+          setCanonicalStoreSlug(null);
+          return;
+        }
+        const data = (await res.json()) as { vendor?: { storeSlug?: string } };
+        const slug =
+          typeof data.vendor?.storeSlug === "string" && data.vendor.storeSlug.trim()
+            ? data.vendor.storeSlug.trim()
+            : slugToVerify;
+        setCanonicalStoreSlug(slug);
+        setVendorExistence("found");
+      } catch {
+        if (!cancelled) {
+          setVendorExistence("not_found");
+          setCanonicalStoreSlug(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slugToVerify]);
+
+  const resolvedStoreName =
+    vendorExistence === "found" && canonicalStoreSlug ? canonicalStoreSlug : storeName;
+  const instantFavicon = useMemo(() => readCachedVendorLogoBySlug(resolvedStoreName), [resolvedStoreName]);
   const productSlug =
     (typeof params.productSlug === "string" && params.productSlug) ||
     (typeof (params as { sku?: string }).sku === "string" && (params as { sku?: string }).sku) ||
@@ -163,56 +237,56 @@ export function VendorStorefrontPage() {
   const navigate = useNavigate();
 
   const profileOrderId = useMemo(() => {
-    if (!storeName) return null;
-    return vendorProfileOrderIdFromPathname(location.pathname, storeName);
-  }, [storeName, location.pathname]);
+    if (!resolvedStoreName) return null;
+    return vendorProfileOrderIdFromPathname(location.pathname, resolvedStoreName);
+  }, [resolvedStoreName, location.pathname]);
 
   const profileSegment = useMemo(() => {
-    if (!storeName) return null;
+    if (!resolvedStoreName) return null;
     if (profileOrderId) return "orders";
-    return vendorProfileSegmentFromPathname(location.pathname, storeName);
-  }, [storeName, location.pathname, profileOrderId]);
+    return vendorProfileSegmentFromPathname(location.pathname, resolvedStoreName);
+  }, [resolvedStoreName, location.pathname, profileOrderId]);
 
   const savedPage = useMemo(() => {
-    if (!storeName) return false;
-    if (vendorDash?.storeName === storeName && vendorDash.tail[0] === "saved") return true;
+    if (!resolvedStoreName) return false;
+    if (vendorDash?.storeName === resolvedStoreName && vendorDash.tail[0] === "saved") return true;
     if ((subdomainSlug || customHostSlug) && location.pathname === "/saved") return true;
     return (
       matchPath({ path: "/vendor/:storeName/saved", end: true }, location.pathname) != null ||
       matchPath({ path: "/vendor-:storeName/saved", end: true }, location.pathname) != null
     );
-  }, [storeName, location.pathname, subdomainSlug, customHostSlug, vendorDash]);
+  }, [resolvedStoreName, location.pathname, subdomainSlug, customHostSlug, vendorDash]);
 
   const categorySlug = useMemo(() => {
-    if (!storeName) return null;
-    return vendorCategorySlugFromPathname(location.pathname, storeName);
-  }, [storeName, location.pathname]);
+    if (!resolvedStoreName) return null;
+    return vendorCategorySlugFromPathname(location.pathname, resolvedStoreName);
+  }, [resolvedStoreName, location.pathname]);
 
   const hostRootStorePathsNav = !!(subdomainSlug || customHostSlug);
 
   const storeBaseNav = useMemo(() => {
-    if (hostRootStorePathsNav || !storeName) return "";
-    const enc = encodeURIComponent(resolveVendorPathSlug(storeName));
+    if (hostRootStorePathsNav || !resolvedStoreName) return "";
+    const enc = encodeURIComponent(resolveVendorPathSlug(resolvedStoreName));
     if (location.pathname.startsWith("/vendor-")) return `/vendor-${enc}`;
     return `/vendor/${enc}`;
-  }, [hostRootStorePathsNav, storeName, location.pathname]);
+  }, [hostRootStorePathsNav, resolvedStoreName, location.pathname]);
 
   const vendorDocTitleMode = useMemo(() => {
-    if (!storeName) return "storefront" as const;
+    if (!resolvedStoreName) return "storefront" as const;
     const seg = profileOrderId ? "orders" : profileSegment ?? null;
     return vendorProfileSegmentToDocTitleMode(seg);
-  }, [storeName, profileSegment, profileOrderId]);
+  }, [resolvedStoreName, profileSegment, profileOrderId]);
 
   const vendorTabIconSeqRef = useRef(0);
 
   useLayoutEffect(() => {
-    if (!storeName) {
+    if (!resolvedStoreName) {
       document.title = "Vendor Store";
       resetDocumentFavicon();
       return;
     }
     document.title = buildVendorStorefrontDocumentTitle({
-      vendorSlug: storeName,
+      vendorSlug: resolvedStoreName,
       pathname: location.pathname,
       storeBase: storeBaseNav,
       savedPage,
@@ -228,7 +302,7 @@ export function VendorStorefrontPage() {
       });
     }
   }, [
-    storeName,
+    resolvedStoreName,
     location.pathname,
     storeBaseNav,
     savedPage,
@@ -250,32 +324,17 @@ export function VendorStorefrontPage() {
     return <VendorStorefrontFullSkeleton />;
   }
 
-  if (!storeName) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="text-center space-y-6 p-8">
-          <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center mx-auto">
-            <Store className="w-10 h-10 text-slate-400" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-bold text-slate-900">Vendor Store Not Found</h1>
-            <p className="text-slate-600">The vendor store you're looking for doesn't exist or has been removed.</p>
-          </div>
-          <Button 
-            onClick={() => navigate('/')}
-            className="bg-slate-900 hover:bg-slate-800"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
-          </Button>
-        </div>
-      </div>
-    );
+  if (slugToVerify && vendorExistence === "checking") {
+    return <VendorStorefrontFullSkeleton />;
+  }
+
+  if (!resolvedStoreName || (slugToVerify && vendorExistence === "not_found")) {
+    return <VendorStoreNotFoundPanel onBackHome={() => navigate("/")} />;
   }
 
   const handleBack = () => {
     const vendorAdminPath =
-      subdomainSlug || customHostSlug ? "/admin" : `/vendor/${storeName}/admin`;
+      subdomainSlug || customHostSlug ? "/admin" : `/vendor/${resolvedStoreName}/admin`;
     navigate(vendorAdminPath);
   };
 
@@ -283,8 +342,8 @@ export function VendorStorefrontPage() {
     <AuthProvider>
       <CartProvider>
         <VendorStoreView
-          vendorId={storeName}
-          storeSlug={storeName}
+          vendorId={resolvedStoreName}
+          storeSlug={resolvedStoreName}
           hostRootStorePaths={!!(subdomainSlug || customHostSlug)}
           onBack={handleBack}
           initialProductSlug={productSlug}
