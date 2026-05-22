@@ -884,14 +884,9 @@ export function VendorStoreView({
     [navigate, navigateStoreHome, storeBase]
   );
 
-  // Single LS read for first paint — avoids skeleton + empty grid on slow networks (see getVendorHomepageInitialState).
+  // Single LS read for first paint — always hydrate browse catalog from "all" (category tabs filter client-side).
   const [vendorHomeSnapshot] = useState(() =>
-    getVendorHomepageInitialState(
-      vendorId,
-      savedPage,
-      initialProductSlug,
-      initialCatalogCategoryFromRoute
-    )
+    getVendorHomepageInitialState(vendorId, savedPage, initialProductSlug, "all")
   );
   const [serverStatus, setServerStatus] = useState<'checking' | 'healthy' | 'unhealthy'>(vendorHomeSnapshot.serverStatus);
   const [products, setProducts] = useState<Product[]>(vendorHomeSnapshot.products);
@@ -934,6 +929,8 @@ export function VendorStoreView({
   >(new Map());
   /** Debounce category/search refetch so rapid subnav clicks do not flash skeleton grids. */
   const vendorCatalogRefetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Browse tabs are client filters — only refetch when vendor or search query changes. */
+  const vendorCatalogFetchKeyRef = useRef("");
 
   const catalogSliceMemoryKey = useCallback(
     (category: string) =>
@@ -1050,11 +1047,17 @@ export function VendorStoreView({
     );
   }, [vendorId, vendorCategories, products]);
 
-  /** Catalog filter + API category param — URL wins over stale React state. */
+  /** Catalog filter for subnav + client-side grid — URL wins over stale React state. */
   const catalogCategoryForFetch = useMemo(
     () => vendorCatalogFilterFromRouteSlug(normalizedCategorySlugFromRoute, subnavCategoryItems),
     [normalizedCategorySlugFromRoute, subnavCategoryItems]
   );
+
+  /** Browse tabs filter in-memory products; server category param only when searching. */
+  const vendorCatalogServerCategory = useMemo(() => {
+    if (debouncedVendorServerQ.trim()) return catalogCategoryForFetch;
+    return "all";
+  }, [debouncedVendorServerQ, catalogCategoryForFetch]);
 
   const uncategorizedTabPath = useMemo(
     () => `${storeBase}/${encodeURIComponent(VENDOR_STORE_UNCATEGORIZED_SLUG)}`,
@@ -1202,13 +1205,7 @@ export function VendorStoreView({
     if (String(selectedCategory).trim().toLowerCase() !== String(next).trim().toLowerCase()) {
       setSelectedCategory(next);
     }
-  }, [
-    savedPage,
-    vendorViewMode,
-    isVendorProductDetailPath,
-    catalogCategoryForFetch,
-    catalogCategoryForFetch,
-  ]);
+  }, [savedPage, vendorViewMode, isVendorProductDetailPath, catalogCategoryForFetch]);
 
   useEffect(() => {
     const el = vendorScrollRootRef.current;
@@ -3262,7 +3259,7 @@ export function VendorStoreView({
       if (savedPage) return false;
       const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
-      const cat = catalogCategoryForFetch;
+      const cat = vendorCatalogServerCategory;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
       const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
       const persistEligible = !qRaw;
@@ -3357,7 +3354,7 @@ export function VendorStoreView({
     [
       vendorId,
       debouncedVendorServerQ,
-      catalogCategoryForFetch,
+      vendorCatalogServerCategory,
       savedPage,
       rememberVendorCatalogSlice,
       applyVendorCatalogSlice,
@@ -3557,7 +3554,7 @@ export function VendorStoreView({
       const nextPage = vendorCatalogPage + 1;
       const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
-      const cat = catalogCategoryForFetch;
+      const cat = vendorCatalogServerCategory;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
       const data = await moduleCache.get(
         CACHE_KEYS.vendorProductsPage(vendorId, nextPage, qk, cat, pageSize),
@@ -3589,7 +3586,7 @@ export function VendorStoreView({
     vendorCatalogPage,
     vendorId,
     debouncedVendorServerQ,
-    catalogCategoryForFetch,
+    vendorCatalogServerCategory,
   ]);
 
   // 🚀 Categories + server-paginated product grid (module cache per page / filters).
@@ -3657,6 +3654,7 @@ export function VendorStoreView({
 
   useEffect(() => {
     catalogSliceByCategoryRef.current.clear();
+    vendorCatalogFetchKeyRef.current = "";
     setCanonicalVendorId(null);
     setCanonicalStoreSlug(resolveVendorPathSlug(storeSlug || vendorId) || null);
     loadVendorData();
@@ -3724,11 +3722,11 @@ export function VendorStoreView({
     const qRaw = debouncedVendorServerQ.trim();
     const qk = qRaw.toLowerCase();
     const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
-    const cat = catalogCategoryForFetch;
+    const cat = vendorCatalogServerCategory;
     const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
 
     if (!qRaw) {
-      const memSlice = catalogSliceByCategoryRef.current.get(catalogSliceMemoryKey(cat));
+      const memSlice = catalogSliceByCategoryRef.current.get(catalogSliceMemoryKey("all"));
       if (memSlice && Array.isArray(memSlice.products)) {
         if (shouldApplyCachedCatalogSlice(memSlice, cat)) {
           applyVendorCatalogSlice(memSlice);
@@ -3787,8 +3785,8 @@ export function VendorStoreView({
     }
   }, [
     vendorId,
-    catalogCategoryForFetch,
     debouncedVendorServerQ,
+    vendorCatalogServerCategory,
     savedPage,
     catalogSliceMemoryKey,
     applyVendorCatalogSlice,
@@ -3796,29 +3794,36 @@ export function VendorStoreView({
     shouldApplyCachedCatalogSlice,
   ]);
 
+  /** Refetch browse/search catalog — not on category tab changes (those filter client-side). */
   useEffect(() => {
     if (savedPage) return;
     if (vendorCatalogFilterMountSkipRef.current) {
       vendorCatalogFilterMountSkipRef.current = false;
       return;
     }
+    const qRaw = debouncedVendorServerQ.trim();
+    const fetchKey = qRaw
+      ? `${vendorId}|${qRaw.toLowerCase()}|${catalogCategoryForFetch}`
+      : `${vendorId}|browse`;
+    if (fetchKey === vendorCatalogFetchKeyRef.current) return;
+    vendorCatalogFetchKeyRef.current = fetchKey;
     if (vendorCatalogRefetchDebounceRef.current) {
       clearTimeout(vendorCatalogRefetchDebounceRef.current);
     }
     vendorCatalogRefetchDebounceRef.current = setTimeout(() => {
       vendorCatalogRefetchDebounceRef.current = null;
       const runId = ++vendorCatalogRefetchRunRef.current;
-      const categoryAtRun = catalogCategoryForFetch;
       void (async () => {
         try {
           const qRaw = debouncedVendorServerQ.trim();
           const qk = qRaw.toLowerCase();
           const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+          const serverCat = qRaw ? catalogCategoryForFetch : "all";
           const page1Key = CACHE_KEYS.vendorProductsPage(
             vendorId,
             1,
             qk,
-            categoryAtRun,
+            serverCat,
             pageSize
           );
           const now = Date.now();
@@ -3834,10 +3839,10 @@ export function VendorStoreView({
                 page: typeof fromMem.page === "number" ? fromMem.page : 1,
                 hasMore: !!fromMem.hasMore,
               };
-              if (shouldApplyCachedCatalogSlice(slice, categoryAtRun)) {
+              if (shouldApplyCachedCatalogSlice(slice, "all")) {
                 applyVendorCatalogSlice(slice);
               }
-              rememberVendorCatalogSlice(categoryAtRun, slice);
+              rememberVendorCatalogSlice("all", slice);
             }
             setServerStatus("healthy");
             return;
@@ -3874,9 +3879,6 @@ export function VendorStoreView({
     catalogCategoryForFetch,
     savedPage,
     refetchVendorCatalogPage1,
-    applyVendorCatalogSlice,
-    rememberVendorCatalogSlice,
-    shouldApplyCachedCatalogSlice,
   ]);
 
   // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.
@@ -4530,19 +4532,26 @@ export function VendorStoreView({
       vendorViewMode === "storefront" &&
       !savedPage &&
       !isVendorProductDetailPath &&
-      products.length === 0 &&
-      subnavCategoryItems.length === 0 &&
-      vendorCategories.length === 0,
+      products.length === 0,
     [
       serverStatus,
       vendorViewMode,
       savedPage,
       isVendorProductDetailPath,
       products.length,
-      subnavCategoryItems.length,
-      vendorCategories.length,
     ]
   );
+
+  const catalogListTotalForDisplay = useMemo(() => {
+    if (debouncedVendorServerQ.trim()) return vendorCatalogTotal;
+    if (catalogCategoryForFetch === "all") return vendorCatalogTotal;
+    return filteredProducts.length;
+  }, [
+    debouncedVendorServerQ,
+    catalogCategoryForFetch,
+    vendorCatalogTotal,
+    filteredProducts.length,
+  ]);
 
   const showVendorPageFullSkeleton = useMemo(
     () =>
@@ -5895,12 +5904,12 @@ export function VendorStoreView({
                     />
                   ))}
                 </div>
-                {vendorCatalogTotal > 0 && (
+                {catalogListTotalForDisplay > 0 && (
                   <p className="text-center text-sm text-slate-500 mt-6">
-                    Showing {filteredProducts.length} of {vendorCatalogTotal} products
+                    Showing {filteredProducts.length} of {catalogListTotalForDisplay} products
                   </p>
                 )}
-                {vendorCatalogHasMore && (
+                {vendorCatalogHasMore && catalogCategoryForFetch === "all" && !debouncedVendorServerQ.trim() && (
                   <div className="flex justify-center mt-6">
                     <Button
                       type="button"

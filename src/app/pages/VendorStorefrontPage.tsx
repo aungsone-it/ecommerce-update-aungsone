@@ -135,6 +135,27 @@ function vendorCategorySlugFromPathname(pathname: string, storeName: string): st
   return decodeURIComponent(seg);
 }
 
+const VENDOR_SLUG_VERIFIED_PREFIX = "migoo-vendor-slug-verified:";
+
+function readVendorSlugVerified(slug: string): boolean {
+  if (!slug.trim()) return false;
+  try {
+    return sessionStorage.getItem(VENDOR_SLUG_VERIFIED_PREFIX + slug.trim()) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeVendorSlugVerified(slug: string): void {
+  const s = slug.trim();
+  if (!s) return;
+  try {
+    sessionStorage.setItem(VENDOR_SLUG_VERIFIED_PREFIX + s, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
 function readCachedVendorLogoBySlug(slug: string | undefined): string {
   if (typeof window === "undefined") return "";
   const keySlug = String(slug || "").trim().toLowerCase();
@@ -199,7 +220,7 @@ export function VendorStorefrontPage() {
   const slugToVerify = storeName ? resolveVendorPathSlug(storeName) : "";
 
   const [vendorExistence, setVendorExistence] = useState<"idle" | "checking" | "found" | "not_found">(() =>
-    slugToVerify ? "checking" : "idle"
+    slugToVerify && readVendorSlugVerified(slugToVerify) ? "found" : slugToVerify ? "checking" : "idle"
   );
   const [canonicalStoreSlug, setCanonicalStoreSlug] = useState<string | null>(null);
 
@@ -211,7 +232,10 @@ export function VendorStorefrontPage() {
     }
 
     let cancelled = false;
-    setVendorExistence("checking");
+    const alreadyVerified = readVendorSlugVerified(slugToVerify);
+    if (!alreadyVerified) {
+      setVendorExistence("checking");
+    }
     void (async () => {
       try {
         const res = await fetch(
@@ -239,6 +263,7 @@ export function VendorStorefrontPage() {
             ? settings.storeSlug.trim()
             : slugToVerify;
         setCanonicalStoreSlug(slug);
+        writeVendorSlugVerified(slugToVerify);
         setVendorExistence("found");
       } catch {
         if (!cancelled) {
