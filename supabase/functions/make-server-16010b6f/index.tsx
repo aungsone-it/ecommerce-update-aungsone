@@ -5984,6 +5984,72 @@ app.post("/make-server-16010b6f/customers/sync-users", async (c) => {
 // VENDORS ENDPOINTS
 // ============================================
 
+function normalizeVendorLifecycleEmail(email: unknown): string {
+  return String(email || "").trim().toLowerCase();
+}
+
+type VendorEmailPolicyConflict = {
+  blocked: boolean;
+  code?: string;
+  message?: string;
+};
+
+/** One email → one vendor account; block duplicate pending/approved applications too. */
+async function vendorEmailPolicyConflict(emailNorm: string): Promise<VendorEmailPolicyConflict> {
+  if (!emailNorm) return { blocked: false };
+
+  const validVendors = await withTimeout(kv.getVendorProfiles(), 15000).catch(() => []);
+  const vendorList = Array.isArray(validVendors) ? validVendors : [];
+  if (
+    vendorList.some(
+      (v: any) => normalizeVendorLifecycleEmail(v?.email) === emailNorm
+    )
+  ) {
+    return {
+      blocked: true,
+      code: "VENDOR_EMAIL_TAKEN",
+      message: "This email is already registered to a vendor account.",
+    };
+  }
+
+  const applications = await withTimeout(kv.getByPrefix("vendor_application:"), 15000).catch(
+    () => []
+  );
+  const appList = Array.isArray(applications) ? applications : [];
+  const sameEmailApps = appList.filter(
+    (a: any) =>
+      a &&
+      typeof a === "object" &&
+      normalizeVendorLifecycleEmail(a.email) === emailNorm
+  );
+
+  if (
+    sameEmailApps.some(
+      (a: any) => String(a?.status || "").toLowerCase() === "pending"
+    )
+  ) {
+    return {
+      blocked: true,
+      code: "DUPLICATE_PENDING",
+      message: "A pending application already exists for this email.",
+    };
+  }
+
+  if (
+    sameEmailApps.some(
+      (a: any) => String(a?.status || "").toLowerCase() === "approved"
+    )
+  ) {
+    return {
+      blocked: true,
+      code: "EMAIL_ALREADY_VENDOR",
+      message: "This email is already linked to an approved vendor account.",
+    };
+  }
+
+  return { blocked: false };
+}
+
 // 🔥 Validate vendor email and phone availability (real-time check)
 app.post("/make-server-16010b6f/vendors/validate", async (c) => {
   try {
@@ -5997,11 +6063,10 @@ app.post("/make-server-16010b6f/vendors/validate", async (c) => {
     
     // Check email if provided
     if (email && email.trim()) {
-      const existingVendor = validVendors.find((v: any) => 
-        v.email?.toLowerCase() === email.trim().toLowerCase()
-      );
-      if (existingVendor) {
-        errors.email = "A vendor with this email already exists";
+      const emailNorm = normalizeVendorLifecycleEmail(email);
+      const conflict = await vendorEmailPolicyConflict(emailNorm);
+      if (conflict.blocked) {
+        errors.email = conflict.message || "This email cannot be used for a new vendor account.";
       }
     }
     
@@ -6825,26 +6890,14 @@ app.post("/make-server-16010b6f/vendor-applications", async (c) => {
       reviewNotes: null,
     };
 
-    const emailNorm = String((application as any).email || "")
-      .trim()
-      .toLowerCase();
+    const emailNorm = normalizeVendorLifecycleEmail((application as any).email);
     if (emailNorm) {
-      const existing = await withTimeout(kv.getByPrefix("vendor_application:"), 15000).catch(() => []);
-      const list = Array.isArray(existing) ? existing : [];
-      const dupPending = list.some(
-        (a: any) =>
-          a &&
-          typeof a === "object" &&
-          String(a.email || "")
-            .trim()
-            .toLowerCase() === emailNorm &&
-          String(a.status || "").toLowerCase() === "pending"
-      );
-      if (dupPending) {
+      const conflict = await vendorEmailPolicyConflict(emailNorm);
+      if (conflict.blocked) {
         return c.json(
           {
-            error: "A pending application already exists for this email.",
-            code: "DUPLICATE_PENDING",
+            error: conflict.message,
+            code: conflict.code,
           },
           409
         );

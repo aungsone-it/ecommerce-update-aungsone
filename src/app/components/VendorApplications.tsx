@@ -80,7 +80,7 @@ interface VendorApplicationsProps {
   onBack?: () => void;
   onNavigateToVendorList?: () => void;
   /** Approve/reject succeeded — refresh vendor list cache badges, etc. */
-  onApplicationsMutated?: () => void;
+  onApplicationsMutated?: (applicationId?: string) => void;
 }
 
 function mapRawRecordToVendorApplication(app: Record<string, unknown>): VendorApplication {
@@ -220,7 +220,7 @@ export function VendorApplications({
         onApplicationsMutated={() => {
           invalidateAdminVendorApplicationsCache();
           notifyAdminVendorApplicationsUpdated("reviewed");
-          onApplicationsMutated?.();
+          onApplicationsMutated?.(reviewingApplication.id);
         }}
       />
     );

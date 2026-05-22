@@ -41,6 +41,69 @@ interface Variant {
   weight?: string;
 }
 
+/** Parse stored/display prices ($, MMK, commas) for validation and save. */
+function parsePriceInput(value: unknown): number {
+  if (value == null || value === "") return 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  const cleaned = String(value).replace(/[^\d.-]/g, "").trim();
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatPriceForForm(value: unknown): string {
+  const n = parsePriceInput(value);
+  return n > 0 ? String(n) : "";
+}
+
+function normalizeVariantForForm(raw: Record<string, unknown>, idx: number): Variant {
+  return {
+    id: String(raw.id ?? `variant-${idx}`),
+    option1: String(raw.option1 ?? ""),
+    option2: raw.option2 != null ? String(raw.option2) : undefined,
+    option3: raw.option3 != null ? String(raw.option3) : undefined,
+    price: formatPriceForForm(raw.price),
+    compareAtPrice:
+      raw.compareAtPrice != null ? formatPriceForForm(raw.compareAtPrice) : undefined,
+    sku: String(raw.sku ?? ""),
+    barcode: raw.barcode != null ? String(raw.barcode) : undefined,
+    inventory: Number(raw.inventory) || 0,
+    weight: raw.weight != null ? String(raw.weight) : undefined,
+  };
+}
+
+function variantsMatchOptions(a: Variant, b: Variant): boolean {
+  return (
+    a.option1 === b.option1 &&
+    (a.option2 ?? "") === (b.option2 ?? "") &&
+    (a.option3 ?? "") === (b.option3 ?? "")
+  );
+}
+
+function mergeVariantsWithInitial(
+  current: Variant[],
+  initial: unknown[] | undefined
+): Variant[] {
+  if (!Array.isArray(initial) || initial.length === 0) return current;
+  const initialNorm = initial.map((v, i) =>
+    normalizeVariantForForm(v as Record<string, unknown>, i)
+  );
+  return current.map((v) => {
+    const match =
+      initialNorm.find((init) => init.id && v.id && init.id === v.id) ||
+      initialNorm.find((init) => variantsMatchOptions(v, init));
+    if (!match) return v;
+    return {
+      ...v,
+      price: parsePriceInput(v.price) > 0 ? v.price : match.price || v.price,
+      sku: v.sku?.trim() ? v.sku : match.sku || v.sku,
+      inventory: v.inventory ?? match.inventory,
+      weight: v.weight?.trim() ? v.weight : match.weight,
+      compareAtPrice:
+        v.compareAtPrice?.trim() ? v.compareAtPrice : match.compareAtPrice,
+    };
+  });
+}
+
 interface ProductFormPageProps {
   mode: "add" | "edit" | "view";
   initialData?: any;
@@ -52,7 +115,7 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
   const { t } = useLanguage();
   const [title, setTitle] = useState(initialData?.name || "");
   const [description, setDescription] = useState(initialData?.description || "");
-  const [price, setPrice] = useState(initialData?.price?.replace("$", "") || "");
+  const [price, setPrice] = useState(() => formatPriceForForm(initialData?.price) || "");
   const [compareAtPrice, setCompareAtPrice] = useState(initialData?.compareAtPrice?.replace("$", "") || "");
   const [costPerItem, setCostPerItem] = useState(initialData?.costPerItem?.replace("$", "") || "");
   const [commissionRate, setCommissionRate] = useState(initialData?.commissionRate?.toString() || ""); // 🔥 Commission rate
@@ -115,7 +178,11 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
         setHasVariants(true);
         
         // Set variants FIRST before variantOptions to preserve data
-        setVariants(initialData.variants);
+        setVariants(
+          initialData.variants.map((v: Record<string, unknown>, idx: number) =>
+            normalizeVariantForForm(v, idx)
+          )
+        );
         console.log("✅ Set variants state with", initialData.variants.length, "variants");
         
         // Reconstruct variant options from variants
@@ -390,7 +457,10 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
       if (existingVariant) {
         // Return existing variant to preserve price, SKU, inventory, weight
         console.log(`✅ Preserving variant data for ${combo.join(' / ')}:`, existingVariant);
-        return existingVariant;
+        return {
+          ...existingVariant,
+          price: formatPriceForForm(existingVariant.price) || existingVariant.price,
+        };
       }
 
       // Create new variant with empty defaults
@@ -440,30 +510,34 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
     }
 
     const isOffShelf = status === "off-shelf";
+    const variantsForSave =
+      mode === "edit"
+        ? mergeVariantsWithInitial(variants, initialData?.variants)
+        : variants;
 
     // Off-shelf products can be saved without price/SKU checks (hide from storefront only)
     if (!isOffShelf) {
       if (hasVariants) {
-        if (variants.length === 0) {
+        if (variantsForSave.length === 0) {
           toast.error("Please add at least one variant");
           return;
         }
-        const hasValidVariant = variants.some(v => v.sku && v.sku.trim() !== '');
+        const hasValidVariant = variantsForSave.some((v) => v.sku && v.sku.trim() !== "");
         if (!hasValidVariant) {
           toast.error("Please fill in SKU for at least one variant");
           return;
         }
-        const hasVariantWithPrice = variants.some(v => v.price && parseFloat(v.price) > 0);
+        const hasVariantWithPrice = variantsForSave.some((v) => parsePriceInput(v.price) > 0);
         if (!hasVariantWithPrice) {
           toast.error("Please fill in price for at least one variant");
           return;
         }
       } else {
-        if (!price) {
+        if (parsePriceInput(price) <= 0) {
           toast.error("Please fill in all required fields: Title, Price, and SKU");
           return;
         }
-        if (!sku) {
+        if (!sku?.trim()) {
           toast.error("Please fill in all required fields: Title, Price, and SKU");
           return;
         }
@@ -485,25 +559,25 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
       let finalInventory = inventory;
       let finalSku = sku;
       
-      if (hasVariants && variants.length > 0) {
+      if (hasVariants && variantsForSave.length > 0) {
         // Calculate total inventory from all variants
-        finalInventory = variants.reduce((sum, v) => sum + (v.inventory || 0), 0);
+        finalInventory = variantsForSave.reduce((sum, v) => sum + (v.inventory || 0), 0);
         
         // Get the lowest price from variants (for display)
-        const variantPrices = variants
-          .map(v => parseFloat(v.price || '0'))
-          .filter(p => p > 0);
+        const variantPrices = variantsForSave
+          .map((v) => parsePriceInput(v.price))
+          .filter((p) => p > 0);
         
         if (variantPrices.length > 0) {
           finalPrice = Math.min(...variantPrices).toString();
         } else {
-          finalPrice = '0';
+          finalPrice = "0";
         }
         
         // Use first variant's SKU as the base SKU
-        finalSku = variants[0]?.sku || '';
+        finalSku = variantsForSave[0]?.sku || "";
         
-        console.log(`📊 Variant Summary: ${variants.length} variants, Total inventory: ${finalInventory}, Base price: $${finalPrice}`);
+        console.log(`📊 Variant Summary: ${variantsForSave.length} variants, Total inventory: ${finalInventory}, Base price: $${finalPrice}`);
       }
       
       const data = {
@@ -525,7 +599,7 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
         continueSellingOutOfStock,
         hasVariants,
         variantOptions: hasVariants ? variantOptions : [],
-        variants: hasVariants ? variants : [],
+        variants: hasVariants ? variantsForSave : [],
         images,
         tags,
         productType,

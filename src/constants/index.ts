@@ -58,8 +58,8 @@ export const POLLING_INTERVALS_MS = {
   BADGE_COUNTS: 15 * 60 * 1000,
   /** If badge cache is newer than this, skip network (see useBadgeCounts). */
   BADGE_COUNTS_CACHE_FRESH: 12 * 60 * 1000,
-  /** Admin-only: re-check pending vendor applications (cross-device; public form cannot BroadcastChannel). */
-  ADMIN_VENDOR_APPLICATIONS_BADGE_POLL: 60 * 1000,
+  /** Admin-only: safety-net poll when Realtime pulse is unavailable (cross-device). */
+  ADMIN_VENDOR_APPLICATIONS_BADGE_POLL: 15 * 1000,
   TOP_NAV_NOTIFICATIONS: 15 * 60 * 1000,
   VENDOR_PORTAL_NOTIFICATIONS: 15 * 60 * 1000,
   /** Rare safety net only — admin + floating chat use Realtime broadcast for live deltas. */

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   CheckCircle2, 
   ArrowLeft, 
@@ -246,6 +246,56 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     idDocument: null,
   });
 
+  const [emailValidation, setEmailValidation] = useState<{
+    checking: boolean;
+    error: string;
+    valid: boolean;
+  }>({ checking: false, error: "", valid: false });
+  const emailCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      if (emailCheckTimeoutRef.current) clearTimeout(emailCheckTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (emailCheckTimeoutRef.current) clearTimeout(emailCheckTimeoutRef.current);
+
+    const email = String(formData.email || "").trim();
+    if (!email || !isValidEmailStrict(email)) {
+      setEmailValidation({ checking: false, error: "", valid: false });
+      return;
+    }
+
+    setEmailValidation({ checking: true, error: "", valid: false });
+    emailCheckTimeoutRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/vendors/validate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({ email }),
+        });
+        const data = await response.json();
+        if (!isMountedRef.current) return;
+        if (data.errors?.email) {
+          setEmailValidation({ checking: false, error: String(data.errors.email), valid: false });
+        } else {
+          setEmailValidation({ checking: false, error: "", valid: true });
+        }
+      } catch {
+        if (isMountedRef.current) {
+          setEmailValidation({ checking: false, error: "", valid: false });
+        }
+      }
+    }, 700);
+  }, [formData.email]);
+
   const categoryOptions = [
     "Electronics",
     "Fashion",
@@ -466,6 +516,15 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
       return;
     }
 
+    if (emailValidation.error) {
+      toast.error("Email not available", { description: emailValidation.error });
+      return;
+    }
+    if (emailValidation.checking) {
+      toast.error("Please wait", { description: "Still checking whether this email is available." });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -504,9 +563,13 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({} as { error?: string; code?: string }));
+        const code = String(error.code || "");
         const msg =
-          response.status === 409 && String(error.code || "") === "DUPLICATE_PENDING"
-            ? String(error.error || "A pending application already exists for this email.")
+          response.status === 409 &&
+          (code === "DUPLICATE_PENDING" ||
+            code === "VENDOR_EMAIL_TAKEN" ||
+            code === "EMAIL_ALREADY_VENDOR")
+            ? String(error.error || "This email cannot be used for a new vendor account.")
             : String(error.error || "Failed to submit application");
         throw new Error(msg);
       }
@@ -726,9 +789,24 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   value={formData.email}
                   onChange={handleInputChange}
                   required
-                  className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
+                  className={`w-full h-10 px-4 bg-slate-50 border rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all ${
+                    emailValidation.error
+                      ? "border-red-300 focus:ring-red-500"
+                      : emailValidation.valid
+                        ? "border-emerald-300"
+                        : "border-slate-200"
+                  }`}
                   placeholder="john@example.com"
                 />
+                {emailValidation.checking && (
+                  <p className="mt-1 text-xs text-slate-500">Checking email availability…</p>
+                )}
+                {emailValidation.error && (
+                  <p className="mt-1 text-xs text-red-600">{emailValidation.error}</p>
+                )}
+                {emailValidation.valid && !emailValidation.checking && (
+                  <p className="mt-1 text-xs text-emerald-600">Email is available</p>
+                )}
               </div>
 
               <div className="md:col-span-2">

@@ -7,7 +7,9 @@ import {
 } from "../utils/module-cache";
 
 const PULSE_TABLE = "app_order_pulse";
+const VENDOR_APP_PULSE_TABLE = "app_vendor_application_pulse";
 const DEBOUNCE_MS = 400;
+const VENDOR_APP_PULSE_DEBOUNCE_MS = 80;
 
 /**
  * One Realtime subscription for the whole SPA (everything under `ProvidersWrapper`):
@@ -17,6 +19,7 @@ const DEBOUNCE_MS = 400;
  */
 export function OrderRealtimeBridge() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vendorAppPulseDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const kvDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** `vendor_application:*` KV rows were touched — fan out to applications listeners + badge. */
   const vendorApplicationKvPendingRef = useRef(false);
@@ -60,6 +63,52 @@ export function OrderRealtimeBridge() {
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Dedicated pulse for vendor applications — faster than full kv_store subscription.
+  useEffect(() => {
+    const bump = () => {
+      if (vendorAppPulseDebounceRef.current) clearTimeout(vendorAppPulseDebounceRef.current);
+      vendorAppPulseDebounceRef.current = setTimeout(() => {
+        vendorAppPulseDebounceRef.current = null;
+        notifyAdminVendorApplicationsUpdated("realtime-vendor-app-pulse");
+      }, VENDOR_APP_PULSE_DEBOUNCE_MS);
+    };
+
+    const channel = supabase
+      .channel("sec-vendor-app-pulse-v1")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: VENDOR_APP_PULSE_TABLE,
+          filter: "id=eq.1",
+        },
+        () => bump()
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: VENDOR_APP_PULSE_TABLE,
+          filter: "id=eq.1",
+        },
+        () => bump()
+      )
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(
+            `[OrderRealtime] vendor-app pulse channel ${status} — rely on kv bridge + badge poll`
+          );
+        }
+      });
+
+    return () => {
+      if (vendorAppPulseDebounceRef.current) clearTimeout(vendorAppPulseDebounceRef.current);
       void supabase.removeChannel(channel);
     };
   }, []);

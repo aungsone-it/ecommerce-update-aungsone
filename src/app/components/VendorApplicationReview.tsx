@@ -65,7 +65,7 @@ interface VendorApplicationReviewProps {
   onBack: () => void;
   onUpdate: () => void;
   onNavigateToVendorList?: () => void;
-  onApplicationsMutated?: () => void;
+  onApplicationsMutated?: (applicationId: string) => void;
 }
 
 export function VendorApplicationReview({
@@ -127,7 +127,7 @@ export function VendorApplicationReview({
         // Update the application status locally to prevent further clicks
         application.status = newStatus;
 
-        onApplicationsMutated?.();
+        onApplicationsMutated?.(application.id);
         void Promise.resolve(onUpdate());
 
         if (newStatus === "approved") {

@@ -66,6 +66,31 @@ export function useBadgeCounts() {
   }, []);
 
   /**
+   * Refresh only pending vendor-application count (fast path — no orders/chat round-trip).
+   */
+  const refreshVendorApplicationsBadgeOnly = useCallback(async () => {
+    if (!badgeCircuitBreaker.canAttempt()) return;
+    try {
+      const vendorResponse = await vendorApplicationsApi.getAll();
+      if (!vendorResponse.success || !vendorResponse.data) return;
+      const apps = vendorResponse.data as Record<string, unknown>[];
+      moduleCache.prime(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS, apps);
+      const vendorApplicationsCount = apps.filter(
+        (app) => String(app?.status ?? "").toLowerCase() === "pending"
+      ).length;
+      setBadgeCounts((prev) => {
+        if (prev.vendor === vendorApplicationsCount) return prev;
+        const updated = { ...prev, vendor: vendorApplicationsCount };
+        SmartCache.set("badge_counts", updated);
+        return updated;
+      });
+      badgeCircuitBreaker.recordSuccess();
+    } catch {
+      /* keep previous count */
+    }
+  }, []);
+
+  /**
    * Load badge counts from the server
    */
   const loadBadgeCounts = useCallback(async (force = false) => {
@@ -247,37 +272,47 @@ export function useBadgeCounts() {
    * We debounce force-refresh to avoid request bursts when many row events arrive together.
    */
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const queueForceRefresh = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
+    let ordersTimer: ReturnType<typeof setTimeout> | null = null;
+    let vendorTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const queueOrdersRefresh = () => {
+      if (ordersTimer) clearTimeout(ordersTimer);
+      ordersTimer = setTimeout(() => {
         void loadBadgeCounts(true);
       }, 180);
     };
 
-    window.addEventListener('adminOrdersUpdated', queueForceRefresh as EventListener);
-    window.addEventListener('vendorDataUpdated', queueForceRefresh as EventListener);
+    const queueVendorAppsRefresh = () => {
+      if (vendorTimer) clearTimeout(vendorTimer);
+      vendorTimer = setTimeout(() => {
+        void refreshVendorApplicationsBadgeOnly();
+      }, 60);
+    };
+
+    window.addEventListener("adminOrdersUpdated", queueOrdersRefresh as EventListener);
+    window.addEventListener("vendorDataUpdated", queueVendorAppsRefresh as EventListener);
 
     return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener('adminOrdersUpdated', queueForceRefresh as EventListener);
-      window.removeEventListener('vendorDataUpdated', queueForceRefresh as EventListener);
+      if (ordersTimer) clearTimeout(ordersTimer);
+      if (vendorTimer) clearTimeout(vendorTimer);
+      window.removeEventListener("adminOrdersUpdated", queueOrdersRefresh as EventListener);
+      window.removeEventListener("vendorDataUpdated", queueVendorAppsRefresh as EventListener);
     };
-  }, [loadBadgeCounts]);
+  }, [loadBadgeCounts, refreshVendorApplicationsBadgeOnly]);
 
-  /** New vendor application (or review) — same-tab CustomEvent, cross-tab storage + BroadcastChannel. */
+  /** Vendor applications — fast refresh on Realtime pulse / cross-tab signals. */
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const queueForceRefresh = () => {
+    const queueRefresh = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
-        void loadBadgeCounts(true);
-      }, 180);
+        void refreshVendorApplicationsBadgeOnly();
+      }, 60);
     };
 
-    const onCustom = queueForceRefresh as EventListener;
+    const onCustom = queueRefresh as EventListener;
     const onStorage = (e: StorageEvent) => {
-      if (e.key === ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY && e.newValue) queueForceRefresh();
+      if (e.key === ADMIN_VENDOR_APPLICATIONS_UPDATED_STORAGE_KEY && e.newValue) queueRefresh();
     };
 
     window.addEventListener(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT, onCustom);
@@ -286,7 +321,7 @@ export function useBadgeCounts() {
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(ADMIN_VENDOR_APPLICATIONS_UPDATED_EVENT);
-      bc.onmessage = () => queueForceRefresh();
+      bc.onmessage = () => queueRefresh();
     } catch {
       /* BroadcastChannel unsupported */
     }
@@ -301,45 +336,27 @@ export function useBadgeCounts() {
         /* ignore */
       }
     };
-  }, [loadBadgeCounts]);
+  }, [refreshVendorApplicationsBadgeOnly]);
 
   /**
-   * Pending vendor applications: light poll while admin tab is visible so badges update when
-   * someone submits from another device (BroadcastChannel only helps same-browser tabs).
+   * Safety-net poll when Realtime pulse is unavailable (cross-device / migration not applied yet).
    */
   useEffect(() => {
-    const tick = async () => {
+    const tick = () => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-      if (!badgeCircuitBreaker.canAttempt()) return;
-      try {
-        const vendorResponse = await vendorApplicationsApi.getAll();
-        if (!vendorResponse.success || !vendorResponse.data) return;
-        const apps = vendorResponse.data as Record<string, unknown>[];
-        moduleCache.prime(CACHE_KEYS.ADMIN_VENDOR_APPLICATIONS, apps);
-        const vendorApplicationsCount = apps.filter(
-          (app) => String(app?.status ?? "").toLowerCase() === "pending"
-        ).length;
-        setBadgeCounts((prev) => {
-          if (prev.vendor === vendorApplicationsCount) return prev;
-          const updated = { ...prev, vendor: vendorApplicationsCount };
-          SmartCache.set("badge_counts", updated);
-          return updated;
-        });
-        badgeCircuitBreaker.recordSuccess();
-      } catch {
-        /* keep previous count */
-      }
+      void refreshVendorApplicationsBadgeOnly();
     };
     void tick();
     const id = window.setInterval(tick, POLLING_INTERVALS_MS.ADMIN_VENDOR_APPLICATIONS_BADGE_POLL);
     return () => clearInterval(id);
-  }, []);
+  }, [refreshVendorApplicationsBadgeOnly]);
 
   return {
     badgeCounts,
     loading,
     loadBadgeCounts,
     refreshChatBadgeOnly,
+    refreshVendorApplicationsBadgeOnly,
     incrementOrdersBadge,
     decrementOrdersBadge,
     resetBadgeCounts,

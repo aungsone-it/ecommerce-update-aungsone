@@ -1,5 +1,5 @@
 // Vendor Management Component - Force rebuild
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 import { useLanguage } from "../contexts/LanguageContext";
@@ -149,6 +149,26 @@ function mapRawApplicationsToPendingRows(raw: Record<string, unknown>[]): Applic
   return raw
     .filter((a) => String(a?.status ?? "").toLowerCase() === "pending")
     .map((a) => mapApiApplicationToReviewShape(a));
+}
+
+function normalizeVendorTableEmail(email: unknown): string {
+  return String(email ?? "").trim().toLowerCase();
+}
+
+/** Hide pending application rows once the same person already has a vendor account. */
+function pendingApplicationHasMatchingVendor(
+  app: ApplicationReviewShape,
+  vendorList: Vendor[]
+): boolean {
+  const appEmail = normalizeVendorTableEmail(app.email);
+  return vendorList.some((vendor) => {
+    const extended = vendor as Vendor & { applicationId?: string };
+    if (app.id && extended.applicationId && extended.applicationId === app.id) {
+      return true;
+    }
+    const vendorEmail = normalizeVendorTableEmail(vendor.email);
+    return Boolean(appEmail && vendorEmail && appEmail === vendorEmail);
+  });
 }
 
 type VendorTableRow =
@@ -353,9 +373,15 @@ export function Vendor({
     });
   }, [vendors, searchLower, statusFilter]);
 
-  const filteredPendingApplications = useMemo(() => {
+  const pendingApplicationsEligible = useMemo(() => {
     return pendingApplicationRows.filter((app) => {
       if (app.status !== "pending") return false;
+      return !pendingApplicationHasMatchingVendor(app, vendors);
+    });
+  }, [pendingApplicationRows, vendors]);
+
+  const filteredPendingApplications = useMemo(() => {
+    return pendingApplicationsEligible.filter((app) => {
       if (!searchLower) return true;
       return (
         safeLower(app.businessName).includes(searchLower) ||
@@ -364,7 +390,7 @@ export function Vendor({
         safeLower(app.location).includes(searchLower)
       );
     });
-  }, [pendingApplicationRows, searchLower]);
+  }, [pendingApplicationsEligible, searchLower]);
 
   /** Pending applications appear with "All statuses" and "Pending review" filters. */
   const needsApplicationRowsInTable =
@@ -875,6 +901,11 @@ export function Vendor({
     }
   };
 
+  const dropPendingApplicationRow = useCallback((applicationId: string) => {
+    if (!applicationId) return;
+    setPendingApplicationRows((prev) => prev.filter((row) => row.id !== applicationId));
+  }, []);
+
   const pendingAppsBadgeKeyRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const key = String(pendingApplicationsCount ?? "∅");
@@ -891,10 +922,10 @@ export function Vendor({
   /** Pending apps for stats: use loaded rows (cache/API) once idle; while loading, max(nav badge, local) so the card never undercounts. */
   const pendingApplicationsForStats = isLoadingApplications
     ? Math.max(
-        pendingApplicationRows.length,
+        pendingApplicationsEligible.length,
         typeof pendingApplicationsCount === "number" ? pendingApplicationsCount : 0
       )
-    : pendingApplicationRows.length;
+    : pendingApplicationsEligible.length;
 
   /** Must match the status filter logic (effectiveVendorStatus). */
   const pendingVendorCount = vendors.filter((v) => effectiveVendorStatus(v) === "pending").length;
@@ -944,6 +975,7 @@ export function Vendor({
         }}
         onApplicationsMutated={() => {
           invalidateAdminVendorApplicationsCache();
+          dropPendingApplicationRow(reviewingApplication.id);
           void loadPendingApplications(true);
           onVendorApplicationsMutated?.();
         }}
@@ -962,10 +994,11 @@ export function Vendor({
         onNavigateToVendorList={() => {
           setShowApplications(false);
           void loadVendors(true);
-          void loadPendingApplications(false);
+          void loadPendingApplications(true);
         }}
-        onApplicationsMutated={() => {
+        onApplicationsMutated={(applicationId) => {
           invalidateAdminVendorApplicationsCache();
+          if (applicationId) dropPendingApplicationRow(applicationId);
           void loadPendingApplications(true);
           onVendorApplicationsMutated?.();
         }}
