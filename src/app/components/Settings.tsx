@@ -1,5 +1,7 @@
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
-import { compressImage } from '../../utils/imageCompression';
+import {
+  normalizePlatformStoreName,
+} from "../utils/platformBranding";
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router";
 import { 
@@ -104,7 +106,7 @@ export function Settings() {
   const [error, setError] = useState('');
 
   // General Settings State
-  const [storeName, setStoreName] = useState("SECURE E-commerce");
+  const [storeName, setStoreName] = useState("SECURE");
   const [storeEmail, setStoreEmail] = useState("info@secure.com");
   const [storePhone, setStorePhone] = useState("+95 9 XXX XXX XXX");
   const [storeAddress, setStoreAddress] = useState("123 Main St, Yangon, Myanmar");
@@ -206,7 +208,7 @@ export function Settings() {
       if (response.ok) {
         const data = await response.json();
         if (data) {
-          setStoreName(data.storeName || "SECURE E-commerce");
+          setStoreName(normalizePlatformStoreName(data.storeName));
           setStoreEmail(data.storeEmail || "info@secure.com");
           setStorePhone(data.storePhone || "+95 9 XXX XXX XXX");
           setStoreAddress(data.storeAddress || "123 Main St, Yangon, Myanmar");

@@ -1,6 +1,6 @@
 // Routes Configuration - Cache bust: 20260307181500
 import { lazy, Suspense, type ReactNode } from "react";
-import { type RouteObject } from "react-router";
+import { Navigate, type RouteObject } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { VendorProtectedLayout } from "./components/VendorProtectedLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
@@ -207,7 +207,7 @@ export const appRouteObjects: RouteObject[] = [
           },
           {
             path: "setup",
-            element: <SetupPage />,
+            element: <Navigate to="/admin/setup" replace />,
           },
           {
             path: "vendor/application",
@@ -229,6 +229,7 @@ export const appRouteObjects: RouteObject[] = [
             path: "admin",
             element: <AdminEntryLayout />,
             children: [
+              { path: "setup", element: <SetupPage /> },
               { index: true, element: <AdminSubdomainLeaf /> },
               { path: "customers/add", element: <AdminSubdomainLeaf /> },
               { path: "orders", element: <AdminSubdomainLeaf /> },

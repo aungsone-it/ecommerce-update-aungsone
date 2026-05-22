@@ -8,7 +8,8 @@ import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { usePlatformBranding } from '../hooks/usePlatformBranding';
-import { buildPlatformLandingDocumentTitle } from '../utils/superAdminDocumentTitle';
+import { buildSuperAdminDocumentTitle } from '../utils/superAdminDocumentTitle';
+import { SUPER_ADMIN_SETUP_COMPLETE_EVENT } from './AppRouter';
 import { isValidEmail } from '../../utils/helpers';
 
 const inputClassName =
@@ -70,7 +71,10 @@ export function Setup() {
   const platformBranding = usePlatformBranding();
 
   useEffect(() => {
-    document.title = buildPlatformLandingDocumentTitle(platformBranding.storeName);
+    document.title = buildSuperAdminDocumentTitle({
+      pageName: 'Setup',
+      storeName: platformBranding.storeName,
+    });
   }, [platformBranding.storeName]);
 
   const validateField = useCallback(
@@ -283,7 +287,10 @@ export function Setup() {
         </p>
         <Button
           type="button"
-          onClick={() => navigate('/admin')}
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent(SUPER_ADMIN_SETUP_COMPLETE_EVENT));
+            navigate('/admin');
+          }}
           className="w-full h-12 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 font-semibold rounded-full transition-colors shadow-lg"
         >
           {t('auth.setup.goToLogin')}
@@ -296,9 +303,9 @@ export function Setup() {
     <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 p-8">
       <button
         type="button"
-        onClick={() => navigate('/admin')}
+        onClick={() => navigate('/')}
         className="mb-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-        aria-label="Back to sign in"
+        aria-label="Back to home"
       >
         <ArrowLeft className="w-5 h-5" />
       </button>

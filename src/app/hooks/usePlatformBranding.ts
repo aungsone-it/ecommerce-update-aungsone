@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useState } from "react";
-import { BRANDING } from "../../constants";
 import {
   applyVendorStoreLogoFavicon,
   resetDocumentFavicon,
 } from "../utils/documentFavicon";
 import {
   fetchPlatformBranding,
+  normalizePlatformStoreName,
   primePlatformBrandingFaviconFromCache,
   readPlatformBrandingCache,
   writePlatformBrandingCache,
@@ -25,7 +25,7 @@ export function usePlatformBranding(options?: { applyFavicon?: boolean }): Platf
     const primed = primePlatformBrandingFaviconFromCache();
     const cached = readPlatformBrandingCache();
     return {
-      storeName: cached?.storeName || primed.storeName || BRANDING.APP_NAME,
+      storeName: normalizePlatformStoreName(cached?.storeName || primed.storeName),
       storeLogo: cached?.storeLogo || primed.storeLogo || "",
     };
   });
@@ -42,7 +42,8 @@ export function usePlatformBranding(options?: { applyFavicon?: boolean }): Platf
       const prevLogo = readPlatformBrandingCache()?.storeLogo?.trim() || "";
       setBranding(data);
       writePlatformBrandingCache(data);
-      if ((data.storeLogo?.trim() || "") !== prevLogo) {
+      const nextLogo = data.storeLogo?.trim() || "";
+      if (!nextLogo || nextLogo !== prevLogo) {
         clearPlatformBrandingFaviconCache();
       }
     })();
@@ -53,10 +54,9 @@ export function usePlatformBranding(options?: { applyFavicon?: boolean }): Platf
       const next: PlatformBranding = {
         storeLogo:
           typeof d?.logoUrl === "string" ? d.logoUrl : (prev.storeLogo || ""),
-        storeName:
-          typeof d?.storeName === "string" && d.storeName.trim()
-            ? d.storeName.trim()
-            : (prev.storeName || BRANDING.APP_NAME),
+        storeName: normalizePlatformStoreName(
+          typeof d?.storeName === "string" ? d.storeName : prev.storeName
+        ),
       };
       if ((next.storeLogo?.trim() || "") !== (prev.storeLogo?.trim() || "")) {
         clearPlatformBrandingFaviconCache();
@@ -82,6 +82,7 @@ export function usePlatformBranding(options?: { applyFavicon?: boolean }): Platf
         onRasterized: (dataUrl) => writePlatformBrandingFaviconCache(logo, dataUrl),
       });
     } else {
+      clearPlatformBrandingFaviconCache();
       resetDocumentFavicon();
     }
   }, [applyFavicon, branding.storeLogo]);

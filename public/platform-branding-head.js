@@ -11,9 +11,14 @@
   var RESERVED = ["www", "api", "admin", "app", "cdn", "mail", "ftp", "staging", "preview"];
   var DEFAULT_ICON = "/favicon.svg";
 
-  function displayBrand(name) {
+  function normalizeStoreName(name) {
     var raw = String(name || "").trim();
-    if (!raw) return "SECURE";
+    if (!raw || /^secure\s+e-?commerce$/i.test(raw)) return "SECURE";
+    return raw;
+  }
+
+  function displayBrand(name) {
+    var raw = normalizeStoreName(name);
     if (raw.indexOf(" ") >= 0) {
       return raw
         .split(/\s+/)
@@ -94,6 +99,19 @@
     }
   }
 
+  function clearFaviconCache() {
+    try {
+      localStorage.removeItem(FAVICON_CACHE_KEY);
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function installDefaultIcon() {
+    clearFaviconCache();
+    installIcon(DEFAULT_ICON, "image/svg+xml");
+  }
+
   function writeFaviconCache(forLogo, dataUrl) {
     try {
       localStorage.setItem(
@@ -116,10 +134,10 @@
   function applyTitle(name) {
     var brand = displayBrand(name);
     var p = (location.pathname || "/").replace(/\/+$/, "") || "/";
-    if (p.indexOf("/admin") === 0) {
-      document.title = brand + " - Admin | Super Admin";
-    } else if (p === "/setup") {
+    if (p === "/admin/setup" || p === "/setup") {
       document.title = brand + " - Setup";
+    } else if (p.indexOf("/admin") === 0) {
+      document.title = brand + " - Admin | Super Admin";
     } else if (p === "/") {
       document.title = brand;
     }
@@ -176,10 +194,12 @@
   function applyBranding(data) {
     if (!data || typeof data !== "object") return;
     var logo = typeof data.storeLogo === "string" ? data.storeLogo.trim() : "";
-    var name = typeof data.storeName === "string" ? data.storeName.trim() : "SECURE";
+    var name = normalizeStoreName(
+      typeof data.storeName === "string" ? data.storeName : "SECURE"
+    );
     applyTitle(name);
     if (!logo) {
-      installIcon(DEFAULT_ICON, "image/svg+xml");
+      installDefaultIcon();
       return;
     }
     var favicon = readFaviconCache();
@@ -191,15 +211,15 @@
   }
 
   if (!shouldUsePlatformBranding()) {
-    installIcon(DEFAULT_ICON, "image/svg+xml");
+    installDefaultIcon();
     return;
   }
 
   var cached = readCache();
-  if (cached) {
+  if (cached && typeof cached.storeLogo === "string" && cached.storeLogo.trim()) {
     applyBranding(cached);
   } else {
-    installIcon(DEFAULT_ICON, "image/svg+xml");
+    installDefaultIcon();
   }
 
   fetch(
@@ -216,8 +236,8 @@
       var next = {
         storeLogo: typeof data.storeLogo === "string" ? data.storeLogo : "",
         storeName:
-          typeof data.storeName === "string" && data.storeName.trim()
-            ? data.storeName.trim()
+          typeof data.storeName === "string" && normalizeStoreName(data.storeName).trim()
+            ? normalizeStoreName(data.storeName)
             : "SECURE",
       };
       writeCache(next);

@@ -375,7 +375,7 @@ app.get("/make-server-16010b6f/settings/general", async (c) => {
     if (!settings) {
       // Return default settings if none exist
       return c.json({
-        storeName: "SECURE E-commerce",
+        storeName: "SECURE",
         storeEmail: "info@secure.com",
         storePhone: "+95 9 XXX XXX XXX",
         storeAddress: "123 Main St, Yangon, Myanmar",
@@ -390,7 +390,7 @@ app.get("/make-server-16010b6f/settings/general", async (c) => {
     console.error("Error loading general settings:", error);
     // Return default settings on timeout/error to prevent UI breaking
     return c.json({
-      storeName: "SECURE E-commerce",
+      storeName: "SECURE",
       storeEmail: "info@secure.com",
       storePhone: "+95 9 XXX XXX XXX",
       storeAddress: "123 Main St, Yangon, Myanmar",

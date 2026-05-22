@@ -1958,7 +1958,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // Update page title when store name loads (only once, not on every change)
   useEffect(() => {
-    if (siteSettings.storeName && siteSettings.storeName !== "SECURE E-commerce") {
+    if (siteSettings.storeName && siteSettings.storeName !== "SECURE") {
       document.title = siteSettings.storeName;
     }
   }, [siteSettings.storeName]);

@@ -1,6 +1,8 @@
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { BRANDING } from "../../constants";
-import { applyDocumentFavicon } from "./documentFavicon";
+import { applyDocumentFavicon, resetDocumentFavicon } from "./documentFavicon";
+
+export const DEFAULT_PLATFORM_FAVICON = "/favicon.svg";
 
 export const PLATFORM_BRANDING_CACHE_KEY = "admin:branding:v1";
 export const PLATFORM_BRANDING_FAVICON_CACHE_KEY = "admin:branding:favicon:v1";
@@ -86,8 +88,7 @@ export function displayPlatformBrandName(
   name: string | null | undefined,
   fallback = BRANDING.APP_NAME
 ): string {
-  const raw = String(name || "").trim();
-  if (!raw) return fallback;
+  const raw = normalizePlatformStoreName(name, fallback);
   if (raw.includes(" ")) {
     return raw
       .split(/\s+/)
@@ -96,6 +97,18 @@ export function displayPlatformBrandName(
       .join(" ");
   }
   return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+/** Default platform name from settings — maps legacy "SECURE E-commerce" to SECURE. */
+export function normalizePlatformStoreName(
+  name: string | null | undefined,
+  fallback = BRANDING.APP_NAME
+): string {
+  const raw = String(name || "").trim();
+  if (!raw || /^secure\s+e-?commerce$/i.test(raw)) {
+    return fallback;
+  }
+  return raw;
 }
 
 export async function fetchPlatformBranding(signal?: AbortSignal): Promise<PlatformBranding> {
@@ -115,27 +128,33 @@ export async function fetchPlatformBranding(signal?: AbortSignal): Promise<Platf
     const data = await response.json();
     return {
       storeLogo: typeof data.storeLogo === "string" ? data.storeLogo : "",
-      storeName:
-        typeof data.storeName === "string" && data.storeName.trim()
-          ? data.storeName.trim()
-          : BRANDING.APP_NAME,
+      storeName: normalizePlatformStoreName(data.storeName),
     };
   } catch {
     return fallback;
   }
 }
 
-/** Sync first paint: raster PNG from LS when available so history/autocomplete get the real logo. */
+/** Site default tab icon — used until General settings store logo is uploaded. */
+export function applyDefaultPlatformFavicon(): void {
+  resetDocumentFavicon();
+}
+
+/** Sync first paint: cached PNG logo, else default favicon when no logo in settings. */
 export function primePlatformBrandingFaviconFromCache(): PlatformBranding {
   const cached = readPlatformBrandingCache();
   const storeLogo = cached?.storeLogo?.trim() || "";
-  const storeName = cached?.storeName?.trim() || BRANDING.APP_NAME;
+  const storeName = normalizePlatformStoreName(cached?.storeName);
   if (typeof document !== "undefined") {
-    const favicon = readPlatformBrandingFaviconCache();
-    if (favicon?.dataUrl && favicon.forLogo === storeLogo) {
-      applyDocumentFavicon(favicon.dataUrl);
-    } else if (storeLogo) {
-      applyDocumentFavicon(storeLogo);
+    if (!storeLogo) {
+      applyDefaultPlatformFavicon();
+    } else {
+      const favicon = readPlatformBrandingFaviconCache();
+      if (favicon?.dataUrl && favicon.forLogo === storeLogo) {
+        applyDocumentFavicon(favicon.dataUrl);
+      } else {
+        applyDocumentFavicon(storeLogo);
+      }
     }
   }
   return { storeLogo, storeName };

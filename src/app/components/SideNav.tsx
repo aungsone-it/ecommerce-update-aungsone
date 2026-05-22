@@ -13,6 +13,7 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import {
   readPlatformBrandingCache,
   writePlatformBrandingCache,
+  normalizePlatformStoreName,
 } from "../utils/platformBranding";
 
 // Use placeholder images for production deployment
@@ -78,7 +79,7 @@ export function SideNav({
     () => readAdminBrandingCache()?.storeLogo || ""
   );
   const [storeName, setStoreName] = useState<string>(
-    () => readAdminBrandingCache()?.storeName || "SECURE"
+    () => normalizePlatformStoreName(readAdminBrandingCache()?.storeName)
   );
   
   // 🔥 Fetch store logo and name on mount
@@ -104,10 +105,7 @@ export function SideNav({
         if (response.ok) {
           const data = await response.json();
           const nextLogo = typeof data.storeLogo === "string" ? data.storeLogo : "";
-          const nextName =
-            typeof data.storeName === "string" && data.storeName.trim()
-              ? data.storeName
-              : "SECURE";
+          const nextName = normalizePlatformStoreName(data.storeName);
           setStoreLogo(nextLogo);
           setStoreName(nextName);
           writeAdminBrandingCache({
@@ -134,10 +132,9 @@ export function SideNav({
       const prev = readAdminBrandingCache() || {};
       const nextLogo =
         typeof event.detail.logoUrl === "string" ? event.detail.logoUrl : (prev.storeLogo || "");
-      const nextName =
-        typeof event.detail.storeName === "string" && event.detail.storeName.trim()
-          ? event.detail.storeName
-          : (prev.storeName || "SECURE");
+      const nextName = normalizePlatformStoreName(
+        typeof event.detail.storeName === "string" ? event.detail.storeName : prev.storeName
+      );
       setStoreLogo(nextLogo);
       setStoreName(nextName);
       writeAdminBrandingCache({

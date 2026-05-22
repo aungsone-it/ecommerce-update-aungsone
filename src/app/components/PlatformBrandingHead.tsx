@@ -7,6 +7,8 @@ import {
   primePlatformBrandingFaviconFromCache,
   readPlatformBrandingCache,
   writePlatformBrandingFaviconCache,
+  clearPlatformBrandingFaviconCache,
+  applyDefaultPlatformFavicon,
 } from "../utils/platformBranding";
 import { applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
 
@@ -32,6 +34,9 @@ export function PlatformBrandingHead() {
       void applyVendorStoreLogoFavicon(logo, {
         onRasterized: (dataUrl) => writePlatformBrandingFaviconCache(logo, dataUrl),
       });
+    } else {
+      clearPlatformBrandingFaviconCache();
+      applyDefaultPlatformFavicon();
     }
   }, [applyPlatform, location.pathname]);
 

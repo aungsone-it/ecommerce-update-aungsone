@@ -71,7 +71,7 @@ export function AnimatedOutlet() {
     }
 
     // Setup pages (check before vendor routes)
-    if (pathname === "/setup" || pathname === "/vendor/setup" || pathname === "/vendor/application") {
+    if (pathname === "/setup" || pathname === "/admin/setup" || pathname === "/vendor/setup" || pathname === "/vendor/application") {
       return "setup";
     }
 

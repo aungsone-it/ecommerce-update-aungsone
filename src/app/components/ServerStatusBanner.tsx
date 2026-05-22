@@ -13,7 +13,7 @@ interface ServerStatusBannerProps {
 export function ServerStatusBanner({
   status,
   onRetry,
-  storeName = "SECURE E-commerce",
+  storeName = "SECURE",
   showCheckingScreen = true,
 }: ServerStatusBannerProps) {
   if (status === 'healthy') {

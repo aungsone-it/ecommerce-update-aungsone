@@ -228,7 +228,7 @@ export function Login() {
             <p className="text-sm text-slate-600 dark:text-slate-400">
               Need to create an admin account?{' '}
               <a 
-                href="/setup" 
+                href="/admin/setup" 
                 className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-semibold transition-colors"
               >
                 Go to Setup
