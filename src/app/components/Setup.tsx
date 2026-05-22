@@ -1,5 +1,5 @@
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ArrowLeft, Eye, EyeOff, Loader2, CheckCircle } from 'lucide-react';
@@ -9,6 +9,44 @@ import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { usePlatformBranding } from '../hooks/usePlatformBranding';
 import { buildPlatformLandingDocumentTitle } from '../utils/superAdminDocumentTitle';
+import { isValidEmail } from '../../utils/helpers';
+
+const inputClassName =
+  'h-11 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg focus:border-slate-400 dark:focus:border-slate-500 transition-colors text-slate-900 dark:text-white placeholder:text-slate-400';
+
+type SetupFormData = {
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  phone: string;
+};
+
+type SetupField = keyof SetupFormData | 'terms';
+type FieldErrors = Partial<Record<SetupField, string>>;
+
+function isValidSetupPhone(phone: string): boolean {
+  const raw = phone.trim();
+  if (!raw) return true;
+  const digits = raw.replace(/\D/g, '');
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+function isStrongEnoughPassword(password: string): boolean {
+  if (password.length < 8) return false;
+  return /[A-Za-z]/.test(password) && /\d/.test(password);
+}
+
+function fieldInputClass(hasError: boolean): string {
+  return hasError
+    ? `${inputClassName} border-red-400 dark:border-red-600 focus:border-red-500 dark:focus:border-red-500`
+    : inputClassName;
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-xs text-red-600 dark:text-red-400">{message}</p>;
+}
 
 export function Setup() {
   const { t, language, setLanguage } = useLanguage();
@@ -16,8 +54,10 @@ export function Setup() {
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [touched, setTouched] = useState<Partial<Record<SetupField, boolean>>>({});
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<SetupFormData>({
     name: '',
     email: '',
     password: '',
@@ -33,26 +73,124 @@ export function Setup() {
     document.title = buildPlatformLandingDocumentTitle(platformBranding.storeName);
   }, [platformBranding.storeName]);
 
+  const validateField = useCallback(
+    (field: SetupField, data: SetupFormData, terms: boolean): string | undefined => {
+      const name = data.name.trim();
+      const email = data.email.trim();
+      const phone = data.phone.trim();
+
+      switch (field) {
+        case 'name':
+          if (!name) return t('auth.setup.nameRequired');
+          if (name.length < 2) return t('auth.setup.nameTooShort');
+          return undefined;
+        case 'email':
+          if (!email) return t('auth.setup.emailRequired');
+          if (!isValidEmail(email)) return t('auth.setup.emailInvalid');
+          return undefined;
+        case 'phone':
+          if (!isValidSetupPhone(phone)) return t('auth.setup.phoneInvalid');
+          return undefined;
+        case 'password':
+          if (!data.password) return t('auth.setup.passwordTooShort');
+          if (data.password.length < 8) return t('auth.setup.passwordTooShort');
+          if (!isStrongEnoughPassword(data.password)) return t('auth.setup.passwordWeak');
+          return undefined;
+        case 'confirmPassword':
+          if (!data.confirmPassword) return t('auth.setup.confirmRequired');
+          if (data.password !== data.confirmPassword) return t('auth.setup.passwordMismatch');
+          return undefined;
+        case 'terms':
+          if (!terms) return t('auth.login.agreeError');
+          return undefined;
+        default:
+          return undefined;
+      }
+    },
+    [t]
+  );
+
+  const validateAll = useCallback(
+    (data: SetupFormData, terms: boolean): FieldErrors => {
+      const fields: SetupField[] = [
+        'name',
+        'email',
+        'phone',
+        'password',
+        'confirmPassword',
+        'terms',
+      ];
+      const next: FieldErrors = {};
+      for (const field of fields) {
+        const message = validateField(field, data, terms);
+        if (message) next[field] = message;
+      }
+      return next;
+    },
+    [validateField]
+  );
+
+  const markTouched = (field: SetupField) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  };
+
+  const updateField = <K extends keyof SetupFormData>(key: K, value: SetupFormData[K]) => {
+    setFormData((prev) => {
+      const next = { ...prev, [key]: value };
+      if (touched[key]) {
+        setFieldErrors((errs) => ({
+          ...errs,
+          [key]: validateField(key, next, agreedToTerms),
+          ...(key === 'password' && touched.confirmPassword
+            ? { confirmPassword: validateField('confirmPassword', next, agreedToTerms) }
+            : {}),
+        }));
+      }
+      return next;
+    });
+    if (error) setError('');
+  };
+
+  const handleBlur = (field: SetupField) => {
+    markTouched(field);
+    setFieldErrors((prev) => ({
+      ...prev,
+      [field]: validateField(field, formData, agreedToTerms),
+      ...(field === 'password' && formData.confirmPassword
+        ? { confirmPassword: validateField('confirmPassword', formData, agreedToTerms) }
+        : {}),
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (!agreedToTerms) {
-      setError(t('auth.login.agreeError'));
-      return;
-    }
+    const nextErrors = validateAll(formData, agreedToTerms);
+    setFieldErrors(nextErrors);
+    setTouched({
+      name: true,
+      email: true,
+      phone: true,
+      password: true,
+      confirmPassword: true,
+      terms: true,
+    });
 
-    if (formData.password !== formData.confirmPassword) {
-      setError(t('auth.setup.passwordMismatch'));
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError(t('auth.setup.passwordTooShort'));
+    if (Object.keys(nextErrors).length > 0) {
+      const firstInvalid = document.querySelector<HTMLElement>('[data-invalid="true"]');
+      firstInvalid?.focus();
       return;
     }
 
     setLoading(true);
+
+    const payload = {
+      name: formData.name.trim(),
+      email: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      phone: formData.phone.trim(),
+    };
 
     try {
       const response = await fetch(
@@ -63,12 +201,7 @@ export function Setup() {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${publicAnonKey}`,
           },
-          body: JSON.stringify({
-            name: formData.name,
-            email: formData.email,
-            password: formData.password,
-            phone: formData.phone,
-          }),
+          body: JSON.stringify(payload),
         }
       );
 
@@ -88,7 +221,7 @@ export function Setup() {
     }
   };
 
-  const shell = (children: ReactNode, footerExtra?: ReactNode) => (
+  const shell = (children: ReactNode) => (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 flex items-center justify-center p-4">
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
@@ -106,32 +239,32 @@ export function Setup() {
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#8882_1px,transparent_1px),linear-gradient(to_bottom,#8882_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,#000_70%,transparent_110%)]" />
       </div>
 
-      <div className="w-full max-w-xl sm:max-w-2xl relative z-10">
+      <div className="w-full max-w-xl relative z-10">
         <div className="flex justify-center mb-6">
           <div className="text-4xl font-bold text-slate-900 dark:text-white drop-shadow-2xl">
             SECURE
           </div>
         </div>
+
         {children}
-        {footerExtra ?? (
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
-              className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border border-slate-200/60 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-300 shadow-md hover:shadow-lg"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
-                />
-              </svg>
-              {language === 'en' ? '中文' : 'English'}
-            </button>
-          </div>
-        )}
+
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border border-slate-200/60 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-300 shadow-md hover:shadow-lg"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"
+              />
+            </svg>
+            {language === 'en' ? '中文' : 'English'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -177,7 +310,7 @@ export function Setup() {
         <p className="text-sm text-slate-500 dark:text-slate-400">{t('auth.setup.subtitle')}</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div className="space-y-2">
           <Label htmlFor="setup-name" className="text-slate-700 dark:text-slate-300 font-medium text-sm">
             {t('auth.setup.name')}
@@ -186,12 +319,15 @@ export function Setup() {
             id="setup-name"
             type="text"
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            onChange={(e) => updateField('name', e.target.value)}
+            onBlur={() => handleBlur('name')}
             placeholder={t('auth.setup.namePlaceholder')}
-            required
             autoComplete="name"
-            className="h-11 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg focus:border-slate-400 dark:focus:border-slate-500 transition-colors text-slate-900 dark:text-white placeholder:text-slate-400"
+            aria-invalid={!!fieldErrors.name}
+            data-invalid={fieldErrors.name ? 'true' : undefined}
+            className={fieldInputClass(!!fieldErrors.name)}
           />
+          <FieldError message={fieldErrors.name} />
         </div>
 
         <div className="space-y-2">
@@ -202,12 +338,15 @@ export function Setup() {
             id="setup-email"
             type="email"
             value={formData.email}
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            onChange={(e) => updateField('email', e.target.value)}
+            onBlur={() => handleBlur('email')}
             placeholder={t('auth.setup.emailPlaceholder')}
-            required
             autoComplete="email"
-            className="h-11 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg focus:border-slate-400 dark:focus:border-slate-500 transition-colors text-slate-900 dark:text-white placeholder:text-slate-400"
+            aria-invalid={!!fieldErrors.email}
+            data-invalid={fieldErrors.email ? 'true' : undefined}
+            className={fieldInputClass(!!fieldErrors.email)}
           />
+          <FieldError message={fieldErrors.email} />
         </div>
 
         <div className="space-y-2">
@@ -218,11 +357,15 @@ export function Setup() {
             id="setup-phone"
             type="tel"
             value={formData.phone}
-            onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+            onChange={(e) => updateField('phone', e.target.value)}
+            onBlur={() => handleBlur('phone')}
             placeholder="+95 9 XXX XXX XXX"
             autoComplete="tel"
-            className="h-11 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg focus:border-slate-400 dark:focus:border-slate-500 transition-colors text-slate-900 dark:text-white placeholder:text-slate-400"
+            aria-invalid={!!fieldErrors.phone}
+            data-invalid={fieldErrors.phone ? 'true' : undefined}
+            className={fieldInputClass(!!fieldErrors.phone)}
           />
+          <FieldError message={fieldErrors.phone} />
         </div>
 
         <div className="space-y-2">
@@ -234,11 +377,13 @@ export function Setup() {
               id="setup-password"
               type={showPassword ? 'text' : 'password'}
               value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              onChange={(e) => updateField('password', e.target.value)}
+              onBlur={() => handleBlur('password')}
               placeholder={t('auth.setup.passwordPlaceholder')}
-              required
               autoComplete="new-password"
-              className="h-11 pr-10 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg focus:border-slate-400 dark:focus:border-slate-500 transition-colors text-slate-900 dark:text-white placeholder:text-slate-400"
+              aria-invalid={!!fieldErrors.password}
+              data-invalid={fieldErrors.password ? 'true' : undefined}
+              className={`pr-10 ${fieldInputClass(!!fieldErrors.password)}`}
             />
             <button
               type="button"
@@ -249,6 +394,10 @@ export function Setup() {
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+          <FieldError message={fieldErrors.password} />
+          {!fieldErrors.password && (
+            <p className="text-xs text-slate-400 dark:text-slate-500">{t('auth.changePassword.passwordHint')}</p>
+          )}
         </div>
 
         <div className="space-y-2">
@@ -260,11 +409,13 @@ export function Setup() {
               id="setup-confirm"
               type={showConfirmPassword ? 'text' : 'password'}
               value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+              onChange={(e) => updateField('confirmPassword', e.target.value)}
+              onBlur={() => handleBlur('confirmPassword')}
               placeholder={t('auth.setup.confirmPasswordPlaceholder')}
-              required
               autoComplete="new-password"
-              className="h-11 pr-10 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg focus:border-slate-400 dark:focus:border-slate-500 transition-colors text-slate-900 dark:text-white placeholder:text-slate-400"
+              aria-invalid={!!fieldErrors.confirmPassword}
+              data-invalid={fieldErrors.confirmPassword ? 'true' : undefined}
+              className={`pr-10 ${fieldInputClass(!!fieldErrors.confirmPassword)}`}
             />
             <button
               type="button"
@@ -275,21 +426,36 @@ export function Setup() {
               {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           </div>
+          <FieldError message={fieldErrors.confirmPassword} />
         </div>
 
-        <div className="flex items-start gap-2">
-          <Checkbox
-            id="setup-terms"
-            checked={agreedToTerms}
-            onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
-            className="mt-0.5"
-          />
-          <Label
-            htmlFor="setup-terms"
-            className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed cursor-pointer"
-          >
-            {t('auth.login.agree')}
-          </Label>
+        <div className="space-y-1.5">
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="setup-terms"
+              checked={agreedToTerms}
+              onCheckedChange={(checked) => {
+                const next = checked === true;
+                setAgreedToTerms(next);
+                if (touched.terms || !next) {
+                  setFieldErrors((prev) => ({
+                    ...prev,
+                    terms: validateField('terms', formData, next),
+                  }));
+                }
+              }}
+              onBlur={() => handleBlur('terms')}
+              className="mt-0.5"
+              aria-invalid={!!fieldErrors.terms}
+            />
+            <Label
+              htmlFor="setup-terms"
+              className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed cursor-pointer"
+            >
+              {t('auth.login.agree')}
+            </Label>
+          </div>
+          <FieldError message={fieldErrors.terms} />
         </div>
 
         {error && (
