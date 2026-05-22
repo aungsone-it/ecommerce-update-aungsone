@@ -125,7 +125,6 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
   const [weight, setWeight] = useState(initialData?.weight || "");
   const [category, setCategory] = useState(initialData?.category || "");
   const [selectedVendors, setSelectedVendors] = useState<string[]>(initialData?.selectedVendors || []); // 🔥 Multi-select vendors
-  const [collaborator, setCollaborator] = useState(initialData?.collaborator || "");
   const [status, setStatus] = useState(initialData?.status || "active");
   const [trackQuantity, setTrackQuantity] = useState(initialData?.trackQuantity !== undefined ? initialData.trackQuantity : true);
   const [continueSellingOutOfStock, setContinueSellingOutOfStock] = useState(initialData?.continueSellingOutOfStock || false);
@@ -593,7 +592,6 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
         weight,
         category,
         selectedVendors,
-        collaborator,
         status,
         trackQuantity,
         continueSellingOutOfStock,
@@ -815,45 +813,43 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
               <CardContent className="space-y-4">
                 {/* Upload Zone */}
                 {!isReadOnly && (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-purple-400 transition-colors bg-slate-50"
-                  >
-                    <div className="flex flex-col items-center gap-3">
-                      {uploadingImages ? (
-                        <>
-                          <Loader2 className="w-10 h-10 text-purple-600 animate-spin" />
-                          <p className="text-sm font-medium text-slate-700">Uploading images...</p>
-                        </>
-                      ) : (
-                        <>
-                          <div className="w-14 h-14 rounded-full bg-purple-100 flex items-center justify-center">
-                            <ImageIcon className="w-7 h-7 text-purple-600" />
-                          </div>
-                          <div>
-                            <label htmlFor="image-upload" className="cursor-pointer">
-                              <span className="text-sm font-medium text-purple-600 hover:text-purple-700">
-                                Click to upload
-                              </span>
-                              <span className="text-sm text-slate-500"> or drag and drop</span>
-                            </label>
-                            <p className="text-xs text-slate-500 mt-1">
-                              PNG, JPG, GIF up to 10MB ({10 - images.length} {10 - images.length === 1 ? 'slot' : 'slots'} remaining)
-                            </p>
-                          </div>
-                          <input
-                            id="image-upload"
-                            type="file"
-                            multiple
-                            accept="image/*"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            disabled={images.length >= 10}
-                          />
-                        </>
-                      )}
-                    </div>
+                  <div className="relative min-h-[11rem] rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 transition-colors hover:border-purple-400">
+                    {uploadingImages ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-8 text-center">
+                        <Loader2 className="h-10 w-10 animate-spin text-purple-600" />
+                        <p className="text-sm font-medium text-slate-700">Uploading images...</p>
+                      </div>
+                    ) : (
+                      <label
+                        htmlFor="image-upload"
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                        className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-3 p-8 text-center"
+                      >
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-purple-100">
+                          <ImageIcon className="h-7 w-7 text-purple-600" />
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-purple-600 hover:text-purple-700">
+                            Click to upload
+                          </span>
+                          <span className="text-sm text-slate-500"> or drag and drop</span>
+                          <p className="mt-1 text-xs text-slate-500">
+                            PNG, JPG, GIF up to 10MB ({10 - images.length}{" "}
+                            {10 - images.length === 1 ? "slot" : "slots"} remaining)
+                          </p>
+                        </div>
+                      </label>
+                    )}
+                    <input
+                      id="image-upload"
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="sr-only"
+                      disabled={images.length >= 10 || uploadingImages}
+                    />
                   </div>
                 )}
                 
@@ -1553,23 +1549,6 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
                       ))}
                     </div>
                   )}
-                </div>
-                <div>
-                  <Label htmlFor="collaborator">{t('addProduct.collaboratorLabel')}</Label>
-                  <Select value={collaborator} onValueChange={setCollaborator} disabled={isReadOnly}>
-                    <SelectTrigger className="mt-2">
-                      <SelectValue placeholder={t('addProduct.collaboratorPlaceholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Audio Partners">Audio Partners</SelectItem>
-                      <SelectItem value="Wearable World">Wearable World</SelectItem>
-                      <SelectItem value="Fitness First">Fitness First</SelectItem>
-                      <SelectItem value="Travel Experts">Travel Experts</SelectItem>
-                      <SelectItem value="Style Studio">Style Studio</SelectItem>
-                      <SelectItem value="Urban Style">Urban Style</SelectItem>
-                      <SelectItem value="Photo Pro">Photo Pro</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
               </CardContent>
             </Card>
