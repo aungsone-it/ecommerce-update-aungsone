@@ -27,6 +27,12 @@ import {
   getCustomerOrderStatusColor,
   getCustomerOrderStatusLabel,
 } from "../utils/normalizeOrderBadgeStatus";
+import {
+  canPurchase,
+  getEffectiveInventory,
+  isOutOfStockDisplay,
+  showLowStockBadge,
+} from "../utils/productInventory";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
@@ -143,6 +149,8 @@ interface Product {
   images: string[];
   category: string;
   inventory: number;
+  trackQuantity?: boolean;
+  continueSellingOutOfStock?: boolean;
   rating: number;
   reviewCount: number;
   hasVariants?: boolean;
@@ -467,6 +475,9 @@ function productToCardProduct(product: Product): ProductCardProduct {
     salesVolume: product.reviewCount || 0,
     sku: product.sku,
     hasVariants: product.hasVariants,
+    inventory: product.inventory,
+    trackQuantity: product.trackQuantity,
+    continueSellingOutOfStock: product.continueSellingOutOfStock,
     variantOptions,
     variants: product.variants,
   };
@@ -3988,6 +3999,24 @@ export function VendorStoreView({
 
   const handleAddToCart = (product: Product, overrides?: VendorAddToCartOverrides): boolean => {
     try {
+      let variantForStock: any = null;
+      if (overrides?.variantSku && product.variants?.length) {
+        variantForStock = product.variants.find(
+          (v: any) => String(v?.sku) === String(overrides.variantSku)
+        );
+      }
+      if (!variantForStock) {
+        const selections = selectedProduct?.id === product.id ? vendorVariantSelections : {};
+        variantForStock = findMatchingVariant(product, selections);
+      }
+      const qtyCheck =
+        overrides?.quantity ??
+        (selectedProduct?.id === product.id ? quantity : 1);
+      if (!canPurchase(product, variantForStock, qtyCheck)) {
+        toast.error("This item is out of stock");
+        return false;
+      }
+
       if (overrides?.buyNow) {
         if (!user) {
           toast.error("Please sign in to continue to checkout");
@@ -4737,7 +4766,10 @@ export function VendorStoreView({
     const displayPriceVal = dd?.price ?? selectedProduct.price;
     const displayCompareAt = dd?.compareAtPrice;
     const displaySkuVal = dd?.sku ?? selectedProduct.sku;
-    const displayInventoryVal = dd?.inventory ?? selectedProduct.inventory;
+    const vendorStockVariant = dd?.variant ?? findMatchingVariant(selectedProduct, vendorVariantSelections);
+    const vendorOutOfStock = isOutOfStockDisplay(selectedProduct, vendorStockVariant, quantity);
+    const vendorCanPurchase = canPurchase(selectedProduct, vendorStockVariant, quantity);
+    const vendorLowStock = showLowStockBadge(selectedProduct, vendorStockVariant);
 
     return (
       <>
@@ -5048,12 +5080,12 @@ export function VendorStoreView({
                   )}
                   <Badge
                     className={
-                      displayInventoryVal === 0
+                      vendorOutOfStock
                         ? "bg-red-100 text-red-800 hover:bg-red-200 border border-red-300 text-xs font-medium px-2.5 py-0.5"
                         : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 text-xs font-medium px-2.5 py-0.5"
                     }
                   >
-                    {displayInventoryVal === 0 ? "Out of Stock" : "In Stock"}
+                    {vendorOutOfStock ? "Out of Stock" : "In Stock"}
                   </Badge>
                 </div>
                 <h1 className="text-sm sm:text-base font-semibold text-slate-900 mb-2 leading-tight">
@@ -5168,20 +5200,20 @@ export function VendorStoreView({
                         <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">Availability</p>
                         <div className="flex items-center gap-2">
                           <p className={`font-medium text-sm ${
-                            displayInventoryVal === 0 
-                              ? "text-red-600" 
-                              : displayInventoryVal < 10 
-                                ? "text-amber-600" 
+                            vendorOutOfStock
+                              ? "text-red-600"
+                              : vendorLowStock
+                                ? "text-amber-600"
                                 : "text-emerald-700"
                           }`}>
-                            {displayInventoryVal || 0} units
+                            {getEffectiveInventory(selectedProduct, vendorStockVariant)} units
                           </p>
-                          {displayInventoryVal === 0 && (
+                          {vendorOutOfStock && (
                             <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">
                               OUT OF STOCK
                             </Badge>
                           )}
-                          {displayInventoryVal > 0 && displayInventoryVal < 10 && (
+                          {vendorLowStock && (
                             <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-xs">
                               LOW STOCK
                             </Badge>
@@ -5203,29 +5235,29 @@ export function VendorStoreView({
               {/* Action Buttons */}
               <div className="flex gap-2 items-center">
                 <Button
-                  disabled={displayInventoryVal === 0}
-                  className={displayInventoryVal === 0 
+                  disabled={!vendorCanPurchase}
+                  className={!vendorCanPurchase
                     ? "bg-slate-300 h-10 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
                     : "bg-amber-600 hover:bg-amber-700 h-10 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
                   }
                   onClick={() => {
-                    if (displayInventoryVal === 0) return;
+                    if (!vendorCanPurchase) return;
                     handleAddToCart(selectedProduct);
                   }}
                 >
                   <span className="block leading-none">
-                    {displayInventoryVal === 0 ? "OUT OF STOCK" : "ADD TO CART"}
+                    {vendorOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
                   </span>
                 </Button>
                 <Button 
-                  disabled={displayInventoryVal === 0}
+                  disabled={!vendorCanPurchase}
                   variant="outline"
-                  className={displayInventoryVal === 0
+                  className={!vendorCanPurchase
                     ? "h-10 border-2 border-slate-300 bg-slate-100 text-slate-400 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
                     : "h-10 border-2 border-amber-600 hover:bg-amber-50 hover:border-amber-700 text-amber-700 hover:text-amber-800 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
                   }
                   onClick={() => {
-                    if (displayInventoryVal === 0) return;
+                    if (!vendorCanPurchase) return;
                     // Buy now: open checkout in-place. Do not navigate to store home — sibling
                     // routes remount VendorStorefrontPage and drop showCheckout + cart state.
                     handleAddToCart(selectedProduct, { buyNow: true });

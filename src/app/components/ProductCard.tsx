@@ -11,6 +11,7 @@ import {
 } from "./ProductVariantChips";
 import { ProductVariantQuickAddModal } from "./ProductVariantQuickAddModal";
 import { gridDisplayImageUrl } from "../utils/module-cache";
+import { isOutOfStockDisplay } from "../utils/productInventory";
 
 export type ProductCardProduct = VariantProduct & {
   image: string;
@@ -65,9 +66,11 @@ export const ProductCard = ({
   const heroImage =
     product.images && product.images.length > 0 ? product.images[0] : product.image;
   const heroImageForGrid = gridDisplayImageUrl(heroImage);
+  const outOfStock = isOutOfStockDisplay(product, resolvedVariant, 1);
 
   const handleAdd = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!showVariantPicker && outOfStock) return;
     if (showVariantPicker) {
       setVariantModalOpen(true);
       return;
@@ -120,6 +123,11 @@ export const ProductCard = ({
                   alt={product.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
+                {outOfStock && (
+                  <span className="absolute left-1 top-1 z-10 rounded bg-red-600/90 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-white">
+                    Out of stock
+                  </span>
+                )}
               </div>
 
               {/* Product Info */}
@@ -163,12 +171,17 @@ export const ProductCard = ({
 
                     {/* Add to Cart Button */}
                     <motion.button
-                      className="w-9 h-9 bg-amber-600 hover:bg-amber-700 rounded-lg flex items-center justify-center transition-all"
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                        outOfStock
+                          ? "bg-slate-300 cursor-not-allowed"
+                          : "bg-amber-600 hover:bg-amber-700"
+                      }`}
                       onClick={handleAdd}
-                      whileTap={{ scale: 0.92 }}
+                      disabled={outOfStock}
+                      whileTap={outOfStock ? undefined : { scale: 0.92 }}
                       transition={{ duration: 0.1 }}
                     >
-                      <Plus className="w-4.5 h-4.5 text-white" />
+                      <Plus className={`w-4.5 h-4.5 ${outOfStock ? "text-slate-500" : "text-white"}`} />
                     </motion.button>
                   </div>
                 </div>
@@ -207,17 +220,33 @@ export const ProductCard = ({
               alt={product.name}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
+            {outOfStock && (
+              <span className="absolute left-2 top-2 z-10 rounded bg-red-600/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                Out of stock
+              </span>
+            )}
 
             {/* Action Buttons - Hidden by default on desktop, shown on hover. Always visible on mobile */}
             <div className="absolute top-2 right-2 md:top-2.5 md:right-2.5 flex flex-col gap-1.5 z-10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
               {/* Add to Cart Button */}
               <motion.button
-                className="w-7 h-7 md:w-9 md:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
+                className={`w-7 h-7 md:w-9 md:h-9 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all group/btn ${
+                  outOfStock
+                    ? "bg-slate-200/90 cursor-not-allowed"
+                    : "bg-white/90 hover:bg-amber-600"
+                }`}
                 onClick={handleAdd}
-                whileTap={{ scale: 0.92 }}
+                disabled={outOfStock}
+                whileTap={outOfStock ? undefined : { scale: 0.92 }}
                 transition={{ duration: 0.1 }}
               >
-                <Plus className="w-3.5 h-3.5 md:w-4.5 md:h-4.5 text-slate-900 group-hover/btn:text-white transition-colors" />
+                <Plus
+                  className={`w-3.5 h-3.5 md:w-4.5 md:h-4.5 transition-colors ${
+                    outOfStock
+                      ? "text-slate-400"
+                      : "text-slate-900 group-hover/btn:text-white"
+                  }`}
+                />
               </motion.button>
 
               {/* Wishlist Button */}

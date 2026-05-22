@@ -2858,6 +2858,8 @@ function mapPlatformProductToListRow(product: any) {
     status: product.status,
     inventory: product.inventory ?? product.stock ?? 0,
     stock: product.inventory ?? product.stock ?? 0,
+    trackQuantity: product.trackQuantity !== undefined ? product.trackQuantity : true,
+    continueSellingOutOfStock: product.continueSellingOutOfStock || false,
     salesVolume: product.salesVolume || 0,
     createDate: product.createDate || product.createdAt,
     image: product.images?.[0] || product.image || null,
@@ -2917,6 +2919,8 @@ function mapVendorStorefrontProductRow(p: any) {
     images: p.images || [],
     category: String(p.category ?? "").trim(),
     inventory: p.inventory || 0,
+    trackQuantity: p.trackQuantity !== undefined ? p.trackQuantity : true,
+    continueSellingOutOfStock: p.continueSellingOutOfStock || false,
     rating: 4.5,
     reviewCount: Math.floor(Math.random() * 100),
     hasVariants: p.hasVariants || false,
@@ -2938,6 +2942,8 @@ function toSlimListRow(p: any) {
     status: p.status,
     inventory: p.inventory,
     stock: p.stock,
+    trackQuantity: p.trackQuantity !== undefined ? p.trackQuantity : true,
+    continueSellingOutOfStock: p.continueSellingOutOfStock || false,
     salesVolume: p.salesVolume,
     createDate: p.createDate,
     image: p.image,
@@ -4826,6 +4832,10 @@ async function validateStockForOrderLineItems(
         });
         continue;
       }
+      const trackQty = product.trackQuantity !== false;
+      const continueSelling = !!product.continueSellingOutOfStock;
+      if (!trackQty || continueSelling) continue;
+
       const requestedQty = item.quantity || 1;
       const availableStock =
         variantIndex >= 0
@@ -4877,9 +4887,13 @@ async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "re
         );
         continue;
       }
+      const trackQty = product.trackQuantity !== false;
+      if (!trackQty) continue;
+
       const qty = item.quantity || 1;
       const sign = direction === "deduct" ? -1 : 1;
       const delta = sign * qty;
+      const allowNegative = !!product.continueSellingOutOfStock;
 
       let oldStock = 0;
       let newStock = 0;
@@ -4887,7 +4901,11 @@ async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "re
       if (variantIndex >= 0) {
         const v = product.variants[variantIndex];
         oldStock = Number(v.inventory ?? v.stock ?? 0);
-        newStock = Math.max(0, oldStock + delta);
+        if (direction === "deduct") {
+          newStock = allowNegative ? oldStock - qty : Math.max(0, oldStock - qty);
+        } else {
+          newStock = oldStock + qty;
+        }
         product.variants[variantIndex] = {
           ...v,
           inventory: newStock,
@@ -4897,10 +4915,11 @@ async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "re
         recomputeParentStockFromVariants(product);
       } else {
         oldStock = Number(product.inventory ?? product.stock ?? 0);
-        newStock =
-          direction === "deduct"
-            ? Math.max(0, oldStock - qty)
-            : oldStock + qty;
+        if (direction === "deduct") {
+          newStock = allowNegative ? oldStock - qty : Math.max(0, oldStock - qty);
+        } else {
+          newStock = oldStock + qty;
+        }
         product.inventory = newStock;
         product.stock = newStock;
       }
@@ -5011,6 +5030,10 @@ app.post("/make-server-16010b6f/orders", async (c) => {
             });
             continue;
           }
+          const trackQty = product.trackQuantity !== false;
+          const continueSelling = !!product.continueSellingOutOfStock;
+          if (!trackQty || continueSelling) continue;
+
           const requestedQty = item.quantity || 1;
           const availableStock =
             variantIndex >= 0

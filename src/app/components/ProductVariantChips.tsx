@@ -3,6 +3,9 @@ import { Button } from "./ui/button";
 export type VariantProduct = {
   id: string;
   hasVariants?: boolean;
+  inventory?: number | string;
+  trackQuantity?: boolean;
+  continueSellingOutOfStock?: boolean;
   variantOptions?: { name: string; values: string[] }[];
   variants?: {
     sku: string;
@@ -10,7 +13,7 @@ export type VariantProduct = {
     option2?: string;
     option3?: string;
     price: string;
-    inventory?: number;
+    inventory?: number | string;
   }[];
 };
 

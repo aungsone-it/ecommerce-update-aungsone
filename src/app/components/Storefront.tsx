@@ -100,6 +100,12 @@ import {
   getCustomerOrderStatusColor,
   getCustomerOrderStatusLabel,
 } from "../utils/normalizeOrderBadgeStatus";
+import {
+  canPurchase,
+  getEffectiveInventory,
+  isOutOfStockDisplay,
+  showLowStockBadge,
+} from "../utils/productInventory";
 
 // 🚀 MODULE-LEVEL CACHE - These persist across all navigations and component remounts
 // This is critical for reducing Supabase API calls from 20k → ~100-500
@@ -154,6 +160,8 @@ function productFromBySkuApi(raw: any): Product {
     collaborator: String(raw.collaborator || ""),
     category: String(raw.category || ""),
     inventory: Number(raw.inventory ?? raw.stock ?? 0),
+    trackQuantity: raw.trackQuantity !== undefined ? raw.trackQuantity : true,
+    continueSellingOutOfStock: !!raw.continueSellingOutOfStock,
     salesVolume: Number(raw.salesVolume ?? 0),
     createDate: String(raw.createDate || raw.createdAt || ""),
     description: raw.description,
@@ -186,6 +194,8 @@ interface Product {
   name: string;
   status: "active" | "off-shelf";
   inventory: number;
+  trackQuantity?: boolean;
+  continueSellingOutOfStock?: boolean;
   category: string;
   price: string;
   sku: string;
@@ -3090,6 +3100,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     variantImage?: string,
     variantPrice?: string
   ) => {
+    const variantForStock =
+      variantSku && product.variants?.length
+        ? product.variants.find((v) => String(v.sku) === String(variantSku))
+        : null;
+    if (!canPurchase(product, variantForStock, quantity)) {
+      toast.error("This item is out of stock");
+      return;
+    }
+
     let nextCartSnapshot: CartItem[] = [];
     setCart(prev => {
       // 🔥 Use variant SKU if provided, otherwise use product SKU
@@ -3468,6 +3487,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     quantity: number = 1,
     variantPrice?: string
   ) => {
+    const variantForStock =
+      variantSku && product.variants?.length
+        ? product.variants.find((v) => String(v.sku) === String(variantSku))
+        : null;
+    if (!canPurchase(product, variantForStock, quantity)) {
+      toast.error("This item is out of stock");
+      return;
+    }
+
     // 🔒 Require authentication to buy now
     if (!user) {
       toast.error("Please sign in to place an order");
@@ -7174,28 +7202,32 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     // Calculate current variant price based on selected options
     let displayPrice = selectedProduct.price;
     let displayComparePrice = selectedProduct.compareAtPrice;
-    let displayInventory = selectedProduct.inventory;
     let displaySku = selectedProduct.sku;
+    let currentVariant: NonNullable<Product["variants"]>[number] | null = null;
     
     if (selectedProduct.hasVariants && selectedProduct.variants && effectiveVariantOptions.length > 0) {
       // Find the matching variant based on selected options
-      const currentVariant = selectedProduct.variants.find((v: any) => {
+      currentVariant = selectedProduct.variants.find((v: any) => {
         const optionNames = effectiveVariantOptions.map((opt: any) => opt.name);
         const variantValues = [v.option1, v.option2, v.option3].filter(Boolean);
         
         return optionNames.every((optionName: string, idx: number) => {
           return selectedVariants[optionName] === variantValues[idx];
         });
-      });
+      }) ?? null;
       
       if (currentVariant) {
         displayPrice = currentVariant.price;
         displayComparePrice = currentVariant.compareAtPrice || selectedProduct.compareAtPrice;
-        displayInventory = currentVariant.inventory;
         displaySku = currentVariant.sku;
         // ⚡ Image switching is now handled by useEffect above (no setState during render)
       }
     }
+
+    const storefrontOutOfStock = isOutOfStockDisplay(selectedProduct, currentVariant, 1);
+    const storefrontCanPurchase = canPurchase(selectedProduct, currentVariant, 1);
+    const storefrontLowStock = showLowStockBadge(selectedProduct, currentVariant);
+    const displayInventoryUnits = getEffectiveInventory(selectedProduct, currentVariant);
     
     const mmkPrice = formatPriceMMK(displayPrice);
     
@@ -7504,20 +7536,20 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                         <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">Availability</p>
                         <div className="flex items-center gap-2">
                           <p className={`font-medium text-sm ${
-                            displayInventory === 0 
-                              ? "text-red-600" 
-                              : displayInventory < 10 
-                                ? "text-amber-600" 
+                            storefrontOutOfStock
+                              ? "text-red-600"
+                              : storefrontLowStock
+                                ? "text-amber-600"
                                 : "text-emerald-700"
                           }`}>
-                            {displayInventory || 0} units
+                            {displayInventoryUnits} units
                           </p>
-                          {displayInventory === 0 && (
+                          {storefrontOutOfStock && (
                             <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">
                               OUT OF STOCK
                             </Badge>
                           )}
-                          {displayInventory > 0 && displayInventory < 10 && (
+                          {storefrontLowStock && (
                             <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-xs">
                               LOW STOCK
                             </Badge>
@@ -7539,30 +7571,30 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               {/* Action Buttons */}
               <div className="flex gap-2 items-center">
                 <Button
-                  disabled={displayInventory === 0}
-                  className={displayInventory === 0 
+                  disabled={!storefrontCanPurchase}
+                  className={!storefrontCanPurchase
                     ? "bg-slate-300 h-10 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
                     : "bg-amber-600 hover:bg-amber-700 h-10 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
                   }
                   onClick={() => {
-                    if (displayInventory === 0) return;
+                    if (!storefrontCanPurchase) return;
                     // Pass the currently displayed image (variant image)
                     addToCart(selectedProduct, 1, displaySku, productImages[selectedImageIndex]);
                   }}
                 >
                   <span className="block leading-none">
-                    {displayInventory === 0 ? "OUT OF STOCK" : "ADD TO CART"}
+                    {storefrontOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
                   </span>
                 </Button>
                 <Button 
-                  disabled={displayInventory === 0}
+                  disabled={!storefrontCanPurchase}
                   variant="outline"
-                  className={displayInventory === 0
+                  className={!storefrontCanPurchase
                     ? "h-10 border-2 border-slate-300 bg-slate-100 text-slate-400 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
                     : "h-10 border-2 border-amber-600 hover:bg-amber-50 hover:border-amber-700 text-amber-700 hover:text-amber-800 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
                   }
                   onClick={() => {
-                    if (displayInventory === 0) return;
+                    if (!storefrontCanPurchase) return;
                     handleBuyNow(selectedProduct, displaySku, productImages[selectedImageIndex]);
                   }}
                 >

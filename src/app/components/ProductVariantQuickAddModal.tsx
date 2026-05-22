@@ -14,6 +14,11 @@ import {
   productHasVariantPicker,
   type VariantProduct,
 } from "./ProductVariantChips";
+import {
+  canPurchase,
+  isOutOfStockDisplay,
+  maxPurchaseQuantity,
+} from "../utils/productInventory";
 
 /** Matches ProductCardProduct (defined in ProductCard to avoid circular imports). */
 type QuickAddProduct = VariantProduct & {
@@ -81,15 +86,12 @@ export function ProductVariantQuickAddModal({
   const displayPriceStr = resolved?.price ?? product.price;
   const priceNum = parsePriceNum(displayPriceStr, product.price);
 
-  const maxQty = (() => {
-    const inv = (resolved as { inventory?: number | string } | null)?.inventory;
-    if (inv == null || inv === "") return 99;
-    const n = typeof inv === "number" ? inv : parseFloat(String(inv).replace(/[^0-9.-]/g, ""));
-    return Number.isFinite(n) && n >= 0 ? Math.min(99, Math.floor(n)) : 99;
-  })();
+  const maxQty = maxPurchaseQuantity(product, resolved);
+  const outOfStock = isOutOfStockDisplay(product, resolved, 1);
+  const canBuy = resolved ? canPurchase(product, resolved, qty) : false;
 
   const handleAdd = (buyNow: boolean) => {
-    if (!resolved) return;
+    if (!resolved || !canPurchase(product, resolved, qty)) return;
     onConfirm({
       sku: resolved.sku,
       price: priceNum,
@@ -179,19 +181,19 @@ export function ProductVariantQuickAddModal({
             <Button
               type="button"
               variant="outline"
-              className="w-full h-11 border-2 border-slate-900 text-slate-900 font-semibold hover:bg-slate-50"
-              disabled={!resolved || maxQty === 0}
+              className="w-full h-11 border-2 border-slate-900 text-slate-900 font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!resolved || outOfStock || !canBuy}
               onClick={() => handleAdd(false)}
             >
-              Add to cart
+              {outOfStock ? "Out of stock" : "Add to cart"}
             </Button>
             <Button
               type="button"
-              className="w-full h-11 bg-[#1a1d29] hover:bg-slate-900 text-white font-semibold shadow-lg transition-colors"
-              disabled={!resolved || maxQty === 0}
+              className="w-full h-11 bg-[#1a1d29] hover:bg-slate-900 text-white font-semibold shadow-lg transition-colors disabled:bg-slate-300 disabled:cursor-not-allowed"
+              disabled={!resolved || outOfStock || !canBuy}
               onClick={() => handleAdd(true)}
             >
-              Buy it now
+              {outOfStock ? "Out of stock" : "Buy it now"}
             </Button>
           </div>
         </div>
