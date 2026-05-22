@@ -7,7 +7,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '../contexts/LanguageContext';
 import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
-import { BRANDING } from '../../constants';
+import { usePlatformBranding } from '../hooks/usePlatformBranding';
+import { buildSuperAdminDocumentTitle } from '../utils/superAdminDocumentTitle';
 
 export function Login() {
   const { login } = useAuth();
@@ -21,16 +22,20 @@ export function Login() {
   const [rememberMe, setRememberMe] = useState(true); // Default to remember me
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const platformBranding = usePlatformBranding();
 
   useEffect(() => {
     const prev = document.title;
     if (location.pathname.startsWith('/admin')) {
-      document.title = BRANDING.ADMIN_DOCUMENT_TITLE;
+      document.title = buildSuperAdminDocumentTitle({
+        pageName: 'Sign in',
+        storeName: platformBranding.storeName,
+      });
     }
     return () => {
       document.title = prev;
     };
-  }, [location.pathname]);
+  }, [location.pathname, platformBranding.storeName]);
 
   const getResetPasswordPath = (): string => {
     const parts = location.pathname.split('/').filter(Boolean);

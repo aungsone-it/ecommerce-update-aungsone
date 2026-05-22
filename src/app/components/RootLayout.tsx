@@ -16,6 +16,7 @@ import { CartVisibilityProvider } from "../contexts/CartVisibilityContext";
 import { LoadingProvider, useLoading } from "../contexts/LoadingContext";
 import { ChatNotificationProvider, useChatNotification } from "../contexts/ChatNotificationContext";
 import { shouldResolveCustomDomainHost } from "../utils/vendorHostResolution";
+import { PlatformBrandingHead } from "./PlatformBrandingHead";
 
 // Public layout without authentication
 export function RootLayout() {
@@ -79,6 +80,7 @@ function RootLayoutContent() {
 
   return (
     <>
+      <PlatformBrandingHead />
       <CanonicalSubdomainRedirect />
       <SubdomainVendorRedirect />
       <Outlet />

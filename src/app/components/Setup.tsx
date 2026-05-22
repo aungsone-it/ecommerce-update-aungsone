@@ -7,7 +7,8 @@ import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
-import { BRANDING } from '../../constants';
+import { usePlatformBranding } from '../hooks/usePlatformBranding';
+import { buildPlatformLandingDocumentTitle } from '../utils/superAdminDocumentTitle';
 
 export function Setup() {
   const { t, language, setLanguage } = useLanguage();
@@ -26,10 +27,11 @@ export function Setup() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const platformBranding = usePlatformBranding();
 
   useEffect(() => {
-    document.title = BRANDING.APP_NAME;
-  }, []);
+    document.title = buildPlatformLandingDocumentTitle(platformBranding.storeName);
+  }, [platformBranding.storeName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -10,6 +10,10 @@ import {
 } from "./ui/dropdown-menu";
 import { useLanguage } from "../contexts/LanguageContext";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import {
+  readPlatformBrandingCache,
+  writePlatformBrandingCache,
+} from "../utils/platformBranding";
 
 // Use placeholder images for production deployment
 const spidermanAvatar = "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix";
@@ -19,28 +23,12 @@ interface AdminBrandingCache {
   storeName?: string;
 }
 
-const ADMIN_BRANDING_CACHE_KEY = "admin:branding:v1";
-
 function readAdminBrandingCache(): AdminBrandingCache | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(ADMIN_BRANDING_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as AdminBrandingCache;
-    if (!parsed || typeof parsed !== "object") return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  return readPlatformBrandingCache();
 }
 
 function writeAdminBrandingCache(data: AdminBrandingCache): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(ADMIN_BRANDING_CACHE_KEY, JSON.stringify(data));
-  } catch {
-    /* ignore storage/quota errors */
-  }
+  writePlatformBrandingCache(data);
 }
 
 /** When set, only these nav labels are shown (must match item.label / subItem.label). */

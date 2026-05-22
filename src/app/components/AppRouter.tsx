@@ -4,8 +4,11 @@ import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { Setup } from './Setup';
 import { AuthGate } from './AuthGate';
 import { Loader2 } from 'lucide-react';
+import { usePlatformBranding } from '../hooks/usePlatformBranding';
+import { buildSuperAdminDocumentTitle } from '../utils/superAdminDocumentTitle';
 
 export function AppRouter({ children }: { children: React.ReactNode }) {
+  const platformBranding = usePlatformBranding();
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
 
@@ -39,6 +42,13 @@ export function AppRouter({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     checkIfSetupNeeded();
   }, []);
+
+  useEffect(() => {
+    document.title = buildSuperAdminDocumentTitle({
+      pageName: checkingSetup ? 'Loading' : needsSetup ? 'Setup' : 'Admin',
+      storeName: platformBranding.storeName,
+    });
+  }, [checkingSetup, needsSetup, platformBranding.storeName]);
 
   if (checkingSetup) {
     return (

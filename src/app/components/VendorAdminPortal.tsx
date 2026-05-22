@@ -46,7 +46,7 @@ import { VendorAdminFinances } from "./vendor-admin/VendorAdminFinances";
 import { VendorAdminUsers } from "./vendor-admin/VendorAdminUsers";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
-import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
+import { applyVendorStoreLogoFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
 import { isRenderableImageSrc, pickStoreLogo } from "../utils/renderableImageSrc";
 import { UserProfile } from "./UserProfile";
 import { useVendorAuth, type VendorUser } from "../contexts/VendorAuthContext";
@@ -305,7 +305,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
 
   useEffect(() => {
     if (isRenderableImageSrc(vendorLogo)) {
-      applyDocumentFavicon(vendorLogo);
+      void applyVendorStoreLogoFavicon(vendorLogo);
     } else {
       resetDocumentFavicon();
     }

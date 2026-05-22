@@ -6,7 +6,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useLocation } from 'react-router';
-import { BRANDING } from '../../constants';
+import { usePlatformBranding } from '../hooks/usePlatformBranding';
+import { buildSuperAdminDocumentTitle } from '../utils/superAdminDocumentTitle';
 
 export function ChangePassword() {
   const { changePassword } = useAuth();
@@ -16,16 +17,21 @@ export function ChangePassword() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const location = useLocation();
+  const platformBranding = usePlatformBranding();
 
   useEffect(() => {
     const prev = document.title;
     if (location.pathname.startsWith('/admin')) {
-      document.title = BRANDING.ADMIN_DOCUMENT_TITLE;
+      document.title = buildSuperAdminDocumentTitle({
+        pageName: 'Change password',
+        storeName: platformBranding.storeName,
+      });
     }
     return () => {
       document.title = prev;
     };
-  }, [location.pathname]);
+  }, [location.pathname, platformBranding.storeName]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

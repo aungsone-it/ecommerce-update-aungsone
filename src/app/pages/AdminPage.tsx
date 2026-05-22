@@ -38,7 +38,8 @@ import { OrderDetails } from "../components/OrderDetails";
 import { ServerDiagnostics } from "../components/ServerDiagnostics";
 import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { useBadgeCounts } from "../hooks/useBadgeCounts";
-import { useAdminFavicon } from "../hooks/useAdminFavicon";
+import { usePlatformBranding } from "../hooks/usePlatformBranding";
+import { buildSuperAdminDocumentTitle } from "../utils/superAdminDocumentTitle";
 import { SmartCache } from "../../utils/cache";
 import { moduleCache, CACHE_KEYS } from "../utils/module-cache";
 import {
@@ -140,7 +141,7 @@ export function AdminPage() {
 
   const { badgeCounts, loadBadgeCounts, incrementOrdersBadge } = useBadgeCounts();
 
-  useAdminFavicon();
+  const platformBranding = usePlatformBranding();
 
   const [digestTimesTick, setDigestTimesTick] = useState(0);
   useEffect(() => {
@@ -484,23 +485,15 @@ export function AdminPage() {
     checkServer();
   }, []);
 
-  // Update document title based on current page
+  // Update document title — match vendor admin: `{Brand} - {Page} | Super Admin`
   useEffect(() => {
-    const baseTitle = "SECURE DASHBOARD";
-    if (viewingUserProfile) {
-      document.title = `${viewingUserProfile.name} - ${baseTitle}`;
-    } else if (viewingOrder) {
-      document.title = `Order #${viewingOrder.id} - ${baseTitle}`;
-    } else {
-      const pageName = currentPage === 'Home' ? 'Home' : currentPage;
-      document.title = `${pageName} - ${baseTitle}`;
-    }
-
-    // Cleanup on unmount
-    return () => {
-      document.title = baseTitle;
-    };
-  }, [currentPage, viewingUserProfile, viewingOrder]);
+    document.title = buildSuperAdminDocumentTitle({
+      pageName: currentPage === "Home" ? "Home" : currentPage,
+      storeName: platformBranding.storeName,
+      viewingOrderId: viewingOrder?.id ?? null,
+      viewingUserName: viewingUserProfile?.name ?? null,
+    });
+  }, [currentPage, viewingUserProfile, viewingOrder, platformBranding.storeName]);
 
   const handleSaveUserProfile = async (updatedUser: User) => {
     console.log("User profile updated:", updatedUser);

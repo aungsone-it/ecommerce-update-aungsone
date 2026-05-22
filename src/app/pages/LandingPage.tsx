@@ -5,7 +5,9 @@ import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import { useEffect, useState } from "react";
-import { BRANDING } from "../../constants";
+import { usePlatformBranding } from "../hooks/usePlatformBranding";
+import { buildPlatformLandingDocumentTitle } from "../utils/superAdminDocumentTitle";
+import { displayPlatformBrandName } from "../utils/platformBranding";
 import {
   fetchLandingPlatformSettingsCached,
   fetchLandingVendorsCached,
@@ -13,8 +15,8 @@ import {
   fetchLandingCategoriesCached,
 } from "../utils/landingPageCached";
 
-// Dynamic site name - can be pulled from settings
-const SITE_NAME = "SECURE";
+// Dynamic site name - pulled from platform General settings when available
+const SITE_NAME_FALLBACK = "SECURE";
 
 interface Vendor {
   id: string;
@@ -45,10 +47,14 @@ interface Category {
 
 export function LandingPage() {
   const navigate = useNavigate();
+  const platformBranding = usePlatformBranding();
 
   useEffect(() => {
-    document.title = BRANDING.APP_NAME;
-  }, []);
+    document.title = buildPlatformLandingDocumentTitle(platformBranding.storeName);
+  }, [platformBranding.storeName]);
+
+  const siteDisplayName = displayPlatformBrandName(platformBranding.storeName, SITE_NAME_FALLBACK);
+  const siteLogo = platformBranding.storeLogo?.trim() || "";
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [isLoadingVendors, setIsLoadingVendors] = useState(true);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
@@ -153,9 +159,18 @@ export function LandingPage() {
           <div className="flex items-center justify-between h-16">
             <button
               onClick={() => navigate("/")}
-              className="hover:opacity-80 transition-opacity"
+              className="flex items-center gap-2.5 hover:opacity-80 transition-opacity min-w-0"
             >
-              <span className="text-xl sm:text-2xl font-bold text-slate-900">{SITE_NAME}</span>
+              {siteLogo ? (
+                <img
+                  src={siteLogo}
+                  alt=""
+                  className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
+                />
+              ) : null}
+              <span className="text-xl sm:text-2xl font-bold text-slate-900 truncate">
+                {siteDisplayName}
+              </span>
             </button>
             <div className="flex items-center gap-4 sm:gap-6">
               <button
@@ -190,7 +205,7 @@ export function LandingPage() {
                 className="w-full sm:w-auto bg-white hover:bg-slate-50 text-slate-900 border border-slate-300 px-8 h-12 text-base font-medium rounded-full transition-all duration-200"
                 onClick={() => navigate("/vendor/application")}
               >
-                Sell on {SITE_NAME}
+                Sell on {siteDisplayName}
               </Button>
             </div>
             <div className="mt-4 sm:mt-6 flex items-center justify-center gap-2">
@@ -269,7 +284,7 @@ export function LandingPage() {
               Turn Your Business Dreams Into Reality
             </h2>
             <p className="text-base text-slate-300 mb-8 max-w-2xl mx-auto">
-              Join hundreds of successful vendors on {SITE_NAME}. Get your own admin portal,
+              Join hundreds of successful vendors on {siteDisplayName}. Get your own admin portal,
               storefront, and access to thousands of customers across Myanmar.
             </p>
             <div className="flex justify-center">
@@ -407,7 +422,7 @@ export function LandingPage() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <ShoppingBag className="w-6 h-6 text-purple-400" />
-                <span className="text-xl font-bold text-white">{SITE_NAME}</span>
+                <span className="text-xl font-bold text-white">{siteDisplayName}</span>
               </div>
               <p className="text-sm">
                 Myanmar's premier multi-vendor marketplace platform
@@ -445,7 +460,7 @@ export function LandingPage() {
             </div>
           </div>
           <div className="border-t border-slate-800 pt-8 text-center text-sm">
-            <p>&copy; 2026 {SITE_NAME}. All rights reserved.</p>
+            <p>&copy; 2026 {siteDisplayName}. All rights reserved.</p>
           </div>
         </div>
       </footer>

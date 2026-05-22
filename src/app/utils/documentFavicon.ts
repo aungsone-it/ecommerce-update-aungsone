@@ -82,9 +82,12 @@ function loadImageFromSrc(src: string, crossOrigin: "" | "anonymous"): Promise<H
  * Vendor storefront: force a PNG tab icon from the same logo URL used in the header.
  * Order: CORS fetch → decode → PNG (works when storage sends ACAO); then canvas fallbacks; then raw URL + strip competing icons.
  */
-export async function applyVendorStoreLogoFavicon(logoUrl: string): Promise<void> {
+export async function applyVendorStoreLogoFavicon(
+  logoUrl: string,
+  options?: { onRasterized?: (dataUrl: string) => void }
+): Promise<string | null> {
   const trimmed = typeof logoUrl === "string" ? logoUrl.trim() : "";
-  if (!trimmed || typeof document === "undefined") return;
+  if (!trimmed || typeof document === "undefined") return null;
 
   const applyRaw = () => {
     let mime = "image/png";
@@ -93,10 +96,13 @@ export async function applyVendorStoreLogoFavicon(logoUrl: string): Promise<void
     else if (lower.includes(".jpg") || lower.includes(".jpeg")) mime = "image/jpeg";
     else if (lower.includes(".webp")) mime = "image/webp";
     installSingleFavicon(trimmed, mime);
+    return trimmed;
   };
 
   const applyPngDataUrl = (dataUrl: string) => {
     installSingleFavicon(dataUrl, "image/png");
+    options?.onRasterized?.(dataUrl);
+    return dataUrl;
   };
 
   try {
@@ -107,8 +113,7 @@ export async function applyVendorStoreLogoFavicon(logoUrl: string): Promise<void
         const obj = URL.createObjectURL(blob);
         try {
           const img = await loadImageFromSrc(obj, "");
-          applyPngDataUrl(rasterizeImageToPngDataUrl(img));
-          return;
+          return applyPngDataUrl(rasterizeImageToPngDataUrl(img));
         } finally {
           URL.revokeObjectURL(obj);
         }
@@ -121,15 +126,13 @@ export async function applyVendorStoreLogoFavicon(logoUrl: string): Promise<void
   try {
     try {
       const img = await loadImageFromSrc(trimmed, "anonymous");
-      applyPngDataUrl(rasterizeImageToPngDataUrl(img));
-      return;
+      return applyPngDataUrl(rasterizeImageToPngDataUrl(img));
     } catch {
       const img = await loadImageFromSrc(trimmed, "");
-      applyPngDataUrl(rasterizeImageToPngDataUrl(img));
-      return;
+      return applyPngDataUrl(rasterizeImageToPngDataUrl(img));
     }
   } catch {
-    applyRaw();
+    return applyRaw();
   }
 }
 
