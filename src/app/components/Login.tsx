@@ -9,6 +9,7 @@ import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router';
 import { usePlatformBranding } from '../hooks/usePlatformBranding';
 import { buildSuperAdminDocumentTitle } from '../utils/superAdminDocumentTitle';
+import { freeLocalStorageForAuth } from '../utils/persistedLocalCache';
 
 export function Login() {
   const { login } = useAuth();
@@ -23,6 +24,13 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const platformBranding = usePlatformBranding();
+
+  useEffect(() => {
+    const removed = freeLocalStorageForAuth();
+    if (removed > 0) {
+      console.log(`[Login] Cleared ${removed} stale cache entries to avoid storage quota errors`);
+    }
+  }, []);
 
   useEffect(() => {
     const prev = document.title;

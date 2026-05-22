@@ -53,16 +53,84 @@ export function readPersistedPayloadSavedAt(key: string): number | null {
   }
 }
 
+const SUPABASE_AUTH_LS_PREFIX = "sb-";
+
+/** Prefixes safe to delete before auth/session writes (catalog + admin caches). */
+const CACHE_LS_PREFIXES = [
+  "migoo-ls-",
+  "migoo_cache_",
+  "migoo-notifications",
+  "migoo-checkout",
+  "migoo-shipping-addresses-",
+  "migoo-applied-coupon",
+  "vendor_storefront_",
+  "vendorAuth",
+];
+
+/**
+ * Free localStorage so Supabase can persist `sb-*-auth-token` (fixes QuotaExceededError on login).
+ * Keeps existing Supabase auth keys until sign-in replaces them.
+ */
+export function freeLocalStorageForAuth(opts?: { clearAll?: boolean }): number {
+  if (typeof localStorage === "undefined") return 0;
+  let removed = 0;
+  try {
+    if (opts?.clearAll) {
+      const n = localStorage.length;
+      localStorage.clear();
+      return n;
+    }
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k.startsWith(SUPABASE_AUTH_LS_PREFIX)) continue;
+      if (CACHE_LS_PREFIXES.some((p) => k.startsWith(p) || k.includes(p))) {
+        keys.push(k);
+        continue;
+      }
+      if (k.startsWith("migoo-") && k !== "migoo-user") {
+        keys.push(k);
+      }
+    }
+    for (const k of keys) {
+      localStorage.removeItem(k);
+      removed++;
+    }
+    removePersistedKeysPrefix("migoo-ls-");
+  } catch {
+    /* ignore */
+  }
+  return removed;
+}
+
+export function isStorageQuotaError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const name = "name" in err ? String((err as { name?: string }).name) : "";
+  const message = "message" in err ? String((err as { message?: string }).message) : String(err);
+  return name === "QuotaExceededError" || /quota/i.test(message);
+}
+
 export function writePersistedJson<T>(key: string, payload: T): void {
   if (typeof localStorage === "undefined") return;
+  const body: PersistedWrapper<T> = {
+    v: WRAPPER_VERSION,
+    savedAt: Date.now(),
+    payload,
+  };
+  const serialized = JSON.stringify(body);
   try {
-    const body: PersistedWrapper<T> = {
-      v: WRAPPER_VERSION,
-      savedAt: Date.now(),
-      payload,
-    };
-    localStorage.setItem(key, JSON.stringify(body));
+    localStorage.setItem(key, serialized);
   } catch (e) {
+    if (isStorageQuotaError(e)) {
+      freeLocalStorageForAuth();
+      try {
+        localStorage.setItem(key, serialized);
+        return;
+      } catch {
+        /* still full */
+      }
+    }
     console.warn("[persistedLocalCache] write failed (quota?)", key, e);
   }
 }

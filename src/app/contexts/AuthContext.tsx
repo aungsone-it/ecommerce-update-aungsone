@@ -2,6 +2,10 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import {
+  freeLocalStorageForAuth,
+  isStorageQuotaError,
+} from '../utils/persistedLocalCache';
 
 const supabaseUrl = `https://${projectId}.supabase.co`;
 
@@ -302,13 +306,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string, rememberMe: boolean = true) => {
     try {
       console.log('🔐 Attempting login for:', email, '| Remember me:', rememberMe);
-      
-      // Note: We use a single client instance. The rememberMe parameter could be used
-      // to configure session persistence, but for now we always persist to localStorage
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+
+      const attemptSignIn = () =>
+        supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+      let pruned = freeLocalStorageForAuth();
+      if (pruned > 0) {
+        console.log(`🧹 Freed localStorage before login (${pruned} cache entries removed)`);
+      }
+
+      let { data, error } = await attemptSignIn();
+
+      if (error && isStorageQuotaError(error)) {
+        const cleared = freeLocalStorageForAuth({ clearAll: true });
+        console.warn(`🧹 Storage quota on login — cleared ${cleared} localStorage entries, retrying…`);
+        ({ data, error } = await attemptSignIn());
+      }
 
       if (error) {
         console.error('❌ Login error:', error.message);
@@ -341,7 +357,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Login failed' };
     } catch (error: any) {
       console.error('❌ Login exception:', error);
-      // Provide user-friendly error messages
+      if (isStorageQuotaError(error)) {
+        freeLocalStorageForAuth({ clearAll: true });
+        return {
+          success: false,
+          error:
+            'Browser storage was full (too much cached catalog data on localhost). Cache was cleared — please click Sign In again.',
+        };
+      }
       if (error.message?.includes('Failed to fetch') || error.message?.includes('NetworkError')) {
         return { 
           success: false, 
