@@ -123,6 +123,15 @@ import {
   isDefaultTechnicalVendorStoreSlug,
 } from "../utils/vendorStorePaths";
 import { supabase } from "../contexts/AuthContext";
+import {
+  VENDOR_STORE_UNCATEGORIZED_FILTER,
+  VENDOR_STORE_UNCATEGORIZED_SLUG,
+  isVendorUncategorizedSlug,
+  isVendorUncategorizedFilter,
+  productHasNoCategory,
+  vendorCatalogFilterFromRouteSlug,
+  vendorCategoryPathSegment,
+} from "../utils/vendorStoreCategory";
 
 interface Product {
   id: string;
@@ -372,6 +381,16 @@ function slugifyCategoryName(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+function isVendorCategoryTabActive(
+  tab: "all" | "uncategorized" | { name: string },
+  routeSlug: string
+): boolean {
+  const norm = routeSlug.trim().toLowerCase();
+  if (tab === "all") return !norm;
+  if (tab === "uncategorized") return isVendorUncategorizedSlug(norm);
+  return slugifyCategoryName(tab.name) === norm;
+}
+
 const VENDOR_DEFAULT_STORE_PHONE = "+95 9 XXX XXX XXX";
 
 function telHrefFromDisplay(phone: string): string {
@@ -585,7 +604,8 @@ function vendorHomeStateFromCatalogPayload(
 function getVendorHomepageInitialState(
   vendorId: string,
   savedPage: boolean,
-  initialProductSlug: string | undefined
+  initialProductSlug: string | undefined,
+  initialCatalogCategory = "all"
 ): {
   products: Product[];
   vendorCategories: any[];
@@ -664,8 +684,9 @@ function getVendorHomepageInitialState(
     /* ignore */
   }
 
+  const catKey = String(initialCatalogCategory || "all").trim() || "all";
   try {
-    const lsKey = lsVendorCatalogPage1Key(vendorId, "", "all", VENDOR_BROWSE_PAGE_SIZE);
+    const lsKey = lsVendorCatalogPage1Key(vendorId, "", catKey, VENDOR_BROWSE_PAGE_SIZE);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
     if (fromLs && typeof fromLs === "object") {
       return vendorHomeStateFromCatalogPayload(fromLs, vendorId, vendorCategories);
@@ -675,7 +696,7 @@ function getVendorHomepageInitialState(
   }
 
   try {
-    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, "", "all", VENDOR_BROWSE_PAGE_SIZE);
+    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, "", catKey, VENDOR_BROWSE_PAGE_SIZE);
     const fromMem = moduleCache.peek<Record<string, unknown>>(cacheKey);
     if (fromMem && typeof fromMem === "object") {
       const products = Array.isArray(fromMem.products) ? (fromMem.products as Product[]) : [];
@@ -800,14 +821,24 @@ export function VendorStoreView({
   const categoryPathForName = useCallback(
     (categoryName: string) => {
       const base = storeBase || "";
-      const raw = String(categoryName || "").trim();
-      if (!raw || raw.toLowerCase() === "all") return base || "/";
-      const slug = slugifyCategoryName(raw);
-      if (!slug) return base || "/";
-      return `${base}/${encodeURIComponent(slug)}`;
+      const seg = vendorCategoryPathSegment(categoryName);
+      if (!seg) return base || "/";
+      return `${base}/${encodeURIComponent(seg)}`;
     },
     [storeBase]
   );
+
+  /** URL category segment — source of truth for subnav highlight + catalog filter (avoids "all" flash). */
+  const normalizedCategorySlugFromRoute = useMemo(() => {
+    const raw = String(categorySlug || "").trim();
+    if (!raw) return "";
+    return slugifyCategoryName(safeDecodePathSegment(raw));
+  }, [categorySlug]);
+
+  const initialCatalogCategoryFromRoute = useMemo(() => {
+    if (savedPage || !normalizedCategorySlugFromRoute) return "all";
+    return vendorCatalogFilterFromRouteSlug(normalizedCategorySlugFromRoute, []);
+  }, [savedPage, normalizedCategorySlugFromRoute]);
 
   /** Prefer pathname over useParams so async product load cannot reopen detail after user navigated away. */
   const productSlugFromPath = useMemo(() => {
@@ -855,7 +886,12 @@ export function VendorStoreView({
 
   // Single LS read for first paint — avoids skeleton + empty grid on slow networks (see getVendorHomepageInitialState).
   const [vendorHomeSnapshot] = useState(() =>
-    getVendorHomepageInitialState(vendorId, savedPage, initialProductSlug)
+    getVendorHomepageInitialState(
+      vendorId,
+      savedPage,
+      initialProductSlug,
+      initialCatalogCategoryFromRoute
+    )
   );
   const [serverStatus, setServerStatus] = useState<'checking' | 'healthy' | 'unhealthy'>(vendorHomeSnapshot.serverStatus);
   const [products, setProducts] = useState<Product[]>(vendorHomeSnapshot.products);
@@ -863,7 +899,7 @@ export function VendorStoreView({
   const [searchQuery, setSearchQuery] = useState("");
   /** Passed to API as `q` only after debounce + min length; `searchQuery` still drives instant client filter. */
   const [debouncedVendorServerQ, setDebouncedVendorServerQ] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedCategory, setSelectedCategory] = useState(initialCatalogCategoryFromRoute);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [vendorCatalogTotal, setVendorCatalogTotal] = useState(vendorHomeSnapshot.vendorCatalogTotal);
   const [vendorCatalogPage, setVendorCatalogPage] = useState(vendorHomeSnapshot.vendorCatalogPage);
@@ -877,7 +913,8 @@ export function VendorStoreView({
   const [savedWishlistLoadingMore, setSavedWishlistLoadingMore] = useState(false);
   /** KV vendor id after slug resolution — matches wishlist rows where URL segment is `vendor-vendor_…`. */
   const [canonicalVendorId, setCanonicalVendorId] = useState<string | null>(vendorHomeSnapshot.canonicalVendorId);
-  const isFirstSearchCategoryEffect = useRef(true);
+  /** Skip one filter/search refetch on mount (loadVendorData already loads page 1). */
+  const vendorCatalogFilterMountSkipRef = useRef(true);
   /** Latest catalog for merging into saved list without re-subscribing the wishlist hydration effect to `products`. */
   const productsRef = useRef<Product[]>([]);
   productsRef.current = products;
@@ -915,6 +952,7 @@ export function VendorStoreView({
     const add = (row: { id?: string; name?: string; status?: string }) => {
       const name = String(row?.name || "").trim();
       if (!name) return;
+      if (name.toLowerCase() === VENDOR_STORE_UNCATEGORIZED_SLUG) return;
       const st = String(row?.status ?? "active").toLowerCase();
       if (st === "inactive" || st === "off" || st === "off-shelf") return;
       const k = name.toLowerCase();
@@ -945,11 +983,16 @@ export function VendorStoreView({
     );
   }, [vendorId, vendorCategories, products]);
 
-  const normalizedCategorySlugFromRoute = useMemo(() => {
-    const raw = String(categorySlug || "").trim();
-    if (!raw) return "";
-    return slugifyCategoryName(safeDecodePathSegment(raw));
-  }, [categorySlug]);
+  /** Catalog filter + API category param — URL wins over stale React state. */
+  const catalogCategoryForFetch = useMemo(
+    () => vendorCatalogFilterFromRouteSlug(normalizedCategorySlugFromRoute, subnavCategoryItems),
+    [normalizedCategorySlugFromRoute, subnavCategoryItems]
+  );
+
+  const uncategorizedTabPath = useMemo(
+    () => `${storeBase}/${encodeURIComponent(VENDOR_STORE_UNCATEGORIZED_SLUG)}`,
+    [storeBase]
+  );
 
   useEffect(() => {
     if (savedPage) {
@@ -1088,25 +1131,16 @@ export function VendorStoreView({
     if (vendorViewMode !== "storefront") return;
     if (isVendorProductDetailPath) return;
 
-    if (!normalizedCategorySlugFromRoute) {
-      if (selectedCategory !== "all") setSelectedCategory("all");
-      return;
-    }
-
-    const match = subnavCategoryItems.find(
-      (c) => slugifyCategoryName(c.name) === normalizedCategorySlugFromRoute
-    );
-    if (!match) return;
-    if (String(selectedCategory).trim().toLowerCase() !== match.name.toLowerCase()) {
-      setSelectedCategory(match.name);
+    const next = catalogCategoryForFetch;
+    if (String(selectedCategory).trim().toLowerCase() !== String(next).trim().toLowerCase()) {
+      setSelectedCategory(next);
     }
   }, [
     savedPage,
     vendorViewMode,
     isVendorProductDetailPath,
-    normalizedCategorySlugFromRoute,
-    subnavCategoryItems,
-    selectedCategory,
+    catalogCategoryForFetch,
+    catalogCategoryForFetch,
   ]);
 
   useEffect(() => {
@@ -1212,10 +1246,10 @@ export function VendorStoreView({
                   setSelectedProduct(null);
                   setSearchQuery("");
                   setSelectedCategory("all");
-                  navigate(categoryPathForName("all"), { replace: false });
+                  navigate(categoryPathForName("all"), { replace: true });
                 }}
                 className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  selectedCategory === "all"
+                  isVendorCategoryTabActive("all", normalizedCategorySlugFromRoute)
                     ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
                     : "text-slate-700 hover:text-amber-700"
                 }`}
@@ -1230,10 +1264,10 @@ export function VendorStoreView({
                     setSelectedProduct(null);
                     setSearchQuery("");
                     setSelectedCategory(category.name);
-                    navigate(categoryPathForName(category.name), { replace: false });
+                    navigate(categoryPathForName(category.name), { replace: true });
                   }}
                   className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                    String(selectedCategory).trim().toLowerCase() === category.name.toLowerCase()
+                    isVendorCategoryTabActive(category, normalizedCategorySlugFromRoute)
                       ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
                       : "text-slate-700 hover:text-amber-700"
                   }`}
@@ -1241,6 +1275,22 @@ export function VendorStoreView({
                   {category.name}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProduct(null);
+                  setSearchQuery("");
+                  setSelectedCategory(VENDOR_STORE_UNCATEGORIZED_FILTER);
+                  navigate(uncategorizedTabPath, { replace: true });
+                }}
+                className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
+                  isVendorCategoryTabActive("uncategorized", normalizedCategorySlugFromRoute)
+                    ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
+                    : "text-slate-700 hover:text-amber-700"
+                }`}
+              >
+                Uncategorized
+              </button>
             </div>
             {!isPlaceholderVendorPhone(storePhone) ? (
             <div className="flex items-center gap-4 shrink-0">
@@ -1261,9 +1311,10 @@ export function VendorStoreView({
     vendorViewMode,
     savedPage,
     subnavCategoryItems,
-    selectedCategory,
+    normalizedCategorySlugFromRoute,
     storePhone,
     categoryPathForName,
+    uncategorizedTabPath,
     navigate,
   ]);
 
@@ -2057,7 +2108,9 @@ export function VendorStoreView({
                 <Button
                   variant="ghost"
                   className={`w-full justify-start hover:bg-slate-50 ${
-                    selectedCategory === "all" ? "bg-slate-100 font-semibold text-slate-900" : ""
+                    isVendorCategoryTabActive("all", normalizedCategorySlugFromRoute)
+                      ? "bg-slate-100 font-semibold text-slate-900"
+                      : ""
                   }`}
                   onClick={selectAllProductsNav}
                 >
@@ -2068,7 +2121,7 @@ export function VendorStoreView({
                     key={category.id}
                     variant="ghost"
                     className={`w-full justify-start hover:bg-slate-50 ${
-                      String(selectedCategory).trim().toLowerCase() === category.name.toLowerCase()
+                      isVendorCategoryTabActive(category, normalizedCategorySlugFromRoute)
                         ? "bg-slate-100 font-semibold text-slate-900"
                         : ""
                     }`}
@@ -2077,6 +2130,22 @@ export function VendorStoreView({
                     {category.name}
                   </Button>
                 ))}
+                <Button
+                  variant="ghost"
+                  className={`w-full justify-start hover:bg-slate-50 ${
+                    isVendorCategoryTabActive("uncategorized", normalizedCategorySlugFromRoute)
+                      ? "bg-slate-100 font-semibold text-slate-900"
+                      : ""
+                  }`}
+                  onClick={() => {
+                    setSelectedProduct(null);
+                    setSearchQuery("");
+                    setSelectedCategory(VENDOR_STORE_UNCATEGORIZED_FILTER);
+                    navigate(uncategorizedTabPath, { replace: true });
+                  }}
+                >
+                  Uncategorized
+                </Button>
               </>
             ) : vendorViewMode === "storefront" ? (
               <>
@@ -3126,7 +3195,7 @@ export function VendorStoreView({
       if (savedPage) return false;
       const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
-      const cat = selectedCategory;
+      const cat = catalogCategoryForFetch;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
       const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
       const persistEligible = !qRaw;
@@ -3193,7 +3262,7 @@ export function VendorStoreView({
       }
       return true;
     },
-    [vendorId, debouncedVendorServerQ, selectedCategory, savedPage]
+    [vendorId, debouncedVendorServerQ, catalogCategoryForFetch, savedPage]
   );
 
   // Sibling routes (/summary vs /) remount VendorStorefrontPage — warm catalog while checkout is open.
@@ -3387,7 +3456,7 @@ export function VendorStoreView({
       const nextPage = vendorCatalogPage + 1;
       const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
-      const cat = selectedCategory;
+      const cat = catalogCategoryForFetch;
       const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
       const data = await moduleCache.get(
         CACHE_KEYS.vendorProductsPage(vendorId, nextPage, qk, cat, pageSize),
@@ -3419,7 +3488,7 @@ export function VendorStoreView({
     vendorCatalogPage,
     vendorId,
     debouncedVendorServerQ,
-    selectedCategory,
+    catalogCategoryForFetch,
   ]);
 
   // 🚀 Categories + server-paginated product grid (module cache per page / filters).
@@ -3477,7 +3546,7 @@ export function VendorStoreView({
   };
 
   useEffect(() => {
-    isFirstSearchCategoryEffect.current = true;
+    vendorCatalogFilterMountSkipRef.current = true;
     const raw = searchQuery.trim();
     setDebouncedVendorServerQ(
       raw.length >= VENDOR_SEARCH_MIN_SERVER_CHARS ? raw : ""
@@ -3553,7 +3622,7 @@ export function VendorStoreView({
     const qRaw = debouncedVendorServerQ.trim();
     const qk = qRaw.toLowerCase();
     const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
-    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, selectedCategory, pageSize);
+    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, catalogCategoryForFetch, pageSize);
     const fromMem = moduleCache.peek<any>(cacheKey);
     if (fromMem && typeof fromMem === "object" && Array.isArray(fromMem.products)) {
       setProducts(fromMem.products || []);
@@ -3573,7 +3642,7 @@ export function VendorStoreView({
       return;
     }
     if (qRaw) return;
-    const lsKey = lsVendorCatalogPage1Key(vendorId, qk, selectedCategory, pageSize);
+    const lsKey = lsVendorCatalogPage1Key(vendorId, qk, catalogCategoryForFetch, pageSize);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
     if (!fromLs || typeof fromLs !== "object" || !Array.isArray(fromLs.products)) return;
     setProducts(fromLs.products || []);
@@ -3590,12 +3659,12 @@ export function VendorStoreView({
       setStorePhone(fromLs.storePhone.trim());
     }
     setServerStatus("healthy");
-  }, [vendorId, selectedCategory, debouncedVendorServerQ, savedPage]);
+  }, [vendorId, catalogCategoryForFetch, debouncedVendorServerQ, savedPage]);
 
   useEffect(() => {
     if (savedPage) return;
-    if (isFirstSearchCategoryEffect.current) {
-      isFirstSearchCategoryEffect.current = false;
+    if (vendorCatalogFilterMountSkipRef.current) {
+      vendorCatalogFilterMountSkipRef.current = false;
       return;
     }
     const runId = ++vendorCatalogRefetchRunRef.current;
@@ -3604,7 +3673,7 @@ export function VendorStoreView({
         const qRaw = debouncedVendorServerQ.trim();
         const qk = qRaw.toLowerCase();
         const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
-        const page1Key = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, selectedCategory, pageSize);
+        const page1Key = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, catalogCategoryForFetch, pageSize);
         const now = Date.now();
         const lastAt = vendorCatalogRevalidateAtRef.current.get(page1Key) || 0;
         const recentEnough = now - lastAt < VENDOR_REVALIDATE_COOLDOWN_MS;
@@ -3619,7 +3688,7 @@ export function VendorStoreView({
         if (productsRef.current.length === 0) {
           setServerStatus("checking");
         }
-        const applied = await refetchVendorCatalogPage1(false);
+        const applied = await refetchVendorCatalogPage1(true);
         if (runId !== vendorCatalogRefetchRunRef.current) return;
         if (applied) {
           vendorCatalogRevalidateAtRef.current.set(page1Key, Date.now());
@@ -3635,7 +3704,7 @@ export function VendorStoreView({
         }
       }
     })();
-  }, [vendorId, debouncedVendorServerQ, selectedCategory, savedPage, refetchVendorCatalogPage1]);
+  }, [vendorId, debouncedVendorServerQ, catalogCategoryForFetch, savedPage, refetchVendorCatalogPage1]);
 
   // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.
   useLayoutEffect(() => {
@@ -4250,13 +4319,19 @@ export function VendorStoreView({
         String(product.sku || "")
           .toLowerCase()
           .includes(searchQuery.toLowerCase());
-      const matchesCategory =
-        selectedCategory === "all" ||
-        String(product.category || "").trim().toLowerCase() ===
-          String(selectedCategory).trim().toLowerCase();
+      let matchesCategory = true;
+      if (catalogCategoryForFetch !== "all") {
+        if (isVendorUncategorizedFilter(catalogCategoryForFetch)) {
+          matchesCategory = productHasNoCategory(product);
+        } else {
+          matchesCategory =
+            String(product.category || "").trim().toLowerCase() ===
+            String(catalogCategoryForFetch).trim().toLowerCase();
+        }
+      }
       return matchesSearch && matchesCategory;
     });
-  }, [products, searchQuery, selectedCategory]);
+  }, [products, searchQuery, catalogCategoryForFetch]);
 
   /** Full-page skeleton on /saved: wishlist GET or first product hydration — not while refetching with cards visible */
   const showSavedPageSkeleton = useMemo(

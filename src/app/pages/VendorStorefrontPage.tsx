@@ -12,7 +12,7 @@ import {
   useResolvedVendorHostSlug,
 } from "../utils/vendorHostResolution";
 import { resetDocumentFavicon, applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
-import { resolveVendorPathSlug } from "../utils/vendorStorePaths";
+import { resolveVendorPathSlug, vendorPathStoreSlugsMatch } from "../utils/vendorStorePaths";
 import {
   buildVendorStorefrontDocumentTitle,
   vendorProfileSegmentToDocTitleMode,
@@ -89,22 +89,37 @@ function vendorProfileSegmentFromPathname(
   return null;
 }
 
+const RESERVED_VENDOR_PATH_SEGMENTS = new Set([
+  "product",
+  "profile",
+  "saved",
+  "admin",
+  "store",
+  "vendor",
+  "blog",
+  "setup",
+  "checkout",
+  "order-confirmation",
+  "summary",
+]);
+
+function isReservedVendorPathSegment(seg: string): boolean {
+  return RESERVED_VENDOR_PATH_SEGMENTS.has(seg.trim().toLowerCase());
+}
+
 function vendorCategorySlugFromPathname(pathname: string, storeName: string): string | null {
   const vendorDash = parseVendorDashPath(pathname);
-  if (vendorDash?.storeName === storeName) {
+  if (vendorDash && vendorPathStoreSlugsMatch(vendorDash.storeName, storeName)) {
     const seg = vendorDash.tail[0] || "";
     const normalized = seg.trim().toLowerCase();
-    if (
-      normalized &&
-      !["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation", "summary"].includes(normalized)
-    ) {
+    if (normalized && !isReservedVendorPathSegment(normalized)) {
       return decodeURIComponent(seg);
     }
   }
   const direct =
     matchPath({ path: "/vendor/:storeName/:categorySlug", end: true }, pathname) ??
     matchPath({ path: "/vendor-:storeName/:categorySlug", end: true }, pathname);
-  if (direct?.params?.storeName === storeName) {
+  if (direct && vendorPathStoreSlugsMatch(String(direct.params.storeName || ""), storeName)) {
     const seg = direct.params.categorySlug;
     return typeof seg === "string" && seg.trim() ? decodeURIComponent(seg) : null;
   }
@@ -116,9 +131,7 @@ function vendorCategorySlugFromPathname(pathname: string, storeName: string): st
   if (!seg) return null;
   const normalized = decodeURIComponent(seg).trim().toLowerCase();
   if (!normalized) return null;
-  if (["product", "profile", "saved", "admin", "store", "vendor", "blog", "setup", "checkout", "order-confirmation", "summary"].includes(normalized)) {
-    return null;
-  }
+  if (isReservedVendorPathSegment(normalized)) return null;
   return decodeURIComponent(seg);
 }
 
@@ -273,8 +286,15 @@ export function VendorStorefrontPage() {
 
   const categorySlug = useMemo(() => {
     if (!resolvedStoreName) return null;
+    const fromParams =
+      typeof params.categorySlug === "string" && params.categorySlug.trim()
+        ? decodeURIComponent(params.categorySlug.trim())
+        : null;
+    if (fromParams && !isReservedVendorPathSegment(fromParams)) {
+      return fromParams;
+    }
     return vendorCategorySlugFromPathname(location.pathname, resolvedStoreName);
-  }, [resolvedStoreName, location.pathname]);
+  }, [resolvedStoreName, location.pathname, params.categorySlug]);
 
   const hostRootStorePathsNav = !!(subdomainSlug || customHostSlug);
 

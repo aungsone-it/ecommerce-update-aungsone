@@ -34,6 +34,7 @@ import {
   getPendingAdminCategoryDeleteIds,
   suppressAdminCategoriesRealtimeReload,
   shouldSuppressAdminCategoriesRealtimeReload,
+  resolveCategoryProductCount,
   moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
 } from "../utils/module-cache";
@@ -719,7 +720,9 @@ export function Categories() {
                       </p>
                     </td>
                     <td className="py-4 px-6">
-                      <span className="text-sm text-slate-900">{category.productCount || 0}</span>
+                      <span className="text-sm text-slate-900">
+                        {resolveCategoryProductCount(category)}
+                      </span>
                     </td>
                     <td className="py-4 px-6">
                       <Badge 

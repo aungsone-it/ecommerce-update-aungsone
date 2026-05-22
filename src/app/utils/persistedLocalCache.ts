@@ -14,6 +14,9 @@ export type PersistedWrapper<T> = {
 /** Default: keep catalog-like payloads for 7 days (tune without breaking wallets). */
 export const PERSISTED_CATALOG_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Super-admin products page 1 — short TTL so browser refresh picks up new rows quickly. */
+export const PERSISTED_ADMIN_PRODUCTS_PAGE_TTL_MS = 2 * 60 * 1000;
+
 export function readPersistedJson<T>(key: string, maxAgeMs: number): T | null {
   if (typeof localStorage === "undefined") return null;
   try {

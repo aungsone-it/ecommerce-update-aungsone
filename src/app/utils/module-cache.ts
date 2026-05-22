@@ -18,9 +18,14 @@ import { vendorApplicationsApi } from '../../utils/api';
 import { withNetworkRetry } from './networkRetry';
 import { notifyAdminOrdersUpdated, isSuperAdminFinancesSessionStale } from "./adminOrdersRealtime";
 import {
+  isVendorUncategorizedFilter,
+  VENDOR_STORE_UNCATEGORIZED_SLUG,
+} from "./vendorStoreCategory";
+import {
   readPersistedJson,
   writePersistedJson,
   PERSISTED_CATALOG_TTL_MS,
+  PERSISTED_ADMIN_PRODUCTS_PAGE_TTL_MS,
   lsAdminProductsPage1Key,
   lsAdminCustomersPage1Key,
   LS_ADMIN_FINANCES_ANALYTICS,
@@ -490,10 +495,14 @@ export function adminProductsPageCacheKey(p: AdminProductsPageParams): string {
   return `${ADMIN_PRODUCTS_PAGE_CACHE_PREFIX}p${p.page}-ps${pageSize}-t-${p.tab || "all"}-st-${p.status || "all"}-s-${p.sort || "newest"}-v-${encodeURIComponent(p.vendor || "all")}-c-${encodeURIComponent(p.collaborator || "all")}-q-${encodeURIComponent(qn)}-ev-${encodeURIComponent(ev || "_")}`;
 }
 
-export async function fetchAdminProductsPage(params: AdminProductsPageParams): Promise<AdminProductsPagePayload> {
+export async function fetchAdminProductsPage(
+  params: AdminProductsPageParams,
+  opts?: { bustCache?: boolean }
+): Promise<AdminProductsPagePayload> {
   const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
   const sp = new URLSearchParams();
   sp.set("adminList", "1");
+  if (opts?.bustCache) sp.set("_", String(Date.now()));
   sp.set("page", String(Math.max(1, params.page)));
   sp.set("pageSize", String(pageSize));
   const q = normAdminQ(params.q || "");
@@ -574,7 +583,7 @@ export async function getCachedAdminProductsPage(
         qNorm,
         excludeVendorIdNorm,
       }),
-      PERSISTED_CATALOG_TTL_MS
+      PERSISTED_ADMIN_PRODUCTS_PAGE_TTL_MS
     );
     if (fromLs && Array.isArray(fromLs.products)) {
       moduleCache.prime(key, fromLs);
@@ -582,19 +591,24 @@ export async function getCachedAdminProductsPage(
     }
   }
 
-  const data = await moduleCache.get(key, () =>
-    fetchAdminProductsPage({
-      ...params,
-      page,
-      pageSize,
-      q: qNorm,
-      tab,
-      status,
-      sort,
-      vendor,
-      collaborator,
-      excludeVendorId: excludeVendorIdNorm || undefined,
-    }),
+  const data = await moduleCache.get(
+    key,
+    () =>
+      fetchAdminProductsPage(
+        {
+          ...params,
+          page,
+          pageSize,
+          q: qNorm,
+          tab,
+          status,
+          sort,
+          vendor,
+          collaborator,
+          excludeVendorId: excludeVendorIdNorm || undefined,
+        },
+        { bustCache: forceRefresh }
+      ),
     forceRefresh
   );
 
@@ -975,18 +989,76 @@ export async function fetchAllOrders() {
   return p.orders;
 }
 
-export async function fetchAdminAllCategoriesList(): Promise<any[]> {
-  const response = await fetch(
-    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/admin/all-categories`,
-    {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-    }
-  );
-  if (!response.ok) {
-    throw new Error(`Failed to fetch admin categories: ${response.status}`);
+/** Products column: prefer productIds length (source of truth for admin picker). */
+export function resolveCategoryProductCount(cat: {
+  productCount?: number;
+  productIds?: unknown;
+}): number {
+  if (Array.isArray(cat.productIds)) {
+    return cat.productIds.filter((id) => id != null && String(id).trim() !== "").length;
   }
-  const data = await response.json();
-  return data.categories || [];
+  const stored = Number(cat.productCount);
+  return Number.isFinite(stored) && stored >= 0 ? stored : 0;
+}
+
+function normalizeCategoryNameKey(name: unknown): string {
+  return String(name ?? "").trim().toLowerCase();
+}
+
+/** Merge category.productIds with products whose `category` field matches the category name. */
+export function enrichAdminCategoriesWithProductCounts(
+  categories: Record<string, unknown>[],
+  products: Record<string, unknown>[]
+): Record<string, unknown>[] {
+  const idsByCategoryName = new Map<string, string[]>();
+  for (const p of products) {
+    if (!p || typeof p !== "object") continue;
+    const nameKey = normalizeCategoryNameKey((p as { category?: string }).category);
+    if (!nameKey) continue;
+    const id = String((p as { id?: string }).id ?? "").trim();
+    if (!id) continue;
+    const list = idsByCategoryName.get(nameKey) || [];
+    list.push(id);
+    idsByCategoryName.set(nameKey, list);
+  }
+
+  return categories.map((cat) => {
+    const nameKey = normalizeCategoryNameKey(cat.name);
+    const fromPicker = Array.isArray(cat.productIds)
+      ? (cat.productIds as unknown[]).map((id) => String(id).trim()).filter(Boolean)
+      : [];
+    const fromProductField = nameKey ? idsByCategoryName.get(nameKey) || [] : [];
+    const merged = [...new Set([...fromPicker, ...fromProductField])];
+    return {
+      ...cat,
+      productIds: merged,
+      productCount: merged.length,
+    };
+  });
+}
+
+export async function fetchAdminAllCategoriesList(): Promise<any[]> {
+  const [categoriesRes, products] = await Promise.all([
+    fetch(
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/admin/all-categories`,
+      {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+      }
+    ),
+    fetchAllProducts().catch(() => [] as Record<string, unknown>[]),
+  ]);
+
+  if (!categoriesRes.ok) {
+    throw new Error(`Failed to fetch admin categories: ${categoriesRes.status}`);
+  }
+  const data = await categoriesRes.json();
+  const raw = (data.categories || []) as Record<string, unknown>[];
+  const productRows = Array.isArray(products) ? products : [];
+  const enriched = enrichAdminCategoriesWithProductCounts(raw, productRows);
+  return enriched.map((cat) => ({
+    ...cat,
+    productCount: resolveCategoryProductCount(cat as { productCount?: number; productIds?: unknown }),
+  }));
 }
 
 export async function fetchAdminCustomersPayload(): Promise<{ customers: any[] }> {
@@ -1262,7 +1334,13 @@ export async function fetchVendorProducts(
   sp.set("page", String(opts?.page ?? 1));
   sp.set("pageSize", String(Math.min(100, Math.max(1, opts?.pageSize ?? 24))));
   if (opts?.q && opts.q.trim()) sp.set("q", opts.q.trim());
-  if (opts?.category && opts.category.toLowerCase() !== "all") sp.set("category", opts.category);
+  if (opts?.category && opts.category.toLowerCase() !== "all") {
+    const cat = opts.category;
+    sp.set(
+      "category",
+      isVendorUncategorizedFilter(cat) ? VENDOR_STORE_UNCATEGORIZED_SLUG : cat
+    );
+  }
   if (opts?.resolveSlug) sp.set("resolveSlug", encodeURIComponent(opts.resolveSlug));
   const candidates = vendorIdentifierCandidates(vendorId);
   let response: Response | null = null;
@@ -1878,6 +1956,27 @@ export function patchAdminProductInventoryInCache(
 
 /** Cross-tab: Inventory in other tabs listens on this channel (session cache is not shared between tabs). */
 export const ADMIN_PRODUCTS_BROADCAST_CHANNEL = "migoo-admin-products-cache";
+
+/** Same-tab: full admin product list changed (create/delete/realtime insert) — force refetch, not inventory merge. */
+export const ADMIN_PRODUCTS_LIST_CHANGED_EVENT = "migoo-admin-products-list-changed";
+
+/**
+ * Bust paginated + page-1 localStorage and notify all tabs to refetch the products grid.
+ * Use after create/delete and KV `product:` inserts (not for order-driven stock merges).
+ */
+export function notifyAdminProductsListChanged(): void {
+  invalidateAdminProductsPaginatedCaches();
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_PRODUCTS);
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(ADMIN_PRODUCTS_LIST_CHANGED_EVENT));
+  try {
+    const bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
+    bc.postMessage({ type: "list-changed" });
+    bc.close();
+  } catch {
+    /* BroadcastChannel unsupported */
+  }
+}
 
 /** Notify listeners that admin product data changed (paginated rows already merged when applicable). */
 export function dispatchAdminProductsCachePatched(): void {

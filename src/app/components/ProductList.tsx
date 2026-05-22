@@ -8,6 +8,7 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { productsApi } from "../../utils/api";
 import { Product } from "../../types";
@@ -47,6 +48,9 @@ import {
   invalidateProductByIdCache,
   getCachedAdminProductsPage,
   invalidateAdminAllProductsCache,
+  notifyAdminProductsListChanged,
+  ADMIN_PRODUCTS_BROADCAST_CHANNEL,
+  ADMIN_PRODUCTS_LIST_CHANGED_EVENT,
   getCachedAdminVendorsForProductList,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
   removeAdminProductsFromCaches,
@@ -430,18 +434,52 @@ export function ProductList({
       }
       void loadProductPage(false, { silent: true });
     };
-    const hardReload = () => void loadProductPage(true);
+    const hardReload = () => void loadProductPage(true, { silent: true });
+    const onListChanged = () => void loadProductPage(true);
     const onStorage = (e: StorageEvent) => {
       if (e.key !== adminOrdersUpdatedStorageKey()) return;
       hardReload();
     };
     window.addEventListener("migoo-admin-products-cache-patched", softReload);
+    window.addEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, onListChanged);
     window.addEventListener("adminOrdersUpdated", softReload);
     window.addEventListener("storage", onStorage);
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
+      bc.onmessage = (ev: MessageEvent) => {
+        if (ev.data?.type === "list-changed") {
+          onListChanged();
+          return;
+        }
+        softReload();
+      };
+    } catch {
+      /* BroadcastChannel unsupported */
+    }
     return () => {
       window.removeEventListener("migoo-admin-products-cache-patched", softReload);
+      window.removeEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, onListChanged);
       window.removeEventListener("adminOrdersUpdated", softReload);
       window.removeEventListener("storage", onStorage);
+      bc?.close();
+    };
+  }, [loadProductPage]);
+
+  /** After mount / tab focus / bfcache restore — revalidate page 1 (localStorage can outlive session cache). */
+  useEffect(() => {
+    void loadProductPage(true, { silent: true });
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        void loadProductPage(true, { silent: true });
+      }
+    };
+    const onPageShow = () => void loadProductPage(true, { silent: true });
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onPageShow);
     };
   }, [loadProductPage]);
 
@@ -631,6 +669,7 @@ export function ProductList({
         });
       }
       SmartCache.set(CACHE_KEYS.PRODUCTS, (payload.products || []) as Product[]);
+      notifyAdminProductsListChanged();
       toast.success("✅ Product added!", { duration: 2000 });
       onProductsChanged?.();
     } catch (error) {
@@ -666,6 +705,7 @@ export function ProductList({
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
       invalidateAdminAllProductsCache();
       await loadProductPage(true);
+      notifyAdminProductsListChanged();
       onProductsChanged?.();
       setCurrentView("list");
     } catch (error) {
@@ -688,6 +728,7 @@ export function ProductList({
     try {
       await productsApi.delete(id, sessionUser?.id);
       invalidateProductByIdCache(id);
+      notifyAdminProductsListChanged();
       onProductsChanged?.();
     } catch (error) {
       console.error("Failed to delete product:", error);
@@ -769,6 +810,7 @@ export function ProductList({
         }
 
         if (successCount > 0) {
+          notifyAdminProductsListChanged();
           toast.success(`${successCount} product(s) deleted successfully!`);
         }
         if (alreadyDeletedCount > 0) {
@@ -784,6 +826,7 @@ export function ProductList({
         try {
           await productsApi.delete(productToDelete, sessionUser?.id);
           invalidateProductByIdCache(productToDelete);
+          notifyAdminProductsListChanged();
           toast.success("Product deleted successfully!");
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "";
@@ -957,6 +1000,19 @@ export function ProductList({
               <p className="text-slate-500 mt-1">{t('products.subtitle')}</p>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-2"
+                disabled={loading && listRefreshing}
+                onClick={() => {
+                  invalidateAdminAllProductsCache();
+                  void loadProductPage(true);
+                }}
+              >
+                <RefreshCw className={`w-4 h-4 ${listRefreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
               <Button className="bg-slate-900 hover:bg-slate-800" onClick={() => setCurrentView("add")}>
                 {t('products.addProduct')}
               </Button>

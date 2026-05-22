@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "../contexts/AuthContext";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 import {
-  dispatchAdminProductsCachePatched,
+  notifyAdminProductsListChanged,
   notifyAdminVendorApplicationsUpdated,
 } from "../utils/module-cache";
 
@@ -127,7 +127,7 @@ export function OrderRealtimeBridge() {
         notifyAdminOrdersUpdated("realtime-order-pulse");
       }
       if (list.includes("products")) {
-        dispatchAdminProductsCachePatched();
+        notifyAdminProductsListChanged();
       }
       if (typeof window !== "undefined") {
         if (list.includes("categories")) {

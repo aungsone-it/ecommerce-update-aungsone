@@ -17,7 +17,12 @@ import {
 import { compressImage } from "../../utils/imageCompression";
 import { toast } from "sonner";
 import { categoriesApi, productsApi } from "../../utils/api";
-import { getCachedAdminAllProducts } from "../utils/module-cache";
+import {
+  getCachedAdminAllProducts,
+  invalidateAdminAllCategoriesCache,
+  invalidateAdminAllProductsCache,
+  notifyAdminProductsListChanged,
+} from "../utils/module-cache";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Product {
@@ -26,6 +31,7 @@ interface Product {
   price: number | string;
   sku: string;
   image: string | null;
+  category?: string;
 }
 
 interface Category {
@@ -59,8 +65,8 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
-    loadProducts();
-    
+    void loadProducts(true);
+
     // If editing, populate the form
     if (editingCategory) {
       setCategoryName(editingCategory.name || "");
@@ -72,10 +78,26 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
     }
   }, [editingCategory]);
 
-  const loadProducts = async () => {
+  /** Merge picker ids with products that already have this category name on their row. */
+  useEffect(() => {
+    if (!editingCategory || products.length === 0) return;
+    const nameKey = String(editingCategory.name || "").trim().toLowerCase();
+    if (!nameKey) return;
+    const stored = (editingCategory.productIds || []).map(String).filter(Boolean);
+    const inferred = products
+      .filter((p) => String(p.category || "").trim().toLowerCase() === nameKey)
+      .map((p) => p.id)
+      .filter(Boolean);
+    const merged = [...new Set([...stored, ...inferred])];
+    if (merged.length > 0) {
+      setSelectedProducts(merged);
+    }
+  }, [editingCategory?.id, editingCategory?.name, products]);
+
+  const loadProducts = async (forceRefresh = false) => {
     try {
-      const list = await getCachedAdminAllProducts(false);
-      setProducts(Array.isArray(list) ? list : []);
+      const list = await getCachedAdminAllProducts(forceRefresh);
+      setProducts(Array.isArray(list) ? (list as Product[]) : []);
     } catch (error) {
       console.error("Failed to load products:", error);
       setProducts([]);
@@ -169,60 +191,64 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
         console.log("✅ Category created successfully");
       }
 
-      // Update products to assign/unassign this category
-      // Get previously selected products if editing
-      const previouslySelected = editingCategory?.productIds || [];
-      const oldCategoryName = editingCategory?.name || "";
-      
-      // Products to add category to (newly selected)
-      const productsToUpdate = selectedProducts.filter(id => !previouslySelected.includes(id));
-      
-      // Products to remove category from (previously selected but now unselected)
-      const productsToUnassign = previouslySelected.filter(id => !selectedProducts.includes(id));
-      
-      // Products that stayed selected (need to update if category name changed)
-      const productsStillSelected = selectedProducts.filter(id => previouslySelected.includes(id));
-      
-      // Update products with this category (newly selected)
-      if (productsToUpdate.length > 0) {
-        await Promise.all(
-          productsToUpdate.map(productId => 
-            productsApi.update(productId, {
-              category: categoryName,
-              performedByUserId: sessionUser?.id,
+      const oldCategoryName = String(editingCategory?.name || "").trim();
+      const nameKey = categoryName.trim().toLowerCase();
+      const oldKey = oldCategoryName.toLowerCase();
+
+      const idsToClear = [
+        ...new Set(
+          products
+            .filter((p) => {
+              const pk = String(p.category || "").trim().toLowerCase();
+              const matchesName =
+                (nameKey && pk === nameKey) || (oldKey && pk === oldKey);
+              return matchesName && !selectedProducts.includes(p.id);
             })
-          )
+            .map((p) => p.id)
+        ),
+      ];
+
+      const assignResults = await Promise.allSettled(
+        selectedProducts.map((productId) =>
+          productsApi.update(productId, {
+            category: categoryName,
+            performedByUserId: sessionUser?.id,
+          })
+        )
+      );
+      const assignFailed = assignResults.filter((r) => r.status === "rejected").length;
+      if (assignFailed > 0) {
+        console.warn(
+          `Category saved; ${assignFailed} product row(s) may need a refresh (server sync should still apply).`
         );
-        console.log(`✅ Updated ${productsToUpdate.length} products with category "${categoryName}"`);
-      }
-      
-      // Update category name for products that stayed selected (if category name changed)
-      if (editingCategory && oldCategoryName !== categoryName && productsStillSelected.length > 0) {
-        await Promise.all(
-          productsStillSelected.map(productId => 
-            productsApi.update(productId, {
-              category: categoryName,
-              performedByUserId: sessionUser?.id,
-            })
-          )
-        );
-        console.log(`✅ Updated category name for ${productsStillSelected.length} products to "${categoryName}"`);
-      }
-      
-      // Remove category from unselected products
-      if (productsToUnassign.length > 0) {
-        await Promise.all(
-          productsToUnassign.map(productId => 
-            productsApi.update(productId, { category: "", performedByUserId: sessionUser?.id })
-          )
-        );
-        console.log(`✅ Removed category from ${productsToUnassign.length} products`);
       }
 
+      if (idsToClear.length > 0) {
+        await Promise.allSettled(
+          idsToClear.map((productId) =>
+            productsApi.update(productId, {
+              category: "",
+              performedByUserId: sessionUser?.id,
+            })
+          )
+        );
+      }
+
+      invalidateAdminAllCategoriesCache();
+      invalidateAdminAllProductsCache();
+      notifyAdminProductsListChanged();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("categoryDataUpdated"));
+      }
+      toast.success(
+        editingCategory
+          ? `Category "${categoryName}" updated — products synced`
+          : `Category "${categoryName}" created — products synced`
+      );
       onSave();
     } catch (error) {
       console.error("Failed to save category:", error);
-      alert("Failed to save category");
+      toast.error("Failed to save category");
     } finally {
       setIsSaving(false);
     }

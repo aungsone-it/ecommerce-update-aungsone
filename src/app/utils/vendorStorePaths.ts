@@ -8,6 +8,16 @@ import {
 /**
  * Canonical `/vendor/:slug` segment (e.g. `go-go`), not display name (`Go Go`) or host label (`gogo`).
  */
+/** True when URL segment and resolved store slug refer to the same vendor (e.g. `go-go` vs `gogo`). */
+export function vendorPathStoreSlugsMatch(
+  pathStoreSegment: string | null | undefined,
+  resolvedStoreSlug: string | null | undefined
+): boolean {
+  const a = resolveVendorPathSlug(pathStoreSegment);
+  const b = resolveVendorPathSlug(resolvedStoreSlug);
+  return Boolean(a && b && a === b);
+}
+
 export function resolveVendorPathSlug(
   segment: string | null | undefined,
   apiStoreSlug?: string | null | undefined,

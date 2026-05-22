@@ -221,10 +221,17 @@ export function Inventory({
     window.addEventListener("migoo-admin-products-cache-patched", softReload);
     window.addEventListener("adminOrdersUpdated", softReload);
     window.addEventListener("storage", onStorage);
+    const hardReload = () => void loadInventory(true, { silent: true });
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
-      bc.onmessage = () => softReload();
+      bc.onmessage = (ev: MessageEvent) => {
+        if (ev.data?.type === "list-changed") {
+          hardReload();
+          return;
+        }
+        softReload();
+      };
     } catch {
       /* ignore */
     }

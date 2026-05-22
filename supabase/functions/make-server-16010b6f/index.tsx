@@ -2915,7 +2915,7 @@ function mapVendorStorefrontProductRow(p: any) {
     compareAtPrice: p.compareAtPrice ? parseFloat(String(p.compareAtPrice).replace(/[$,]/g, "")) : undefined,
     description: p.description || "",
     images: p.images || [],
-    category: p.category || "Uncategorized",
+    category: String(p.category ?? "").trim(),
     inventory: p.inventory || 0,
     rating: 4.5,
     reviewCount: Math.floor(Math.random() * 100),
@@ -3595,8 +3595,9 @@ app.post("/make-server-16010b6f/products", async (c) => {
         detail: `${pname} · SKU ${psku}`,
       });
       
-      // 🗑️ Invalidate dashboard cache since we created a new product
+      // 🗑️ Invalidate dashboard + product list caches since we created a new product
       invalidateDashboardCache();
+      clearCache("products");
       
       return c.json({ 
         success: true,
@@ -5553,12 +5554,45 @@ app.get("/make-server-16010b6f/admin/all-categories", async (c) => {
         return cat;
       })
     );
+
+    let productRows: any[] = [];
+    try {
+      productRows = await withTimeout(kv.getByPrefix("product:"), 25000);
+    } catch {
+      productRows = [];
+    }
+    const productsList = Array.isArray(productRows) ? productRows : [];
+
+    const categoriesWithCounts = categoriesWithVendorNames.map((cat: any) => {
+      const catName = String(cat?.name || "").trim().toLowerCase();
+      const fromPicker = Array.isArray(cat.productIds)
+        ? cat.productIds.map((id: unknown) => String(id).trim()).filter(Boolean)
+        : [];
+      const fromProducts = productsList
+        .filter(
+          (p: any) =>
+            p &&
+            typeof p === "object" &&
+            String(p.category || "")
+              .trim()
+              .toLowerCase() === catName &&
+            catName
+        )
+        .map((p: any) => String(p.id || "").trim())
+        .filter(Boolean);
+      const mergedIds = [...new Set([...fromPicker, ...fromProducts])];
+      return {
+        ...cat,
+        productIds: mergedIds.length > 0 ? mergedIds : fromPicker,
+        productCount: mergedIds.length,
+      };
+    });
     
-    console.log(`✅ Found ${categoriesWithVendorNames.length} total categories (including ${categoriesWithVendorNames.filter(c => c.vendorId).length} vendor categories)`);
+    console.log(`✅ Found ${categoriesWithCounts.length} total categories (including ${categoriesWithCounts.filter(c => c.vendorId).length} vendor categories)`);
     
     return c.json({
-      categories: categoriesWithVendorNames,
-      total: categoriesWithVendorNames.length
+      categories: categoriesWithCounts,
+      total: categoriesWithCounts.length
     });
   } catch (error) {
     console.error("❌ Error fetching all categories:", error);
@@ -5582,19 +5616,104 @@ app.get("/make-server-16010b6f/categories/:id", async (c) => {
   }
 });
 
+/** After category picker save: keep `product.category` in sync with category membership (admin grid + storefront tabs). */
+async function syncPlatformCategoryProducts(opts: {
+  categoryName: string;
+  productIds: string[];
+  previousProductIds?: string[];
+  previousCategoryName?: string;
+}): Promise<void> {
+  const name = String(opts.categoryName || "").trim();
+  const nextIds = new Set(
+    (opts.productIds || []).map((id) => String(id).trim()).filter(Boolean)
+  );
+  const prevIds = new Set(
+    (opts.previousProductIds || []).map((id) => String(id).trim()).filter(Boolean)
+  );
+  const prevName = String(opts.previousCategoryName || "").trim();
+  const prevNameKey = prevName.toLowerCase();
+  const nameKey = name.toLowerCase();
+
+  for (const id of nextIds) {
+    try {
+      const raw = await withTimeout(kv.get(`product:${id}`), 5000);
+      if (!raw || typeof raw !== "object") continue;
+      await withTimeout(
+        kv.set(`product:${id}`, {
+          ...(raw as object),
+          category: name,
+          updatedAt: new Date().toISOString(),
+        }),
+        8000
+      );
+    } catch (e) {
+      console.warn(`syncPlatformCategoryProducts assign ${id}:`, e);
+    }
+  }
+
+  const toMaybeClear = new Set<string>([...prevIds]);
+  if (prevNameKey) {
+    try {
+      const all = await withTimeout(kv.getByPrefix("product:"), 20000);
+      const rows = Array.isArray(all) ? all : [];
+      for (const p of rows) {
+        if (!p || typeof p !== "object") continue;
+        const pk = String((p as any).category || "")
+          .trim()
+          .toLowerCase();
+        if (pk === prevNameKey || (nameKey && pk === nameKey)) {
+          const pid = String((p as any).id || "").trim();
+          if (pid && !nextIds.has(pid)) toMaybeClear.add(pid);
+        }
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  for (const id of toMaybeClear) {
+    if (nextIds.has(id)) continue;
+    try {
+      const raw = await withTimeout(kv.get(`product:${id}`), 5000);
+      if (!raw || typeof raw !== "object") continue;
+      const cat = String((raw as any).category || "").trim();
+      const catKey = cat.toLowerCase();
+      const shouldClear =
+        !cat ||
+        (nameKey && catKey === nameKey) ||
+        (prevNameKey && catKey === prevNameKey);
+      if (!shouldClear) continue;
+      await withTimeout(
+        kv.set(`product:${id}`, {
+          ...(raw as object),
+          category: "",
+          updatedAt: new Date().toISOString(),
+        }),
+        8000
+      );
+    } catch (e) {
+      console.warn(`syncPlatformCategoryProducts clear ${id}:`, e);
+    }
+  }
+
+  clearCache("products");
+  invalidateDashboardCache();
+}
+
 app.post("/make-server-16010b6f/categories", async (c) => {
   try {
     const body = await c.req.json();
     const id = `cat_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
+    const productIds = body.productIds || [];
     const category = {
       id,
       name: body.name || "",
       description: body.description || "",
       image: body.coverPhoto || body.image || "",
       coverPhoto: body.coverPhoto || "",
-      productCount: 0,
-      productIds: body.productIds || [],
+      productCount: productIds.length,
+      productIds,
       parentCategory: body.parentCategory || "",
       status: body.status || "active",
       createdAt: new Date().toISOString(),
@@ -5603,9 +5722,15 @@ app.post("/make-server-16010b6f/categories", async (c) => {
     
     await withTimeout(kv.set(`category:${id}`, category), 5000);
     console.log(`✅ Category created: ${id} - ${category.name}`);
+
+    await syncPlatformCategoryProducts({
+      categoryName: category.name,
+      productIds,
+    });
     
     // Invalidate categories cache
     serverCache.delete("categories");
+    serverCache.delete("platform_categories");
     
     return c.json({ success: true, category });
   } catch (error) {
@@ -5624,18 +5749,31 @@ app.put("/make-server-16010b6f/categories/:id", async (c) => {
       return c.json({ error: "Category not found" }, 404);
     }
     
+    const productIds =
+      body.productIds !== undefined ? body.productIds || [] : existing.productIds || [];
+
     const updated = {
       ...existing,
       ...body,
       id,
+      productIds,
+      productCount: productIds.length,
       updatedAt: new Date().toISOString()
     };
     
     await withTimeout(kv.set(`category:${id}`, updated), 5000);
     console.log(`✅ Category updated: ${id}`);
+
+    await syncPlatformCategoryProducts({
+      categoryName: String(updated.name || ""),
+      productIds,
+      previousProductIds: Array.isArray(existing.productIds) ? existing.productIds : [],
+      previousCategoryName: String(existing.name || ""),
+    });
     
     // Invalidate categories cache
     serverCache.delete("categories");
+    serverCache.delete("platform_categories");
     
     return c.json({ success: true, category: updated });
   } catch (error) {
@@ -10927,7 +11065,14 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
 
     if (categoryQ && categoryQ.toLowerCase() !== "all") {
       const cl = categoryQ.toLowerCase();
-      vendorList = vendorList.filter((p: any) => String(p.category || "").toLowerCase() === cl);
+      if (cl === "uncategorized" || cl === "__uncategorized__") {
+        vendorList = vendorList.filter((p: any) => {
+          const cat = String(p.category || "").trim().toLowerCase();
+          return !cat || cat === "uncategorized";
+        });
+      } else {
+        vendorList = vendorList.filter((p: any) => String(p.category || "").toLowerCase() === cl);
+      }
     }
     if (searchQ) {
       const sq = searchQ.toLowerCase();
