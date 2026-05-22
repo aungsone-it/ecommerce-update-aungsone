@@ -47,6 +47,75 @@ export function resolveVendorPathSlug(
   return mapped || compact || "store";
 }
 
+/** KV default like `vendor-vendor_*` — not suitable for `/vendor/:slug` links on localhost. */
+export function isDefaultTechnicalVendorStoreSlug(slug: string | null | undefined): boolean {
+  const s = String(slug || "").trim();
+  return /^vendor-vendor_/i.test(s);
+}
+
+/**
+ * Store segment from a path-based vendor URL (`/vendor/go-go/...` or `/vendor-go-go/...`).
+ * Returns null on vendor-only hosts (`/`, `/product/...`) and non-vendor paths.
+ */
+export function pathVendorStoreSlugFromPathname(pathname: string): string | null {
+  const parts = String(pathname || "")
+    .split("/")
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const first = parts[0] || "";
+  if (first === "vendor") {
+    const seg = parts[1] || "";
+    if (!seg) return null;
+    const reserved = new Set(["application", "setup", "login"]);
+    if (reserved.has(seg.toLowerCase())) return null;
+    try {
+      return decodeURIComponent(seg).trim() || null;
+    } catch {
+      return seg.trim() || null;
+    }
+  }
+
+  if (first.startsWith("vendor-")) {
+    const seg = first.slice("vendor-".length).trim();
+    if (!seg) return null;
+    try {
+      return decodeURIComponent(seg).trim() || null;
+    } catch {
+      return seg;
+    }
+  }
+
+  return null;
+}
+
+/** Prefer friendly `/vendor/:slug` segment for links — never a bare `vendor-vendor_*` id when a path slug exists. */
+export function resolveVendorStoreLinkSlug(
+  pathname: string,
+  storeSlug: string | null | undefined,
+  vendorId: string | null | undefined,
+  apiStoreSlug?: string | null | undefined,
+): string {
+  const fromPath = pathVendorStoreSlugFromPathname(pathname);
+  if (fromPath && !isDefaultTechnicalVendorStoreSlug(fromPath)) {
+    return resolveVendorPathSlug(fromPath);
+  }
+
+  const fromProp = String(storeSlug || "").trim();
+  if (fromProp && !isDefaultTechnicalVendorStoreSlug(fromProp)) {
+    return resolveVendorPathSlug(fromProp, apiStoreSlug);
+  }
+
+  const fromVendor = String(vendorId || "").trim();
+  if (fromVendor && !isDefaultTechnicalVendorStoreSlug(fromVendor)) {
+    return resolveVendorPathSlug(fromVendor, apiStoreSlug);
+  }
+
+  if (fromPath) return resolveVendorPathSlug(fromPath);
+  if (fromProp) return resolveVendorPathSlug(fromProp, apiStoreSlug);
+  return resolveVendorPathSlug(fromVendor, apiStoreSlug);
+}
+
 /** Storefront home: `/` on vendor subdomain, `/vendor/:slug` on apex/localhost. */
 export function buildVendorStoreHomePath(params: {
   pathSlug: string;

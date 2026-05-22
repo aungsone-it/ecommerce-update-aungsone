@@ -366,12 +366,16 @@ export function VendorStorefrontPage() {
     navigate(vendorAdminPath);
   };
 
+  const pathStoreSlug = pathBasedStoreName
+    ? resolveVendorPathSlug(pathBasedStoreName)
+    : undefined;
+
   return (
     <AuthProvider>
       <CartProvider>
         <VendorStoreView
           vendorId={resolvedStoreName}
-          storeSlug={resolvedStoreName}
+          storeSlug={pathStoreSlug ?? resolvedStoreName}
           hostRootStorePaths={!!(subdomainSlug || customHostSlug)}
           onBack={handleBack}
           initialProductSlug={productSlug}

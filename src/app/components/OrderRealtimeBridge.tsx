@@ -53,8 +53,8 @@ export function OrderRealtimeBridge() {
         () => bump()
       )
       .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          console.warn("[OrderRealtime] channel error — using events/polling fallback only");
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[OrderRealtime] pulse channel ${status} — rely on tab-focus refetch + storage events`);
         }
       });
 
@@ -144,7 +144,11 @@ export function OrderRealtimeBridge() {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[OrderRealtime] KV channel ${status} — rely on tab-focus refetch + storage events`);
+        }
+      });
 
     return () => {
       if (kvDebounceRef.current) clearTimeout(kvDebounceRef.current);

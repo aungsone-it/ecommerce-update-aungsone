@@ -117,7 +117,10 @@ import { applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
 import { buildVendorStorefrontDocumentTitle } from "../utils/vendorStorefrontDocumentTitle";
 import {
   buildVendorStoreHomePath,
+  resolveVendorStoreLinkSlug,
   resolveVendorPathSlug,
+  pathVendorStoreSlugFromPathname,
+  isDefaultTechnicalVendorStoreSlug,
 } from "../utils/vendorStorePaths";
 import { supabase } from "../contexts/AuthContext";
 
@@ -724,30 +727,52 @@ export function VendorStoreView({
     [storeSlug, vendorId, canonicalStoreSlug]
   );
 
+  const storeLinkSlug = useMemo(
+    () =>
+      resolveVendorStoreLinkSlug(
+        location.pathname,
+        storeSlug,
+        vendorId,
+        canonicalStoreSlug
+      ),
+    [location.pathname, storeSlug, vendorId, canonicalStoreSlug]
+  );
+
   const storeBase = useMemo(() => {
     return buildVendorStoreHomePath({
-      pathSlug: canonicalPathSlug || storeSlug || vendorId,
+      pathSlug: storeLinkSlug || canonicalPathSlug || storeSlug || vendorId,
       hostRootStorePaths,
       useVendorDashPrefix: location.pathname.startsWith("/vendor-"),
     });
-  }, [hostRootStorePaths, location.pathname, canonicalPathSlug, storeSlug, vendorId]);
+  }, [
+    hostRootStorePaths,
+    location.pathname,
+    storeLinkSlug,
+    canonicalPathSlug,
+    storeSlug,
+    vendorId,
+  ]);
   const checkoutPath = `${storeBase}/checkout`;
 
   const navigateStoreHome = useCallback(() => {
     navigate(
       buildVendorStoreHomePath({
-        pathSlug: canonicalPathSlug || storeSlug || vendorId,
+        pathSlug: storeLinkSlug || canonicalPathSlug || storeSlug || vendorId,
         hostRootStorePaths,
         useVendorDashPrefix: location.pathname.startsWith("/vendor-"),
       }),
       { replace: true }
     );
-  }, [navigate, canonicalPathSlug, storeSlug, vendorId, hostRootStorePaths, location.pathname]);
+  }, [navigate, storeLinkSlug, canonicalPathSlug, storeSlug, vendorId, hostRootStorePaths, location.pathname]);
 
   useEffect(() => {
     if (hostRootStorePaths || !canonicalPathSlug) return;
-    const urlSegment = decodeURIComponent(String(storeSlug || vendorId || "").trim());
+    const fromPath = pathVendorStoreSlugFromPathname(location.pathname);
+    const urlSegment = decodeURIComponent(
+      String(fromPath || storeSlug || vendorId || "").trim()
+    );
     if (!urlSegment || urlSegment === canonicalPathSlug) return;
+    if (isDefaultTechnicalVendorStoreSlug(urlSegment)) return;
     if (resolveVendorPathSlug(urlSegment) !== canonicalPathSlug) return;
     const encUrl = encodeURIComponent(urlSegment);
     const encCanon = encodeURIComponent(canonicalPathSlug);

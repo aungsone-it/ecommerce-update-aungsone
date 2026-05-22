@@ -83,7 +83,12 @@ import {
   deriveShippingStatusFromOrder,
 } from "../../utils/normalizeOrderBadgeStatus";
 import { deriveOrderPaymentMethodKey } from "../../utils/orderPaymentMethod";
-import { adminOrdersUpdatedStorageKey } from "../../utils/adminOrdersRealtime";
+import {
+  adminOrdersUpdatedStorageKey,
+  notifyAdminOrdersUpdated,
+} from "../../utils/adminOrdersRealtime";
+import { useAdminOrdersResyncOnVisible } from "../../hooks/useAdminOrdersResyncOnVisible";
+import { broadcastOrderStatusUpdate } from "../../utils/ordersRealtime";
 import { supabase } from "../../contexts/AuthContext";
 
 function formatMmk(n: number): string {
@@ -434,12 +439,20 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           bump();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[VendorAdminOrders] KV realtime ${status} — tab-focus refetch active`);
+        }
+      });
     return () => {
       window.clearTimeout(debounce);
       void supabase.removeChannel(channel);
     };
   }, [vendorId]);
+
+  useAdminOrdersResyncOnVisible(() => {
+    setOrdersRefreshTick((n) => n + 1);
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -913,6 +926,12 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           }
         }
         invalidateVendorOrdersCache(vendorId);
+        notifyAdminOrdersUpdated("vendor-admin-order-updated");
+        void broadcastOrderStatusUpdate({
+          orderId,
+          status: newStatus,
+          updatedAt: new Date().toISOString(),
+        });
       } catch (error) {
         console.error("Failed to update order:", error);
         const detail =
@@ -1616,35 +1635,9 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                         </td>
                         <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
                         <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)} title="View Details">
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" title="Update status">
-                                  <Package className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "pending")}>
-                                  Mark as Pending
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "processing")}>
-                                  Mark as Processing
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "fulfilled")}>
-                                  Mark as Fulfilled
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "ready-to-ship")}>
-                                  Mark as Ready to Ship
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleStatusChange(order.id, "cancelled")}>
-                                  Mark as Cancelled
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)} title="View Details">
+                            <Eye className="w-4 h-4" />
+                          </Button>
                         </td>
                       </tr>
                     ))

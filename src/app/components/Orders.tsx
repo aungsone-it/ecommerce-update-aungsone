@@ -53,6 +53,7 @@ import {
   pollKPayRefundAfterCancel,
 } from "../utils/kpayRefundPolling";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
+import { useAdminOrdersResyncOnVisible } from "../hooks/useAdminOrdersResyncOnVisible";
 import { supabase } from "../contexts/AuthContext";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import {
@@ -806,6 +807,10 @@ export function Orders({
     };
   }, [loadOrders]);
 
+  useAdminOrdersResyncOnVisible(() => {
+    void loadOrders(true);
+  });
+
   // Realtime websocket refresh: admin orders table updates instantly on create/update/delete.
   useEffect(() => {
     let debounce: ReturnType<typeof setTimeout> | undefined;
@@ -826,7 +831,11 @@ export function Orders({
           schedule();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn(`[Orders] KV realtime ${status} — tab-focus refetch active`);
+        }
+      });
     return () => {
       window.clearTimeout(debounce);
       void supabase.removeChannel(channel);
