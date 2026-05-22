@@ -10703,7 +10703,9 @@ app.get("/make-server-16010b6f/vendor/by-domain", async (c) => {
     const validSettings = Array.isArray(allSettings) ? allSettings.filter((s) => s != null) : [];
 
     const vendorSettings = validSettings.find((s: any) => {
-      const cd = String(s.customDomain || "").toLowerCase();
+      const cd =
+        normalizeVendorHostnameInput(String(s.customDomain || "")) ||
+        String(s.customDomain || "").toLowerCase().trim();
       if (!variants.includes(cd)) return false;
       return (
         s.domainStatus === "verified" &&

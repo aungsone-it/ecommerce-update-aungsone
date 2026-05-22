@@ -4,7 +4,6 @@
  */
 import { useState, useEffect } from "react";
 import { resolveVendorSubdomainStoreSlug } from "./vendorSubdomainHooks";
-import { deriveNaiveVendorApexFromHost } from "./deriveVendorApex";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 
@@ -28,8 +27,7 @@ export function shouldResolveCustomDomainHost(host: string): boolean {
   const envBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
     .trim()
     .toLowerCase();
-  const derivedBase = deriveNaiveVendorApexFromHost(h);
-  const base = derivedBase || envBase;
+  const base = envBase;
   if (base) {
     if (h === base || h === `www.${base}`) return false;
     if (h.endsWith(`.${base}`)) {

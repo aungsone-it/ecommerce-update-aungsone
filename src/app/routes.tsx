@@ -17,7 +17,10 @@ import {
   resolveVendorSubdomainStoreSlug,
   isOnVendorSubdomainHost,
 } from "./utils/vendorSubdomainHooks";
-import { useResolvedVendorHostSlug } from "./utils/vendorHostResolution";
+import {
+  shouldResolveCustomDomainHost,
+  useResolvedVendorHostSlug,
+} from "./utils/vendorHostResolution";
 import {
   AdminEntryLayout,
   AdminSubdomainLeaf,
@@ -85,10 +88,13 @@ function VendorSubdomainIndexOrLanding() {
   const onVendorSubdomainHost = isOnVendorSubdomainHost();
   const sub = resolveVendorSubdomainStoreSlug();
   const { slug: customSlug, loading } = useResolvedVendorHostSlug();
+  const customDomainLikeHost =
+    typeof window !== "undefined" &&
+    shouldResolveCustomDomainHost(window.location.hostname);
   if (loading && !onVendorSubdomainHost) {
     return <RouteLoadingFallback />;
   }
-  if (onVendorSubdomainHost || sub || customSlug) {
+  if (onVendorSubdomainHost || sub || customSlug || customDomainLikeHost) {
     return <VendorStorefrontPage />;
   }
   return <LandingPage />;

@@ -95,6 +95,7 @@ import { OrderDetailView } from "./OrderDetailView";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import {
   ProductDetailSkeleton,
+  ProductGridSkeleton,
   VendorStorefrontFullSkeleton,
   VendorOrdersListSkeleton,
   VendorAddressesSkeleton,
@@ -925,6 +926,43 @@ export function VendorStoreView({
   /** Last successful revalidate time per catalog key (throttle background refetch spam). */
   const vendorCatalogRevalidateAtRef = useRef<Map<string, number>>(new Map());
   const VENDOR_REVALIDATE_COOLDOWN_MS = 15000;
+  /** In-memory page-1 slices per category — instant tab switches on slow deploy networks. */
+  const catalogSliceByCategoryRef = useRef<
+    Map<
+      string,
+      { products: Product[]; total: number; page: number; hasMore: boolean }
+    >
+  >(new Map());
+  /** True while route category changed but page-1 slice not hydrated yet (inline grid skeleton only). */
+  const [catalogNavPending, setCatalogNavPending] = useState(false);
+
+  const catalogSliceMemoryKey = useCallback(
+    (category: string) =>
+      `${vendorId}|${String(category || "all").trim().toLowerCase() || "all"}`,
+    [vendorId]
+  );
+
+  const applyVendorCatalogSlice = useCallback(
+    (slice: { products: Product[]; total: number; page: number; hasMore: boolean }) => {
+      setProducts(slice.products);
+      setVendorCatalogTotal(slice.total);
+      setVendorCatalogPage(slice.page);
+      setVendorCatalogHasMore(slice.hasMore);
+      setServerStatus("healthy");
+      setCatalogNavPending(false);
+    },
+    []
+  );
+
+  const rememberVendorCatalogSlice = useCallback(
+    (
+      category: string,
+      slice: { products: Product[]; total: number; page: number; hasMore: boolean }
+    ) => {
+      catalogSliceByCategoryRef.current.set(catalogSliceMemoryKey(category), slice);
+    },
+    [catalogSliceMemoryKey]
+  );
 
   /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
   const catalogCategoryHintsRef = useRef<Map<string, string>>(new Map());
@@ -3209,10 +3247,13 @@ export function VendorStoreView({
           if (lsHasStorePhoneField) {
             if (!isLatest()) return false;
             moduleCache.prime(cacheKey, fromLs);
-            setProducts(fromLs.products || []);
-            setVendorCatalogTotal(fromLs.total);
-            setVendorCatalogPage(fromLs.page);
-            setVendorCatalogHasMore(fromLs.hasMore);
+            const slice = {
+              products: fromLs.products || [],
+              total: fromLs.total,
+              page: fromLs.page,
+              hasMore: fromLs.hasMore,
+            };
+            applyVendorCatalogSlice(slice);
             setStoreName(fromLs.storeName || "Vendor Store");
             setStoreLogo(fromLs.logo || "");
             if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
@@ -3227,6 +3268,9 @@ export function VendorStoreView({
             setCanonicalVendorId(rid ?? vendorId);
             if (typeof fromLs.storeSlug === "string" && fromLs.storeSlug.trim()) {
               setCanonicalStoreSlug(fromLs.storeSlug.trim());
+            }
+            if (persistEligible) {
+              rememberVendorCatalogSlice(cat, slice);
             }
             return true;
           }
@@ -3245,10 +3289,16 @@ export function VendorStoreView({
         forceRefresh
       );
       if (!isLatest()) return false;
-      setProducts(productsData.products || []);
-      setVendorCatalogTotal(productsData.total);
-      setVendorCatalogPage(productsData.page);
-      setVendorCatalogHasMore(productsData.hasMore);
+      const slice = {
+        products: productsData.products || [],
+        total: productsData.total,
+        page: productsData.page,
+        hasMore: productsData.hasMore,
+      };
+      setProducts(slice.products);
+      setVendorCatalogTotal(slice.total);
+      setVendorCatalogPage(slice.page);
+      setVendorCatalogHasMore(slice.hasMore);
       setStoreName(productsData.storeName || "Vendor Store");
       setStoreLogo(productsData.logo || "");
       setStorePhone(productsData.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
@@ -3256,13 +3306,24 @@ export function VendorStoreView({
       if (productsData.storeSlug) {
         setCanonicalStoreSlug(productsData.storeSlug);
       }
+      if (persistEligible) {
+        rememberVendorCatalogSlice(cat, slice);
+      }
+      setCatalogNavPending(false);
 
       if (persistEligible && productsData && typeof productsData === "object") {
         writePersistedJson(lsKey, productsData);
       }
       return true;
     },
-    [vendorId, debouncedVendorServerQ, catalogCategoryForFetch, savedPage]
+    [
+      vendorId,
+      debouncedVendorServerQ,
+      catalogCategoryForFetch,
+      savedPage,
+      rememberVendorCatalogSlice,
+      applyVendorCatalogSlice,
+    ]
   );
 
   // Sibling routes (/summary vs /) remount VendorStorefrontPage — warm catalog while checkout is open.
@@ -3555,6 +3616,8 @@ export function VendorStoreView({
   }, [vendorId]);
 
   useEffect(() => {
+    catalogSliceByCategoryRef.current.clear();
+    setCatalogNavPending(false);
     setCanonicalVendorId(null);
     setCanonicalStoreSlug(resolveVendorPathSlug(storeSlug || vendorId) || null);
     loadVendorData();
@@ -3622,13 +3685,27 @@ export function VendorStoreView({
     const qRaw = debouncedVendorServerQ.trim();
     const qk = qRaw.toLowerCase();
     const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
-    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, catalogCategoryForFetch, pageSize);
+    const cat = catalogCategoryForFetch;
+    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
+
+    if (!qRaw) {
+      const memSlice = catalogSliceByCategoryRef.current.get(catalogSliceMemoryKey(cat));
+      if (memSlice && Array.isArray(memSlice.products)) {
+        applyVendorCatalogSlice(memSlice);
+        return;
+      }
+    }
+
     const fromMem = moduleCache.peek<any>(cacheKey);
     if (fromMem && typeof fromMem === "object" && Array.isArray(fromMem.products)) {
-      setProducts(fromMem.products || []);
-      setVendorCatalogTotal(typeof fromMem.total === "number" ? fromMem.total : 0);
-      setVendorCatalogPage(typeof fromMem.page === "number" ? fromMem.page : 1);
-      setVendorCatalogHasMore(!!fromMem.hasMore);
+      const slice = {
+        products: fromMem.products || [],
+        total: typeof fromMem.total === "number" ? fromMem.total : 0,
+        page: typeof fromMem.page === "number" ? fromMem.page : 1,
+        hasMore: !!fromMem.hasMore,
+      };
+      applyVendorCatalogSlice(slice);
+      if (!qRaw) rememberVendorCatalogSlice(cat, slice);
       if (typeof fromMem.storeName === "string" && fromMem.storeName.trim()) {
         setStoreName(fromMem.storeName.trim());
       }
@@ -3638,28 +3715,44 @@ export function VendorStoreView({
       if (typeof fromMem.storePhone === "string" && fromMem.storePhone.trim()) {
         setStorePhone(fromMem.storePhone.trim());
       }
-      setServerStatus("healthy");
       return;
     }
-    if (qRaw) return;
-    const lsKey = lsVendorCatalogPage1Key(vendorId, qk, catalogCategoryForFetch, pageSize);
+    if (qRaw) {
+      setCatalogNavPending(false);
+      return;
+    }
+    const lsKey = lsVendorCatalogPage1Key(vendorId, qk, cat, pageSize);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
-    if (!fromLs || typeof fromLs !== "object" || !Array.isArray(fromLs.products)) return;
-    setProducts(fromLs.products || []);
-    setVendorCatalogTotal(typeof fromLs.total === "number" ? fromLs.total : 0);
-    setVendorCatalogPage(typeof fromLs.page === "number" ? fromLs.page : 1);
-    setVendorCatalogHasMore(!!fromLs.hasMore);
-    if (typeof fromLs.storeName === "string" && fromLs.storeName.trim()) {
-      setStoreName(fromLs.storeName.trim());
+    if (fromLs && typeof fromLs === "object" && Array.isArray(fromLs.products)) {
+      const slice = {
+        products: fromLs.products || [],
+        total: typeof fromLs.total === "number" ? fromLs.total : 0,
+        page: typeof fromLs.page === "number" ? fromLs.page : 1,
+        hasMore: !!fromLs.hasMore,
+      };
+      applyVendorCatalogSlice(slice);
+      rememberVendorCatalogSlice(cat, slice);
+      if (typeof fromLs.storeName === "string" && fromLs.storeName.trim()) {
+        setStoreName(fromLs.storeName.trim());
+      }
+      if (typeof fromLs.logo === "string") {
+        setStoreLogo(fromLs.logo);
+      }
+      if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
+        setStorePhone(fromLs.storePhone.trim());
+      }
+      return;
     }
-    if (typeof fromLs.logo === "string") {
-      setStoreLogo(fromLs.logo);
-    }
-    if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
-      setStorePhone(fromLs.storePhone.trim());
-    }
-    setServerStatus("healthy");
-  }, [vendorId, catalogCategoryForFetch, debouncedVendorServerQ, savedPage]);
+    setCatalogNavPending(true);
+  }, [
+    vendorId,
+    catalogCategoryForFetch,
+    debouncedVendorServerQ,
+    savedPage,
+    catalogSliceMemoryKey,
+    applyVendorCatalogSlice,
+    rememberVendorCatalogSlice,
+  ]);
 
   useEffect(() => {
     if (savedPage) return;
@@ -3679,23 +3772,33 @@ export function VendorStoreView({
         const recentEnough = now - lastAt < VENDOR_REVALIDATE_COOLDOWN_MS;
         if (!qRaw && moduleCache.has(page1Key) && recentEnough) {
           if (runId !== vendorCatalogRefetchRunRef.current) return;
+          const fromMem = moduleCache.peek<any>(page1Key);
+          if (fromMem && typeof fromMem === "object" && Array.isArray(fromMem.products)) {
+            const slice = {
+              products: fromMem.products || [],
+              total: typeof fromMem.total === "number" ? fromMem.total : 0,
+              page: typeof fromMem.page === "number" ? fromMem.page : 1,
+              hasMore: !!fromMem.hasMore,
+            };
+            applyVendorCatalogSlice(slice);
+            rememberVendorCatalogSlice(catalogCategoryForFetch, slice);
+          }
           setServerStatus("healthy");
+          setCatalogNavPending(false);
           return;
-        }
-        // Only block the UI with "checking" on first load. Refetching filters/search with
-        // catalog already in memory should not swap the whole page for a skeleton (blink when
-        // returning from product detail or changing category after browse).
-        if (productsRef.current.length === 0) {
-          setServerStatus("checking");
         }
         const applied = await refetchVendorCatalogPage1(true);
         if (runId !== vendorCatalogRefetchRunRef.current) return;
         if (applied) {
           vendorCatalogRevalidateAtRef.current.set(page1Key, Date.now());
           setServerStatus("healthy");
+          setCatalogNavPending(false);
+        } else if (productsRef.current.length === 0) {
+          setCatalogNavPending(false);
         }
       } catch {
         if (runId !== vendorCatalogRefetchRunRef.current) return;
+        setCatalogNavPending(false);
         // Avoid dropping into full error screen when we already have products rendered.
         if (productsRef.current.length === 0) {
           setServerStatus("unhealthy");
@@ -3704,7 +3807,15 @@ export function VendorStoreView({
         }
       }
     })();
-  }, [vendorId, debouncedVendorServerQ, catalogCategoryForFetch, savedPage, refetchVendorCatalogPage1]);
+  }, [
+    vendorId,
+    debouncedVendorServerQ,
+    catalogCategoryForFetch,
+    savedPage,
+    refetchVendorCatalogPage1,
+    applyVendorCatalogSlice,
+    rememberVendorCatalogSlice,
+  ]);
 
   // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.
   useLayoutEffect(() => {
@@ -4312,6 +4423,7 @@ export function VendorStoreView({
 
   /** Instant client filter on loaded rows (name/SKU) — pairs with debounced server fetch for q. */
   const filteredProducts = useMemo(() => {
+    if (catalogNavPending) return [];
     return products.filter((product) => {
       const matchesSearch =
         !searchQuery.trim() ||
@@ -4331,7 +4443,7 @@ export function VendorStoreView({
       }
       return matchesSearch && matchesCategory;
     });
-  }, [products, searchQuery, catalogCategoryForFetch]);
+  }, [products, searchQuery, catalogCategoryForFetch, catalogNavPending]);
 
   /** Full-page skeleton on /saved: wishlist GET or first product hydration — not while refetching with cards visible */
   const showSavedPageSkeleton = useMemo(
@@ -4357,13 +4469,17 @@ export function VendorStoreView({
       vendorViewMode === "storefront" &&
       !savedPage &&
       !isVendorProductDetailPath &&
-      products.length === 0,
+      products.length === 0 &&
+      subnavCategoryItems.length === 0 &&
+      vendorCategories.length === 0,
     [
       serverStatus,
       vendorViewMode,
       savedPage,
       isVendorProductDetailPath,
       products.length,
+      subnavCategoryItems.length,
+      vendorCategories.length,
     ]
   );
 
@@ -5631,6 +5747,8 @@ export function VendorStoreView({
           <>
             {isVendorProductDetailPath && !selectedProduct ? (
               <ProductDetailSkeleton />
+            ) : catalogNavPending ? (
+              <ProductGridSkeleton count={10} />
             ) : (
               <>
             {/* Network / timeout — not an empty catalog or app bug */}
