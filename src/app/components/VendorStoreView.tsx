@@ -95,7 +95,6 @@ import { OrderDetailView } from "./OrderDetailView";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import {
   ProductDetailSkeleton,
-  ProductGridSkeleton,
   VendorStorefrontFullSkeleton,
   VendorOrdersListSkeleton,
   VendorAddressesSkeleton,
@@ -933,8 +932,8 @@ export function VendorStoreView({
       { products: Product[]; total: number; page: number; hasMore: boolean }
     >
   >(new Map());
-  /** True while route category changed but page-1 slice not hydrated yet (inline grid skeleton only). */
-  const [catalogNavPending, setCatalogNavPending] = useState(false);
+  /** Debounce category/search refetch so rapid subnav clicks do not flash skeleton grids. */
+  const vendorCatalogRefetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const catalogSliceMemoryKey = useCallback(
     (category: string) =>
@@ -949,9 +948,39 @@ export function VendorStoreView({
       setVendorCatalogPage(slice.page);
       setVendorCatalogHasMore(slice.hasMore);
       setServerStatus("healthy");
-      setCatalogNavPending(false);
     },
     []
+  );
+
+  /** Client-filter in-memory rows for the active tab (instant paint while server page-1 loads). */
+  const clientFilterProductsForCatalogCategory = useCallback(
+    (rows: Product[], category: string) => {
+      const cat = String(category || "all").trim();
+      if (!cat || cat === "all") return rows;
+      if (isVendorUncategorizedFilter(cat)) {
+        return rows.filter((p) => productHasNoCategory(p));
+      }
+      const want = cat.toLowerCase();
+      return rows.filter(
+        (p) => String(p.category || "").trim().toLowerCase() === want
+      );
+    },
+    []
+  );
+
+  const shouldApplyCachedCatalogSlice = useCallback(
+    (
+      slice: { products: Product[]; total: number; page: number; hasMore: boolean },
+      category: string
+    ) => {
+      if (slice.products.length > 0) return true;
+      const interim = clientFilterProductsForCatalogCategory(
+        productsRef.current,
+        category
+      );
+      return interim.length === 0;
+    },
+    [clientFilterProductsForCatalogCategory]
   );
 
   const rememberVendorCatalogSlice = useCallback(
@@ -3253,6 +3282,9 @@ export function VendorStoreView({
               page: fromLs.page,
               hasMore: fromLs.hasMore,
             };
+            if (!shouldApplyCachedCatalogSlice(slice, cat)) {
+              return false;
+            }
             applyVendorCatalogSlice(slice);
             setStoreName(fromLs.storeName || "Vendor Store");
             setStoreLogo(fromLs.logo || "");
@@ -3295,6 +3327,13 @@ export function VendorStoreView({
         page: productsData.page,
         hasMore: productsData.hasMore,
       };
+      if (
+        !forceRefresh &&
+        slice.products.length === 0 &&
+        clientFilterProductsForCatalogCategory(productsRef.current, cat).length > 0
+      ) {
+        return false;
+      }
       setProducts(slice.products);
       setVendorCatalogTotal(slice.total);
       setVendorCatalogPage(slice.page);
@@ -3309,7 +3348,6 @@ export function VendorStoreView({
       if (persistEligible) {
         rememberVendorCatalogSlice(cat, slice);
       }
-      setCatalogNavPending(false);
 
       if (persistEligible && productsData && typeof productsData === "object") {
         writePersistedJson(lsKey, productsData);
@@ -3323,6 +3361,8 @@ export function VendorStoreView({
       savedPage,
       rememberVendorCatalogSlice,
       applyVendorCatalogSlice,
+      shouldApplyCachedCatalogSlice,
+      clientFilterProductsForCatalogCategory,
     ]
   );
 
@@ -3617,7 +3657,6 @@ export function VendorStoreView({
 
   useEffect(() => {
     catalogSliceByCategoryRef.current.clear();
-    setCatalogNavPending(false);
     setCanonicalVendorId(null);
     setCanonicalStoreSlug(resolveVendorPathSlug(storeSlug || vendorId) || null);
     loadVendorData();
@@ -3691,7 +3730,9 @@ export function VendorStoreView({
     if (!qRaw) {
       const memSlice = catalogSliceByCategoryRef.current.get(catalogSliceMemoryKey(cat));
       if (memSlice && Array.isArray(memSlice.products)) {
-        applyVendorCatalogSlice(memSlice);
+        if (shouldApplyCachedCatalogSlice(memSlice, cat)) {
+          applyVendorCatalogSlice(memSlice);
+        }
         return;
       }
     }
@@ -3704,7 +3745,9 @@ export function VendorStoreView({
         page: typeof fromMem.page === "number" ? fromMem.page : 1,
         hasMore: !!fromMem.hasMore,
       };
-      applyVendorCatalogSlice(slice);
+      if (shouldApplyCachedCatalogSlice(slice, cat)) {
+        applyVendorCatalogSlice(slice);
+      }
       if (!qRaw) rememberVendorCatalogSlice(cat, slice);
       if (typeof fromMem.storeName === "string" && fromMem.storeName.trim()) {
         setStoreName(fromMem.storeName.trim());
@@ -3717,10 +3760,7 @@ export function VendorStoreView({
       }
       return;
     }
-    if (qRaw) {
-      setCatalogNavPending(false);
-      return;
-    }
+    if (qRaw) return;
     const lsKey = lsVendorCatalogPage1Key(vendorId, qk, cat, pageSize);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
     if (fromLs && typeof fromLs === "object" && Array.isArray(fromLs.products)) {
@@ -3730,7 +3770,9 @@ export function VendorStoreView({
         page: typeof fromLs.page === "number" ? fromLs.page : 1,
         hasMore: !!fromLs.hasMore,
       };
-      applyVendorCatalogSlice(slice);
+      if (shouldApplyCachedCatalogSlice(slice, cat)) {
+        applyVendorCatalogSlice(slice);
+      }
       rememberVendorCatalogSlice(cat, slice);
       if (typeof fromLs.storeName === "string" && fromLs.storeName.trim()) {
         setStoreName(fromLs.storeName.trim());
@@ -3743,7 +3785,6 @@ export function VendorStoreView({
       }
       return;
     }
-    setCatalogNavPending(true);
   }, [
     vendorId,
     catalogCategoryForFetch,
@@ -3752,6 +3793,7 @@ export function VendorStoreView({
     catalogSliceMemoryKey,
     applyVendorCatalogSlice,
     rememberVendorCatalogSlice,
+    shouldApplyCachedCatalogSlice,
   ]);
 
   useEffect(() => {
@@ -3760,53 +3802,72 @@ export function VendorStoreView({
       vendorCatalogFilterMountSkipRef.current = false;
       return;
     }
-    const runId = ++vendorCatalogRefetchRunRef.current;
-    void (async () => {
-      try {
-        const qRaw = debouncedVendorServerQ.trim();
-        const qk = qRaw.toLowerCase();
-        const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
-        const page1Key = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, catalogCategoryForFetch, pageSize);
-        const now = Date.now();
-        const lastAt = vendorCatalogRevalidateAtRef.current.get(page1Key) || 0;
-        const recentEnough = now - lastAt < VENDOR_REVALIDATE_COOLDOWN_MS;
-        if (!qRaw && moduleCache.has(page1Key) && recentEnough) {
-          if (runId !== vendorCatalogRefetchRunRef.current) return;
-          const fromMem = moduleCache.peek<any>(page1Key);
-          if (fromMem && typeof fromMem === "object" && Array.isArray(fromMem.products)) {
-            const slice = {
-              products: fromMem.products || [],
-              total: typeof fromMem.total === "number" ? fromMem.total : 0,
-              page: typeof fromMem.page === "number" ? fromMem.page : 1,
-              hasMore: !!fromMem.hasMore,
-            };
-            applyVendorCatalogSlice(slice);
-            rememberVendorCatalogSlice(catalogCategoryForFetch, slice);
+    if (vendorCatalogRefetchDebounceRef.current) {
+      clearTimeout(vendorCatalogRefetchDebounceRef.current);
+    }
+    vendorCatalogRefetchDebounceRef.current = setTimeout(() => {
+      vendorCatalogRefetchDebounceRef.current = null;
+      const runId = ++vendorCatalogRefetchRunRef.current;
+      const categoryAtRun = catalogCategoryForFetch;
+      void (async () => {
+        try {
+          const qRaw = debouncedVendorServerQ.trim();
+          const qk = qRaw.toLowerCase();
+          const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+          const page1Key = CACHE_KEYS.vendorProductsPage(
+            vendorId,
+            1,
+            qk,
+            categoryAtRun,
+            pageSize
+          );
+          const now = Date.now();
+          const lastAt = vendorCatalogRevalidateAtRef.current.get(page1Key) || 0;
+          const recentEnough = now - lastAt < VENDOR_REVALIDATE_COOLDOWN_MS;
+          if (!qRaw && moduleCache.has(page1Key) && recentEnough) {
+            if (runId !== vendorCatalogRefetchRunRef.current) return;
+            const fromMem = moduleCache.peek<any>(page1Key);
+            if (fromMem && typeof fromMem === "object" && Array.isArray(fromMem.products)) {
+              const slice = {
+                products: fromMem.products || [],
+                total: typeof fromMem.total === "number" ? fromMem.total : 0,
+                page: typeof fromMem.page === "number" ? fromMem.page : 1,
+                hasMore: !!fromMem.hasMore,
+              };
+              if (shouldApplyCachedCatalogSlice(slice, categoryAtRun)) {
+                applyVendorCatalogSlice(slice);
+              }
+              rememberVendorCatalogSlice(categoryAtRun, slice);
+            }
+            setServerStatus("healthy");
+            return;
           }
-          setServerStatus("healthy");
-          setCatalogNavPending(false);
-          return;
+          let applied = await refetchVendorCatalogPage1(false);
+          if (runId !== vendorCatalogRefetchRunRef.current) return;
+          if (!applied) {
+            applied = await refetchVendorCatalogPage1(true);
+            if (runId !== vendorCatalogRefetchRunRef.current) return;
+          }
+          if (applied) {
+            vendorCatalogRevalidateAtRef.current.set(page1Key, Date.now());
+            setServerStatus("healthy");
+          }
+        } catch {
+          if (runId !== vendorCatalogRefetchRunRef.current) return;
+          if (productsRef.current.length === 0) {
+            setServerStatus("unhealthy");
+          } else {
+            setServerStatus("healthy");
+          }
         }
-        const applied = await refetchVendorCatalogPage1(true);
-        if (runId !== vendorCatalogRefetchRunRef.current) return;
-        if (applied) {
-          vendorCatalogRevalidateAtRef.current.set(page1Key, Date.now());
-          setServerStatus("healthy");
-          setCatalogNavPending(false);
-        } else if (productsRef.current.length === 0) {
-          setCatalogNavPending(false);
-        }
-      } catch {
-        if (runId !== vendorCatalogRefetchRunRef.current) return;
-        setCatalogNavPending(false);
-        // Avoid dropping into full error screen when we already have products rendered.
-        if (productsRef.current.length === 0) {
-          setServerStatus("unhealthy");
-        } else {
-          setServerStatus("healthy");
-        }
+      })();
+    }, 180);
+    return () => {
+      if (vendorCatalogRefetchDebounceRef.current) {
+        clearTimeout(vendorCatalogRefetchDebounceRef.current);
+        vendorCatalogRefetchDebounceRef.current = null;
       }
-    })();
+    };
   }, [
     vendorId,
     debouncedVendorServerQ,
@@ -3815,6 +3876,7 @@ export function VendorStoreView({
     refetchVendorCatalogPage1,
     applyVendorCatalogSlice,
     rememberVendorCatalogSlice,
+    shouldApplyCachedCatalogSlice,
   ]);
 
   // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.
@@ -4423,7 +4485,6 @@ export function VendorStoreView({
 
   /** Instant client filter on loaded rows (name/SKU) — pairs with debounced server fetch for q. */
   const filteredProducts = useMemo(() => {
-    if (catalogNavPending) return [];
     return products.filter((product) => {
       const matchesSearch =
         !searchQuery.trim() ||
@@ -4443,7 +4504,7 @@ export function VendorStoreView({
       }
       return matchesSearch && matchesCategory;
     });
-  }, [products, searchQuery, catalogCategoryForFetch, catalogNavPending]);
+  }, [products, searchQuery, catalogCategoryForFetch]);
 
   /** Full-page skeleton on /saved: wishlist GET or first product hydration — not while refetching with cards visible */
   const showSavedPageSkeleton = useMemo(
@@ -5285,7 +5346,7 @@ export function VendorStoreView({
 
         {/* Footer - Same as main storefront */}
         {onBack && (
-          <footer className="border-t mt-auto">
+          <footer className="border-t mt-auto shrink-0 w-full">
             <div className="max-w-7xl mx-auto px-4 py-8 text-center space-y-4">
               <p className="text-sm text-slate-600">
                 Powered by <span className="font-bold text-slate-900">SECURE</span> ERP Platform
@@ -5414,7 +5475,7 @@ export function VendorStoreView({
         <>
       {/* Header */}
       <header
-        className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
+        className={`shrink-0 ${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
       >
         <div className="border-b border-[rgba(15,23,42,0.08)]">
           <div className="max-w-7xl mx-auto w-full px-4">
@@ -5626,9 +5687,9 @@ export function VendorStoreView({
       {renderVendorMobileNavDrawer()}
       {renderVendorMobileSearchOverlay()}
 
-      {/* Content */}
+      {/* Content — flex-1 grows so footer sits at viewport bottom when catalog is short */}
       <main
-        className={`max-w-7xl mx-auto px-4 w-full ${
+        className={`flex-1 max-w-7xl mx-auto px-4 w-full ${
           vendorViewMode === "storefront" && savedPage ? "pt-0 pb-8" : "py-8"
         }`}
       >
@@ -5747,8 +5808,6 @@ export function VendorStoreView({
           <>
             {isVendorProductDetailPath && !selectedProduct ? (
               <ProductDetailSkeleton />
-            ) : catalogNavPending ? (
-              <ProductGridSkeleton count={10} />
             ) : (
               <>
             {/* Network / timeout — not an empty catalog or app bug */}
@@ -5866,7 +5925,7 @@ export function VendorStoreView({
 
       {/* Footer */}
       {onBack && !showVendorPageFullSkeleton && (
-        <footer className="border-t mt-16">
+        <footer className="border-t mt-auto shrink-0 w-full">
           <div className="max-w-7xl mx-auto px-4 py-8 text-center space-y-4">
             <p className="text-sm text-slate-600">
               Powered by <span className="font-bold text-slate-900">SECURE</span> ERP Platform
