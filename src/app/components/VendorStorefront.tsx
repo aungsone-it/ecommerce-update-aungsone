@@ -172,8 +172,27 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
     }
   };
 
+  const normalizeCustomDomain = (value: string): string => {
+    return value
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "");
+  };
+
+  const configuredSubdomainBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
+    .trim()
+    .toLowerCase();
+  const subdomainBase = configuredSubdomainBase || "walwal.online";
+  const subdomainStoreUrl = settings.storeSlug
+    ? `https://${settings.storeSlug}.${subdomainBase}`
+    : `https://${subdomainBase}`;
+  const marketplaceStoreUrl = `${window.location.origin}/vendor/${settings.storeSlug}`;
+  const normalizedCustomDomain = normalizeCustomDomain(settings.customDomain || "");
+  const customDomainUrl = normalizedCustomDomain ? `https://${normalizedCustomDomain}` : "";
+  const storeUrl = customDomainUrl || subdomainStoreUrl;
+
   const handleCopyStoreUrl = () => {
-    const storeUrl = `${window.location.origin}/vendor/${settings.storeSlug}`;
     // Use fallback for clipboard API with proper error handling
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(storeUrl).then(() => {
@@ -236,8 +255,6 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
     }));
   };
 
-  const storeUrl = `${window.location.origin}/vendor/${settings.storeSlug}`;
-
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -292,6 +309,11 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
             <div>
               <p className="text-sm text-slate-600 font-medium">Storefront URL</p>
               <p className="text-lg font-semibold text-slate-900">{storeUrl}</p>
+              {customDomainUrl && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Default subdomain URL: <span className="font-medium">{subdomainStoreUrl}</span>
+                </p>
+              )}
             </div>
           </div>
           <Button 
@@ -313,11 +335,10 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
             )}
           </Button>
         </div>
-        {/* Custom Domain Display - HIDDEN */}
-        {false && settings.customDomain && (
+        {customDomainUrl && (
           <div className="mt-3 pt-3 border-t border-slate-200">
             <p className="text-sm text-slate-600">
-              Custom Domain: <span className="font-semibold text-slate-900">{settings.customDomain}</span>
+              Custom Domain: <span className="font-semibold text-slate-900">{normalizedCustomDomain}</span>
             </p>
           </div>
         )}
@@ -378,7 +399,7 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
                   <Label htmlFor="storeSlug">Store Slug (URL) *</Label>
                   <div className="flex gap-2 mt-2">
                     <div className="flex-1 flex items-center gap-2 px-3 bg-slate-50 border border-slate-200 rounded-lg">
-                      <span className="text-sm text-slate-500">{window.location.origin}/vendor/</span>
+                      <span className="text-sm text-slate-500">https://</span>
                       <Input
                         id="storeSlug"
                         value={settings.storeSlug}
@@ -389,9 +410,12 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
                         placeholder="storeslug"
                         className="border-0 bg-transparent p-0 focus-visible:ring-0 font-medium"
                       />
+                      <span className="text-sm text-slate-500">.{subdomainBase}</span>
                     </div>
                   </div>
-                    <p className="text-xs text-slate-500 mt-1">Lowercase letters and numbers only (matches your subdomain, e.g. citymart.walwal.online)</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Auto-generated vendor subdomain URL: {subdomainStoreUrl}
+                    </p>
                 </div>
 
                 <div>
