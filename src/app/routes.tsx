@@ -35,6 +35,20 @@ import {
 } from "./components/VendorHostOrMarketplaceRoutes";
 import { LegacyStoreRedirect } from "./components/LegacyStoreRedirect";
 
+const MARKETPLACE_APEX = "walwal.online";
+
+/** Marketplace apex (`walwal.online/`) must always render branding landing. */
+function isMarketplaceRootHost(): boolean {
+  if (typeof window === "undefined") return false;
+  const host = window.location.hostname.split(":")[0].toLowerCase();
+  const envBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
+    .trim()
+    .toLowerCase();
+  if (host === MARKETPLACE_APEX || host === `www.${MARKETPLACE_APEX}`) return true;
+  if (envBase && (host === envBase || host === `www.${envBase}`)) return true;
+  return false;
+}
+
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
   import("./pages/LandingPage").then((m) => ({ default: m.LandingPage })),
@@ -85,6 +99,9 @@ const KPayReturnPage = lazy(() =>
 );
 
 function VendorSubdomainIndexOrLanding() {
+  if (isMarketplaceRootHost()) {
+    return <LandingPage />;
+  }
   const onVendorSubdomainHost = isOnVendorSubdomainHost();
   const sub = resolveVendorSubdomainStoreSlug();
   const { slug: customSlug, loading } = useResolvedVendorHostSlug();
