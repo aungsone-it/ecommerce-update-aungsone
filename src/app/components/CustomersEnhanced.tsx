@@ -27,7 +27,6 @@ import {
   Heart,
   Package,
   CreditCard,
-  UserPlus,
   X,
   XCircle,
   AlertCircle,
@@ -86,6 +85,7 @@ import {
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import { toast } from "sonner";
 import { MIGOO_USER_SESSION_CHANGED_EVENT } from "../../constants";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface Customer {
   id: string;
@@ -131,6 +131,12 @@ export function CustomersEnhanced({
   onOpenChatWithCustomer?: (c: ChatHandoffCustomer) => void;
 } = {}) {
   const navigate = useNavigate();
+  const { t } = useLanguage();
+  const tr = (key: string, values: Record<string, string | number> = {}) =>
+    Object.entries(values).reduce(
+      (text, [name, value]) => text.replace(`{${name}}`, String(value)),
+      t(key)
+    );
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterTier, setFilterTier] = useState("all");
@@ -348,7 +354,7 @@ export function CustomersEnhanced({
 
   const downloadCustomerCsv = (rows: Customer[], suffix: string) => {
     if (!rows.length) {
-      toast.error("No customers to export");
+      toast.error(t("customerIntel.noExport"));
       return;
     }
     const header = [
@@ -390,7 +396,10 @@ export function CustomersEnhanced({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast.success(`Exported ${rows.length} customer${rows.length === 1 ? "" : "s"}`);
+    toast.success(tr("customerIntel.exported", {
+      count: rows.length,
+      unit: rows.length === 1 ? t("customerIntel.customerOne") : t("customerIntel.customerMany"),
+    }));
   };
 
   const getTierBadge = (tier: string) => {
@@ -399,19 +408,19 @@ export function CustomersEnhanced({
         return (
           <Badge className="bg-purple-100 text-purple-700 border-purple-200">
             <Star className="w-3 h-3 mr-1" />
-            VIP
+            {t("customerIntel.vip")}
           </Badge>
         );
       case "regular":
         return (
           <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-            Regular
+            {t("customerIntel.regular")}
           </Badge>
         );
       case "new":
         return (
           <Badge className="bg-green-100 text-green-700 border-green-200">
-            New
+            {t("customerIntel.new")}
           </Badge>
         );
       default:
@@ -425,20 +434,20 @@ export function CustomersEnhanced({
         return (
           <Badge className="bg-green-100 text-green-700 border-green-200">
             <CheckCircle className="w-3 h-3 mr-1" />
-            Active
+            {t("customerIntel.active")}
           </Badge>
         );
       case "inactive":
         return (
           <Badge className="bg-slate-100 text-slate-700 border-slate-200">
-            Inactive
+            {t("customerIntel.inactive")}
           </Badge>
         );
       case "blocked":
         return (
           <Badge className="bg-red-100 text-red-700 border-red-200">
             <Ban className="w-3 h-3 mr-1" />
-            Blocked
+            {t("customerIntel.blocked")}
           </Badge>
         );
       default:
@@ -452,41 +461,41 @@ export function CustomersEnhanced({
         return (
           <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">
             <Award className="w-3 h-3 mr-1" />
-            Champions
+            {t("customerIntel.champions")}
           </Badge>
         );
       case "loyal":
         return (
           <Badge className="bg-blue-100 text-blue-700 border-blue-200">
             <Heart className="w-3 h-3 mr-1" />
-            Loyal
+            {t("customerIntel.loyal")}
           </Badge>
         );
       case "at-risk":
         return (
           <Badge className="bg-orange-100 text-orange-700 border-orange-200">
             <Clock className="w-3 h-3 mr-1" />
-            At Risk
+            {t("customerIntel.atRisk")}
           </Badge>
         );
       case "cant-lose":
         return (
           <Badge className="bg-red-100 text-red-700 border-red-200">
             <Zap className="w-3 h-3 mr-1" />
-            Can't Lose
+            {t("customerIntel.cantLose")}
           </Badge>
         );
       case "potential-loyalist":
         return (
           <Badge className="bg-teal-100 text-teal-700 border-teal-200">
             <Target className="w-3 h-3 mr-1" />
-            Potential
+            {t("customerIntel.potential")}
           </Badge>
         );
       default:
         return (
           <Badge className="bg-slate-100 text-slate-700 border-slate-200">
-            Other
+            {t("customerIntel.other")}
           </Badge>
         );
     }
@@ -819,46 +828,39 @@ export function CustomersEnhanced({
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-2xl font-semibold text-slate-900">
-                Customer Intelligence
+                {t("customerIntel.title")}
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
-                Advanced customer analytics and segmentation
+                {t("customerIntel.subtitle")}
               </p>
             </div>
             <div className="flex items-center gap-3">
               {selectedCustomers.length > 0 && (
                 <Badge className="bg-blue-100 text-blue-700 border-blue-200 px-3 py-1">
-                  {selectedCustomers.length} selected
+                  {selectedCustomers.length} {t("customerIntel.selected")}
                 </Badge>
               )}
-              <Button
-                onClick={() => navigate("/admin/customers/add")}
-                className="bg-slate-900 hover:bg-slate-800 text-white gap-2"
-              >
-                <UserPlus className="w-4 h-4" />
-                Add New Customer
-              </Button>
               <Button
                 type="button"
                 className="bg-slate-900 hover:bg-slate-800 text-white gap-2"
                 onClick={() => downloadCustomerCsv(visibleCustomers, "list")}
               >
                 <Download className="w-4 h-4" />
-                Export
+                {t("customerIntel.export")}
               </Button>
               {/* 🐛 Clean up ghost customers button */}
               {customersList.some((c) => !c.name || !c.email) && (
                 <Button 
                   variant="outline"
                   onClick={() => {
-                    if (confirm("This will permanently delete all customers with missing name or email data. Continue?")) {
+                    if (confirm(t("customerIntel.cleanupConfirm"))) {
                       handleCleanupGhostCustomers();
                     }
                   }}
                   className="gap-2 border-red-300 text-red-600 hover:bg-red-50"
                 >
                   <AlertCircle className="w-4 h-4" />
-                  Clean Ghost Data
+                  {t("customerIntel.cleanGhostData")}
                 </Button>
               )}
             </div>
@@ -874,7 +876,7 @@ export function CustomersEnhanced({
               <p className="text-2xl font-semibold text-slate-900">
                 {stats.total}
               </p>
-              <p className="text-xs text-slate-600 mt-1">Total Customers</p>
+              <p className="text-xs text-slate-600 mt-1">{t("customerIntel.totalCustomers")}</p>
             </div>
 
             <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200 min-w-0">
@@ -887,7 +889,7 @@ export function CustomersEnhanced({
               <p className="text-2xl font-semibold text-slate-900">
                 {stats.active}
               </p>
-              <p className="text-xs text-slate-600 mt-1">Active</p>
+              <p className="text-xs text-slate-600 mt-1">{t("customerIntel.active")}</p>
             </div>
 
             <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200 min-w-0">
@@ -901,7 +903,7 @@ export function CustomersEnhanced({
                   MMK
                 </span>
               </p>
-              <p className="text-xs text-slate-600 mt-1">Total Revenue</p>
+              <p className="text-xs text-slate-600 mt-1">{t("customerIntel.totalRevenue")}</p>
             </div>
           </div>
         </div>
@@ -913,11 +915,11 @@ export function CustomersEnhanced({
           <TabsList className="bg-transparent">
             <TabsTrigger value="list" className="data-[state=active]:bg-slate-100">
               <UsersIcon className="w-4 h-4 mr-2" />
-              Customer List
+              {t("customerIntel.customerList")}
             </TabsTrigger>
             <TabsTrigger value="analytics" className="data-[state=active]:bg-slate-100">
               <BarChart3 className="w-4 h-4 mr-2" />
-              Analytics
+              {t("customerIntel.analytics")}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -928,7 +930,7 @@ export function CustomersEnhanced({
             <div className="flex items-center gap-3">
               <div className="flex-1">
                 <AdminClearableSearchInput
-                  placeholder="Search customers by name, email, or tags..."
+                  placeholder={t("customerIntel.searchPlaceholder")}
                   value={searchQuery}
                   onValueChange={setSearchQuery}
                   className="bg-slate-50"
@@ -936,37 +938,37 @@ export function CustomersEnhanced({
               </div>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder={t("customerIntel.status")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
-                  <SelectItem value="blocked">Blocked</SelectItem>
+                  <SelectItem value="all">{t("customerIntel.allStatus")}</SelectItem>
+                  <SelectItem value="active">{t("customerIntel.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("customerIntel.inactive")}</SelectItem>
+                  <SelectItem value="blocked">{t("customerIntel.blocked")}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterTier} onValueChange={setFilterTier}>
                 <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Tier" />
+                  <SelectValue placeholder={t("customerIntel.tier")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Tiers</SelectItem>
-                  <SelectItem value="vip">VIP</SelectItem>
-                  <SelectItem value="regular">Regular</SelectItem>
-                  <SelectItem value="new">New</SelectItem>
+                  <SelectItem value="all">{t("customerIntel.allTiers")}</SelectItem>
+                  <SelectItem value="vip">{t("customerIntel.vip")}</SelectItem>
+                  <SelectItem value="regular">{t("customerIntel.regular")}</SelectItem>
+                  <SelectItem value="new">{t("customerIntel.new")}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterSegment} onValueChange={setFilterSegment}>
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Segment" />
+                  <SelectValue placeholder={t("customerIntel.segment")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Segments</SelectItem>
-                  <SelectItem value="champions">Champions</SelectItem>
-                  <SelectItem value="loyal">Loyal</SelectItem>
-                  <SelectItem value="potential-loyalist">Potential Loyalist</SelectItem>
-                  <SelectItem value="at-risk">At Risk</SelectItem>
-                  <SelectItem value="cant-lose">Can't Lose</SelectItem>
+                  <SelectItem value="all">{t("customerIntel.allSegments")}</SelectItem>
+                  <SelectItem value="champions">{t("customerIntel.champions")}</SelectItem>
+                  <SelectItem value="loyal">{t("customerIntel.loyal")}</SelectItem>
+                  <SelectItem value="potential-loyalist">{t("customerIntel.potentialLoyalist")}</SelectItem>
+                  <SelectItem value="at-risk">{t("customerIntel.atRisk")}</SelectItem>
+                  <SelectItem value="cant-lose">{t("customerIntel.cantLose")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -987,11 +989,11 @@ export function CustomersEnhanced({
                         onCheckedChange={toggleSelectAll}
                       />
                     </TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Segment</TableHead>
-                    <TableHead>Orders</TableHead>
-                    <TableHead>Avg Order</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>{t("customerIntel.customer")}</TableHead>
+                    <TableHead>{t("customerIntel.segment")}</TableHead>
+                    <TableHead>{t("customerIntel.orders")}</TableHead>
+                    <TableHead>{t("customerIntel.avgOrder")}</TableHead>
+                    <TableHead>{t("customerIntel.status")}</TableHead>
                     <TableHead className="w-12"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1035,11 +1037,11 @@ export function CustomersEnhanced({
                         <div className="flex flex-col items-center gap-3">
                           <UsersIcon className="w-12 h-12 text-slate-300" />
                           <div>
-                            <p className="text-sm font-medium text-slate-700">No customers found</p>
+                            <p className="text-sm font-medium text-slate-700">{t("customerIntel.noCustomersFound")}</p>
                             <p className="text-xs text-slate-500 mt-1">
                               {searchQuery || filterStatus !== "all" || filterTier !== "all" || filterSegment !== "all"
-                                ? "Try adjusting your filters"
-                                : "Add your first customer to get started"}
+                                ? t("customerIntel.adjustFilters")
+                                : t("customerIntel.addFirst")}
                             </p>
                           </div>
                         </div>
@@ -1138,7 +1140,7 @@ export function CustomersEnhanced({
                               onClick={() => setViewingCustomer(customer)}
                             >
                               <Eye className="w-4 h-4 mr-2" />
-                              View Profile
+                              {t("customerIntel.viewProfile")}
                             </DropdownMenuItem>
                             {onOpenChatWithCustomer && (
                               <DropdownMenuItem
@@ -1146,13 +1148,13 @@ export function CustomersEnhanced({
                                 disabled={!(customer.email || "").trim()}
                               >
                                 <MessageSquare className="w-4 h-4 mr-2" />
-                                Send Message
+                                {t("customerIntel.sendMessage")}
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => handleBlockCustomer(customer.id, customer.name)}>
                               <Ban className="w-4 h-4 mr-2" />
-                              Block Customer
+                              {t("customerIntel.blockCustomer")}
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               className="text-red-600" 
@@ -1166,7 +1168,7 @@ export function CustomersEnhanced({
                               }}
                             >
                               <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
+                              {t("customerIntel.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1179,7 +1181,7 @@ export function CustomersEnhanced({
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/80">
               <div className="flex items-center gap-2 text-sm text-slate-600">
-                <span>Per page</span>
+                <span>{t("customerIntel.perPage")}</span>
                 <Select
                   value={String(customersPageSize)}
                   onValueChange={(v) => setCustomersPageSize(Number(v))}
@@ -1195,9 +1197,11 @@ export function CustomersEnhanced({
                   </SelectContent>
                 </Select>
                 <span className="text-slate-500">
-                  Page {customersPage} of{" "}
-                  {Math.max(1, Math.ceil(customersTotal / customersPageSize) || 1)} · {customersTotal}{" "}
-                  customers
+                  {tr("customerIntel.pageOf", {
+                    page: customersPage,
+                    pages: Math.max(1, Math.ceil(customersTotal / customersPageSize) || 1),
+                    total: customersTotal,
+                  })}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1229,14 +1233,14 @@ export function CustomersEnhanced({
         <TabsContent value="analytics" className="flex-1 overflow-auto p-6 m-0">
           <div className="max-w-6xl mx-auto">
             <h3 className="text-lg font-semibold text-slate-900 mb-6">
-              Customer Analytics Overview
+              {t("customerIntel.analyticsOverview")}
             </h3>
             <div className="grid grid-cols-2 gap-6">
               {/* Top Customers */}
               <div className="bg-white rounded-lg border border-slate-200 p-6">
                 <h4 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
                   <Star className="w-5 h-5 text-yellow-600" />
-                  Top 5 Customers by LTV
+                  {t("customerIntel.topByLtv")}
                 </h4>
                 <div className="space-y-3">
                   {customersList
@@ -1305,14 +1309,16 @@ export function CustomersEnhanced({
               <div className="bg-white rounded-lg border border-slate-200 p-6">
                 <h4 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
                   <Activity className="w-5 h-5 text-blue-600" />
-                  Engagement Score Distribution
+                  {t("customerIntel.engagementDistribution")}
                 </h4>
                 <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-600">High (80-100)</span>
+                      <span className="text-sm text-slate-600">{t("customerIntel.highRange")}</span>
                       <span className="text-sm font-semibold text-green-600">
-                        {customersList.filter((c) => (c.engagementScore || 0) >= 80).length} customers
+                        {tr("customerIntel.customerCount", {
+                          count: customersList.filter((c) => (c.engagementScore || 0) >= 80).length,
+                        })}
                       </span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-3">
@@ -1331,14 +1337,14 @@ export function CustomersEnhanced({
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-600">Medium (60-79)</span>
+                      <span className="text-sm text-slate-600">{t("customerIntel.mediumRange")}</span>
                       <span className="text-sm font-semibold text-blue-600">
                         {
                           customersList.filter(
                             (c) => (c.engagementScore || 0) >= 60 && (c.engagementScore || 0) < 80
                           ).length
                         }{" "}
-                        customers
+                        {t("customerIntel.customerMany")}
                       </span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-3">
@@ -1359,14 +1365,14 @@ export function CustomersEnhanced({
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-600">Low (40-59)</span>
+                      <span className="text-sm text-slate-600">{t("customerIntel.lowRange")}</span>
                       <span className="text-sm font-semibold text-yellow-600">
                         {
                           customersList.filter(
                             (c) => (c.engagementScore || 0) >= 40 && (c.engagementScore || 0) < 60
                           ).length
                         }{" "}
-                        customers
+                        {t("customerIntel.customerMany")}
                       </span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-3">
@@ -1387,9 +1393,11 @@ export function CustomersEnhanced({
 
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm text-slate-600">Critical (&lt;40)</span>
+                      <span className="text-sm text-slate-600">{t("customerIntel.criticalRange")}</span>
                       <span className="text-sm font-semibold text-red-600">
-                        {customersList.filter((c) => (c.engagementScore || 0) < 40).length} customers
+                        {tr("customerIntel.customerCount", {
+                          count: customersList.filter((c) => (c.engagementScore || 0) < 40).length,
+                        })}
                       </span>
                     </div>
                     <div className="w-full bg-slate-200 rounded-full h-3">
@@ -1412,7 +1420,7 @@ export function CustomersEnhanced({
               <div className="bg-white rounded-lg border border-slate-200 p-6">
                 <h4 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-emerald-600" />
-                  Revenue by Customer Tier
+                  {t("customerIntel.revenueByTier")}
                 </h4>
                 <div className="space-y-4">
                   {["vip", "regular", "new"].map((tier) => {
@@ -1427,7 +1435,7 @@ export function CustomersEnhanced({
                           <div className="flex items-center gap-2">
                             {getTierBadge(tier)}
                             <span className="text-sm text-slate-600">
-                              ({tierCustomers.length} customers)
+                              ({tr("customerIntel.customerCount", { count: tierCustomers.length })})
                             </span>
                           </div>
                           <span className="text-sm font-semibold text-emerald-700">
@@ -1452,27 +1460,27 @@ export function CustomersEnhanced({
               <div className="bg-white rounded-lg border border-slate-200 p-6">
                 <h4 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
                   <Package className="w-5 h-5 text-indigo-600" />
-                  Purchase Frequency Analysis
+                  {t("customerIntel.purchaseFrequency")}
                 </h4>
                 <div className="space-y-3">
                   <div className="p-3 bg-purple-50 rounded-lg border border-purple-100">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium text-purple-900">
-                        High Frequency (15+ orders)
+                        {t("customerIntel.highFrequency")}
                       </span>
                       <span className="text-sm font-semibold text-purple-600">
                         {customersList.filter((c) => (c.totalOrders || 0) >= 15).length}
                       </span>
                     </div>
                     <p className="text-xs text-purple-700">
-                      Your most loyal repeat customers
+                      {t("customerIntel.highFrequencyDesc")}
                     </p>
                   </div>
 
                   <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium text-blue-900">
-                        Medium Frequency (5-14 orders)
+                        {t("customerIntel.mediumFrequency")}
                       </span>
                       <span className="text-sm font-semibold text-blue-600">
                         {
@@ -1482,20 +1490,20 @@ export function CustomersEnhanced({
                         }
                       </span>
                     </div>
-                    <p className="text-xs text-blue-700">Regular buyers</p>
+                    <p className="text-xs text-blue-700">{t("customerIntel.mediumFrequencyDesc")}</p>
                   </div>
 
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium text-slate-900">
-                        Low Frequency (&lt;5 orders)
+                        {t("customerIntel.lowFrequency")}
                       </span>
                       <span className="text-sm font-semibold text-slate-600">
                         {customersList.filter((c) => (c.totalOrders || 0) < 5).length}
                       </span>
                     </div>
                     <p className="text-xs text-slate-700">
-                      Opportunity to increase engagement
+                      {t("customerIntel.lowFrequencyDesc")}
                     </p>
                   </div>
                 </div>
@@ -1696,17 +1704,17 @@ export function CustomersEnhanced({
         }}
         title={
           confirmDialog.type === "delete"
-            ? "Delete Customer?"
-            : "Delete Multiple Customers?"
+            ? t("customerIntel.deleteCustomerTitle")
+            : t("customerIntel.deleteMultipleTitle")
         }
         message={
           confirmDialog.type === "delete"
-            ? `Are you sure you want to permanently delete ${confirmDialog.customerName}? This action cannot be undone.`
-            : `Are you sure you want to permanently delete ${selectedCustomers.length} customers? This action cannot be undone.`
+            ? tr("customerIntel.deleteCustomerMessage", { name: confirmDialog.customerName || "" })
+            : tr("customerIntel.deleteMultipleMessage", { count: selectedCustomers.length })
         }
         type="error"
-        confirmText="Delete"
-        cancelText="Cancel"
+        confirmText={t("customerIntel.delete")}
+        cancelText={t("common.cancel")}
       />
     </div>
   );

@@ -148,7 +148,6 @@ export function Marketing() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [creatorFilter, setCreatorFilter] = useState<string>("all");
-  const [creatorNameFilter, setCreatorNameFilter] = useState<string>("all");
   const [campaignDateRange, setCampaignDateRange] = useState<DateRange | undefined>(undefined);
   const [campaignDatePickerOpen, setCampaignDatePickerOpen] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
@@ -726,7 +725,6 @@ export function Marketing() {
     const matchesStatus = statusFilter === "all" || campaign.status === statusFilter;
     const matchesType = typeFilter === "all" || campaign.type === typeFilter;
     const matchesCreator = creatorFilter === "all" || campaign.creatorType === creatorFilter;
-    const matchesCreatorName = creatorNameFilter === "all" || campaign.creator === creatorNameFilter;
     
     const campaignCreated = new Date(campaign.createdDate);
     let matchesDateRange = true;
@@ -740,11 +738,8 @@ export function Marketing() {
       matchesDateRange = campaignCreated <= endOfDay(campaignDateRange.to);
     }
     
-    return matchesSearch && matchesStatus && matchesType && matchesCreator && matchesCreatorName && matchesDateRange;
+    return matchesSearch && matchesStatus && matchesType && matchesCreator && matchesDateRange;
   });
-
-  // Get unique creator names for filter
-  const uniqueCreators = Array.from(new Set(campaigns.map(c => c.creator))).sort();
 
   const totalRevenue = campaigns.reduce((sum, c) => sum + (c.revenue || 0), 0);
   const activeCampaigns = campaigns.filter(c => c.status === "active").length;
@@ -873,12 +868,12 @@ export function Marketing() {
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Back to Campaigns
+            {t("marketing.backToCampaigns")}
           </Button>
           <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            {currentView === "add" ? "Create New Campaign" : "Edit Campaign"}
+            {currentView === "add" ? t("marketing.createNewCampaign") : t("marketing.editCampaign")}
           </h1>
-          <p className="text-slate-600">Set up a new marketing campaign</p>
+          <p className="text-slate-600">{t("marketing.formSubtitle")}</p>
         </div>
 
         {/* Form Card */}
@@ -889,48 +884,48 @@ export function Marketing() {
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 pb-2 border-b">
                   <Gift className="w-4 h-4" />
-                  Basic Information
+                  {t("marketing.basicInformation")}
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
-                    <Label htmlFor="campaign-name">Campaign Name *</Label>
+                    <Label htmlFor="campaign-name">{t("marketing.campaignName")} *</Label>
                     <Input
                       id="campaign-name"
-                      placeholder="e.g., Summer Sale 2026"
+                      placeholder={t("marketing.campaignNamePlaceholder")}
                       value={newCampaign.name}
                       onChange={(e) => setNewCampaign({ ...newCampaign, name: e.target.value })}
                     />
                   </div>
 
                   <div>
-                    <Label htmlFor="campaign-type">Campaign Type *</Label>
+                    <Label htmlFor="campaign-type">{t("marketing.campaignType")} *</Label>
                     <Select value={newCampaign.type} onValueChange={(value) => setNewCampaign({ ...newCampaign, type: value as CampaignType })}>
                       <SelectTrigger id="campaign-type">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="push-notification">Push Notification</SelectItem>
-                        <SelectItem value="coupon">Coupon</SelectItem>
-                        <SelectItem value="seasonal">Seasonal Discount</SelectItem>
-                        <SelectItem value="discount-code">Discount Code</SelectItem>
+                        <SelectItem value="push-notification">{t("marketing.pushNotification")}</SelectItem>
+                        <SelectItem value="coupon">{t("marketing.coupon")}</SelectItem>
+                        <SelectItem value="seasonal">{t("marketing.seasonalDiscount")}</SelectItem>
+                        <SelectItem value="discount-code">{t("marketing.discountCode")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div>
-                    <Label htmlFor="target-audience">Target Audience *</Label>
+                    <Label htmlFor="target-audience">{t("marketing.targetAudience")} *</Label>
                     <Select value={newCampaign.targetAudience} onValueChange={(value) => setNewCampaign({ ...newCampaign, targetAudience: value })}>
                       <SelectTrigger id="target-audience">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="All Customers">All Customers</SelectItem>
-                        <SelectItem value="New Customers">New Customers</SelectItem>
-                        <SelectItem value="VIP Customers">VIP Customers</SelectItem>
-                        <SelectItem value="Email Subscribers">Email Subscribers</SelectItem>
-                        <SelectItem value="Cart Abandoners">Cart Abandoners</SelectItem>
-                        <SelectItem value="Wishlist Users">Wishlist Users</SelectItem>
+                        <SelectItem value="All Customers">{t("marketing.allCustomers")}</SelectItem>
+                        <SelectItem value="New Customers">{t("marketing.newCustomers")}</SelectItem>
+                        <SelectItem value="VIP Customers">{t("marketing.vipCustomers")}</SelectItem>
+                        <SelectItem value="Email Subscribers">{t("marketing.emailSubscribers")}</SelectItem>
+                        <SelectItem value="Cart Abandoners">{t("marketing.cartAbandoners")}</SelectItem>
+                        <SelectItem value="Wishlist Users">{t("marketing.wishlistUsers")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -942,23 +937,23 @@ export function Marketing() {
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 pb-2 border-b">
                     <Bell className="w-4 h-4" />
-                    Notification Content
+                    {t("marketing.notificationContent")}
                   </h3>
                   
                   <div>
-                    <Label htmlFor="notification-title">Notification Title *</Label>
+                    <Label htmlFor="notification-title">{t("marketing.notificationTitle")} *</Label>
                     <Input
                       id="notification-title"
-                      placeholder="e.g., Flash Sale Alert! 🔥"
+                      placeholder={t("marketing.notificationTitlePlaceholder")}
                       value={newCampaign.title}
                       onChange={(e) => setNewCampaign({ ...newCampaign, title: e.target.value })}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="notification-message">Message *</Label>
+                    <Label htmlFor="notification-message">{t("marketing.message")} *</Label>
                     <Textarea
                       id="notification-message"
-                      placeholder="Write your notification message..."
+                      placeholder={t("marketing.messagePlaceholder")}
                       rows={3}
                       value={newCampaign.message}
                       onChange={(e) => setNewCampaign({ ...newCampaign, message: e.target.value })}
@@ -972,22 +967,22 @@ export function Marketing() {
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 pb-2 border-b">
                     <Percent className="w-4 h-4" />
-                    Discount Details
+                    {t("marketing.discountDetails")}
                   </h3>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="md:col-span-2">
-                      <Label htmlFor="coupon-code">Coupon Code *</Label>
+                      <Label htmlFor="coupon-code">{t("marketing.couponCode")} *</Label>
                       <Input
                         id="coupon-code"
-                        placeholder="e.g., SUMMER2026"
+                        placeholder={t("marketing.couponCodePlaceholder")}
                         value={newCampaign.code}
                         onChange={(e) => setNewCampaign({ ...newCampaign, code: e.target.value.toUpperCase() })}
                       />
                     </div>
                     
                     <div>
-                      <Label htmlFor="discount-amount">Discount Amount *</Label>
+                      <Label htmlFor="discount-amount">{t("marketing.discountAmount")} *</Label>
                       <Input
                         id="discount-amount"
                         type="number"
@@ -997,14 +992,14 @@ export function Marketing() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="discount-type">Discount Type *</Label>
+                      <Label htmlFor="discount-type">{t("marketing.discountType")} *</Label>
                       <Select value={newCampaign.discountType} onValueChange={(value) => setNewCampaign({ ...newCampaign, discountType: value as "percentage" | "fixed" })}>
                         <SelectTrigger id="discount-type">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="percentage">Percentage (%)</SelectItem>
-                          <SelectItem value="fixed">Fixed Amount (Ks)</SelectItem>
+                          <SelectItem value="percentage">{t("marketing.percentage")}</SelectItem>
+                          <SelectItem value="fixed">{t("marketing.fixedAmountKs")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1012,10 +1007,10 @@ export function Marketing() {
 
                   {/* Minimum Purchase Requirements */}
                   <div className="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
-                    <h4 className="text-sm font-medium text-slate-900 mb-3">Minimum Purchase Requirements (Optional)</h4>
+                    <h4 className="text-sm font-medium text-slate-900 mb-3">{t("marketing.minimumPurchaseRequirements")}</h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="min-quantity" className="text-xs">Minimum Quantity</Label>
+                        <Label htmlFor="min-quantity" className="text-xs">{t("marketing.minimumQuantity")}</Label>
                         <Input
                           id="min-quantity"
                           type="number"
@@ -1024,10 +1019,10 @@ export function Marketing() {
                           value={newCampaign.minQuantity}
                           onChange={(e) => setNewCampaign({ ...newCampaign, minQuantity: parseInt(e.target.value) || 1 })}
                         />
-                        <p className="text-xs text-slate-500 mt-1">Min items required in cart</p>
+                        <p className="text-xs text-slate-500 mt-1">{t("marketing.minItemsRequired")}</p>
                       </div>
                       <div>
-                        <Label htmlFor="min-amount" className="text-xs">Minimum Amount (Ks)</Label>
+                        <Label htmlFor="min-amount" className="text-xs">{t("marketing.minimumAmountKs")}</Label>
                         <Input
                           id="min-amount"
                           type="number"
@@ -1037,11 +1032,11 @@ export function Marketing() {
                           value={newCampaign.minAmount}
                           onChange={(e) => setNewCampaign({ ...newCampaign, minAmount: parseFloat(e.target.value) || 0 })}
                         />
-                        <p className="text-xs text-slate-500 mt-1">Min cart value required</p>
+                        <p className="text-xs text-slate-500 mt-1">{t("marketing.minCartValueRequired")}</p>
                       </div>
                     </div>
                     <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700">
-                       Leave at default values if no minimum requirements
+                       {t("marketing.minimumDefaultsHint")}
                     </div>
                   </div>
 
@@ -1049,11 +1044,11 @@ export function Marketing() {
                   <div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
                     <h4 className="text-sm font-medium text-slate-900 mb-3 flex items-center gap-2">
                       <Package className="w-4 h-4" />
-                      Applicable Products
+                      {t("marketing.applicableProducts")}
                     </h4>
                     <div className="space-y-3">
                       <div>
-                        <Label htmlFor="product-scope" className="text-xs">Discount Applies To *</Label>
+                        <Label htmlFor="product-scope" className="text-xs">{t("marketing.discountAppliesTo")} *</Label>
                         <Select 
                           value={newCampaign.productScope || "all"} 
                           onValueChange={(value) => setNewCampaign({ 
@@ -1066,18 +1061,18 @@ export function Marketing() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Products (Entire Cart)</SelectItem>
-                            <SelectItem value="specific">Specific Products Only</SelectItem>
+                            <SelectItem value="all">{t("marketing.allProductsEntireCart")}</SelectItem>
+                            <SelectItem value="specific">{t("marketing.specificProductsOnly")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       
                       {newCampaign.productScope === "specific" && (
                         <div>
-                          <Label htmlFor="product-skus" className="text-xs">Product SKUs *</Label>
+                          <Label htmlFor="product-skus" className="text-xs">{t("marketing.productSkus")} *</Label>
                           <Textarea
                             id="product-skus"
-                            placeholder="Enter SKUs (one per line or comma-separated)&#10;e.g., ME001, ME002, M003"
+                            placeholder={t("marketing.productSkusPlaceholder")}
                             rows={4}
                             value={newCampaign.specificProducts?.join('\n') || ''}
                             onChange={(e) => {
@@ -1090,13 +1085,13 @@ export function Marketing() {
                             className="font-mono text-sm"
                           />
                           <p className="text-xs text-slate-500 mt-1">
-                            {newCampaign.specificProducts?.length || 0} product(s) selected
+                            {newCampaign.specificProducts?.length || 0} {t("marketing.productsSelected")}
                           </p>
                         </div>
                       )}
                       
                       <div className="p-2 bg-amber-100 border border-amber-300 rounded text-xs text-amber-800">
-                        <strong>Note:</strong> If "Specific Products" is selected, discount will only apply to cart items matching the SKUs above
+                        <strong>{t("marketing.note")}:</strong> {t("marketing.specificProductsNote")}
                       </div>
                     </div>
                   </div>
@@ -1107,12 +1102,12 @@ export function Marketing() {
               <div className="space-y-4">
                 <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2 pb-2 border-b">
                   <Calendar className="w-4 h-4" />
-                  Schedule & Limits
+                  {t("marketing.scheduleLimits")}
                 </h3>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="campaign-status">Campaign Status *</Label>
+                    <Label htmlFor="campaign-status">{t("marketing.campaignStatus")} *</Label>
                     <Select 
                       value={newCampaign.status || "active"} 
                       onValueChange={(value) => setNewCampaign({ ...newCampaign, status: value as CampaignStatus })}
@@ -1121,17 +1116,17 @@ export function Marketing() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="active">Active (Live Now)</SelectItem>
-                        <SelectItem value="scheduled">Scheduled (Future)</SelectItem>
-                        <SelectItem value="draft">Draft (Not Live)</SelectItem>
-                        <SelectItem value="expired">Expired (Ended)</SelectItem>
+                        <SelectItem value="active">{t("marketing.activeLiveNow")}</SelectItem>
+                        <SelectItem value="scheduled">{t("marketing.scheduledFuture")}</SelectItem>
+                        <SelectItem value="draft">{t("marketing.draftNotLive")}</SelectItem>
+                        <SelectItem value="expired">{t("marketing.expiredEnded")}</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-slate-500 mt-1">Only "Active" campaigns will work on the storefront</p>
+                    <p className="text-xs text-slate-500 mt-1">{t("marketing.activeCampaignHint")}</p>
                   </div>
                   <div></div>
                   <div>
-                    <Label htmlFor="start-date">Start Date *</Label>
+                    <Label htmlFor="start-date">{t("marketing.startDate")} *</Label>
                     <Input
                       id="start-date"
                       type="date"
@@ -1140,7 +1135,7 @@ export function Marketing() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="end-date">End Date *</Label>
+                    <Label htmlFor="end-date">{t("marketing.endDate")} *</Label>
                     <Input
                       id="end-date"
                       type="date"
@@ -1149,7 +1144,7 @@ export function Marketing() {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <Label htmlFor="usage-limit">Usage Limit *</Label>
+                    <Label htmlFor="usage-limit">{t("marketing.usageLimit")} *</Label>
                     <Input
                       id="usage-limit"
                       type="number"
@@ -1157,7 +1152,7 @@ export function Marketing() {
                       value={newCampaign.usageLimit}
                       onChange={(e) => setNewCampaign({ ...newCampaign, usageLimit: parseInt(e.target.value) || 1000 })}
                     />
-                    <p className="text-xs text-slate-500 mt-1">Maximum number of times this campaign can be used</p>
+                    <p className="text-xs text-slate-500 mt-1">{t("marketing.usageLimitHint")}</p>
                   </div>
                 </div>
               </div>
@@ -1172,14 +1167,14 @@ export function Marketing() {
                   }} 
                   className="w-full sm:w-auto"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button 
                   onClick={handleCreateCampaign} 
                   className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800"
                 >
                   <Save className="w-4 h-4 mr-2" />
-                  {currentView === "edit" ? "Save Changes" : "Create Campaign"}
+                  {currentView === "edit" ? t("marketing.saveChanges") : t("marketing.createCampaign")}
                 </Button>
               </div>
             </div>
@@ -1222,7 +1217,7 @@ export function Marketing() {
             <div>
               <p className="text-sm text-slate-600 mb-1">{t('marketing.activeCampaigns')}</p>
               <p className="text-2xl font-semibold text-slate-900">{activeCampaigns}</p>
-              <p className="text-sm text-slate-500 mt-2">Running now</p>
+              <p className="text-sm text-slate-500 mt-2">{t("marketing.runningNow")}</p>
             </div>
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
               <Target className="w-5 h-5 text-blue-600" />
@@ -1235,7 +1230,7 @@ export function Marketing() {
             <div>
               <p className="text-sm text-slate-600 mb-1">{t('marketing.conversions')}</p>
               <p className="text-2xl font-semibold text-slate-900">{totalConversions.toLocaleString()}</p>
-              <p className="text-sm text-slate-500 mt-2">All campaigns</p>
+              <p className="text-sm text-slate-500 mt-2">{t("marketing.allCampaigns")}</p>
             </div>
             <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
               <Users className="w-5 h-5 text-purple-600" />
@@ -1262,10 +1257,10 @@ export function Marketing() {
 
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
         <TabsList className="mb-6">
-          <TabsTrigger value="all">All Campaigns</TabsTrigger>
-          <TabsTrigger value="announcement">Announcement Bar</TabsTrigger>
-          <TabsTrigger value="appearance">Appearance</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="all">{t("marketing.allCampaigns")}</TabsTrigger>
+          <TabsTrigger value="announcement">{t("marketing.announcementBar")}</TabsTrigger>
+          <TabsTrigger value="appearance">{t("marketing.appearance")}</TabsTrigger>
+          <TabsTrigger value="analytics">{t("marketing.analytics")}</TabsTrigger>
         </TabsList>
 
         {/* All Campaigns Tab */}
@@ -1276,7 +1271,7 @@ export function Marketing() {
               {/* Header Row */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <h3 className="font-semibold text-slate-900 text-lg">Campaigns ({filteredCampaigns.length})</h3>
+                  <h3 className="font-semibold text-slate-900 text-lg">{t("marketing.campaigns")} ({filteredCampaigns.length})</h3>
                   {autoRefresh && currentView === "list" && (
                     <div className="flex items-center gap-2 px-2 py-1 bg-green-50 border border-green-200 rounded-md">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -1312,10 +1307,10 @@ export function Marketing() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t('marketing.allStatus')}</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="scheduled">Scheduled</SelectItem>
-                    <SelectItem value="expired">Expired</SelectItem>
-                    <SelectItem value="draft">Draft</SelectItem>
+                    <SelectItem value="active">{t("marketing.active")}</SelectItem>
+                    <SelectItem value="scheduled">{t("marketing.scheduled")}</SelectItem>
+                    <SelectItem value="expired">{t("marketing.expired")}</SelectItem>
+                    <SelectItem value="draft">{t("marketing.draft")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={typeFilter} onValueChange={setTypeFilter}>
@@ -1324,32 +1319,21 @@ export function Marketing() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t('marketing.allTypes')}</SelectItem>
-                    <SelectItem value="push-notification">Push Notification</SelectItem>
-                    <SelectItem value="coupon">Coupon</SelectItem>
-                    <SelectItem value="seasonal">Seasonal</SelectItem>
-                    <SelectItem value="discount-code">Discount Code</SelectItem>
+                    <SelectItem value="push-notification">{t("marketing.pushNotification")}</SelectItem>
+                    <SelectItem value="coupon">{t("marketing.coupon")}</SelectItem>
+                    <SelectItem value="seasonal">{t("marketing.seasonal")}</SelectItem>
+                    <SelectItem value="discount-code">{t("marketing.discountCode")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={creatorFilter} onValueChange={setCreatorFilter}>
                   <SelectTrigger className="w-[120px] h-9 border-slate-300 text-sm">
-                    <SelectValue placeholder="Creators" />
+                    <SelectValue placeholder={t("marketing.creators")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Creators</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="vendor">Vendor</SelectItem>
-                    <SelectItem value="collaborator">Collaborator</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={creatorNameFilter} onValueChange={setCreatorNameFilter}>
-                  <SelectTrigger className="w-[100px] h-9 border-slate-300 text-sm">
-                    <SelectValue placeholder="Vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Vendor</SelectItem>
-                    {uniqueCreators.map(name => (
-                      <SelectItem key={name} value={name}>{name}</SelectItem>
-                    ))}
+                    <SelectItem value="all">{t("marketing.creators")}</SelectItem>
+                    <SelectItem value="admin">{t("marketing.admin")}</SelectItem>
+                    <SelectItem value="vendor">{t("marketing.vendor")}</SelectItem>
+                    <SelectItem value="collaborator">{t("marketing.collaborator")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <AdminDateRangeFilterPopover
@@ -1434,11 +1418,11 @@ export function Marketing() {
               <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Target className="w-8 h-8 text-slate-400" />
               </div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">No campaigns found</h3>
-              <p className="text-slate-600 mb-6">Get started by creating your first campaign</p>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">{t("marketing.noCampaignsFound")}</h3>
+              <p className="text-slate-600 mb-6">{t("marketing.emptyCampaignsHint")}</p>
               <Button onClick={() => setCurrentView("add")} className="bg-slate-900 hover:bg-slate-800">
                 <Plus className="w-4 h-4 mr-2" />
-                Create Campaign
+                {t("marketing.createCampaign")}
               </Button>
             </Card>
           )}

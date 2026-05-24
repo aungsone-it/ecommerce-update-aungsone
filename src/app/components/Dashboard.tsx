@@ -206,7 +206,7 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">Analytics</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900">{t("dashboard.analytics")}</h1>
           <p className="text-slate-500 mt-1">{t('dashboard.welcome').replace('{name}', 'Aung Sone')}</p>
         </div>
         <AdminDateRangeFilterPopover

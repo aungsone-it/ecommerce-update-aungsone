@@ -49,6 +49,7 @@ import { ADMIN_PRODUCTS_INITIAL_PAGE_SIZE } from "../../utils/module-cache";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import { CustomerProfile } from "../CustomerProfile";
 import { cacheManager } from "../../utils/cacheManager";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 interface User {
   id: string;
@@ -108,6 +109,14 @@ function SegmentCell({ segment }: { segment: string }) {
 }
 
 export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps) {
+  const { t } = useLanguage();
+  const segmentLabel = (segment?: string) => {
+    if (segment === "New") return t("customerIntel.new");
+    if (segment === "Active") return t("vendorAdmin.users.active");
+    if (segment === "Champions") return t("vendorAdmin.users.champions");
+    if (segment === "At Risk") return t("vendorAdmin.users.atRisk");
+    return t("vendorAdmin.users.other");
+  };
   const audienceCacheKey = `vendor-admin-audience:${vendorId}:p1:ps${ADMIN_PRODUCTS_INITIAL_PAGE_SIZE}:q:stall:trall:sgall`;
   const cachedAudience = cacheManager.get(audienceCacheKey);
   const [users, setUsers] = useState<User[]>(() =>
@@ -269,7 +278,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
       }
     } catch (error) {
       console.error("Error fetching users:", error);
-      toast.error("Failed to load customers");
+      toast.error(t("vendorAdmin.users.failedLoad"));
       setUsers([]);
       setServerTotalCustomers(0);
     } finally {
@@ -309,15 +318,15 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-800 mb-1">Customer Intelligence</h1>
-        <p className="text-sm text-slate-600">Advanced customer analytics and segmentation</p>
+        <h1 className="text-2xl font-bold text-slate-800 mb-1">{t("vendorAdmin.users.title")}</h1>
+        <p className="text-sm text-slate-600">{t("vendorAdmin.users.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 relative overflow-hidden">
           <Users className="w-6 h-6 text-blue-600 mb-2" />
           <div className="text-2xl font-bold text-slate-800">{totalCustomers}</div>
-          <div className="text-xs text-slate-600 mt-0.5">Total Customers</div>
+          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.totalCustomers")}</div>
           <TrendingUp className="w-4 h-4 text-blue-600 absolute top-3 right-3" />
         </div>
         <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 relative">
@@ -330,29 +339,29 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
             )}
           </div>
           <div className="text-2xl font-bold text-slate-800">{activeCustomers}</div>
-          <div className="text-xs text-slate-600 mt-0.5">Active</div>
+          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.active")}</div>
         </div>
         <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 relative">
           <Star className="w-6 h-6 text-purple-600 mb-2" />
           <div className="text-2xl font-bold text-slate-800">{championsCount}</div>
-          <div className="text-xs text-slate-600 mt-0.5">Champions</div>
+          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.champions")}</div>
         </div>
         <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 relative">
           <Clock className="w-6 h-6 text-orange-600 mb-2" />
           <div className="text-2xl font-bold text-slate-800">{atRiskCount}</div>
-          <div className="text-xs text-slate-600 mt-0.5">At Risk</div>
+          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.atRisk")}</div>
           <TrendingUp className="w-4 h-4 text-orange-600 absolute top-3 right-3" />
         </div>
         <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 relative">
           <DollarSign className="w-6 h-6 text-emerald-600 mb-2" />
           <div className="text-2xl font-bold text-slate-800">{totalRevenue.toLocaleString()} MMK</div>
-          <div className="text-xs text-slate-600 mt-0.5">Total Revenue</div>
+          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.totalRevenue")}</div>
           <TrendingUp className="w-4 h-4 text-emerald-600 absolute top-3 right-3" />
         </div>
         <div className="bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg p-4 relative">
           <Activity className="w-6 h-6 text-violet-600 mb-2" />
           <div className="text-2xl font-bold text-slate-800">{Math.round(avgLTV).toLocaleString()} MMK</div>
-          <div className="text-xs text-slate-600 mt-0.5">Avg LTV</div>
+          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.avgLtv")}</div>
           <Activity className="w-4 h-4 text-violet-600 absolute top-3 right-3" />
         </div>
       </div>
@@ -368,7 +377,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
           }`}
         >
           <Users className="w-4 h-4" />
-          Customer List
+          {t("customerIntel.customerList")}
         </button>
         <button
           type="button"
@@ -380,7 +389,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
           }`}
         >
           <Activity className="w-4 h-4" />
-          Segments
+          {t("vendorAdmin.users.segment")}
         </button>
         <button
           type="button"
@@ -392,7 +401,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
           }`}
         >
           <TrendingUp className="w-4 h-4" />
-          Analytics
+          {t("customerIntel.analytics")}
         </button>
       </div>
 
@@ -402,7 +411,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="Search customers by name, email, or tags..."
+                placeholder={t("vendorAdmin.users.searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 bg-white border-slate-300"
@@ -411,36 +420,36 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
             <div className="flex flex-wrap items-center gap-3">
               <Select value={filterStatus} onValueChange={setFilterStatus}>
                 <SelectTrigger className="w-[140px] bg-white border-slate-300">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder={t("vendorAdmin.users.status")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="all">{t("vendorAdmin.users.allStatus")}</SelectItem>
+                  <SelectItem value="active">{t("vendorAdmin.users.active")}</SelectItem>
+                  <SelectItem value="inactive">{t("customerIntel.inactive")}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterTier} onValueChange={setFilterTier}>
                 <SelectTrigger className="w-[140px] bg-white border-slate-300">
-                  <SelectValue placeholder="Tier" />
+                  <SelectValue placeholder={t("customerIntel.tier")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Tiers</SelectItem>
+                  <SelectItem value="all">{t("vendorAdmin.users.allTiers")}</SelectItem>
                   <SelectItem value="vip">VIP</SelectItem>
-                  <SelectItem value="regular">Regular</SelectItem>
-                  <SelectItem value="new">New</SelectItem>
+                  <SelectItem value="regular">{t("customerIntel.regular")}</SelectItem>
+                  <SelectItem value="new">{t("customerIntel.new")}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterSegment} onValueChange={setFilterSegment}>
                 <SelectTrigger className="w-[160px] bg-white border-slate-300">
-                  <SelectValue placeholder="Segment" />
+                  <SelectValue placeholder={t("vendorAdmin.users.segment")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Segments</SelectItem>
-                  <SelectItem value="New">New</SelectItem>
-                  <SelectItem value="Active">Active</SelectItem>
-                  <SelectItem value="Champions">Champions</SelectItem>
-                  <SelectItem value="At Risk">At Risk</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  <SelectItem value="all">{t("vendorAdmin.users.allSegments")}</SelectItem>
+                  <SelectItem value="New">{segmentLabel("New")}</SelectItem>
+                  <SelectItem value="Active">{segmentLabel("Active")}</SelectItem>
+                  <SelectItem value="Champions">{segmentLabel("Champions")}</SelectItem>
+                  <SelectItem value="At Risk">{segmentLabel("At Risk")}</SelectItem>
+                  <SelectItem value="Other">{segmentLabel("Other")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -465,9 +474,9 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
             ) : serverTotalCustomers === 0 ? (
               <div className="p-12 text-center">
                 <Users className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-800 mb-1">No customers yet</h3>
+                <h3 className="text-lg font-semibold text-slate-800 mb-1">{t("vendorAdmin.users.noCustomersYet")}</h3>
                 <p className="text-sm text-slate-500">
-                  Customers appear when they sign in or register on your storefront, or when they place an order
+                  {t("vendorAdmin.users.noCustomersHint")}
                 </p>
               </div>
             ) : (
@@ -484,12 +493,12 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                         onCheckedChange={toggleSelectAll}
                       />
                     </TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">Customer</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">Segment</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">Orders</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">Avg Order</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">Tags</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">Status</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.customer")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.segment")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.orders")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.avgOrder")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.tags")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.status")}</TableHead>
                     <TableHead className="w-12 text-right text-xs font-semibold text-slate-600 uppercase" />
                   </TableRow>
                 </TableHeader>
@@ -523,7 +532,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                                 <span className="font-medium text-slate-900">{user.name}</span>
                                 {user.isNew && (
                                   <span className="text-xs font-medium text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                                    New
+                                    {t("customerIntel.new")}
                                   </span>
                                 )}
                               </div>
@@ -532,7 +541,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                           </div>
                         </TableCell>
                         <TableCell>
-                          <SegmentCell segment={seg} />
+                          <SegmentCell segment={segmentLabel(seg)} />
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2 text-sm text-slate-700">
@@ -572,7 +581,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                             }`}
                           >
                             {user.status === "active" && <CheckCircle2 className="w-3 h-3" />}
-                            {user.status === "active" ? "Active" : "Inactive"}
+                            {user.status === "active" ? t("vendorAdmin.users.active") : t("customerIntel.inactive")}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
@@ -606,7 +615,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                                 }
                               >
                                 <Eye className="w-4 h-4 mr-2" />
-                                View Profile
+                                {t("topnav.viewProfile")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() =>
@@ -614,19 +623,19 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                                 }
                               >
                                 <Mail className="w-4 h-4 mr-2" />
-                                Send Email
+                                {t("vendorAdmin.users.sendEmail")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => toast.info("Notes", { description: "Coming soon." })}
                               >
                                 <FileText className="w-4 h-4 mr-2" />
-                                Add Note
+                                {t("vendorAdmin.users.addNote")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => toast.info("Tags", { description: "Coming soon." })}
                               >
                                 <Tag className="w-4 h-4 mr-2" />
-                                Manage Tags
+                                {t("vendorAdmin.users.manageTags")}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
@@ -635,7 +644,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                                 }
                               >
                                 <Ban className="w-4 h-4 mr-2" />
-                                Block Customer
+                                {t("vendorAdmin.users.blockCustomer")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="text-red-600 focus:text-red-600"
@@ -646,7 +655,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                                 }
                               >
                                 <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
+                                {t("common.delete")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -663,7 +672,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                   totalCount={serverTotalCustomers}
                   onPageChange={setListPage}
                   onPageSizeChange={setListPageSize}
-                  itemLabel="customers"
+                  itemLabel={t("vendorAdmin.users.customersLower")}
                   loading={loading}
                 />
               </>
@@ -675,16 +684,16 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
       {currentTab === "segments" && (
         <div className="bg-white rounded-lg border border-slate-200 p-12 text-center">
           <Activity className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-800 mb-1">Customer Segments</h3>
-          <p className="text-sm text-slate-500">Segment analytics coming soon</p>
+          <h3 className="text-lg font-semibold text-slate-800 mb-1">{t("vendorAdmin.users.customerSegments")}</h3>
+          <p className="text-sm text-slate-500">{t("vendorAdmin.users.comingSoon")}</p>
         </div>
       )}
 
       {currentTab === "analytics" && (
         <div className="bg-white rounded-lg border border-slate-200 p-12 text-center">
           <TrendingUp className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-800 mb-1">Customer Analytics</h3>
-          <p className="text-sm text-slate-500">Advanced analytics coming soon</p>
+          <h3 className="text-lg font-semibold text-slate-800 mb-1">{t("vendorAdmin.users.customerAnalytics")}</h3>
+          <p className="text-sm text-slate-500">{t("vendorAdmin.users.comingSoon")}</p>
         </div>
       )}
     </div>

@@ -12,6 +12,13 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { toast } from "sonner";
 import { publicAnonKey } from "../../../../utils/supabase/info";
 import { API_BASE_URL } from "../../../utils/api-client";
@@ -27,6 +34,7 @@ import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
 import { isRenderableImageSrc, pickStoreLogo } from "../../utils/renderableImageSrc";
 import { supabase } from "../../contexts/AuthContext";
 import { getEffectiveVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 interface StoreSettings {
   vendorId: string;
@@ -63,6 +71,12 @@ export function VendorAdminSettings({
   vendorLogo = "",
   onPreviewStore,
 }: VendorAdminSettingsProps) {
+  const { language, setLanguage, t } = useLanguage();
+  const tr = (key: string, values: Record<string, string | number> = {}) =>
+    Object.entries(values).reduce(
+      (text, [name, value]) => text.replace(`{${name}}`, String(value)),
+      t(key)
+    );
   const settingsCacheKey = `vendor-admin-settings:${vendorId}`;
   const cachedSettings = cacheManager.get(settingsCacheKey) as StoreSettings | undefined;
   const emptyDefaults: StoreSettings = {
@@ -224,7 +238,7 @@ export function VendorAdminSettings({
         const body = (await response.json()) as { settings?: StoreSettings };
         const saved = body.settings;
         if (!saved?.storeSlug) {
-          toast.error("Invalid response from server");
+          toast.error(t("common.unknown"));
           return;
         }
         const normalized = { ...saved, logo: pickStoreLogo(saved.logo, "") };
@@ -284,7 +298,7 @@ export function VendorAdminSettings({
             })
           );
 
-          toast.success("Settings saved successfully!");
+          toast.success(t("vendorAdmin.settings.saved"));
 
           const pathMatch = window.location.pathname.match(/^\/(store|vendor)\/([^/]+)(\/.*)?$/);
           if (pathMatch && pathMatch[2] !== saved.storeSlug) {
@@ -294,14 +308,14 @@ export function VendorAdminSettings({
             window.dispatchEvent(new PopStateEvent("popstate"));
           }
         } else {
-          toast.error("Failed to update vendor information");
+          toast.error(t("vendorAdmin.settings.networkError"));
         }
       } else {
-        toast.error("Failed to save settings");
+        toast.error(t("vendorAdmin.settings.networkError"));
       }
     } catch (error) {
       console.error("Failed to save settings:", error);
-      toast.error("Failed to save settings");
+      toast.error(t("vendorAdmin.settings.networkError"));
     } finally {
       setSaving(false);
     }
@@ -310,16 +324,16 @@ export function VendorAdminSettings({
   const copyToClipboard = async (label: string, text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`${label} copied`);
+      toast.success(tr("vendorAdmin.settings.copied", { label }));
     } catch {
-      toast.error("Could not copy");
+      toast.error(t("vendorAdmin.settings.couldNotCopy"));
     }
   };
 
   const handlePrepareDomain = async () => {
     const hostname = domainDraft.trim();
     if (!hostname) {
-      toast.error("Enter your domain (e.g. shop.example.com)");
+      toast.error(t("vendorAdmin.settings.enterDomain"));
       return;
     }
     setDomainBusy("prepare");
@@ -358,10 +372,10 @@ export function VendorAdminSettings({
         domainStatus: "pending",
         dnsVerified: false,
       }));
-      toast.success("Saved — open your domain on Vercel, then click Verify (HTTPS check).");
+      toast.success(t("vendorAdmin.settings.saveInstructions"));
     } catch (e) {
       console.error(e);
-      toast.error("Network error");
+      toast.error(t("vendorAdmin.settings.networkError"));
     } finally {
       setDomainBusy(null);
     }
@@ -370,7 +384,7 @@ export function VendorAdminSettings({
   const handleVerifyDomain = async () => {
     const domain = settings.customDomain?.trim() || domainDraft.trim();
     if (!domain) {
-      toast.error("No domain to verify");
+      toast.error(t("vendorAdmin.settings.noDomain"));
       return;
     }
     setDomainBusy("verify");
@@ -399,13 +413,13 @@ export function VendorAdminSettings({
           dnsVerified: true,
         }));
         clearCachedVendorHostSlug();
-        toast.success(data.message || "Domain verified");
+        toast.success(data.message || t("vendorAdmin.settings.domainVerified"));
       } else {
-        toast.info(data.message || "Verification pending — check DNS propagation");
+        toast.info(data.message || t("vendorAdmin.settings.verificationPending"));
       }
     } catch (e) {
       console.error(e);
-      toast.error("Network error");
+      toast.error(t("vendorAdmin.settings.networkError"));
     } finally {
       setDomainBusy(null);
     }
@@ -413,7 +427,7 @@ export function VendorAdminSettings({
 
   const handleRemoveDomain = async () => {
     const ok = window.confirm(
-      "Remove this custom domain? Customers will use your default marketplace URL until you connect a domain again."
+      t("vendorAdmin.settings.removeConfirm")
     );
     if (!ok) return;
     setDomainBusy("remove");
@@ -443,10 +457,10 @@ export function VendorAdminSettings({
       setDomainDraft("");
       setDomainHints(null);
       clearCachedVendorHostSlug();
-      toast.success("Custom domain removed");
+      toast.success(t("vendorAdmin.settings.domainRemoved"));
     } catch (e) {
       console.error(e);
-      toast.error("Network error");
+      toast.error(t("vendorAdmin.settings.networkError"));
     } finally {
       setDomainBusy(null);
     }
@@ -478,10 +492,19 @@ export function VendorAdminSettings({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Store Settings</h1>
-          <p className="text-slate-600">Customize your storefront appearance</p>
+          <h1 className="text-2xl font-bold text-slate-900">{t("vendorAdmin.settings.title")}</h1>
+          <p className="text-slate-600">{t("vendorAdmin.settings.subtitle")}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <Select value={language} onValueChange={(value: "en" | "zh") => setLanguage(value)}>
+            <SelectTrigger className="h-10 w-[150px] bg-white border-slate-200 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="en">{t("language.english")}</SelectItem>
+              <SelectItem value="zh">{t("language.chinese")}</SelectItem>
+            </SelectContent>
+          </Select>
           <Button 
             variant="outline"
             onClick={() => {
@@ -491,7 +514,7 @@ export function VendorAdminSettings({
             }}
           >
             <Eye className="w-4 h-4 mr-2" />
-            Preview Store
+            {t("vendorAdmin.settings.previewStore")}
           </Button>
           <Button 
             onClick={handleSave}
@@ -499,25 +522,25 @@ export function VendorAdminSettings({
             className="bg-slate-900 hover:bg-black text-white"
           >
             <Save className="w-4 h-4 mr-2" />
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("vendorAdmin.settings.saving") : t("vendorAdmin.settings.saveChanges")}
           </Button>
         </div>
       </div>
 
       {/* Store Information - Simple Form Layout */}
       <div className="max-w-2xl">
-        <h2 className="text-lg font-semibold text-slate-900 mb-6">Store information</h2>
+        <h2 className="text-lg font-semibold text-slate-900 mb-6">{t("vendorAdmin.settings.storeInformation")}</h2>
         
         <div className="space-y-6">
           {/* Store Logo */}
           <div>
-            <Label className="text-sm font-normal text-slate-900 mb-3 block">Store Logo</Label>
+            <Label className="text-sm font-normal text-slate-900 mb-3 block">{t("vendorAdmin.settings.storeLogo")}</Label>
             {isRenderableImageSrc(settings.logo) ? (
               <div className="inline-block relative group">
                 <div className="w-[104px] h-[104px] border-2 border-dashed border-slate-300 rounded p-2 bg-white">
                   <img 
                     src={settings.logo} 
-                    alt="Store logo" 
+                    alt={t("vendorAdmin.settings.storeLogo")} 
                     className="w-full h-full object-contain" 
                     onError={() =>
                       setSettings((prev) => ({ ...prev, logo: "" }))
@@ -606,11 +629,11 @@ export function VendorAdminSettings({
                       }
 
                       setSettings((prev) => ({ ...prev, logo: uploadedUrl }));
-                      toast.success("Logo uploaded");
+                      toast.success(t("vendorAdmin.settings.logoUploaded"));
                     } catch (error) {
                       console.error("Logo upload error:", error);
                       toast.error(
-                        error instanceof Error ? error.message : "Failed to upload logo"
+                        error instanceof Error ? error.message : t("vendorAdmin.settings.uploadLogoFailed")
                       );
                     } finally {
                       input.value = "";
@@ -619,7 +642,7 @@ export function VendorAdminSettings({
                 />
                 <div className="w-[104px] h-[104px] border-2 border-dashed border-slate-300 rounded flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-colors">
                   <Upload className="w-5 h-5 text-slate-400 mb-1" />
-                  <span className="text-xs text-slate-500 text-center px-2">Upload logo</span>
+                  <span className="text-xs text-slate-500 text-center px-2">{t("vendorAdmin.settings.uploadLogo")}</span>
                 </div>
               </label>
             )}
@@ -627,7 +650,7 @@ export function VendorAdminSettings({
 
           {/* Store Name */}
           <div>
-            <Label className="text-sm font-normal text-slate-900 mb-2 block">Store name</Label>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">{t("vendorAdmin.settings.storeName")}</Label>
             <Input
               value={settings.storeName}
               onChange={(e) => {
@@ -638,19 +661,18 @@ export function VendorAdminSettings({
                   storeSlug: storeSlugFromBusinessName(storeName),
                 });
               }}
-              placeholder="My Store"
+              placeholder={t("vendorAdmin.settings.storeNamePlaceholder")}
               className="bg-white border-slate-200"
             />
             <p className="text-xs text-slate-500 mt-1.5">
-              Public path: <span className="font-mono">/vendor/{settings.storeSlug || "…"}</span>. On save, the slug is
-              finalized from this name (letters and digits only). With a wildcard DNS record, your host can use{" "}
+              {t("vendorAdmin.settings.publicPathHint")} <span className="font-mono">/vendor/{settings.storeSlug || "…"}</span>. {t("vendorAdmin.settings.publicPathHint2")}{" "}
               <span className="font-mono">{settings.storeSlug || "yourstore"}.{subdomainBase}</span>.
             </p>
           </div>
 
           {/* Contact Email */}
           <div>
-            <Label className="text-sm font-normal text-slate-900 mb-2 block">Contact email</Label>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">{t("vendorAdmin.settings.contactEmail")}</Label>
             <Input
               type="email"
               value={settings.contactEmail}
@@ -658,12 +680,12 @@ export function VendorAdminSettings({
               placeholder="store@example.com"
               className="bg-white border-slate-200"
             />
-            <p className="text-xs text-slate-500 mt-1.5">Customers will use this email to contact you</p>
+            <p className="text-xs text-slate-500 mt-1.5">{t("vendorAdmin.settings.contactEmailHint")}</p>
           </div>
 
           {/* Phone Number */}
           <div>
-            <Label className="text-sm font-normal text-slate-900 mb-2 block">Phone number</Label>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">{t("vendorAdmin.settings.phoneNumber")}</Label>
             <Input
               type="tel"
               value={settings.contactPhone}
@@ -675,7 +697,7 @@ export function VendorAdminSettings({
 
           {/* Store Address */}
           <div>
-            <Label className="text-sm font-normal text-slate-900 mb-2 block">Store address</Label>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">{t("vendorAdmin.settings.storeAddress")}</Label>
             <Textarea
               value={settings.address}
               onChange={(e) => setSettings({ ...settings, address: e.target.value })}
@@ -692,21 +714,16 @@ export function VendorAdminSettings({
         <div className="flex items-start gap-3 mb-4">
           <Globe className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Custom domain</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{t("vendorAdmin.settings.customDomain")}</h2>
             <p className="text-sm text-slate-600 mt-1">
-              Add your hostname (e.g. <span className="font-mono">shop.example.com</span>) under this
-              project&apos;s <strong>Vercel → Domains</strong> and point DNS so traffic hits this deployment.
-              Then use <strong>Save instructions</strong> and <strong>Verify</strong> — we confirm ownership
-              over HTTPS at{" "}
-              <span className="font-mono text-xs">/.well-known/migoo-verify.txt</span> (no registrar TXT
-              needed in most cases).
+              {t("vendorAdmin.settings.customDomainDesc")}
             </p>
           </div>
         </div>
 
         <div className="space-y-4">
           <div>
-            <Label className="text-sm font-normal text-slate-900 mb-2 block">Hostname</Label>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">{t("vendorAdmin.settings.hostname")}</Label>
             <Input
               value={domainDraft}
               onChange={(e) => setDomainDraft(e.target.value)}
@@ -716,15 +733,15 @@ export function VendorAdminSettings({
             />
             {settings.domainStatus === "verified" && settings.customDomain && (
               <p className="text-xs text-emerald-700 mt-2">
-                <strong>Verified</strong> — store is served at{" "}
+                <strong>{t("vendorAdmin.settings.verified")}</strong> — store is served at{" "}
                 <span className="font-mono">https://{settings.customDomain}</span> once DNS and Vercel
                 include this host.
               </p>
             )}
             {settings.domainStatus === "pending" && (
               <p className="text-xs text-amber-700 mt-2">
-                Pending — when <span className="font-mono">https://{settings.customDomain || domainDraft || "…"}</span>{" "}
-                loads this store, click Verify.
+                {t("vendorAdmin.settings.pending")} — when <span className="font-mono">https://{settings.customDomain || domainDraft || "…"}</span>{" "}
+                loads this store, click {t("vendorAdmin.settings.verify")}.
               </p>
             )}
           </div>
@@ -741,7 +758,7 @@ export function VendorAdminSettings({
               ) : (
                 <Copy className="w-4 h-4 mr-2" />
               )}
-              Save instructions
+              {t("vendorAdmin.settings.saveInstructions")}
             </Button>
             <Button
               type="button"
@@ -755,7 +772,7 @@ export function VendorAdminSettings({
               {domainBusy === "verify" ? (
                 <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
               ) : null}
-              Verify
+              {t("vendorAdmin.settings.verify")}
             </Button>
             {(String(settings.customDomain || "").trim() || domainDraft.trim()) && (
               <Button
@@ -770,7 +787,7 @@ export function VendorAdminSettings({
                   window.open(u, "_blank", "noopener,noreferrer");
                 }}
               >
-                Test URL
+                {t("vendorAdmin.settings.testUrl")}
               </Button>
             )}
             {(settings.customDomain || settings.domainStatus !== "none") && (
@@ -782,37 +799,31 @@ export function VendorAdminSettings({
                 onClick={handleRemoveDomain}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
-                Remove domain
+                {t("vendorAdmin.settings.removeDomain")}
               </Button>
             )}
           </div>
 
           {(domainHints || settings.domainStatus === "pending" || settings.domainStatus === "verified") && (
             <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 text-sm">
-              <p className="font-medium text-slate-800">Verify in two clicks</p>
+              <p className="font-medium text-slate-800">{t("vendorAdmin.settings.verifyStepsTitle")}</p>
               <ol className="list-decimal list-inside space-y-1 text-slate-700">
                 <li>
-                  Same hostname added in <strong>Vercel → Domains</strong> with valid HTTPS.
+                  {t("vendorAdmin.settings.verifyStep1")}
                 </li>
                 <li>
-                  <strong>DNS must send this hostname to Vercel</strong> (A/CNAME from Vercel’s Domains
-                  screen). If <strong>Test URL</strong> opens a Hostinger “parked domain” page, HTTPS verify
-                  cannot work until you change those DNS records away from Hostinger parking.
+                  {t("vendorAdmin.settings.verifyStep2")}
                 </li>
                 <li>
-                  <strong>Save instructions</strong>, then <strong>Verify</strong> — we read{" "}
-                  <code className="text-xs bg-slate-100 px-1 rounded">/.well-known/migoo-verify.txt</code> on
-                  this deployment.
+                  {t("vendorAdmin.settings.verifyStep3")}
                 </li>
               </ol>
               <p className="text-xs text-slate-500 border-t border-slate-100 pt-3">
-                Optional — only if HTTPS verify fails: add a <strong>TXT</strong> at your DNS for ownership,
-                or use CNAME for traffic. At Hostinger, TXT <strong>Name</strong> is often just{" "}
-                <code className="text-xs">_migoo-verify</code> (not the full FQDN).
+                {t("vendorAdmin.settings.optionalTxt")}
               </p>
               <div className="space-y-2 text-slate-700 text-xs">
                 <div>
-                  <span className="text-slate-500">TXT name </span>
+                  <span className="text-slate-500">{t("vendorAdmin.settings.txtName")} </span>
                   <code className="bg-slate-100 px-1 rounded break-all">
                     {domainHints?.txtName || `_migoo-verify.${settings.customDomain || domainDraft || "…"}`}
                   </code>
@@ -827,11 +838,11 @@ export function VendorAdminSettings({
                       )
                     }
                   >
-                    Copy
+                    {t("vendorAdmin.settings.copy")}
                   </button>
                 </div>
                 <div>
-                  <span className="text-slate-500">TXT value </span>
+                  <span className="text-slate-500">{t("vendorAdmin.settings.txtValue")} </span>
                   <code className="bg-slate-100 px-1 rounded break-all">
                     {domainHints?.txtValue || "(Save instructions to generate)"}
                   </code>
@@ -841,12 +852,12 @@ export function VendorAdminSettings({
                       className="ml-2 text-blue-600 hover:underline"
                       onClick={() => copyToClipboard("TXT value", domainHints.txtValue)}
                     >
-                      Copy
+                      {t("vendorAdmin.settings.copy")}
                     </button>
                   )}
                 </div>
                 <div>
-                  <span className="text-slate-500">CNAME target </span>
+                  <span className="text-slate-500">{t("vendorAdmin.settings.cnameTarget")} </span>
                   <code className="bg-slate-100 px-1 rounded">
                     {domainHints?.cnameTarget || "cname.vercel-dns.com"}
                   </code>
@@ -856,7 +867,7 @@ export function VendorAdminSettings({
                       className="ml-2 text-blue-600 hover:underline"
                       onClick={() => copyToClipboard("CNAME target", domainHints.cnameTarget)}
                     >
-                      Copy
+                      {t("vendorAdmin.settings.copy")}
                     </button>
                   )}
                 </div>

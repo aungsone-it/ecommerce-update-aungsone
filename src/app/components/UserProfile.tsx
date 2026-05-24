@@ -4,6 +4,7 @@ import { API_BASE_URL } from "../../utils/api-client";
 import { toast } from "sonner";
 import { compressImage } from "../../utils/imageCompression";
 import { useAuth } from "../contexts/AuthContext";
+import { useLanguage } from "../contexts/LanguageContext";
 import type { VendorUser } from "../contexts/VendorAuthContext";
 import {
   ArrowLeft,
@@ -87,10 +88,10 @@ function parseDateMs(v: unknown): number | null {
   return Number.isNaN(t) ? null : t;
 }
 
-function formatDateTime(iso: unknown): string {
+function formatDateTime(iso: unknown, locale?: string): string {
   const ms = parseDateMs(iso);
   if (ms == null) return "—";
-  return new Date(ms).toLocaleString(undefined, {
+  return new Date(ms).toLocaleString(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -99,20 +100,20 @@ function formatDateTime(iso: unknown): string {
   });
 }
 
-function formatDateLong(iso: unknown): string {
+function formatDateLong(iso: unknown, locale?: string): string {
   const ms = parseDateMs(iso);
   if (ms == null) return "—";
-  return new Date(ms).toLocaleDateString(undefined, {
+  return new Date(ms).toLocaleDateString(locale, {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
 }
 
-function formatDateShort(iso: unknown): string {
+function formatDateShort(iso: unknown, locale?: string): string {
   const ms = parseDateMs(iso);
   if (ms == null) return "—";
-  return new Date(ms).toLocaleDateString();
+  return new Date(ms).toLocaleDateString(locale);
 }
 
 function daysSince(iso: unknown): number | null {
@@ -148,6 +149,8 @@ export function UserProfile({
   onVendorSessionRollback,
 }: UserProfileProps) {
   const { user: sessionUser } = useAuth();
+  const { t, language } = useLanguage();
+  const dateLocale = language === "zh" ? "zh-CN" : "en-US";
   const isSelfProfile = Boolean(
     variant === "vendor" ||
       (sessionUser?.id && user?.id && String(sessionUser.id) === String(user.id))
@@ -531,7 +534,7 @@ export function UserProfile({
             optimisticApplied = true;
           }
           const merged = await saveVendorProfile();
-          toast.success("Profile updated successfully!");
+          toast.success(t("profile.updated"));
           setIsSaving(false);
           onSave(merged);
           return;
@@ -545,7 +548,7 @@ export function UserProfile({
       } else {
         await saveLegacyProfile();
       }
-      toast.success("Profile updated successfully!");
+      toast.success(t("profile.updated"));
     } catch (error: any) {
       console.error("❌ Error saving user profile:", error);
       toast.error(`Failed to save profile: ${error.message}`);
@@ -569,70 +572,70 @@ export function UserProfile({
     switch (role) {
       case "super-admin":
         return {
-          label: "Super Admin",
+          label: t("role.superAdmin"),
           icon: ShieldCheck,
           color: "text-violet-600 bg-violet-100",
-          description: "Full platform access",
+          description: t("role.superAdmin.desc"),
         };
       case "store-owner":
         return {
-          label: "Store Owner",
+          label: t("role.storeOwner"),
           icon: Store,
           color: "text-purple-600 bg-purple-100",
-          description: "Business owner with full store access and control",
+          description: t("role.storeOwner.desc"),
         };
       case "administrator":
         return {
-          label: "Administrator",
+          label: t("role.administrator"),
           icon: ShieldCheck,
           color: "text-blue-600 bg-blue-100",
-          description: "Manage products, orders, and users",
+          description: t("role.administrator.desc"),
         };
       case "data-entry":
         return {
-          label: "Data Entry",
+          label: t("role.dataEntry"),
           icon: FileEdit,
           color: "text-green-600 bg-green-100",
-          description: "Add and edit products, manage inventory",
+          description: t("role.dataEntry.desc"),
         };
       case "warehouse":
         return {
-          label: "Warehouse",
+          label: t("role.warehouse"),
           icon: Warehouse,
           color: "text-amber-600 bg-amber-100",
-          description: "Fulfillment and inventory operations",
+          description: t("role.warehouse.desc"),
         };
       case "vendor-admin":
         return {
-          label: "Vendor Admin",
+          label: t("role.vendorAdmin"),
           icon: Store,
           color: "text-indigo-600 bg-indigo-100",
-          description: "Vendor storefront management",
+          description: t("role.vendorAdmin.desc"),
         };
       case "collaborator":
         return {
-          label: "Collaborator",
+          label: t("role.collaborator"),
           icon: Briefcase,
           color: "text-sky-600 bg-sky-100",
-          description: "Collaborator access",
+          description: t("role.collaborator.desc"),
         };
       case "developer":
         return {
-          label: "Developer",
+          label: t("role.developer"),
           icon: Code,
           color: "text-orange-600 bg-orange-100",
-          description: "Technical access for integrations",
+          description: t("role.developer.desc"),
         };
       case "product-manager":
         return {
-          label: "Product Manager",
+          label: t("role.productManager"),
           icon: Briefcase,
           color: "text-pink-600 bg-pink-100",
-          description: "Define and manage product strategy",
+          description: t("role.productManager.desc"),
         };
       default:
         return {
-          label: "Unknown",
+          label: t("common.unknown"),
           icon: Shield,
           color: "text-slate-600 bg-slate-100",
           description: "",
@@ -663,8 +666,8 @@ export function UserProfile({
       if (cMs != null) {
         rows.push({
           id: "created",
-          action: "Account created",
-          target: "Vendor account",
+          action: t("profile.timeline.accountCreated"),
+          target: t("profile.timeline.vendorAccount"),
           at: cMs,
           status: "success",
         });
@@ -673,8 +676,8 @@ export function UserProfile({
       if (sMs != null) {
         rows.push({
           id: "signin",
-          action: "Last sign-in",
-          target: "Vendor portal (most recent session)",
+          action: t("profile.timeline.lastSignIn"),
+          target: t("profile.timeline.vendorPortal"),
           at: sMs,
           status: "success",
         });
@@ -683,8 +686,8 @@ export function UserProfile({
       if (uMs != null && uMs !== cMs) {
         rows.push({
           id: "profile",
-          action: "Profile updated",
-          target: "Saved changes to this profile",
+          action: t("profile.timeline.profileUpdated"),
+          target: t("profile.timeline.savedChanges"),
           at: uMs,
           status: "neutral",
         });
@@ -694,7 +697,7 @@ export function UserProfile({
         id: r.id,
         action: r.action,
         target: r.target,
-        timestamp: formatDateTime(r.at),
+        timestamp: formatDateTime(r.at, dateLocale),
         status: r.status,
       }));
     }
@@ -725,8 +728,8 @@ export function UserProfile({
     if (cMs != null) {
       rows.push({
         id: "created",
-        action: "Account created",
-        target: "Staff profile record",
+        action: t("profile.timeline.accountCreated"),
+        target: t("profile.timeline.staffRecord"),
         at: cMs,
         status: "success",
       });
@@ -735,8 +738,8 @@ export function UserProfile({
     if (sMs != null) {
       rows.push({
         id: "signin",
-        action: "Last sign-in",
-        target: "Supabase Auth (most recent session)",
+        action: t("profile.timeline.lastSignIn"),
+        target: t("profile.timeline.supabaseAuth"),
         at: sMs,
         status: "success",
       });
@@ -745,8 +748,8 @@ export function UserProfile({
     if (uMs != null && uMs !== cMs) {
       rows.push({
         id: "profile",
-        action: "Profile updated",
-        target: "Saved changes to this profile",
+        action: t("profile.timeline.profileUpdated"),
+        target: t("profile.timeline.savedChanges"),
         at: uMs,
         status: "neutral",
       });
@@ -756,7 +759,7 @@ export function UserProfile({
       id: r.id,
       action: r.action,
       target: r.target,
-      timestamp: formatDateTime(r.at),
+        timestamp: formatDateTime(r.at, dateLocale),
       status: r.status,
     }));
   }, [
@@ -766,6 +769,8 @@ export function UserProfile({
     editedUser.authCreatedAt,
     editedUser.lastSignInAt,
     editedUser.updatedAt,
+    dateLocale,
+    t,
   ]);
 
   return (
@@ -780,21 +785,21 @@ export function UserProfile({
               className="text-slate-600 hover:text-slate-900"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
-              {backLabel}
+              {backLabel === "Back to Users" ? t("profile.backToUsers") : backLabel === "Back" ? t("profile.back") : backLabel}
             </Button>
             <div className="h-6 w-px bg-slate-300"></div>
             <div>
               <h1 className="text-2xl font-semibold text-slate-900">
-                {isEditing ? "Edit User Profile" : "User Profile"}
+                {isEditing ? t("profile.title.edit") : t("profile.title.view")}
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 {isEditing
                   ? isSelfProfile
-                    ? "Update your photo, contact details, address, and bio"
-                    : "Update user information and permissions"
+                    ? t("profile.subtitle.self.edit")
+                    : t("profile.subtitle.other.edit")
                   : isSelfProfile
-                    ? "Your account details"
-                    : "View user details and activity"}
+                    ? t("profile.subtitle.self.view")
+                    : t("profile.subtitle.other.view")}
               </p>
             </div>
           </div>
@@ -802,7 +807,7 @@ export function UserProfile({
             {isEditing ? (
               <>
                 <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button
                   className="bg-slate-900 hover:bg-slate-800 text-white"
@@ -810,7 +815,7 @@ export function UserProfile({
                   disabled={isSaving || (variant !== "vendor" && loadingProfile)}
                 >
                   <Save className="w-4 h-4 mr-2" />
-                  {isSaving ? "Saving..." : "Save changes"}
+                  {isSaving ? t("common.saving") : t("profile.saveChanges")}
                 </Button>
               </>
             ) : (
@@ -820,7 +825,7 @@ export function UserProfile({
                 disabled={variant !== "vendor" && loadingProfile}
               >
                 <Edit className="w-4 h-4 mr-2" />
-                Edit profile
+                {t("profile.editProfile")}
               </Button>
             )}
           </div>
@@ -855,7 +860,7 @@ export function UserProfile({
                               variant="default"
                               size="icon"
                               className="absolute bottom-0.5 right-0.5 !h-6 !w-6 !min-h-0 rounded-md border-2 border-white bg-slate-900 p-0 text-white shadow-md hover:bg-slate-800 hover:text-white focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 [&_svg]:!size-3"
-                              aria-label="Edit profile photo"
+                              aria-label={t("profile.editPhoto")}
                             >
                               <Pencil className="size-3" strokeWidth={2.5} />
                             </Button>
@@ -868,7 +873,7 @@ export function UserProfile({
                               }}
                             >
                               <Upload className="mr-2 h-4 w-4" />
-                              Change photo
+                              {t("profile.changePhoto")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="cursor-pointer text-slate-700 focus:text-slate-900"
@@ -881,7 +886,7 @@ export function UserProfile({
                               onSelect={() => handleRemoveAvatar()}
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              {avatarFile ? "Discard new photo" : "Remove photo"}
+                              {avatarFile ? t("profile.discardPhoto") : t("profile.removePhoto")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -889,7 +894,7 @@ export function UserProfile({
                     </div>
                     {isEditing && (isAuthStaffUserId(user?.id) || variant === "vendor") && (
                       <p className="text-[10px] text-slate-400 leading-tight mt-2 max-w-[120px] mx-auto">
-                        Max 500 KB per image.
+                        {t("profile.maxImage")}
                       </p>
                     )}
                   </div>
@@ -911,12 +916,12 @@ export function UserProfile({
                     {editedUser.status === "active" ? (
                       <>
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-green-600 font-medium">Active</span>
+                        <span className="text-green-600 font-medium">{t("common.active")}</span>
                       </>
                     ) : (
                       <>
                         <div className="w-2 h-2 bg-slate-400 rounded-full"></div>
-                        <span className="text-slate-600 font-medium">Inactive</span>
+                        <span className="text-slate-600 font-medium">{t("common.inactive")}</span>
                       </>
                     )}
                   </div>
@@ -926,32 +931,32 @@ export function UserProfile({
                       <p className="text-2xl font-semibold text-slate-900 tabular-nums">
                         {daysAsMember != null ? daysAsMember : "—"}
                       </p>
-                      <p className="text-xs text-slate-500 mt-1">Days as member</p>
+                      <p className="text-xs text-slate-500 mt-1">{t("profile.daysAsMember")}</p>
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-semibold text-slate-900 leading-tight mt-1">
                         {parseDateMs(editedUser.lastSignInAt) != null
-                          ? formatDateShort(editedUser.lastSignInAt)
+                          ? formatDateShort(editedUser.lastSignInAt, dateLocale)
                           : "—"}
                       </p>
-                      <p className="text-xs text-slate-500 mt-1">Last sign-in</p>
+                      <p className="text-xs text-slate-500 mt-1">{t("profile.lastSignIn")}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
               <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <h3 className="text-sm font-semibold text-slate-900 mb-4">Role Permissions</h3>
+                <h3 className="text-sm font-semibold text-slate-900 mb-4">{t("profile.rolePermissions")}</h3>
                 <div className="space-y-3 text-xs text-slate-600">
                   {editedUser.role === "super-admin" && (
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Full platform &amp; store administration</span>
+                        <span>{t("profile.permission.fullPlatformStore")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Manage users, settings, and all modules</span>
+                        <span>{t("profile.permission.manageUsersSettingsModules")}</span>
                       </div>
                     </>
                   )}
@@ -959,19 +964,19 @@ export function UserProfile({
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Full system access</span>
+                        <span>{t("profile.permission.fullSystemAccess")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Manage all users</span>
+                        <span>{t("profile.permission.manageAllUsers")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Access financial data</span>
+                        <span>{t("profile.permission.accessFinancialData")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Modify store settings</span>
+                        <span>{t("profile.permission.modifyStoreSettings")}</span>
                       </div>
                     </>
                   )}
@@ -979,19 +984,19 @@ export function UserProfile({
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Manage products & orders</span>
+                        <span>{t("profile.permission.manageProductsOrders")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Access marketing tools</span>
+                        <span>{t("profile.permission.accessMarketingTools")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>View reports & analytics</span>
+                        <span>{t("profile.permission.viewReportsAnalytics")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                        <span>No financial data access</span>
+                        <span>{t("profile.permission.noFinancialDataAccess")}</span>
                       </div>
                     </>
                   )}
@@ -999,19 +1004,19 @@ export function UserProfile({
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Add & edit products</span>
+                        <span>{t("profile.permission.addEditProducts")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Manage inventory</span>
+                        <span>{t("profile.permission.manageInventory")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                        <span>No order access</span>
+                        <span>{t("profile.permission.noOrderAccess")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                        <span>No settings access</span>
+                        <span>{t("profile.permission.noSettingsAccess")}</span>
                       </div>
                     </>
                   )}
@@ -1019,15 +1024,15 @@ export function UserProfile({
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Orders & fulfillment</span>
+                        <span>{t("profile.permission.ordersFulfillment")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Inventory updates</span>
+                        <span>{t("profile.permission.inventoryUpdates")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                        <span>Limited settings access</span>
+                        <span>{t("profile.permission.limitedSettingsAccess")}</span>
                       </div>
                     </>
                   )}
@@ -1035,19 +1040,19 @@ export function UserProfile({
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>API access</span>
+                        <span>{t("profile.permission.apiAccess")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Custom integrations</span>
+                        <span>{t("profile.permission.customIntegrations")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Debug tools</span>
+                        <span>{t("profile.permission.debugTools")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                        <span>No user data access</span>
+                        <span>{t("profile.permission.noUserDataAccess")}</span>
                       </div>
                     </>
                   )}
@@ -1055,19 +1060,19 @@ export function UserProfile({
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Product strategy</span>
+                        <span>{t("profile.permission.productStrategy")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Feature planning</span>
+                        <span>{t("profile.permission.featurePlanning")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Team collaboration</span>
+                        <span>{t("profile.permission.teamCollaboration")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <XCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                        <span>No financial data</span>
+                        <span>{t("profile.permission.noFinancialData")}</span>
                       </div>
                     </>
                   )}
@@ -1075,11 +1080,11 @@ export function UserProfile({
                     <>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>Manage your storefront, products, categories, and settings</span>
+                        <span>{t("profile.permission.vendorManageStorefront")}</span>
                       </div>
                       <div className="flex items-start gap-2">
                         <CheckCircle className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                        <span>View analytics, orders, finances, and customers for your store</span>
+                        <span>{t("profile.permission.vendorViewStoreData")}</span>
                       </div>
                     </>
                   )}
@@ -1089,7 +1094,7 @@ export function UserProfile({
 
             <div className="col-span-2 space-y-6">
               <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">Personal Information</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">{t("profile.personalInformation")}</h3>
                 <div className="space-y-4">
                   {variant === "vendor" ? (
                     <>
@@ -1099,7 +1104,7 @@ export function UserProfile({
                             htmlFor="contactName"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Owner full name
+                            {t("profile.ownerFullName")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1124,7 +1129,7 @@ export function UserProfile({
                             htmlFor="email"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Email Address
+                            {t("profile.emailAddress")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1151,7 +1156,7 @@ export function UserProfile({
                             htmlFor="vendor-store-name"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Store / business name
+                            {t("profile.storeBusinessName")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1174,7 +1179,7 @@ export function UserProfile({
                             htmlFor="phone"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Phone Number
+                            {t("profile.phoneNumber")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1190,7 +1195,7 @@ export function UserProfile({
                             <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
                               <Phone className="w-4 h-4 text-slate-400" />
                               <span className="text-sm text-slate-700">
-                                {editedUser.phone || "Not provided"}
+                                {editedUser.phone || t("common.notProvided")}
                               </span>
                             </div>
                           )}
@@ -1202,7 +1207,7 @@ export function UserProfile({
                           htmlFor="location-short"
                           className="text-sm font-medium text-slate-900 mb-2 block"
                         >
-                          Short location (optional)
+                          {t("profile.shortLocation")}
                         </Label>
                         {isEditing ? (
                           <Input
@@ -1214,14 +1219,14 @@ export function UserProfile({
                                 location: e.target.value,
                               })
                             }
-                            placeholder="e.g. Yangon, Myanmar"
+                            placeholder={t("profile.shortLocationPlaceholder")}
                             className="h-10 max-w-full bg-white border-slate-300"
                           />
                         ) : (
                           <div className="flex items-center gap-2 min-h-10 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
                             <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
                             <span className="text-sm text-slate-700 whitespace-pre-line">
-                              {editedUser.location || "Not provided"}
+                              {editedUser.location || t("common.notProvided")}
                             </span>
                           </div>
                         )}
@@ -1235,7 +1240,7 @@ export function UserProfile({
                             htmlFor="name"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Full Name
+                            {t("profile.fullName")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1258,7 +1263,7 @@ export function UserProfile({
                             htmlFor="email"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Email Address
+                            {t("profile.emailAddress")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1285,7 +1290,7 @@ export function UserProfile({
                             htmlFor="phone"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Phone Number
+                            {t("profile.phoneNumber")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1301,7 +1306,7 @@ export function UserProfile({
                             <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
                               <Phone className="w-4 h-4 text-slate-400" />
                               <span className="text-sm text-slate-700">
-                                {editedUser.phone || "Not provided"}
+                                {editedUser.phone || t("common.notProvided")}
                               </span>
                             </div>
                           )}
@@ -1312,7 +1317,7 @@ export function UserProfile({
                             htmlFor="location-short"
                             className="text-sm font-medium text-slate-900 mb-2 block"
                           >
-                            Short location (optional)
+                            {t("profile.shortLocation")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1324,14 +1329,14 @@ export function UserProfile({
                                   location: e.target.value,
                                 })
                               }
-                              placeholder="e.g. Yangon, Myanmar"
+                              placeholder={t("profile.shortLocationPlaceholder")}
                               className="h-10"
                             />
                           ) : (
                             <div className="flex items-center gap-2 min-h-10 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
                               <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
                               <span className="text-sm text-slate-700 whitespace-pre-line">
-                                {editedUser.location || "Not provided"}
+                                {editedUser.location || t("common.notProvided")}
                               </span>
                             </div>
                           )}
@@ -1341,11 +1346,11 @@ export function UserProfile({
                   )}
 
                   <div className="pt-2 border-t border-slate-100">
-                    <h4 className="text-sm font-medium text-slate-800 mb-3">Mailing address</h4>
+                    <h4 className="text-sm font-medium text-slate-800 mb-3">{t("profile.mailingAddress")}</h4>
                     <div className="space-y-3">
                       <div>
                         <Label htmlFor="addr1" className="text-sm text-slate-700 mb-1 block">
-                          Address line 1
+                          {t("profile.addressLine1")}
                         </Label>
                         {isEditing ? (
                           <Input
@@ -1354,7 +1359,7 @@ export function UserProfile({
                             onChange={(e) =>
                               setEditedUser({ ...editedUser, addressLine1: e.target.value })
                             }
-                            placeholder="Street address, P.O. box"
+                            placeholder={t("profile.addressLine1Placeholder")}
                             className="h-10"
                           />
                         ) : (
@@ -1365,7 +1370,7 @@ export function UserProfile({
                       </div>
                       <div>
                         <Label htmlFor="addr2" className="text-sm text-slate-700 mb-1 block">
-                          Address line 2 (optional)
+                          {t("profile.addressLine2")}
                         </Label>
                         {isEditing ? (
                           <Input
@@ -1374,7 +1379,7 @@ export function UserProfile({
                             onChange={(e) =>
                               setEditedUser({ ...editedUser, addressLine2: e.target.value })
                             }
-                            placeholder="Apt, suite, unit, building"
+                            placeholder={t("profile.addressLine2Placeholder")}
                             className="h-10"
                           />
                         ) : (
@@ -1386,7 +1391,7 @@ export function UserProfile({
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label htmlFor="city" className="text-sm text-slate-700 mb-1 block">
-                            City
+                            {t("profile.city")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1405,7 +1410,7 @@ export function UserProfile({
                         </div>
                         <div>
                           <Label htmlFor="region" className="text-sm text-slate-700 mb-1 block">
-                            State / Region
+                            {t("profile.stateRegion")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1426,7 +1431,7 @@ export function UserProfile({
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label htmlFor="postal" className="text-sm text-slate-700 mb-1 block">
-                            Postal code
+                            {t("profile.postalCode")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1445,7 +1450,7 @@ export function UserProfile({
                         </div>
                         <div>
                           <Label htmlFor="country" className="text-sm text-slate-700 mb-1 block">
-                            Country
+                            {t("profile.country")}
                           </Label>
                           {isEditing ? (
                             <Input
@@ -1468,19 +1473,19 @@ export function UserProfile({
 
                   <div>
                     <Label htmlFor="bio" className="text-sm font-medium text-slate-900 mb-2 block">
-                      Bio
+                      {t("profile.bio")}
                     </Label>
                     {isEditing ? (
                       <Textarea
                         id="bio"
                         value={editedUser.bio || ""}
                         onChange={(e) => setEditedUser({ ...editedUser, bio: e.target.value })}
-                        placeholder="Tell us about yourself..."
+                        placeholder={t("profile.bioPlaceholder")}
                         className="resize-y min-h-[100px]"
                       />
                     ) : (
                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 min-h-[100px]">
-                        <p className="text-sm text-slate-700">{editedUser.bio || "No bio provided"}</p>
+                        <p className="text-sm text-slate-700">{editedUser.bio || t("profile.noBio")}</p>
                       </div>
                     )}
                   </div>
@@ -1488,13 +1493,13 @@ export function UserProfile({
               </div>
 
               <div className="bg-white rounded-lg border border-slate-200 p-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-4">Role & Access</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">{t("profile.roleAccess")}</h3>
                 <div className="space-y-4">
                   {isSelfProfile && isEditing && (
                     <p className="text-xs text-slate-500 -mt-1 mb-1">
                       {variant === "vendor"
-                        ? "Your vendor role and account status are set when your store is onboarded. You can update your personal details above."
-                        : "Role and account status are managed by an administrator. You can update your personal details above."}
+                        ? t("profile.roleLocked.vendor")
+                        : t("profile.roleLocked.staff")}
                     </p>
                   )}
                   <div className="grid grid-cols-2 gap-4">
@@ -1503,7 +1508,7 @@ export function UserProfile({
                         htmlFor="role"
                         className="text-sm font-medium text-slate-900 mb-2 block"
                       >
-                        User Role
+                        {t("profile.userRole")}
                       </Label>
                       {isEditing && !isSelfProfile ? (
                         <Select
@@ -1514,10 +1519,10 @@ export function UserProfile({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="store-owner">Store Owner</SelectItem>
-                            <SelectItem value="administrator">Administrator</SelectItem>
-                            <SelectItem value="data-entry">Data Entry</SelectItem>
-                            <SelectItem value="warehouse">Warehouse</SelectItem>
+                            <SelectItem value="store-owner">{t("role.storeOwner")}</SelectItem>
+                            <SelectItem value="administrator">{t("role.administrator")}</SelectItem>
+                            <SelectItem value="data-entry">{t("role.dataEntry")}</SelectItem>
+                            <SelectItem value="warehouse">{t("role.warehouse")}</SelectItem>
                           </SelectContent>
                         </Select>
                       ) : (
@@ -1532,7 +1537,7 @@ export function UserProfile({
 
                     <div>
                       <Label className="text-sm font-medium text-slate-900 mb-2 block">
-                        Account Status
+                        {t("profile.accountStatus")}
                       </Label>
                       {isEditing && !isSelfProfile ? (
                         <div className="flex items-center gap-3 h-10">
@@ -1546,7 +1551,7 @@ export function UserProfile({
                             }
                           />
                           <span className="text-sm text-slate-700">
-                            {editedUser.status === "active" ? "Active" : "Inactive"}
+                            {editedUser.status === "active" ? t("common.active") : t("common.inactive")}
                           </span>
                         </div>
                       ) : (
@@ -1557,7 +1562,7 @@ export function UserProfile({
                             <XCircle className="w-4 h-4 text-slate-400" />
                           )}
                           <span className="text-sm text-slate-700">
-                            {editedUser.status === "active" ? "Active" : "Inactive"}
+                            {editedUser.status === "active" ? t("common.active") : t("common.inactive")}
                           </span>
                         </div>
                       )}
@@ -1567,30 +1572,30 @@ export function UserProfile({
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label className="text-sm font-medium text-slate-900 mb-2 block">
-                        Member Since
+                        {t("profile.memberSince")}
                       </Label>
                       <div className="flex items-center gap-2 h-10 px-3 bg-slate-50 rounded-lg border border-slate-200">
                         <Calendar className="w-4 h-4 text-slate-400" />
                         <span className="text-sm text-slate-700">
-                          {formatDateLong(memberSinceSource)}
+                          {formatDateLong(memberSinceSource, dateLocale)}
                         </span>
                       </div>
                     </div>
 
                     <div>
                       <Label className="text-sm font-medium text-slate-900 mb-2 block">
-                        Last active
+                        {t("profile.lastActive")}
                       </Label>
                       <div className="flex items-center gap-2 min-h-10 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
                         <Clock className="w-4 h-4 text-slate-400 shrink-0" />
                         <span className="text-sm text-slate-700">
                           {parseDateMs(lastActiveSource) != null
-                            ? formatDateTime(lastActiveSource)
+                            ? formatDateTime(lastActiveSource, dateLocale)
                             : "—"}
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-400 mt-1">
-                        From sign-in when available, otherwise last profile update.
+                        {t("profile.lastActiveHint")}
                       </p>
                     </div>
                   </div>
@@ -1599,19 +1604,19 @@ export function UserProfile({
 
               <div className="bg-white rounded-lg border border-slate-200 p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-slate-900">Account timeline</h3>
+                  <h3 className="text-lg font-semibold text-slate-900">{t("profile.timeline")}</h3>
                   <Activity className="w-5 h-5 text-slate-400" />
                 </div>
                 <p className="text-xs text-slate-500 mb-4">
                   {variant === "vendor"
-                    ? "Account milestones from your vendor profile: when the account was created, recent vendor portal sign-ins, and saved profile updates."
-                    : "Profile and sign-in from your staff record and Supabase Auth. Product changes made from the admin (create, update, delete) are listed here with timestamps. Order history is not included."}
+                    ? t("profile.timeline.vendorDesc")
+                    : t("profile.timeline.staffDesc")}
                 </p>
                 {accountTimeline.length === 0 ? (
                   <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-lg">
                     {variant === "vendor"
-                      ? "No timeline data yet. Save your profile or sign in again to see activity."
-                      : "No timeline data yet. Open this profile again after the account is saved or the user signs in."}
+                      ? t("profile.timeline.vendorEmpty")
+                      : t("profile.timeline.staffEmpty")}
                   </p>
                 ) : (
                   <div className="space-y-3">

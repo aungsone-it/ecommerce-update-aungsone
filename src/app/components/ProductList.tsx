@@ -1074,14 +1074,14 @@ export function ProductList({
                       <th className="text-left py-3 px-4 w-12 align-middle">
                         <div className="w-4 h-4 bg-slate-200 rounded"></div>
                       </th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Product</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Status</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Inventory</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Category</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Vendor</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Price</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Commission</th>
-                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Actions</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.product")}</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.status")}</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.inventory")}</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.category")}</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.vendor")}</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.price")}</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.commission")}</th>
+                      <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.actions")}</th>
                     </tr>
                   </thead>
                   <tbody>{productTableSkeletonRows}</tbody>
@@ -1097,7 +1097,7 @@ export function ProductList({
                       {/* Search */}
                       <div className="flex-1 min-w-[280px]">
                         <AdminClearableSearchInput
-                          placeholder="Search by name or SKU — Press Search Button to Search"
+                          placeholder={t("products.searchFullCatalogPlaceholder")}
                           value={searchQuery}
                           onValueChange={handleSearchInputChange}
                           onKeyDown={onSearchKeyDown}
@@ -1180,14 +1180,14 @@ export function ProductList({
                             onCheckedChange={toggleSelectAll}
                           />
                         </th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Product</th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Status</th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Inventory</th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Category</th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Vendor</th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Price</th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Commission</th>
-                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Actions</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.product")}</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.status")}</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.inventory")}</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.category")}</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.vendor")}</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.price")}</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.commission")}</th>
+                        <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">{t("products.actions")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1372,7 +1372,7 @@ export function ProductList({
                 </div>
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/80">
                   <div className="flex items-center gap-2 text-sm text-slate-600">
-                    <span>Rows per page</span>
+                    <span>{t("pagination.rowsPerPage")}</span>
                     <Select
                       value={String(adminPageSize)}
                       onValueChange={handleAdminPageSizeChange}
@@ -1388,7 +1388,7 @@ export function ProductList({
                       </SelectContent>
                     </Select>
                     <span className="text-slate-500">
-                      Page {adminPage} of {adminTotalPages} · {adminTotal} products
+                      {t("pagination.page")} {adminPage} {t("pagination.of")} {adminTotalPages} · {adminTotal} {t("products.title").toLowerCase()}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">

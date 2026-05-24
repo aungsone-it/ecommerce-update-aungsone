@@ -339,6 +339,12 @@ interface VendorAdminOrderManagementProps {
 
 export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: VendorAdminOrderManagementProps) {
   const { t } = useLanguage();
+  const dateLabel = (value: string) => {
+    if (value === "Last 7 days") return t("vendorAdmin.dashboard.last7");
+    if (value === "Last 90 days") return t("vendorAdmin.dashboard.last90");
+    if (value === "Last year") return t("vendorAdmin.dashboard.lastYear");
+    return t("vendorAdmin.dashboard.last30");
+  };
   const [selectedTab, setSelectedTab] = useState("orders");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -1303,36 +1309,36 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                 type="button"
                 className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors mb-4"
               >
-                {statDateFilters[filterKey]} <ChevronDown className="w-3 h-3" />
+                {dateLabel(statDateFilters[filterKey])} <ChevronDown className="w-3 h-3" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem
                 onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last 7 days" })}
               >
-                Last 7 days
+                {t("vendorAdmin.dashboard.last7")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last 30 days" })}
               >
-                Last 30 days
+                {t("vendorAdmin.dashboard.last30")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last 90 days" })}
               >
-                Last 90 days
+                {t("vendorAdmin.dashboard.last90")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setStatDateFilters({ ...statDateFilters, [filterKey]: "Last year" })}
               >
-                Last year
+                {t("vendorAdmin.dashboard.lastYear")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <p className="text-xl font-bold text-slate-900 mb-2">{value}</p>
           <div className="flex items-center gap-1">
             {change === 0 ? (
-              <span className="text-xs font-medium text-slate-500">No change vs prior period</span>
+              <span className="text-xs font-medium text-slate-500">{t("vendorAdmin.dashboard.noChange")}</span>
             ) : (
               <>
                 {change > 0 ? (
@@ -1344,7 +1350,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                   className={`text-xs font-medium ${change > 0 ? "text-green-600" : "text-red-600"}`}
                 >
                   {change > 0 ? "+" : ""}
-                  {change}% vs prior period
+                  {change}%
                 </span>
               </>
             )}
@@ -1385,13 +1391,13 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
       )}
 
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Orders</h1>
-        <p className="text-sm text-slate-600">Manage and track all your orders.</p>
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">{t("orders.title")}</h1>
+        <p className="text-sm text-slate-600">{t("orders.subtitle")}</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          title="Total Revenue"
+          title={t("orders.totalRevenue")}
           value={<MmkTiny value={orderPageKpis.totalRevenueWindow} unitClassName="text-[7px] leading-none align-super text-slate-400" />}
           change={orderPageKpis.revenueChange}
           icon={DollarSign}
@@ -1400,7 +1406,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           filterKey="revenue"
         />
         <StatCard
-          title="Commission Earned"
+          title={t("finances.commissionEarned")}
           value={<MmkTiny value={orderPageKpis.commissionCurrent} unitClassName="text-[7px] leading-none align-super text-slate-400" />}
           change={orderPageKpis.commissionChange}
           icon={BadgePercent}
@@ -1409,7 +1415,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           filterKey="commission"
         />
         <StatCard
-          title="Pending"
+          title={t("orders.pending")}
           value={orderPageKpis.pendingCount}
           change={orderPageKpis.pendingChange}
           icon={Clock}
@@ -1418,7 +1424,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           filterKey="pending"
         />
         <StatCard
-          title="Fulfilled"
+          title={t("orders.fulfilled")}
           value={orderPageKpis.fulfilledCount}
           change={orderPageKpis.fulfilledChange}
           icon={CheckCircle}
@@ -1430,8 +1436,8 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
 
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
         <TabsList className="mb-6">
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="orders">{t("orders.ordersTab")}</TabsTrigger>
+          <TabsTrigger value="analytics">{t("orders.analyticsTab")}</TabsTrigger>
         </TabsList>
 
         {/* Orders Tab */}
@@ -1440,29 +1446,29 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           <Card className="mb-4 border-slate-200 shadow-sm">
             <div className="p-4">
               <div className="flex items-center justify-between gap-4 mb-4">
-                <h3 className="font-semibold text-slate-900">All Orders ({serverTotalOrders})</h3>
+                <h3 className="font-semibold text-slate-900">{t("orders.allOrders")} ({serverTotalOrders})</h3>
                 <div className="flex items-center gap-2">
                   {selectedOrders.length > 0 && (
                     <>
                       <Button variant="outline" size="sm" onClick={handleBulkStatusUpdate} disabled className="opacity-50 cursor-not-allowed">
                         <Package className="w-4 h-4 mr-2" />
-                        Update Status ({selectedOrders.length})
+                        {t("orders.updateStatus")} ({selectedOrders.length})
                       </Button>
                       <Button variant="outline" size="sm" onClick={handleBulkPrint} disabled className="opacity-50 cursor-not-allowed">
                         <Printer className="w-4 h-4 mr-2" />
-                        Print ({selectedOrders.length})
+                        {t("orders.print")} ({selectedOrders.length})
                       </Button>
                     </>
                   )}
                   {hasActiveFilters && (
                     <Button variant="outline" size="sm" onClick={clearFilters}>
                       <X className="w-4 h-4 mr-2" />
-                      Clear Filters
+                      {t("orders.clearFilters")}
                     </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={exportOrders} disabled className="opacity-50 cursor-not-allowed">
                     <Download className="w-4 h-4 mr-2" />
-                    Export
+                    {t("orders.export")}
                   </Button>
                   <Button
                     variant="outline"
@@ -1472,7 +1478,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                     className="border-slate-300"
                   >
                     <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
-                    Refresh
+                    {t("common.refresh")}
                   </Button>
                 </div>
               </div>
@@ -1481,7 +1487,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                 <div className="flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <Input
-                    placeholder="Search orders..."
+                    placeholder={t("orders.searchPlaceholder")}
                     className="pl-10 border-slate-300"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -1489,36 +1495,36 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                 </div>
                 <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as "newest" | "oldest")}>
                   <SelectTrigger className="w-full sm:w-[160px] border-slate-300">
-                    <SelectValue placeholder="Sort by" />
+                    <SelectValue placeholder={t("orders.sortBy")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="newest">Newest First</SelectItem>
-                    <SelectItem value="oldest">Oldest First</SelectItem>
+                    <SelectItem value="newest">{t("orders.newestFirst")}</SelectItem>
+                    <SelectItem value="oldest">{t("orders.oldestFirst")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-full sm:w-[160px] border-slate-300">
-                    <SelectValue placeholder="Status" />
+                    <SelectValue placeholder={t("orders.status")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="processing">Processing</SelectItem>
-                    <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                    <SelectItem value="ready-to-ship">Ready to Ship</SelectItem>
+                    <SelectItem value="all">{t("orders.allStatus")}</SelectItem>
+                    <SelectItem value="pending">{t("orders.pending")}</SelectItem>
+                    <SelectItem value="processing">{t("orders.processing")}</SelectItem>
+                    <SelectItem value="fulfilled">{t("orders.fulfilled")}</SelectItem>
+                    <SelectItem value="cancelled">{t("orders.cancelled")}</SelectItem>
+                    <SelectItem value="ready-to-ship">{t("orders.readyToShip")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={paymentFilter} onValueChange={setPaymentFilter}>
                   <SelectTrigger className="w-full sm:w-[160px] border-slate-300">
-                    <SelectValue placeholder="Payment" />
+                    <SelectValue placeholder={t("orders.payment")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Payment</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                    <SelectItem value="pending_refund">Refund pending</SelectItem>
-                    <SelectItem value="refunded">Refunded</SelectItem>
+                    <SelectItem value="all">{t("orders.allPayment")}</SelectItem>
+                    <SelectItem value="paid">{t("orders.paid")}</SelectItem>
+                    <SelectItem value="unpaid">{t("orders.unpaid")}</SelectItem>
+                    <SelectItem value="pending_refund">{t("orders.refundPending")}</SelectItem>
+                    <SelectItem value="refunded">{t("orders.refunded")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <AdminDateRangeFilterPopover
@@ -1559,14 +1565,14 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Order</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Date</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Customer</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Total</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Payment</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Shipping</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Actions</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.order")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.date")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.customer")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.total")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.status")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.payment")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.shipping")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1593,7 +1599,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                   ) : filteredOrders.length === 0 ? (
                     <tr>
                       <td colSpan={9} className="py-8 text-center text-slate-500">
-                        No orders found
+                        {t("orders.noOrdersFound")}
                       </td>
                     </tr>
                   ) : (
@@ -1609,7 +1615,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                           <div>
                             <p className="text-sm font-medium text-slate-900">{order.orderNumber}</p>
                             <p className="text-xs text-slate-500">
-                              {order.items} items
+                              {order.items} {t("orders.items").toLowerCase()}
                               {order.deliveryService && (
                                 <span className="text-purple-600"> - {order.deliveryService}</span>
                               )}
@@ -1635,7 +1641,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                         </td>
                         <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
                         <td className="py-3 px-4">
-                          <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)} title="View Details">
+                          <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(order)} title={t("common.view")}>
                             <Eye className="w-4 h-4" />
                           </Button>
                         </td>
@@ -1653,7 +1659,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                 totalCount={serverTotalOrders}
                 onPageChange={setOrdersListPage}
                 onPageSizeChange={setOrdersListPageSize}
-                itemLabel="orders"
+                itemLabel={t("orders.ordersTab").toLowerCase()}
                 loading={isLoading}
               />
             )}
@@ -1664,9 +1670,9 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
         <TabsContent value="analytics" className="space-y-6">
           <Card className="p-6 border-slate-200">
             <div className="mb-6">
-              <h3 className="text-lg font-semibold text-slate-900 mb-1">Revenue & orders trend</h3>
+              <h3 className="text-lg font-semibold text-slate-900 mb-1">{t("orders.revenueOrdersTrend")}</h3>
               <p className="text-sm text-slate-600">
-                Last 7 days; respects Orders tab filters (search, status, payment, date range).
+                {t("orders.respectsFilters")}
               </p>
             </div>
             <div className="h-64 w-full min-h-[256px]">
@@ -1682,7 +1688,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                       borderRadius: "8px",
                     }}
                     formatter={(value, name) =>
-                      name === "Revenue (MMK)"
+                      name === t("orders.revenueMmk")
                         ? [`${Math.round(Number(value)).toLocaleString()} MMK`, name]
                         : [value, name]
                     }
@@ -1693,11 +1699,11 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
                     dataKey="revenue"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    name="Revenue (MMK)"
+                    name={t("orders.revenueMmk")}
                     dot={{ fill: "#3b82f6", r: 3 }}
                     activeDot={{ r: 5 }}
                   />
-                  <Line type="monotone" dataKey="orders" stroke="#22c55e" strokeWidth={2} name="Orders" />
+                  <Line type="monotone" dataKey="orders" stroke="#22c55e" strokeWidth={2} name={t("orders.title")} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -1706,8 +1712,8 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="p-6 border-slate-200">
               <div className="mb-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-1">Order status distribution</h3>
-                <p className="text-sm text-slate-600">Current filter selection</p>
+                <h3 className="text-lg font-semibold text-slate-900 mb-1">{t("orders.statusDistribution")}</h3>
+                <p className="text-sm text-slate-600">{t("orders.currentFilterSelection")}</p>
               </div>
               <div className="h-64 w-full min-h-[256px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1734,8 +1740,8 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
 
             <Card className="p-6 border-slate-200">
               <div className="mb-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-1">Payment methods</h3>
-                <p className="text-sm text-slate-600">All loaded orders</p>
+                <h3 className="text-lg font-semibold text-slate-900 mb-1">{t("orders.paymentMethods")}</h3>
+                <p className="text-sm text-slate-600">{t("orders.allLoadedOrders")}</p>
               </div>
               <div className="h-64 w-full min-h-[256px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1761,32 +1767,32 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
       <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Update Order Status</DialogTitle>
+            <DialogTitle>{t("orders.updateStatus")}</DialogTitle>
             <DialogDescription>
               Update status for {selectedOrders.length} selected order(s)
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="status" className="mb-2">Select Status</Label>
+            <Label htmlFor="status" className="mb-2">{t("orders.selectStatus")}</Label>
             <Select value={bulkStatus} onValueChange={(value) => setBulkStatus(value as OrderStatus)}>
               <SelectTrigger id="status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="ready-to-ship">Ready to Ship</SelectItem>
+                <SelectItem value="pending">{t("orders.pending")}</SelectItem>
+                <SelectItem value="processing">{t("orders.processing")}</SelectItem>
+                <SelectItem value="fulfilled">{t("orders.fulfilled")}</SelectItem>
+                <SelectItem value="cancelled">{t("orders.cancelled")}</SelectItem>
+                <SelectItem value="ready-to-ship">{t("orders.readyToShip")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsStatusDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={saveBulkStatusUpdate} className="bg-slate-900 hover:bg-black text-white">
-              Update Status
+              {t("orders.updateStatus")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1796,18 +1802,18 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
       <Dialog open={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Print Invoices</DialogTitle>
+            <DialogTitle>{t("orders.printInvoices")}</DialogTitle>
             <DialogDescription>
               Print {selectedOrders.length} invoice(s)?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPrintDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={executeBulkPrint} className="bg-slate-900 hover:bg-black text-white">
               <Printer className="w-4 h-4 mr-2" />
-              Print
+              {t("orders.print")}
             </Button>
           </DialogFooter>
         </DialogContent>

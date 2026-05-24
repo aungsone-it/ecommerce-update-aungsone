@@ -687,18 +687,18 @@ export function Settings() {
         toast.success(
           <div className="space-y-2">
             <p className="font-semibold flex items-center gap-2">
-              <span className="text-green-600">✓</span> User created successfully!
+              <span className="text-green-600">✓</span> {t('settings.users.created')}
             </p>
             <div className="mt-3 pt-3 border-t border-green-200">
-              <p className="text-sm font-medium">Temporary password:</p>
+              <p className="text-sm font-medium">{t('settings.users.temporaryPassword')}</p>
               <p className="font-mono bg-green-50 px-3 py-2 rounded mt-1 text-sm font-semibold">{data.tempPassword}</p>
-              <p className="text-xs mt-2 text-slate-600">Please share this with the user securely.</p>
+              <p className="text-xs mt-2 text-slate-600">{t('settings.users.sharePassword')}</p>
             </div>
           </div>,
           { duration: 20000, className: 'bg-green-50 border-green-200' }
         );
       } else {
-        toast.success('User created successfully!');
+        toast.success(t('settings.users.created'));
       }
 
       setShowUserDialog(false);
@@ -829,7 +829,7 @@ export function Settings() {
                 {/* Store Logo Upload */}
                 <div>
                   <Label htmlFor="storeLogo" className="text-sm font-medium text-slate-900 mb-2 block">
-                    Store Logo
+                    {t('settings.general.storeLogo')}
                   </Label>
                   
                   {/* Logo Preview & Upload Box - 150px square */}
@@ -843,7 +843,7 @@ export function Settings() {
                       <>
                         <img
                           src={storeLogoPreview}
-                          alt="Store Logo"
+                          alt={t('settings.general.storeLogo')}
                           className="w-full h-full object-cover rounded-md"
                         />
                         {/* Hover overlay */}
@@ -854,7 +854,7 @@ export function Settings() {
                     ) : (
                       <div className="flex flex-col items-center">
                         <Upload className="w-8 h-8 text-slate-400 mb-1" />
-                        <p className="text-xs text-slate-500">Upload</p>
+                        <p className="text-xs text-slate-500">{t('settings.general.uploadLogo')}</p>
                       </div>
                     )}
                   </div>
@@ -929,12 +929,12 @@ export function Settings() {
                           e.stopPropagation();
                           setStoreLogo("");
                           setStoreLogoPreview("");
-                          toast.success('Logo removed');
+                          toast.success(t('settings.general.logoRemoved'));
                         }}
                         className="mt-2 text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="w-4 h-4 mr-2" />
-                        Remove Logo
+                        {t('settings.general.removeLogo')}
                       </Button>
                       
                       <Button
@@ -1106,11 +1106,11 @@ export function Settings() {
 
             {/* Store Logo */}
             <div className="pt-6 border-t border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Store Logo</h3>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('settings.general.storeLogo')}</h3>
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="storeLogo" className="text-sm font-medium text-slate-900 mb-2 block">
-                    Store Logo
+                    {t('settings.general.storeLogo')}
                   </Label>
                   
                   {/* Logo Preview */}
@@ -1119,13 +1119,13 @@ export function Settings() {
                       {storeLogoPreview ? (
                         <img
                           src={storeLogoPreview}
-                          alt="Store Logo"
+                          alt={t('settings.general.storeLogo')}
                           className="w-full h-full object-contain"
                         />
                       ) : (
                         <div className="text-center px-4">
                           <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                          <p className="text-sm text-slate-500">No logo uploaded</p>
+                          <p className="text-sm text-slate-500">{t('settings.general.noLogoUploaded')}</p>
                         </div>
                       )}
                     </div>
@@ -1140,7 +1140,7 @@ export function Settings() {
                       className="relative"
                     >
                       <Upload className="w-4 h-4 mr-2" />
-                      {storeLogoPreview ? 'Change Logo' : 'Upload Logo'}
+                      {storeLogoPreview ? t('settings.general.changeLogo') : t('settings.general.uploadLogo')}
                     </Button>
                     
                     {storeLogoPreview && (
@@ -1154,7 +1154,7 @@ export function Settings() {
                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="w-4 h-4 mr-2" />
-                        Remove
+                        {t('common.remove')}
                       </Button>
                     )}
                   </div>
@@ -1179,7 +1179,7 @@ export function Settings() {
                   />
                   
                   <p className="text-xs text-slate-500 mt-2">
-                    Upload your store logo image (PNG, JPG). Recommended size: 500x500px
+                    {t('settings.general.logoHint')}
                   </p>
                 </div>
               </div>
@@ -1195,7 +1195,7 @@ export function Settings() {
                 {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    {t('common.saving')}
                   </>
                 ) : (
                   <>
@@ -1230,13 +1230,13 @@ export function Settings() {
               {usersLoading && users.length === 0 ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-slate-400 animate-spin" />
-                  <span className="ml-3 text-sm text-slate-600">Loading users...</span>
+                  <span className="ml-3 text-sm text-slate-600">{t('settings.users.loading')}</span>
                 </div>
               ) : users.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Users className="w-12 h-12 text-slate-300 mb-3" />
-                  <p className="text-sm text-slate-600">No users found</p>
-                  <p className="text-xs text-slate-500 mt-1">Click "Add user" to create your first user</p>
+                  <p className="text-sm text-slate-600">{t('settings.users.noneFound')}</p>
+                  <p className="text-xs text-slate-500 mt-1">{t('settings.users.emptyHint')}</p>
                 </div>
               ) : (
                 <table className="w-full">
@@ -1355,7 +1355,7 @@ export function Settings() {
 
             {/* Role Permissions Info */}
             <div className="pt-6 border-t border-slate-200">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Role permissions</h3>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('settings.users.rolePermissions')}</h3>
               <div className="space-y-3">
                 {/* Store Owner */}
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
@@ -1364,16 +1364,16 @@ export function Settings() {
                       <Store className="w-5 h-5 text-purple-600" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-slate-900 mb-1">Store Owner</h4>
+                      <h4 className="font-semibold text-sm text-slate-900 mb-1">{t('role.storeOwner')}</h4>
                       <p className="text-xs text-slate-600 mb-2">
-                        Business owner with full store access and control including:
+                        {t('role.storeOwner.permissions')}
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                        <li>Manage all products, orders, and content</li>
-                        <li>Access to all financial data and reports</li>
-                        <li>Add, edit, and remove users</li>
-                        <li>Modify store settings and configurations</li>
-                        <li>Cannot be deleted or deactivated</li>
+                        <li>{t('role.storeOwner.perm1')}</li>
+                        <li>{t('role.storeOwner.perm2')}</li>
+                        <li>{t('role.storeOwner.perm3')}</li>
+                        <li>{t('role.storeOwner.perm4')}</li>
+                        <li>{t('role.storeOwner.perm5')}</li>
                       </ul>
                     </div>
                   </div>
@@ -1386,15 +1386,15 @@ export function Settings() {
                       <ShieldCheck className="w-5 h-5 text-blue-600" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-slate-900 mb-1">Administrator</h4>
+                      <h4 className="font-semibold text-sm text-slate-900 mb-1">{t('role.administrator')}</h4>
                       <p className="text-xs text-slate-600 mb-2">
-                        Manage day-to-day operations including:
+                        {t('role.administrator.permissions')}
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                        <li>Manage products, categories, and inventory</li>
-                        <li>Process and manage orders, vendors, customers, chat, marketing</li>
-                        <li>Cannot access Finances or the Users area in Settings; can use General and Appearance</li>
-                        <li>Can invite only Data entry and Warehouse accounts</li>
+                        <li>{t('role.administrator.perm1')}</li>
+                        <li>{t('role.administrator.permSettings1')}</li>
+                        <li>{t('role.administrator.permSettings2')}</li>
+                        <li>{t('role.administrator.permSettings3')}</li>
                       </ul>
                     </div>
                   </div>
@@ -1407,16 +1407,16 @@ export function Settings() {
                       <FileEdit className="w-5 h-5 text-green-600" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-slate-900 mb-1">Data Entry</h4>
+                      <h4 className="font-semibold text-sm text-slate-900 mb-1">{t('role.dataEntry')}</h4>
                       <p className="text-xs text-slate-600 mb-2">
-                        Limited access for data management:
+                        {t('role.dataEntry.permissions')}
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                        <li>Add and edit products</li>
-                        <li>Manage inventory levels</li>
-                        <li>Update product information</li>
-                        <li>Cannot delete products or access orders</li>
-                        <li>No access to settings, users, or financial data</li>
+                        <li>{t('role.dataEntry.perm1')}</li>
+                        <li>{t('role.dataEntry.perm2')}</li>
+                        <li>{t('role.dataEntry.perm3')}</li>
+                        <li>{t('role.dataEntry.perm4')}</li>
+                        <li>{t('role.dataEntry.perm5')}</li>
                       </ul>
                     </div>
                   </div>
@@ -1429,14 +1429,14 @@ export function Settings() {
                       <Warehouse className="w-5 h-5 text-amber-600" />
                     </div>
                     <div className="flex-1">
-                      <h4 className="font-semibold text-sm text-slate-900 mb-1">Warehouse</h4>
+                      <h4 className="font-semibold text-sm text-slate-900 mb-1">{t('role.warehouse')}</h4>
                       <p className="text-xs text-slate-600 mb-2">
-                        Fulfillment-focused access:
+                        {t('role.warehouse.permissions')}
                       </p>
                       <ul className="text-xs text-slate-600 space-y-1 list-disc list-inside">
-                        <li>Orders, inventory, and logistics</li>
-                        <li>No products/catalog editing, vendors, marketing, or customers</li>
-                        <li>No Finances, Settings, or global search</li>
+                        <li>{t('role.warehouse.perm1')}</li>
+                        <li>{t('role.warehouse.perm2')}</li>
+                        <li>{t('role.warehouse.perm3')}</li>
                       </ul>
                     </div>
                   </div>
@@ -1448,16 +1448,16 @@ export function Settings() {
             <Dialog open={showUserDialog} onOpenChange={setShowUserDialog}>
               <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                  <DialogTitle>Add new user</DialogTitle>
+                  <DialogTitle>{t('settings.users.dialog.add.title')}</DialogTitle>
                   <DialogDescription>
-                    Create a new user account with role and permissions.
+                    {t('settings.users.dialog.add.description')}
                   </DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
                   <div>
                     <Label htmlFor="userAvatar" className="text-sm font-medium text-slate-900 mb-2 block">
-                      Profile image
+                      {t('settings.users.dialog.profileImage')}
                     </Label>
                     <input
                       id="userAvatar"
@@ -1489,7 +1489,7 @@ export function Settings() {
                             <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-0.5 pointer-events-none">
                               <Upload className="w-5 h-5 text-white" />
                               <span className="text-[10px] font-medium text-white leading-none">
-                                Change
+                                {t('settings.users.dialog.changeImage')}
                               </span>
                             </div>
                             <button
@@ -1500,7 +1500,7 @@ export function Settings() {
                                 setUserAvatar("");
                                 setAvatarPreview("");
                               }}
-                              aria-label="Remove image"
+                              aria-label={t('settings.users.dialog.removeImage')}
                             >
                               <X className="w-3.5 h-3.5" />
                             </button>
@@ -1509,24 +1509,24 @@ export function Settings() {
                           <div className="flex h-full flex-col items-center justify-center gap-0.5 px-1.5 text-center">
                             <Upload className="w-5 h-5 text-slate-400 shrink-0" />
                             <span className="text-[10px] font-semibold text-slate-800 leading-tight">
-                              Upload image
+                              {t('settings.users.dialog.uploadImage')}
                             </span>
                           </div>
                         )}
                       </div>
                       <p className="text-xs text-slate-500 max-w-[220px] leading-snug">
-                        Image will be compressed to max 500KB
+                        {t('settings.users.dialog.imageHint')}
                       </p>
                     </div>
                   </div>
 
                   <div>
                     <Label htmlFor="userName" className="text-sm font-medium text-slate-900 mb-2 block">
-                      Full name
+                      {t('settings.users.dialog.fullName')}
                     </Label>
                     <Input
                       id="userName"
-                      placeholder="e.g., John Doe"
+                      placeholder={t('settings.users.dialog.fullNamePlaceholder')}
                       value={userName}
                       onChange={(e) => setUserName(e.target.value)}
                       className="h-10"
@@ -1535,7 +1535,7 @@ export function Settings() {
 
                   <div>
                     <Label htmlFor="userEmail" className="text-sm font-medium text-slate-900 mb-2 block">
-                      Email address
+                      {t('settings.users.dialog.email')}
                     </Label>
                     <Input
                       id="userEmail"
@@ -1619,14 +1619,14 @@ export function Settings() {
           <div className="space-y-6">
             {/* Hero Banners Management */}
             <div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Hero Banners</h3>
-              <p className="text-sm text-slate-600 mb-6">Customize the hero banners displayed on your storefront homepage</p>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">{t('settings.appearance.heroBanners')}</h3>
+              <p className="text-sm text-slate-600 mb-6">{t('settings.appearance.heroBannersDesc')}</p>
               
               <div className="space-y-6">
                 {banners.map((banner, index) => (
                   <div key={banner.id} className="bg-white border border-slate-200 rounded-lg p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h4 className="font-semibold text-slate-900">Banner {index + 1}</h4>
+                      <h4 className="font-semibold text-slate-900">{t('settings.appearance.banner')} {index + 1}</h4>
                       {banners.length > 1 && (
                         <Button
                           type="button"
@@ -1636,7 +1636,7 @@ export function Settings() {
                           className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
                         >
                           <Trash2 className="w-4 h-4 mr-1" />
-                          Delete
+                          {t('settings.appearance.delete')}
                         </Button>
                       )}
                     </div>
@@ -1645,7 +1645,7 @@ export function Settings() {
                       {/* Banner Image Upload */}
                       <div>
                         <Label className="text-sm font-medium text-slate-900 mb-2 block">
-                          Background Image (Optional)
+                          {t('settings.appearance.backgroundImage')}
                         </Label>
                         <div className="flex items-start gap-4">
                           {/* Image Preview */}
@@ -1659,7 +1659,7 @@ export function Settings() {
                               <>
                                 <img
                                   src={banner.backgroundImage}
-                                  alt={`Banner ${index + 1}`}
+                                  alt={`${t('settings.appearance.banner')} ${index + 1}`}
                                   className="w-full h-full object-cover rounded-md"
                                 />
                                 {/* Hover overlay */}
@@ -1670,7 +1670,7 @@ export function Settings() {
                             ) : (
                               <div className="text-center">
                                 <Image className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-                                <p className="text-xs text-slate-500">Upload</p>
+                                <p className="text-xs text-slate-500">{t('settings.appearance.bannerUpload')}</p>
                               </div>
                             )}
                           </div>
@@ -1698,28 +1698,28 @@ export function Settings() {
                                 setBanners(prev => prev.map(b => 
                                   b.id === banner.id ? { ...b, backgroundImage: "" } : b
                                 ));
-                                toast.success('Banner image removed');
+                                toast.success(t('settings.appearance.bannerImageRemoved'));
                               }}
                               className="mt-1"
                             >
                               <X className="w-4 h-4 mr-1" />
-                              Remove
+                              {t('common.remove')}
                             </Button>
                           )}
                         </div>
-                        <p className="text-xs text-slate-500 mt-2">Recommended: 1920x600px. If no image, gradient background will be used.</p>
+                        <p className="text-xs text-slate-500 mt-2">{t('settings.appearance.bannerHint')}</p>
                       </div>
 
                       {/* Banner Title */}
                       <div>
                         <Label htmlFor={`banner-title-${banner.id}`} className="text-sm font-medium text-slate-900 mb-2 block">
-                          Banner Title
+                          {t('settings.appearance.bannerTitle')}
                         </Label>
                         <Input
                           id={`banner-title-${banner.id}`}
                           value={banner.title}
                           onChange={(e) => updateBannerText(banner.id, 'title', e.target.value)}
-                          placeholder="Enter banner title"
+                          placeholder={t('settings.appearance.bannerTitlePlaceholder')}
                           className="h-10"
                         />
                       </div>
@@ -1727,13 +1727,13 @@ export function Settings() {
                       {/* Banner Subtitle */}
                       <div>
                         <Label htmlFor={`banner-subtitle-${banner.id}`} className="text-sm font-medium text-slate-900 mb-2 block">
-                          Banner Subtitle
+                          {t('settings.appearance.bannerSubtitle')}
                         </Label>
                         <Input
                           id={`banner-subtitle-${banner.id}`}
                           value={banner.subtitle}
                           onChange={(e) => updateBannerText(banner.id, 'subtitle', e.target.value)}
-                          placeholder="Enter banner subtitle"
+                          placeholder={t('settings.appearance.bannerSubtitlePlaceholder')}
                           className="h-10"
                         />
                       </div>
@@ -1741,13 +1741,13 @@ export function Settings() {
                       {/* Badge Text */}
                       <div>
                         <Label htmlFor={`banner-badge-${banner.id}`} className="text-sm font-medium text-slate-900 mb-2 block">
-                          Badge Text
+                          {t('settings.appearance.badgeText')}
                         </Label>
                         <Input
                           id={`banner-badge-${banner.id}`}
                           value={banner.badgeText}
                           onChange={(e) => updateBannerText(banner.id, 'badgeText', e.target.value)}
-                          placeholder="Enter badge text (e.g., Premium Selection)"
+                          placeholder={t('settings.appearance.bannerBadgePlaceholder')}
                           className="h-10"
                         />
                       </div>
@@ -1755,13 +1755,13 @@ export function Settings() {
                       {/* CTA Button Text */}
                       <div>
                         <Label htmlFor={`banner-cta-${banner.id}`} className="text-sm font-medium text-slate-900 mb-2 block">
-                          Button Text
+                          {t('settings.appearance.buttonText')}
                         </Label>
                         <Input
                           id={`banner-cta-${banner.id}`}
                           value={banner.cta}
                           onChange={(e) => updateBannerText(banner.id, 'cta', e.target.value)}
-                          placeholder="Enter button text (e.g., Shop Now)"
+                          placeholder={t('settings.appearance.bannerButtonPlaceholder')}
                           className="h-10"
                         />
                       </div>
@@ -1778,7 +1778,7 @@ export function Settings() {
                 >
                   <div className="flex flex-col items-center gap-2">
                     <Plus className="w-6 h-6" />
-                    <span className="font-medium">Add Another Banner</span>
+                    <span className="font-medium">{t('settings.appearance.addBanner')}</span>
                   </div>
                 </Button>
               </div>
@@ -1794,12 +1794,12 @@ export function Settings() {
                 {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
+                    {t('common.saving')}
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4 mr-2" />
-                    Save appearance
+                    {t('settings.appearance.save')}
                   </>
                 )}
               </Button>
@@ -1818,6 +1818,7 @@ export function Settings() {
       <UserProfile
         user={viewingUserProfile}
         initialEditMode={userProfileInitialEdit}
+        backLabel={t('profile.backToUsers')}
         onBack={() => {
           setViewingUserProfile(null);
           setUserProfileInitialEdit(false);

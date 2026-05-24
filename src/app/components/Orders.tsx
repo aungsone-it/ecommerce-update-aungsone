@@ -395,13 +395,13 @@ const revenueChartData = [
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
 
-const getStatusBadge = (status: OrderStatus | string) => {
+const getStatusBadge = (status: OrderStatus | string, t: (key: string) => string) => {
   const variants = {
-    pending: { color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock, label: "Pending" },
-    processing: { color: "bg-blue-100 text-blue-700 border-blue-200", icon: Package, label: "Processing" },
-    fulfilled: { color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle, label: "Fulfilled" },
-    cancelled: { color: "bg-red-100 text-red-700 border-red-200", icon: XCircle, label: "Cancelled" },
-    "ready-to-ship": { color: "bg-purple-100 text-purple-700 border-purple-200", icon: Package, label: "Ready to Ship" },
+    pending: { color: "bg-amber-100 text-amber-700 border-amber-200", icon: Clock, label: t("orders.pending") },
+    processing: { color: "bg-blue-100 text-blue-700 border-blue-200", icon: Package, label: t("orders.processing") },
+    fulfilled: { color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle, label: t("orders.fulfilled") },
+    cancelled: { color: "bg-red-100 text-red-700 border-red-200", icon: XCircle, label: t("orders.cancelled") },
+    "ready-to-ship": { color: "bg-purple-100 text-purple-700 border-purple-200", icon: Package, label: t("orders.readyToShip") },
   } as const;
 
   const key = normalizeAdminOrderStatusForBadge(status);
@@ -416,14 +416,14 @@ const getStatusBadge = (status: OrderStatus | string) => {
   );
 };
 
-const getPaymentBadge = (status: PaymentStatus | string) => {
+const getPaymentBadge = (status: PaymentStatus | string, t: (key: string) => string) => {
   const variants = {
-    paid: { color: "bg-green-100 text-green-700 border-green-200", label: "Paid" },
-    unpaid: { color: "bg-amber-100 text-amber-700 border-amber-200", label: "Unpaid" },
-    refunded: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Refunded" },
+    paid: { color: "bg-green-100 text-green-700 border-green-200", label: t("orders.paid") },
+    unpaid: { color: "bg-amber-100 text-amber-700 border-amber-200", label: t("orders.unpaid") },
+    refunded: { color: "bg-slate-100 text-slate-700 border-slate-200", label: t("orders.refunded") },
     "pending-refund": {
       color: "bg-orange-100 text-orange-800 border-orange-200",
-      label: "Refund",
+      label: t("orders.refund"),
     },
   } as const;
   const key = normalizePaymentBadgeStatus(status);
@@ -435,43 +435,43 @@ const getPaymentBadge = (status: PaymentStatus | string) => {
   );
 };
 
-const getRefundBadge = (status?: string) => {
+const getRefundBadge = (status: string | undefined, t: (key: string) => string) => {
   const key = String(status || "").trim().toLowerCase();
   if (!key) return null;
   if (key === "success" || key === "already_refunded") {
     return (
       <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[11px]">
-        {key === "already_refunded" ? "Refund Already Done" : "Refund Success"}
+        {key === "already_refunded" ? t("orders.refundAlreadyDone") : t("orders.refundSuccess")}
       </Badge>
     );
   }
   if (key === "failed") {
     return (
       <Badge variant="secondary" className="bg-rose-100 text-rose-700 border-rose-200 text-[11px]">
-        Refund Failed
+        {t("orders.refundFailed")}
       </Badge>
     );
   }
   if (key === "processing") {
     return (
       <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
-        Refund Processing
+        {t("orders.refundProcessing")}
       </Badge>
     );
   }
   return (
     <Badge variant="secondary" className="bg-slate-100 text-slate-700 border-slate-200 text-[11px]">
-      Refund {key}
+      {t("orders.refund")} {key}
     </Badge>
   );
 };
 
-const getShippingBadge = (status: ShippingStatus | string) => {
+const getShippingBadge = (status: ShippingStatus | string, t: (key: string) => string) => {
   const variants = {
-    pending: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Pending" },
-    shipped: { color: "bg-blue-100 text-blue-700 border-blue-200", label: "Shipped" },
-    delivered: { color: "bg-green-100 text-green-700 border-green-200", label: "Delivered" },
-    cancelled: { color: "bg-red-100 text-red-700 border-red-200", label: "Cancel" },
+    pending: { color: "bg-slate-100 text-slate-700 border-slate-200", label: t("orders.pending") },
+    shipped: { color: "bg-blue-100 text-blue-700 border-blue-200", label: t("orders.shipped") },
+    delivered: { color: "bg-green-100 text-green-700 border-green-200", label: t("orders.delivered") },
+    cancelled: { color: "bg-red-100 text-red-700 border-red-200", label: t("orders.cancelled") },
   } as const;
   const key = normalizeShippingBadgeStatus(status);
   const v = variants[key];
@@ -1347,8 +1347,8 @@ export function Orders({
 
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
         <TabsList className="mb-6">
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="orders">{t("orders.ordersTab")}</TabsTrigger>
+          <TabsTrigger value="analytics">{t("orders.analyticsTab")}</TabsTrigger>
         </TabsList>
 
         {/* Orders Tab */}
@@ -1357,29 +1357,29 @@ export function Orders({
           <Card className="mb-4">
             <div className="p-4">
               <div className="flex items-center justify-between gap-4 mb-4">
-                <h3 className="font-semibold text-slate-900">All Orders ({ordersTotal})</h3>
+                <h3 className="font-semibold text-slate-900">{t("orders.allOrders")} ({ordersTotal})</h3>
                 <div className="flex items-center gap-2">
                   {selectedOrders.length > 0 && (
                     <>
                       <Button variant="outline" size="sm" onClick={handleBulkStatusUpdate}>
                         <Package className="w-4 h-4 mr-2" />
-                        Update Status ({selectedOrders.length})
+                        {t("orders.updateStatus")} ({selectedOrders.length})
                       </Button>
                       <Button variant="outline" size="sm" onClick={handleBulkPrint}>
                         <Printer className="w-4 h-4 mr-2" />
-                        Print ({selectedOrders.length})
+                        {t("orders.print")} ({selectedOrders.length})
                       </Button>
                     </>
                   )}
                   {hasActiveFilters && (
                     <Button variant="outline" size="sm" onClick={clearFilters}>
                       <X className="w-4 h-4 mr-2" />
-                      Clear Filters
+                      {t("orders.clearFilters")}
                     </Button>
                   )}
                   <Button variant="outline" size="sm" onClick={exportOrders}>
                     <Download className="w-4 h-4 mr-2" />
-                    Export
+                    {t("orders.export")}
                   </Button>
                 </div>
               </div>
@@ -1387,7 +1387,7 @@ export function Orders({
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">
                   <AdminClearableSearchInput
-                    placeholder="Search orders..."
+                    placeholder={t("orders.searchPlaceholder")}
                     className="border-slate-300"
                     value={searchQuery}
                     onValueChange={setSearchQuery}
@@ -1395,44 +1395,44 @@ export function Orders({
                 </div>
                 <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as "newest" | "oldest")}>
                   <SelectTrigger className="w-full sm:w-[160px] border-slate-300">
-                    <SelectValue placeholder="Sort by" />
+                    <SelectValue placeholder={t("orders.sortBy")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="newest">🆕 Newest First</SelectItem>
-                    <SelectItem value="oldest">📅 Oldest First</SelectItem>
+                    <SelectItem value="newest">🆕 {t("orders.newestFirst")}</SelectItem>
+                    <SelectItem value="oldest">📅 {t("orders.oldestFirst")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-full sm:w-[160px] border-slate-300">
-                    <SelectValue placeholder="Status" />
+                    <SelectValue placeholder={t("orders.status")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="processing">Processing</SelectItem>
-                    <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                    <SelectItem value="ready-to-ship">Ready to Ship</SelectItem>
+                    <SelectItem value="all">{t("orders.allStatus")}</SelectItem>
+                    <SelectItem value="pending">{t("orders.pending")}</SelectItem>
+                    <SelectItem value="processing">{t("orders.processing")}</SelectItem>
+                    <SelectItem value="fulfilled">{t("orders.fulfilled")}</SelectItem>
+                    <SelectItem value="cancelled">{t("orders.cancelled")}</SelectItem>
+                    <SelectItem value="ready-to-ship">{t("orders.readyToShip")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={paymentFilter} onValueChange={setPaymentFilter}>
                   <SelectTrigger className="w-full sm:w-[160px] border-slate-300">
-                    <SelectValue placeholder="Payment" />
+                    <SelectValue placeholder={t("orders.payment")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Payment</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                    <SelectItem value="unpaid">Unpaid</SelectItem>
-                    <SelectItem value="refunded">Refunded</SelectItem>
-                    <SelectItem value="pending_refund">Refund pending</SelectItem>
+                    <SelectItem value="all">{t("orders.allPayment")}</SelectItem>
+                    <SelectItem value="paid">{t("orders.paid")}</SelectItem>
+                    <SelectItem value="unpaid">{t("orders.unpaid")}</SelectItem>
+                    <SelectItem value="refunded">{t("orders.refunded")}</SelectItem>
+                    <SelectItem value="pending_refund">{t("orders.refundPending")}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={vendorFilter} onValueChange={setVendorFilter}>
                   <SelectTrigger className="w-full sm:w-[160px] border-slate-300">
-                    <SelectValue placeholder="Vendor" />
+                    <SelectValue placeholder={t("orders.vendor")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Vendors</SelectItem>
+                    <SelectItem value="all">{t("orders.allVendors")}</SelectItem>
                     {uniqueVendors.map(vendor => (
                       <SelectItem key={vendor} value={vendor}>{vendor}</SelectItem>
                     ))}
@@ -1473,15 +1473,15 @@ export function Orders({
                         onCheckedChange={toggleSelectAll}
                       />
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Order</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Date</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Customer</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Vendor</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Total</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Status</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Payment</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Shipping</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Actions</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.order")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.date")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.customer")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.vendor")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.total")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.status")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.payment")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.shipping")}</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("orders.actions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1535,9 +1535,9 @@ export function Orders({
                     <tr>
                       <td colSpan={10} className="py-12 text-center">
                         <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                        <p className="text-slate-500 text-lg font-medium">No orders found</p>
+                        <p className="text-slate-500 text-lg font-medium">{t("orders.noOrdersFound")}</p>
                         <p className="text-slate-400 text-sm mt-1">
-                          {hasActiveFilters ? "Try adjusting your filters" : "Orders will appear here once customers place them"}
+                          {hasActiveFilters ? t("orders.tryAdjustFilters") : t("orders.emptyHint")}
                         </p>
                       </td>
                     </tr>
@@ -1554,7 +1554,7 @@ export function Orders({
                         <div>
                           <p className="text-sm font-medium text-slate-900">{order.orderNumber}</p>
                           <p className="text-xs text-slate-500">
-                            {order.items} items
+                            {order.items} {t("orders.items").toLowerCase()}
                             {order.deliveryService && (
                               <span className="text-purple-600"> - {order.deliveryService}</span>
                             )}
@@ -1572,22 +1572,22 @@ export function Orders({
                       <td className="py-3 px-4 text-sm font-semibold text-slate-900">{order.total.toLocaleString()} MMK</td>
                       <td className="py-3 px-4">
                         <div className="flex flex-col gap-1">
-                          {getStatusBadge(order.status)}
+                          {getStatusBadge(order.status, t)}
                           {orderSaveState[order.id] === "saving" && (
-                            <span className="text-[11px] text-amber-600">Saving...</span>
+                            <span className="text-[11px] text-amber-600">{t("common.saving")}</span>
                           )}
                           {orderSaveState[order.id] === "saved" && (
-                            <span className="text-[11px] text-emerald-600">Saved</span>
+                            <span className="text-[11px] text-emerald-600">{t("common.saved")}</span>
                           )}
                         </div>
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex flex-col gap-1">
-                          {getPaymentBadge(order.paymentStatus)}
-                          {getRefundBadge(order.refundStatus)}
+                          {getPaymentBadge(order.paymentStatus, t)}
+                          {getRefundBadge(order.refundStatus, t)}
                         </div>
                       </td>
-                      <td className="py-3 px-4">{getShippingBadge(order.shippingStatus)}</td>
+                      <td className="py-3 px-4">{getShippingBadge(order.shippingStatus, t)}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
                           <Button variant="ghost" size="sm" onClick={() => onViewOrder?.(order)}>
@@ -1601,19 +1601,19 @@ export function Orders({
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => handleStatusChange(order.id, "pending")}>
-                                Mark as Pending
+                                {t("orders.markAsPending")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(order.id, "processing")}>
-                                Mark as Processing
+                                {t("orders.markAsProcessing")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(order.id, "fulfilled")}>
-                                Mark as Fulfilled
+                                {t("orders.markAsFulfilled")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(order.id, "ready-to-ship")}>
-                                Mark as Ready to Ship
+                                {t("orders.markAsReadyToShip")}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleStatusChange(order.id, "cancelled")}>
-                                Mark as Cancelled
+                                {t("orders.markAsCancelled")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -1626,7 +1626,7 @@ export function Orders({
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t border-slate-200 bg-slate-50/80">
               <div className="flex items-center gap-2 text-sm text-slate-600">
-                <span>Per page</span>
+                <span>{t("pagination.perPage")}</span>
                 <Select
                   value={String(ordersPageSize)}
                   onValueChange={(v) => setOrdersPageSize(Number(v))}
@@ -1642,7 +1642,7 @@ export function Orders({
                   </SelectContent>
                 </Select>
                 <span className="text-slate-500">
-                  Page {ordersPage} of {Math.max(1, Math.ceil(ordersTotal / ordersPageSize) || 1)}
+                  {t("pagination.page")} {ordersPage} {t("pagination.of")} {Math.max(1, Math.ceil(ordersTotal / ordersPageSize) || 1)}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -1676,7 +1676,7 @@ export function Orders({
           {/* Revenue Chart */}
           <Card>
             <CardHeader>
-              <CardTitle>Revenue & Orders Trend</CardTitle>
+              <CardTitle>{t("orders.revenueOrdersTrend")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -1686,8 +1686,8 @@ export function Orders({
                   <YAxis stroke="#64748b" />
                   <Tooltip />
                   <Legend />
-                  <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} name="Revenue ($)" />
-                  <Line type="monotone" dataKey="orders" stroke="#22c55e" strokeWidth={2} name="Orders" />
+                  <Line type="monotone" dataKey="revenue" stroke="#3b82f6" strokeWidth={2} name={t("orders.revenueMmk")} />
+                  <Line type="monotone" dataKey="orders" stroke="#22c55e" strokeWidth={2} name={t("orders.title")} />
                 </LineChart>
               </ResponsiveContainer>
             </CardContent>
@@ -1697,7 +1697,7 @@ export function Orders({
             {/* Status Distribution */}
             <Card>
               <CardHeader>
-                <CardTitle>Order Status Distribution</CardTitle>
+                <CardTitle>{t("orders.statusDistribution")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1725,7 +1725,7 @@ export function Orders({
             {/* Vendor Revenue */}
             <Card>
               <CardHeader>
-                <CardTitle>Revenue by Vendor</CardTitle>
+                <CardTitle>{t("orders.revenueByVendor")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
@@ -1747,32 +1747,32 @@ export function Orders({
       <Dialog open={isStatusDialogOpen} onOpenChange={setIsStatusDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Update Order Status</DialogTitle>
+            <DialogTitle>{t("orders.updateStatus")}</DialogTitle>
             <DialogDescription>
               Update status for {selectedOrders.length} selected order(s)
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="status" className="mb-2">Select Status</Label>
+            <Label htmlFor="status" className="mb-2">{t("orders.selectStatus")}</Label>
             <Select value={bulkStatus} onValueChange={(value) => setBulkStatus(value as OrderStatus)}>
               <SelectTrigger id="status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="ready-to-ship">Ready to Ship</SelectItem>
+                <SelectItem value="pending">{t("orders.pending")}</SelectItem>
+                <SelectItem value="processing">{t("orders.processing")}</SelectItem>
+                <SelectItem value="fulfilled">{t("orders.fulfilled")}</SelectItem>
+                <SelectItem value="cancelled">{t("orders.cancelled")}</SelectItem>
+                <SelectItem value="ready-to-ship">{t("orders.readyToShip")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsStatusDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={saveBulkStatusUpdate}>
-              Update Status
+              {t("orders.updateStatus")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1782,18 +1782,18 @@ export function Orders({
       <Dialog open={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Print Invoices</DialogTitle>
+            <DialogTitle>{t("orders.printInvoices")}</DialogTitle>
             <DialogDescription>
               Print invoices for {selectedOrders.length} selected order(s)
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPrintDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={executeBulkPrint}>
               <Printer className="w-4 h-4 mr-2" />
-              Print
+              {t("orders.print")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1822,12 +1822,12 @@ export function Orders({
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Status</p>
-                  {getStatusBadge(selectedOrder.status)}
+                  {getStatusBadge(selectedOrder.status, t)}
                 </div>
                 <div>
                   <p className="text-sm text-slate-500">Payment Status</p>
-                  {getPaymentBadge(selectedOrder.paymentStatus)}
-                  {getRefundBadge(selectedOrder.refundStatus)}
+                  {getPaymentBadge(selectedOrder.paymentStatus, t)}
+                  {getRefundBadge(selectedOrder.refundStatus, t)}
                   {selectedOrder.refundStatus && (
                     <div className="mt-2 text-xs text-slate-600 space-y-0.5">
                       {selectedOrder.refundRequestNo && <p>Refund Ref: {selectedOrder.refundRequestNo}</p>}

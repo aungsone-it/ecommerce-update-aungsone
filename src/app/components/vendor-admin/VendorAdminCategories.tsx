@@ -18,6 +18,7 @@ import {
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
 } from "../../utils/module-cache";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 interface Product {
   id: string;
@@ -73,6 +74,7 @@ export function VendorAdminCategories({
   vendorName,
   reportLoadErrors = true,
 }: VendorAdminCategoriesProps) {
+  const { t } = useLanguage();
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
   const [loading, setLoading] = useState(
     () => !moduleCache.peek(CACHE_KEYS.vendorProductsAdmin(vendorId))
@@ -243,7 +245,7 @@ export function VendorAdminCategories({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Categories</h1>
+          <h1 className="text-3xl font-bold text-slate-900">{t("categories.title")}</h1>
         </div>
         <Button
           type="button"
@@ -253,7 +255,7 @@ export function VendorAdminCategories({
           onClick={() => loadCategories(true)}
         >
           <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
-          Refresh
+          {t("common.refresh")}
         </Button>
       </div>
 
@@ -263,10 +265,10 @@ export function VendorAdminCategories({
           <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
           <div>
             <p className="text-sm text-blue-900 font-medium">
-              Auto-populated from your products
+              {t("categories.autoPopulated")}
             </p>
             <p className="text-sm text-blue-700 mt-1">
-              Categories are automatically created based on products assigned to you by the super admin. You cannot manually create or edit categories.
+              {t("categories.autoPopulatedDesc")}
             </p>
           </div>
         </div>
@@ -277,7 +279,7 @@ export function VendorAdminCategories({
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
         <Input
           type="text"
-          placeholder="Search categories"
+          placeholder={t("categories.searchPlaceholder")}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-10 bg-white border-slate-200"
@@ -289,12 +291,12 @@ export function VendorAdminCategories({
         <Card className="p-12 text-center border-slate-200">
           <FolderOpen className="w-16 h-16 text-slate-300 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
-            {searchQuery ? "No categories found" : "No categories yet"}
+            {searchQuery ? t("categories.noCategoriesFound") : t("categories.noCategoriesYet")}
           </h3>
           <p className="text-slate-600">
             {searchQuery 
-              ? "Try adjusting your search"
-              : "Categories will appear here automatically when the super admin assigns products to your store."}
+              ? t("products.tryAdjustSearch")
+              : t("categories.appearAutomatically")}
           </p>
         </Card>
       ) : (
@@ -312,12 +314,12 @@ export function VendorAdminCategories({
                       onCheckedChange={toggleSelectAll}
                     />
                   </th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Category</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Vendor</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Description</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Products</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Status</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Actions</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("categories.category")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("products.vendor")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("categories.description")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("categories.products")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("categories.status")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("categories.actions")}</th>
                 </tr>
               </thead>
               <tbody className="bg-white">
@@ -350,7 +352,7 @@ export function VendorAdminCategories({
                     </td>
                     <td className="py-3 px-4">
                       <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
-                        Active
+                        {t("categories.active")}
                       </Badge>
                     </td>
                     <td className="py-3 px-4">
@@ -359,7 +361,7 @@ export function VendorAdminCategories({
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                          title="View Category (Read-Only)"
+                          title={t("categories.viewReadOnly")}
                         >
                           <Eye className="w-4 h-4" />
                         </Button>
@@ -377,7 +379,7 @@ export function VendorAdminCategories({
             totalCount={filteredCategories.length}
             onPageChange={setListPage}
             onPageSizeChange={setListPageSize}
-            itemLabel="categories"
+            itemLabel={t("categories.title").toLowerCase()}
             loading={loading || listRefreshing}
           />
         </Card>

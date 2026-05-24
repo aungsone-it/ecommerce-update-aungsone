@@ -50,6 +50,7 @@ import {
   type TopProductRow,
   type RecentOrderRow,
 } from "../../utils/vendorAdminAnalytics";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 interface DashboardStats {
   totalProducts: number;
@@ -106,6 +107,18 @@ export function VendorAdminDashboard({
   vendorName,
   onNavigate,
 }: VendorAdminDashboardProps) {
+  const { t } = useLanguage();
+  const tr = (key: string, values: Record<string, string | number> = {}) =>
+    Object.entries(values).reduce(
+      (text, [name, value]) => text.replace(`{${name}}`, String(value)),
+      t(key)
+    );
+  const dateLabel = (value: string) => {
+    if (value === "Last 7 days") return t("vendorAdmin.dashboard.last7");
+    if (value === "Last 90 days") return t("vendorAdmin.dashboard.last90");
+    if (value === "Last year") return t("vendorAdmin.dashboard.lastYear");
+    return t("vendorAdmin.dashboard.last30");
+  };
   const cachedInit = peekCachedVendorDashboardData(vendorId);
   const [rawOrders, setRawOrders] = useState<any[]>(() => cachedInit?.orders ?? []);
   const [rawProducts, setRawProducts] = useState<any[]>(() => cachedInit?.products ?? []);
@@ -308,36 +321,36 @@ export function VendorAdminDashboard({
                 type="button"
                 className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 transition-colors mb-4"
               >
-                {dateFilter[filterKey]} <ChevronDown className="w-3 h-3" />
+                {dateLabel(dateFilter[filterKey])} <ChevronDown className="w-3 h-3" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem
                 onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 7 days" })}
               >
-                Last 7 days
+                {t("vendorAdmin.dashboard.last7")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 30 days" })}
               >
-                Last 30 days
+                {t("vendorAdmin.dashboard.last30")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last 90 days" })}
               >
-                Last 90 days
+                {t("vendorAdmin.dashboard.last90")}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setDateFilter({ ...dateFilter, [filterKey]: "Last year" })}
               >
-                Last year
+                {t("vendorAdmin.dashboard.lastYear")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <p className="text-xl font-bold text-slate-900 mb-2">{value}</p>
           <div className="flex items-center gap-1">
             {change === 0 ? (
-              <span className="text-xs font-medium text-slate-500">No change vs prior period</span>
+              <span className="text-xs font-medium text-slate-500">{t("vendorAdmin.dashboard.noChange")}</span>
             ) : (
               <>
                 {change > 0 ? (
@@ -349,7 +362,7 @@ export function VendorAdminDashboard({
                   className={`text-xs font-medium ${change > 0 ? "text-green-600" : "text-red-600"}`}
                 >
                   {change > 0 ? "+" : ""}
-                  {change}% vs prior period
+                  {change}%
                 </span>
               </>
             )}
@@ -367,15 +380,15 @@ export function VendorAdminDashboard({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Analytics</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">{t("vendorAdmin.dashboard.title")}</h1>
         <p className="text-sm text-slate-600">
-          Welcome back, {vendorName}! Here&apos;s what&apos;s happening today.
+          {tr("vendorAdmin.dashboard.subtitle", { name: vendorName })}
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          title="Total Revenue"
+          title={t("vendorAdmin.dashboard.totalRevenue")}
           value={renderCurrency(stats.totalRevenue)}
           change={stats.revenueChange}
           icon={DollarSign}
@@ -384,7 +397,7 @@ export function VendorAdminDashboard({
           filterKey="revenue"
         />
         <StatCard
-          title="Orders"
+          title={t("vendorAdmin.dashboard.orders")}
           value={stats.totalOrders}
           change={stats.ordersChange}
           icon={ShoppingCart}
@@ -393,7 +406,7 @@ export function VendorAdminDashboard({
           filterKey="orders"
         />
         <StatCard
-          title="Customers"
+          title={t("vendorAdmin.dashboard.customers")}
           value={stats.totalCustomers}
           change={stats.customersChange}
           icon={Users}
@@ -402,7 +415,7 @@ export function VendorAdminDashboard({
           filterKey="customers"
         />
         <StatCard
-          title="Products"
+          title={t("vendorAdmin.dashboard.products")}
           value={stats.totalProducts}
           change={stats.productsChange}
           icon={Package}
@@ -415,9 +428,9 @@ export function VendorAdminDashboard({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="p-6 border-slate-200">
           <div className="mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">Sales Overview</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-1">{t("vendorAdmin.dashboard.revenueTrend")}</h3>
             <p className="text-sm text-slate-600">
-              Monthly revenue ({dateFilter.revenue.toLowerCase()} for KPIs; chart shows last 6 months)
+              {dateLabel(dateFilter.revenue)}
             </p>
           </div>
           {chartHasData ? (
@@ -440,7 +453,7 @@ export function VendorAdminDashboard({
                   <Tooltip
                     formatter={(value: number | string) => [
                       `${Math.round(Number(value)).toLocaleString()} MMK`,
-                      "Revenue",
+                      t("vendorAdmin.dashboard.totalRevenue"),
                     ]}
                     contentStyle={{
                       backgroundColor: "white",
@@ -452,7 +465,7 @@ export function VendorAdminDashboard({
                   <Line
                     type="monotone"
                     dataKey="revenue"
-                    name="Revenue (MMK)"
+                    name={t("vendorAdmin.dashboard.totalRevenue")}
                     stroke="#3b82f6"
                     strokeWidth={2}
                     dot={{ fill: "#3b82f6", r: 3 }}
@@ -465,7 +478,7 @@ export function VendorAdminDashboard({
             <div className="h-64 flex items-center justify-center bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
               <div className="text-center">
                 <TrendingUp className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-400">No sales in the last 6 months</p>
+                <p className="text-sm text-slate-400">{t("vendorAdmin.dashboard.noData")}</p>
               </div>
             </div>
           )}
@@ -473,14 +486,14 @@ export function VendorAdminDashboard({
 
         <Card className="p-6 border-slate-200">
           <div className="mb-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">Top Products</h3>
-            <p className="text-sm text-slate-600">Best sellers in {dateFilter.revenue.toLowerCase()}</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-1">{t("vendorAdmin.dashboard.topProducts")}</h3>
+            <p className="text-sm text-slate-600">{dateLabel(dateFilter.revenue)}</p>
           </div>
           <div className="space-y-4">
             {topProducts.length === 0 ? (
               <div className="text-center py-8 text-slate-500">
                 <Package className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm">No product sales in this period</p>
+                <p className="text-sm">{t("vendorAdmin.dashboard.noData")}</p>
               </div>
             ) : (
               topProducts.map((product) => (
@@ -490,7 +503,7 @@ export function VendorAdminDashboard({
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate">{product.name}</p>
-                    <p className="text-xs text-slate-500">{product.sales} sales</p>
+                    <p className="text-xs text-slate-500">{product.sales} {t("dashboard.sales")}</p>
                   </div>
                   <p className="text-sm font-semibold text-slate-900 whitespace-nowrap">
                     {renderCurrency(product.revenue)}
@@ -505,22 +518,22 @@ export function VendorAdminDashboard({
       <Card className="p-6 border-slate-200">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-1">Recent Orders</h3>
-            <p className="text-sm text-slate-600">Latest customer orders</p>
+            <h3 className="text-lg font-semibold text-slate-900 mb-1">{t("vendorAdmin.dashboard.recentOrders")}</h3>
+            <p className="text-sm text-slate-600">{t("dashboard.latestOrders")}</p>
           </div>
           <button
             type="button"
             onClick={() => onNavigate("orders")}
             className="text-sm font-medium text-blue-600 hover:text-blue-700"
           >
-            View All
+            {t("dashboard.viewAll")}
           </button>
         </div>
 
         {recentOrders.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <ShoppingCart className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm">No orders yet</p>
+            <p className="text-sm">{t("vendorAdmin.dashboard.noData")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -528,22 +541,22 @@ export function VendorAdminDashboard({
               <thead>
                 <tr className="border-b border-slate-200">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
-                    Order ID
+                    {t("orders.order")}
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
-                    Customer
+                    {t("vendorAdmin.users.customer")}
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
-                    Items
+                    {t("orders.items")}
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
-                    Total
+                    {t("orders.total")}
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
-                    Status
+                    {t("vendorAdmin.users.status")}
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">
-                    Date
+                    {t("orders.date")}
                   </th>
                 </tr>
               </thead>

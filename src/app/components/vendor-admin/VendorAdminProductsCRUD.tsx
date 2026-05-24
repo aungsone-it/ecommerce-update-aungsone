@@ -64,6 +64,7 @@ import {
   type VendorAssignPickerSession,
 } from "../../utils/vendorAssignPickerSession";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
+import { useLanguage } from "../../contexts/LanguageContext";
 
 /**
  * True when the in-memory assignable list can render this page/window without hitting the API.
@@ -130,6 +131,7 @@ export function VendorAdminProductsCRUD({
   headerSearchQuery,
   onHeaderSearchQueryChange,
 }: VendorAdminProductsCRUDProps) {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
   const { storeName: routeStoreName } = useVendorAdminRouteParams();
@@ -765,8 +767,8 @@ export function VendorAdminProductsCRUD({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Products</h1>
-          <p className="text-slate-500 mt-1">Manage your product inventory</p>
+          <h1 className="text-3xl font-bold text-slate-900">{t("products.title")}</h1>
+          <p className="text-slate-500 mt-1">{t("products.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -777,9 +779,9 @@ export function VendorAdminProductsCRUD({
             className="bg-slate-100 border-slate-300 text-slate-900 hover:bg-slate-200"
           >
           <Plus className="w-4 h-4 mr-2" />
-            Select Product
+            {t("products.selectProduct")}
         </Button>
-          <Badge variant="secondary">{products.length} total</Badge>
+          <Badge variant="secondary">{products.length} {t("products.total")}</Badge>
         </div>
       </div>
 
@@ -789,7 +791,7 @@ export function VendorAdminProductsCRUD({
         <div className="flex-1 relative min-w-[280px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
-            placeholder="Search products by name or SKU..."
+            placeholder={t("products.searchPlaceholder")}
             className="pl-10"
             value={searchQuery}
             onChange={(e) => handleSearchInputChange(e.target.value)}
@@ -800,19 +802,19 @@ export function VendorAdminProductsCRUD({
         <Tabs value={statusFilter} onValueChange={(val) => setStatusFilter(val as any)}>
           <TabsList>
             <TabsTrigger value="all" className="gap-2">
-              All Status
+              {t("products.allStatus")}
               <Badge variant="secondary" className="bg-slate-200 text-slate-700 text-xs">
                 {getStatusCount("all")}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="active" className="gap-2">
-              Active
+              {t("products.active")}
               <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
                 {getStatusCount("active")}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="off-shelf" className="gap-2">
-              Off Shelf
+              {t("products.offShelf")}
               <Badge variant="secondary" className="bg-slate-200 text-slate-700 text-xs">
                 {getStatusCount("off-shelf")}
               </Badge>
@@ -823,11 +825,11 @@ export function VendorAdminProductsCRUD({
         {/* Sort Dropdown */}
         <Select value={sortBy} onValueChange={setSortBy}>
           <SelectTrigger className="w-full lg:w-[180px]">
-            <SelectValue placeholder="Newest First" />
+            <SelectValue placeholder={t("products.newestFirst")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="newest">Newest First</SelectItem>
-            <SelectItem value="oldest">Oldest First</SelectItem>
+            <SelectItem value="newest">{t("products.newestFirst")}</SelectItem>
+            <SelectItem value="oldest">{t("products.oldestFirst")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -837,12 +839,12 @@ export function VendorAdminProductsCRUD({
         <Card className="p-12 text-center border-slate-200">
           <Package className="w-16 h-16 text-slate-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
-            {searchQuery ? "No products found" : "No products yet"}
+            {searchQuery ? t("products.noProductsFound") : t("products.noProductsYet")}
           </h3>
           <p className="text-slate-600 mb-6">
             {searchQuery 
-              ? "Try adjusting your search" 
-              : "Choose products from the platform catalog to sell in your store"}
+              ? t("products.tryAdjustSearch") 
+              : t("products.chooseCatalogProducts")}
           </p>
           {!searchQuery && (
             <Button
@@ -851,7 +853,7 @@ export function VendorAdminProductsCRUD({
               className="bg-slate-900 hover:bg-black text-white"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Select Product
+              {t("products.selectProduct")}
             </Button>
           )}
         </Card>
@@ -870,12 +872,12 @@ export function VendorAdminProductsCRUD({
                       onCheckedChange={toggleSelectAll}
                     />
                   </th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Product</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Status</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Inventory</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Category</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Price</th>
-                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">Actions</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("products.product")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("products.status")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("products.inventory")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("products.category")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("products.price")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm">{t("products.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -916,13 +918,13 @@ export function VendorAdminProductsCRUD({
                             : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-100"
                         }
                       >
-                        {product.status === "off-shelf" ? "Off Shelf" : product.status === "active" || product.status === "Active" ? "Active" : product.status}
+                        {product.status === "off-shelf" ? t("products.offShelf") : product.status === "active" || product.status === "Active" ? t("products.active") : product.status}
                       </Badge>
                     </td>
                     <td className="py-3 px-4">
                       <span className="text-sm text-slate-700">{product.inventory}</span>
                     </td>
-                    <td className="py-3 px-4 text-sm text-slate-700">{product.category || 'Uncategorized'}</td>
+                    <td className="py-3 px-4 text-sm text-slate-700">{product.category || t("products.uncategorized")}</td>
                     <td className="py-3 px-4 text-sm font-semibold text-slate-900">
                       {Math.round(product.price).toLocaleString()} MMK
                     </td>
@@ -940,7 +942,7 @@ export function VendorAdminProductsCRUD({
                             );
                         }
                         }}
-                        title="View Product Details"
+                        title={t("products.viewDetails")}
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
@@ -958,7 +960,7 @@ export function VendorAdminProductsCRUD({
               totalCount={sortedProducts.length}
               onPageChange={setVendorListPage}
               onPageSizeChange={setVendorListPageSize}
-              itemLabel="products"
+              itemLabel={t("products.title").toLowerCase()}
               loading={loading}
             />
           )}
@@ -977,9 +979,9 @@ export function VendorAdminProductsCRUD({
       >
         <DialogContent className="!w-[80vw] !max-w-[80vw] max-h-[90vh] flex flex-col">
           <DialogHeader>
-            <DialogTitle>Select Products</DialogTitle>
+            <DialogTitle>{t("products.selectProducts")}</DialogTitle>
             <DialogDescription>
-              Add products from the platform catalog to {vendorName || "your store"}.
+              {t("products.addFromCatalog")} {vendorName || t("products.yourStore")}.
             </DialogDescription>
           </DialogHeader>
 
@@ -987,7 +989,7 @@ export function VendorAdminProductsCRUD({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               type="text"
-              placeholder="Search products by name, SKU, or category..."
+              placeholder={t("products.searchCatalogPlaceholder")}
               value={searchProductQuery}
               onChange={(e) => {
                 const v = e.target.value;
@@ -1002,7 +1004,7 @@ export function VendorAdminProductsCRUD({
               className="pl-10"
             />
             <p className="text-xs text-slate-500 mt-2 pl-1">
-              Typing filters the saved catalog instantly. Press Enter to search the database (shows loading).
+              {t("products.catalogSearchHint")}
             </p>
           </div>
 
@@ -1013,12 +1015,12 @@ export function VendorAdminProductsCRUD({
                   <thead className="bg-slate-50">
                     <tr className="border-b border-slate-200">
                       <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 w-10" />
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Product</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.product")}</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">SKU</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Category</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Price</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Stock</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Status</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.category")}</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.price")}</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.stock")}</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.status")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1056,11 +1058,11 @@ export function VendorAdminProductsCRUD({
             ) : pickerShowEmpty ? (
               <div className="text-center py-12">
                 <Package className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-slate-900 mb-1">No products found</h3>
+                <h3 className="text-lg font-medium text-slate-900 mb-1">{t("products.noProductsFound")}</h3>
                 <p className="text-sm text-slate-500">
                   {searchProductQuery
-                    ? "No products match your search"
-                    : "All catalog products are already assigned to your store"}
+                    ? t("products.noProductsMatch")
+                    : t("products.allAssigned")}
                 </p>
               </div>
             ) : (
@@ -1098,12 +1100,12 @@ export function VendorAdminProductsCRUD({
                           }}
                         />
                       </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Product</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.product")}</th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">SKU</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Category</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Price</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Stock</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Status</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.category")}</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.price")}</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.stock")}</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">{t("products.status")}</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white">

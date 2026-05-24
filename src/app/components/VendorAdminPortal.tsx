@@ -50,6 +50,7 @@ import { applyVendorStoreLogoFavicon, resetDocumentFavicon } from "../utils/docu
 import { isRenderableImageSrc, pickStoreLogo } from "../utils/renderableImageSrc";
 import { UserProfile } from "./UserProfile";
 import { useVendorAuth, type VendorUser } from "../contexts/VendorAuthContext";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface Vendor {
   id: string;
@@ -145,6 +146,12 @@ function writeStorefrontSnapshotCache(vendorId: string, value: StorefrontSnapsho
 
 export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAdminPortalProps) {
   const { updateVendor, vendor: authVendor } = useVendorAuth();
+  const { t } = useLanguage();
+  const tr = (key: string, values: Record<string, string | number> = {}) =>
+    Object.entries(values).reduce(
+      (text, [name, value]) => text.replace(`{${name}}`, String(value)),
+      t(key)
+    );
   const initialStorefrontCache = useMemo(
     () => readStorefrontSnapshotCache(vendor.id),
     [vendor.id]
@@ -513,7 +520,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     try {
       await notificationsApi.markAllAsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      toast.success("All notifications marked as read");
+      toast.success(t("topnav.notifications.markAllReadSuccess"));
     } catch {
       // Optional feature; ignore failures.
     }
@@ -524,7 +531,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     try {
       await notificationsApi.delete(id);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
-      toast.success("Notification deleted");
+      toast.success(t("topnav.notifications.deleted"));
     } catch {
       // Optional feature; ignore failures.
     }
@@ -552,46 +559,46 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const navigation: NavItem[] = [
     {
       id: "dashboard" as VendorPage,
-      name: "Analytics",
+      name: t("vendorAdmin.analytics"),
       icon: LayoutDashboard,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
     },
     {
       id: "products" as VendorPage,
-      name: "Products",
+      name: t("vendorAdmin.products"),
       icon: Package,
       color: "text-green-600",
       bgColor: "bg-green-50",
       subItems: [
-        { id: "products" as VendorPage, label: "All Products" },
-        { id: "categories" as VendorPage, label: "Categories" }
+        { id: "products" as VendorPage, label: t("vendorAdmin.allProducts") },
+        { id: "categories" as VendorPage, label: t("vendorAdmin.categories") }
       ]
     },
     {
       id: "orders" as VendorPage,
-      name: "Orders",
+      name: t("vendorAdmin.orders"),
       icon: ShoppingCart,
       color: "text-purple-600",
       bgColor: "bg-purple-50",
     },
     {
       id: "users" as VendorPage,
-      name: "Customers",
+      name: t("vendorAdmin.customers"),
       icon: Users,
       color: "text-teal-600",
       bgColor: "bg-teal-50",
     },
     {
       id: "finances" as VendorPage,
-      name: "Finances",
+      name: t("vendorAdmin.finances"),
       icon: DollarSign,
       color: "text-orange-600",
       bgColor: "bg-orange-50",
     },
     {
       id: "settings" as VendorPage,
-      name: "Settings",
+      name: t("vendorAdmin.settings"),
       icon: Settings,
       color: "text-slate-600",
       bgColor: "bg-slate-50",
@@ -684,7 +691,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         variant="vendor"
         user={vendorProfileSeed}
         initialEditMode={vendorProfileInitialEdit}
-        backLabel="Back"
+        backLabel={t("profile.back")}
         onBack={closeVendorProfile}
         onVendorSessionOptimistic={(patch: Partial<VendorUser>) => {
           if (authVendor) vendorSessionBeforeOptimisticRef.current = { ...authVendor };
@@ -762,9 +769,9 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
             )}
             <div className="flex flex-col min-w-0">
               <span className="text-lg leading-tight text-slate-900 font-bold whitespace-nowrap truncate">
-                {storefrontSnapshot?.storeName || vendor.storeName || vendor.name || "Vendor Store"}
+                {storefrontSnapshot?.storeName || vendor.storeName || vendor.name || t("vendorAdmin.vendorStore")}
               </span>
-              <span className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">{vendor.businessType || 'E-COMMERCE'}</span>
+              <span className="text-[11px] text-slate-400 font-medium tracking-widest uppercase">{vendor.businessType || t("vendorAdmin.ecommerce")}</span>
             </div>
           </button>
           {/* Mobile close button - Fixed: Now separate from logo button */}
@@ -834,8 +841,8 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         {/* Footer - Created by */}
         <div className="px-6 py-4 border-t border-slate-200">
           <p className="text-xs text-slate-400 text-center">
-            Created by <span className="text-slate-600 font-medium">AungSone</span><br />
-            <span className="text-slate-400">Software Architect</span>
+            {t("footer.createdBy")} <span className="text-slate-600 font-medium">AungSone</span><br />
+            <span className="text-slate-400">{t("footer.role")}</span>
           </p>
         </div>
       </aside>
@@ -861,7 +868,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search products by name, SKU, category…"
+                  placeholder={t("vendorAdmin.searchProducts")}
                   className="w-full pl-10 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-transparent focus:bg-white transition-colors"
                   value={vendorHeaderProductSearch}
                   onChange={(e) => setVendorHeaderProductSearch(e.target.value)}
@@ -871,7 +878,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                       setCurrentPage("products");
                     }
                   }}
-                  aria-label="Search products"
+                  aria-label={t("vendorAdmin.searchProductsAria")}
                 />
               </div>
             </div>
@@ -892,12 +899,12 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-[420px] p-0">
                   <div className="p-4 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="font-semibold text-slate-900">Notifications</h3>
+                    <h3 className="font-semibold text-slate-900">{t("topnav.notifications")}</h3>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500">{bellCount} total</span>
+                      <span className="text-xs text-slate-500">{tr("vendorAdmin.notificationsTotal", { count: bellCount })}</span>
                       {unreadApiNotifications > 0 && (
                         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={markAllAsRead}>
-                          Mark all read
+                          {t("topnav.notifications.markAllRead")}
                         </Button>
                       )}
                     </div>
@@ -911,9 +918,12 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                               <ShoppingCart className="w-4 h-4 text-amber-700" />
                             </div>
                             <div className="min-w-0">
-                              <p className="text-sm font-semibold text-slate-900">Pending orders need attention</p>
+                              <p className="text-sm font-semibold text-slate-900">{t("vendorAdmin.pendingOrdersAttention")}</p>
                               <p className="text-xs text-slate-600 mt-0.5">
-                                You have {unreadNotifications} pending order{unreadNotifications > 1 ? "s" : ""}.
+                                {tr("vendorAdmin.pendingOrdersMessage", {
+                                  count: unreadNotifications,
+                                  unit: unreadNotifications === 1 ? t("topnav.notifications.orderOne") : t("topnav.notifications.orderMany"),
+                                })}
                               </p>
                             </div>
                           </div>
@@ -957,7 +967,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                           </div>
                         ))
                       ) : unreadNotifications === 0 ? (
-                        <div className="p-10 text-center text-slate-500 text-sm">No notifications</div>
+                        <div className="p-10 text-center text-slate-500 text-sm">{t("vendorAdmin.noNotifications")}</div>
                       ) : null}
                     </div>
                   </ScrollArea>
@@ -977,7 +987,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                       <p className="text-sm font-semibold text-slate-900 leading-tight">
                         {vendor.contactName?.trim() || vendor.name}
                       </p>
-                      <p className="text-xs text-blue-600 font-medium">Vendor admin</p>
+                      <p className="text-xs text-blue-600 font-medium">{t("vendorAdmin.vendorAdminRole")}</p>
                     </div>
                   </button>
                 </DropdownMenuTrigger>
@@ -995,7 +1005,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                     }}
                   >
                     <User className="w-4 h-4 mr-2" />
-                    View Profile
+                    {t("topnav.menu.viewProfile")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={() => {
@@ -1005,7 +1015,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                     }}
                   >
                     <Edit className="w-4 h-4 mr-2" />
-                    Edit Profile
+                    {t("topnav.menu.editProfile")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -1013,7 +1023,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
                     className="text-red-600 focus:text-red-600 focus:bg-red-50"
                   >
                     <LogOut className="w-4 h-4 mr-2" />
-                    Sign Out
+                    {t("topnav.menu.signOut")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

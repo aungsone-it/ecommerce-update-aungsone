@@ -9,6 +9,7 @@ import { useResolvedVendorHostSlug } from '../utils/vendorHostResolution';
 import { getEffectiveVendorSubdomainBase } from '../utils/vendorSubdomainBase';
 import { subdomainHostLabelForVendorProfile } from '../utils/subdomainSlugMap';
 import { storeSlugFromBusinessName } from '../../utils/storeSlug';
+import { applyVendorStoreLogoFavicon, resetDocumentFavicon } from '../utils/documentFavicon';
 import { publicAnonKey } from '../../../utils/supabase/info';
 import { API_BASE_URL } from '../../utils/api-client';
 import { Button } from './ui/button';
@@ -82,7 +83,7 @@ function fallbackHostLabelFromVendorProfile(input: {
 
 export function VendorLogin({ storeName }: VendorLoginProps) {
   const { login, vendor } = useVendorAuth();
-  const { t } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const { slug: resolvedHostSlug, loading: hostSlugLoading } = useResolvedVendorHostSlug();
   const [email, setEmail] = useState('');
@@ -93,6 +94,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [vendorName, setVendorName] = useState<string>('');
+  const [vendorLogo, setVendorLogo] = useState<string>('');
   const [loadingVendor, setLoadingVendor] = useState(
     !!storeName ||
       (typeof window !== 'undefined' &&
@@ -194,6 +196,21 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
     };
   }, [vendor, navigate, resolvedHostSlug, hostSlugLoading]);
 
+  useEffect(() => {
+    const titleBase = (vendorName || humanizeStoreLabel(storeName) || "Vendor Store").trim();
+    document.title = `${titleBase} | ${t('vendorAuth.loginTitle')}`;
+
+    if (vendorLogo.trim()) {
+      void applyVendorStoreLogoFavicon(vendorLogo);
+    } else {
+      resetDocumentFavicon();
+    }
+
+    return () => {
+      resetDocumentFavicon();
+    };
+  }, [vendorName, vendorLogo, storeName, t]);
+
   // Fetch vendor data to get the actual name
   useEffect(() => {
     const fetchVendorName = async () => {
@@ -226,6 +243,8 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
           );
           if (byDomainRes.ok) {
             const byDomainData = (await byDomainRes.json()) as {
+              vendorId?: string;
+              logo?: string;
               storeName?: string;
               businessName?: string;
             };
@@ -235,6 +254,23 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
               storeName
             );
             setVendorName(resolved);
+            setVendorLogo(String(byDomainData.logo || "").trim());
+
+            if (byDomainData.vendorId) {
+              const storefrontRes = await fetch(
+                `${API_BASE_URL}/vendor/storefront/${encodeURIComponent(byDomainData.vendorId)}`,
+                { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+              ).catch(() => null);
+              if (storefrontRes?.ok) {
+                const storefrontData = (await storefrontRes.json().catch(() => ({}))) as {
+                  settings?: { logo?: string; storeName?: string };
+                };
+                const logo = String(storefrontData.settings?.logo || "").trim();
+                if (logo) setVendorLogo(logo);
+                const storeLabel = String(storefrontData.settings?.storeName || "").trim();
+                if (storeLabel) setVendorName(pickDisplayVendorName(storeLabel, resolved));
+              }
+            }
             return;
           }
         }
@@ -270,6 +306,8 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
           
           console.log('📛 Setting vendor name to:', name);
           setVendorName(name);
+          const logo = String(data.vendor?.logo || data.vendor?.avatar || "").trim();
+          setVendorLogo(logo);
         } else {
           console.error('❌ Failed to fetch vendor:', response.status, response.statusText);
           const errorText = await response.text();
@@ -345,7 +383,7 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
           </div>
           <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
             <Store className="w-5 h-5" />
-            <span className="text-sm font-medium">Vendor Portal</span>
+            <span className="text-sm font-medium">{t('vendorAuth.portal')}</span>
           </div>
         </div>
 
@@ -353,23 +391,25 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
         <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-slate-200 dark:border-slate-700 p-8">
           
           {/* Back Arrow */}
-          <button 
-            type="button"
-            onClick={handleBack}
-            aria-label="Go back to previous page"
-            title="Back"
-            className="mb-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          <div className="mb-6">
+            <button
+              type="button"
+              onClick={handleBack}
+              aria-label={t('vendorAuth.backAria')}
+              title={t('vendorAuth.back')}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          </div>
 
           {/* Title */}
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-1">
-              Vendor Login
+              {t('vendorAuth.loginTitle')}
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Sign in to manage your store
+              {t('vendorAuth.loginSubtitle')}
             </p>
           </div>
 
@@ -379,17 +419,17 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
               <Store className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
               <div>
                 <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                  First time here?
+                  {t('vendorAuth.firstTime')}
                 </p>
                 <p className="text-xs text-blue-700 dark:text-blue-300 mb-2">
-                  If your application was just approved, you need to complete your setup first.
+                  {t('vendorAuth.setupNotice')}
                 </p>
                 <button
                   type="button"
                   onClick={() => navigate('/vendor/setup')}
                   className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
                 >
-                  Complete Vendor Setup →
+                  {t('vendorAuth.completeSetup')}
                 </button>
               </div>
             </div>
@@ -487,6 +527,20 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
               {loading ? t('auth.login.signingIn') : t('auth.login.signIn')}
             </Button>
           </form>
+        </div>
+
+        {/* Language Switcher */}
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => setLanguage(language === 'en' ? 'zh' : 'en')}
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl rounded-xl border border-slate-200/60 dark:border-slate-700/60 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-300 shadow-md hover:shadow-lg"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" />
+            </svg>
+            {language === 'en' ? '中文' : 'English'}
+          </button>
         </div>
       </div>
     </div>

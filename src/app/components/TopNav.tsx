@@ -199,7 +199,7 @@ export function TopNav({
     try {
       await notificationsApi.markAllAsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-      toast.success("All notifications marked as read");
+      toast.success(t("topnav.notifications.markAllReadSuccess"));
     } catch (error) {
       // Silently fail - don't show error to user
       console.log("Failed to mark all as read (optional feature)");
@@ -211,7 +211,7 @@ export function TopNav({
     try {
       await notificationsApi.delete(id);
       setNotifications((prev) => prev.filter((n) => n.id !== id));
-      toast.success("Notification deleted");
+      toast.success(t("topnav.notifications.deleted"));
     } catch (error) {
       // Silently fail - don't show error to user
       console.log("Failed to delete notification (optional feature)");
@@ -286,7 +286,22 @@ export function TopNav({
   };
 
   const { logout } = useAuth();
-  const { language } = useLanguage();
+  const { t } = useLanguage();
+  const interpolate = (key: string, values: Record<string, string | number>) =>
+    Object.entries(values).reduce(
+      (text, [name, value]) => text.replace(`{${name}}`, String(value)),
+      t(key)
+    );
+  const translatedRole =
+    currentUser.role === "store-owner"
+      ? t("role.storeOwner")
+      : currentUser.role === "administrator"
+        ? t("role.administrator")
+        : currentUser.role === "data-entry"
+          ? t("role.dataEntry")
+          : currentUser.role === "warehouse"
+            ? t("role.warehouse")
+            : currentUser.role;
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 fixed top-0 right-0 lg:left-64 left-0 z-10">
@@ -300,7 +315,7 @@ export function TopNav({
         <div className="flex-1 flex justify-center max-w-2xl mx-auto">
           {showAdminGlobalSearch ? (
             <AdminClearableSearchInput
-              placeholder="Search… (on Products, press Enter to load matches)"
+              placeholder={t("topnav.searchPlaceholder")}
               className="bg-slate-50 border-slate-200 focus:bg-white w-full"
               value={adminGlobalSearch ?? ""}
               onValueChange={(v) => onAdminGlobalSearchChange?.(v)}
@@ -310,7 +325,7 @@ export function TopNav({
                   onAdminGlobalSearchSubmit?.();
                 }
               }}
-              aria-label="Search admin portal"
+              aria-label={t("topnav.searchAria")}
             />
           ) : (
             <div className="w-full" aria-hidden />
@@ -335,11 +350,14 @@ export function TopNav({
               {/* Header */}
               <div className="flex items-center justify-between p-4 border-b border-slate-200">
                 <div>
-                  <h3 className="font-semibold text-slate-900">Notifications</h3>
+                  <h3 className="font-semibold text-slate-900">{t("topnav.notifications")}</h3>
                   <p className="text-xs text-slate-500 mt-0.5">
                     {totalNotificationCount > 0
-                      ? `You have ${totalNotificationCount} unread ${totalNotificationCount === 1 ? "alert" : "alerts"}`
-                      : "All caught up!"}
+                      ? interpolate("topnav.notifications.unreadAlerts", {
+                        count: totalNotificationCount,
+                        unit: totalNotificationCount === 1 ? t("topnav.notifications.alertOne") : t("topnav.notifications.alertMany"),
+                      })
+                      : t("topnav.notifications.allCaughtUp")}
                   </p>
                 </div>
                 {unreadCount > 0 && (
@@ -350,7 +368,7 @@ export function TopNav({
                     onClick={markAllAsRead}
                   >
                     <Check className="w-3.5 h-3.5 mr-1" />
-                    Mark all read
+                    {t("topnav.notifications.markAllRead")}
                   </Button>
                 )}
               </div>
@@ -371,19 +389,22 @@ export function TopNav({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <p className="text-sm font-semibold text-slate-900 leading-tight">
-                                Pending Orders
+                                {t("topnav.notifications.pendingOrders")}
                               </p>
                               <div className="w-2 h-2 rounded-full bg-purple-600 flex-shrink-0 mt-1" />
                             </div>
                             <p className="text-sm text-slate-600 leading-snug mb-2">
-                              You have {pendingOrdersN} pending {pendingOrdersN === 1 ? "order" : "orders"} that need attention
+                              {interpolate("topnav.notifications.pendingOrdersMessage", {
+                                count: pendingOrdersN,
+                                unit: pendingOrdersN === 1 ? t("topnav.notifications.orderOne") : t("topnav.notifications.orderMany"),
+                              })}
                             </p>
                             {digestFooter(
                               typeof pendingOrdersDigestSourceMs === "number" &&
                                 !Number.isNaN(pendingOrdersDigestSourceMs)
                                 ? pendingOrdersDigestSourceMs
                                 : ordersDigestAt,
-                              "From Orders section"
+                              t("topnav.notifications.fromOrders")
                             )}
                           </div>
                         </div>
@@ -401,19 +422,22 @@ export function TopNav({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <p className="text-sm font-semibold text-slate-900 leading-tight">
-                                Vendor Applications
+                                {t("topnav.notifications.vendorApplications")}
                               </p>
                               <div className="w-2 h-2 rounded-full bg-purple-600 flex-shrink-0 mt-1" />
                             </div>
                             <p className="text-sm text-slate-600 leading-snug mb-2">
-                              You have {vendorAppsN} pending vendor {vendorAppsN === 1 ? "application" : "applications"} to review
+                              {interpolate("topnav.notifications.vendorApplicationsMessage", {
+                                count: vendorAppsN,
+                                unit: vendorAppsN === 1 ? t("topnav.notifications.applicationOne") : t("topnav.notifications.applicationMany"),
+                              })}
                             </p>
                             {digestFooter(
                               typeof vendorApplicationsDigestSourceMs === "number" &&
                                 !Number.isNaN(vendorApplicationsDigestSourceMs)
                                 ? vendorApplicationsDigestSourceMs
                                 : vendorDigestAt,
-                              "From Vendor section"
+                              t("topnav.notifications.fromVendor")
                             )}
                           </div>
                         </div>
@@ -429,16 +453,16 @@ export function TopNav({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
                               <p className="text-sm font-semibold text-slate-900 leading-tight">
-                                New chat messages
+                                {t("topnav.notifications.newChatMessages")}
                               </p>
                               <div className="w-2 h-2 rounded-full bg-purple-600 flex-shrink-0 mt-1" />
                             </div>
                             <p className="text-sm text-slate-600 leading-snug mb-2">
                               {chatUnreadN === 1
-                                ? "You have 1 unread customer message"
-                                : `You have ${chatUnreadN} unread customer messages`}
+                                ? t("topnav.notifications.chatOne")
+                                : interpolate("topnav.notifications.chatMany", { count: chatUnreadN })}
                             </p>
-                            {digestFooter(chatDigestAt, "From Chat")}
+                            {digestFooter(chatDigestAt, t("topnav.notifications.fromChat"))}
                           </div>
                         </div>
                       </div>
@@ -509,9 +533,9 @@ export function TopNav({
                   <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mb-4">
                     <Bell className="w-8 h-8 text-slate-400" />
                   </div>
-                  <p className="text-sm font-medium text-slate-900 mb-1">No notifications</p>
+                  <p className="text-sm font-medium text-slate-900 mb-1">{t("topnav.notifications.noNotifications")}</p>
                   <p className="text-xs text-slate-500 text-center">
-                    You're all caught up! We'll notify you when something new happens.
+                    {t("topnav.notifications.noNotificationsDesc")}
                   </p>
                 </div>
               )}
@@ -525,13 +549,13 @@ export function TopNav({
                   <div className="w-8 h-8 rounded-full overflow-hidden bg-red-600 flex-shrink-0">
                     <img 
                       src={currentUser.avatar}
-                      alt="Profile"
+                      alt={t("profile.title.view")}
                       className="w-full h-full object-cover"
                     />
                   </div>
                   <div className="hidden md:flex flex-col items-start">
                     <span className="text-sm font-medium">{currentUser.name}</span>
-                    <span className="text-xs text-slate-500">{currentUser.role}</span>
+                    <span className="text-xs text-slate-500">{translatedRole}</span>
                   </div>
                 </Button>
               </DropdownMenuTrigger>
@@ -540,13 +564,13 @@ export function TopNav({
                   onClick={onViewProfile}
                 >
                   <User className="mr-2 h-4 w-4" />
-                  View Profile
+                  {t("topnav.menu.viewProfile")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={onEditProfile}
                 >
                   <Edit className="mr-2 h-4 w-4" />
-                  Edit Profile
+                  {t("topnav.menu.editProfile")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem 
@@ -554,7 +578,7 @@ export function TopNav({
                   className="text-red-600 focus:text-red-600 focus:bg-red-50"
                 >
                   <LogOut className="mr-2 h-4 w-4" />
-                  {language === "en" ? "Sign Out" : "退出登录"}
+                  {t("topnav.menu.signOut")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

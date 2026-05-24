@@ -46,6 +46,7 @@ import { buildVendorDisplayLookup, resolveChatVendorLabel } from "../utils/vendo
 
 import { toast } from "sonner";
 import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface Message {
   id: string;
@@ -268,6 +269,7 @@ export function Chat({
   initialCustomer?: ChatInitialCustomer | null;
   onInitialCustomerHandled?: () => void;
 } = {}) {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortOrder, setSortOrder] = useState<"new-old" | "old-new" | "starred">("new-old");
   const [selectedConversation, setSelectedConversation] = useState<string | null>(
@@ -1164,7 +1166,7 @@ export function Chat({
 
   const handleDeleteConversation = async () => {
     if (!selectedConv) return;
-    if (!confirm("Delete this conversation and all its messages?")) return;
+    if (!confirm(t("chat.deleteConfirm"))) return;
     const aliasIds = selectedConv.aliasConversationIds?.filter(Boolean) || [];
     const allIds = Array.from(new Set([selectedConv.id, ...aliasIds]));
     const backupConversations = [...conversations];
@@ -1198,15 +1200,15 @@ export function Chat({
       <div className="px-6 py-4 border-b border-slate-200 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900">Chat</h1>
+            <h1 className="text-2xl font-semibold text-slate-900">{t("chat.title")}</h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              Connect with your customers in real-time
+              {t("chat.subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             {totalUnread > 0 && (
               <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white border-0">
-                {totalUnread} Unread
+                {totalUnread} {t("chat.unread")}
               </Badge>
             )}
           </div>
@@ -1220,14 +1222,14 @@ export function Chat({
           {/* Search */}
           <div className="p-4 border-b border-slate-200 bg-white space-y-2">
             <AdminClearableSearchInput
-              placeholder="Search conversations..."
+              placeholder={t("chat.searchPlaceholder")}
               value={searchQuery}
               onValueChange={setSearchQuery}
               className="bg-slate-50"
             />
             <div className="flex items-center justify-between">
               <span className="text-xs text-slate-500">
-                {sortedConversations.length} conversation{sortedConversations.length !== 1 ? 's' : ''}
+                {sortedConversations.length} {sortedConversations.length === 1 ? t("chat.conversationOne") : t("chat.conversationMany")}
               </span>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1235,17 +1237,17 @@ export function Chat({
                     {sortOrder === "new-old" ? (
                       <>
                         <ArrowDown className="w-3 h-3" />
-                        Newest First
+                        {t("chat.newestFirst")}
                       </>
                     ) : sortOrder === "old-new" ? (
                       <>
                         <ArrowUp className="w-3 h-3" />
-                        Oldest First
+                        {t("chat.oldestFirst")}
                       </>
                     ) : (
                       <>
                         <Star className="w-3 h-3" />
-                        Starred
+                        {t("chat.starred")}
                       </>
                     )}
                   </Button>
@@ -1253,15 +1255,15 @@ export function Chat({
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => setSortOrder("new-old")}>
                     <ArrowDown className="w-4 h-4 mr-2" />
-                    Newest First
+                    {t("chat.newestFirst")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSortOrder("old-new")}>
                     <ArrowUp className="w-4 h-4 mr-2" />
-                    Oldest First
+                    {t("chat.oldestFirst")}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSortOrder("starred")}>
                     <Star className="w-4 h-4 mr-2" />
-                    Starred
+                    {t("chat.starred")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1289,10 +1291,10 @@ export function Chat({
               <div className="flex flex-col items-center justify-center h-64 text-center px-4">
                 <MessageSquare className="w-12 h-12 text-slate-300 mb-3" />
                 <p className="text-sm text-slate-500">
-                  {searchQuery ? "No conversations found" : "No conversations yet"}
+                  {searchQuery ? t("chat.noConversationsFound") : t("chat.noConversationsYet")}
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  Customers will appear here when they message you
+                  {t("chat.emptyHint")}
                 </p>
               </div>
             ) : (
@@ -1347,7 +1349,7 @@ export function Chat({
                       </p>
                       {vendorBadgeLabel && (
                         <Badge variant="outline" className="text-xs mt-1 bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200 text-blue-700">
-                          🏪 From: {vendorBadgeLabel}
+                          🏪 {t("chat.from")} {vendorBadgeLabel}
                         </Badge>
                       )}
                     </div>
@@ -1408,7 +1410,7 @@ export function Chat({
                 <Button
                   variant="ghost"
                   size="icon"
-                  title={selectedConv?.starred ? "Unstar conversation" : "Star conversation"}
+                  title={selectedConv?.starred ? t("chat.unstarConversation") : t("chat.starConversation")}
                   onClick={handleToggleStarConversation}
                 >
                   <Star className={`w-5 h-5 ${selectedConv?.starred ? "fill-amber-400 text-amber-500" : ""}`} />
@@ -1416,7 +1418,7 @@ export function Chat({
                 <Button
                   variant="ghost"
                   size="icon"
-                  title="Delete conversation"
+                  title={t("chat.deleteConversation")}
                   onClick={handleDeleteConversation}
                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
@@ -1430,14 +1432,14 @@ export function Chat({
               {loadingMessages ? (
                 <div className="min-h-full flex flex-col items-center justify-center gap-3 p-6">
                   <Loader2 className="w-10 h-10 text-slate-400 animate-spin" />
-                  <p className="text-sm text-slate-500">Loading messages…</p>
+                  <p className="text-sm text-slate-500">{t("chat.loadingMessages")}</p>
                 </div>
               ) : messages.length === 0 ? (
                 <div className="min-h-full flex flex-col items-center justify-center text-center p-6">
                   <MessageSquare className="w-12 h-12 text-slate-300 mb-3" />
-                  <p className="text-sm text-slate-500">No messages yet</p>
+                  <p className="text-sm text-slate-500">{t("chat.noMessagesYet")}</p>
                   <p className="text-xs text-slate-400 mt-1">
-                    Start the conversation by sending a message
+                    {t("chat.startConversation")}
                   </p>
                 </div>
               ) : (
@@ -1464,7 +1466,7 @@ export function Chat({
                           {message.imageUrl && (
                             <img
                               src={message.imageUrl}
-                              alt="Attached image"
+                              alt={t("chat.attachedImage")}
                               className="max-w-full rounded-lg mb-2"
                               style={{ maxHeight: '300px' }}
                             />
@@ -1517,7 +1519,7 @@ export function Chat({
                 <div className="mb-3 flex items-start gap-2 p-2 bg-slate-100 rounded-lg">
                   <img 
                     src={selectedImage} 
-                    alt="Preview" 
+                    alt={t("chat.preview")} 
                     className="w-20 h-20 rounded object-cover"
                   />
                   <Button
@@ -1535,7 +1537,7 @@ export function Chat({
               {uploadingImage && (
                 <div className="mb-3 flex items-center gap-2 p-3 bg-amber-50 rounded-lg">
                   <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-                  <span className="text-sm text-amber-600">Compressing and uploading image...</span>
+                  <span className="text-sm text-amber-600">{t("chat.uploadingImage")}</span>
                 </div>
               )}
 
@@ -1559,7 +1561,7 @@ export function Chat({
                 <div className="flex-1">
                   <Textarea
                     id="admin-chat-composer-input"
-                    placeholder="Type your message..."
+                    placeholder={t("chat.typeMessage")}
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -1596,7 +1598,7 @@ export function Chat({
                   ) : (
                     <Send className="w-4 h-4 mr-2" />
                   )}
-                  Send
+                  {t("chat.send")}
                 </Button>
               </div>
             </div>
@@ -1606,10 +1608,10 @@ export function Chat({
             <div className="text-center">
               <MessageSquare className="w-16 h-16 text-slate-300 mx-auto mb-4" />
               <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                No conversation selected
+                {t("chat.noConversationSelected")}
               </h3>
               <p className="text-sm text-slate-500">
-                Choose a conversation from the list to start chatting
+                {t("chat.chooseConversation")}
               </p>
             </div>
           </div>
