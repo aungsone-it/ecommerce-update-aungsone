@@ -13,10 +13,16 @@ export type AdminClearableSearchInputProps = Omit<
   onClear?: () => void;
   /** Classes on the outer relative wrapper (defaults to full width). */
   wrapperClassName?: string;
+  /** Embedded submit — shown only while the field has text. */
+  onSubmit?: () => void;
+  submitDisabled?: boolean;
+  /** Emphasize submit when a server query is pending (e.g. draft ≠ committed). */
+  submitPending?: boolean;
+  submitLabel?: string;
 };
 
 /**
- * Super-admin search fields: leading search icon + optional trailing clear (×).
+ * Super-admin search fields: leading search icon + optional embedded submit + trailing clear (×).
  */
 export function AdminClearableSearchInput({
   value,
@@ -24,9 +30,14 @@ export function AdminClearableSearchInput({
   onClear,
   wrapperClassName,
   className,
+  onSubmit,
+  submitDisabled = false,
+  submitPending = false,
+  submitLabel = "Search",
   ...inputProps
 }: AdminClearableSearchInputProps) {
   const showClear = value.length > 0;
+  const showSubmit = onSubmit != null && value.trim().length > 0;
 
   return (
     <div className={cn("relative w-full", wrapperClassName)}>
@@ -38,8 +49,30 @@ export function AdminClearableSearchInput({
         {...inputProps}
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
-        className={cn("pl-10", showClear && "pr-10", className)}
+        className={cn(
+          "pl-10",
+          showSubmit && showClear && "pr-[5.75rem]",
+          showSubmit && !showClear && "pr-20",
+          showClear && !showSubmit && "pr-10",
+          className
+        )}
       />
+      {showSubmit && (
+        <button
+          type="button"
+          disabled={submitDisabled}
+          className={cn(
+            "absolute top-1/2 z-[1] -translate-y-1/2 rounded-md px-2.5 py-1 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+            showClear ? "right-9" : "right-1.5",
+            submitPending
+              ? "bg-slate-900 text-white hover:bg-slate-800"
+              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+          )}
+          onClick={onSubmit}
+        >
+          {submitLabel}
+        </button>
+      )}
       {showClear && (
         <button
           type="button"

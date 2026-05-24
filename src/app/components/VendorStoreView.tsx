@@ -5388,10 +5388,7 @@ export function VendorStoreView({
         {/* Footer - Same as main storefront */}
         {onBack && (
           <footer className="border-t mt-auto shrink-0 w-full">
-            <div className="max-w-7xl mx-auto px-4 py-8 text-center space-y-4">
-              <p className="text-sm text-slate-600">
-                Powered by <span className="font-bold text-slate-900">SECURE</span> ERP Platform
-              </p>
+            <div className="max-w-7xl mx-auto px-4 py-8 text-center">
               <p className="text-xs text-slate-500">
                 © {new Date().getFullYear()} {storeName}. All rights reserved.
               </p>
@@ -5967,10 +5964,7 @@ export function VendorStoreView({
       {/* Footer */}
       {onBack && !showVendorPageFullSkeleton && (
         <footer className="border-t mt-auto shrink-0 w-full">
-          <div className="max-w-7xl mx-auto px-4 py-8 text-center space-y-4">
-            <p className="text-sm text-slate-600">
-              Powered by <span className="font-bold text-slate-900">SECURE</span> ERP Platform
-            </p>
+          <div className="max-w-7xl mx-auto px-4 py-8 text-center">
             <p className="text-xs text-slate-500">
               © {new Date().getFullYear()} {storeName}. All rights reserved.
             </p>

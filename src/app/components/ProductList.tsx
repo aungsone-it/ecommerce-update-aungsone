@@ -8,7 +8,6 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
-  RefreshCw,
 } from "lucide-react";
 import { productsApi } from "../../utils/api";
 import { Product } from "../../types";
@@ -264,6 +263,8 @@ export function ProductList({
   const [committedSearchQuery, setCommittedSearchQuery] = useState("");
   const lastHeaderCommitTick = useRef(0);
   const skipCacheSoftReloadRef = useRef(false);
+  const initialLoadDoneRef = useRef(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const prevAdminPageSizeRef = useRef<number | null>(null);
   const [adminPage, setAdminPage] = useState(1);
   const [adminPageSize, setAdminPageSize] = useState(readPersistedAdminProductsPageSize);
@@ -322,9 +323,12 @@ export function ProductList({
   const loadProductPage = useCallback(
     async (forceRefresh: boolean, opts?: { silent?: boolean }) => {
       const silent = opts?.silent === true;
-      if (!silent) {
+      const tableOnlyRefresh = initialLoadDoneRef.current && !silent;
+      if (!silent && !initialLoadDoneRef.current) {
         setLoading(true);
-        setListRefreshing(forceRefresh);
+      }
+      if (!silent) {
+        setListRefreshing(tableOnlyRefresh || forceRefresh);
       }
       try {
         const payload = await getCachedAdminProductsPage(
@@ -360,7 +364,13 @@ export function ProductList({
         });
       } finally {
         setListRefreshing(false);
-        if (!silent) setLoading(false);
+        if (!silent && !initialLoadDoneRef.current) {
+          setLoading(false);
+        }
+        if (!initialLoadDoneRef.current) {
+          initialLoadDoneRef.current = true;
+          setInitialLoadDone(true);
+        }
       }
     },
     [
@@ -410,9 +420,9 @@ export function ProductList({
       onListingCountChange(null);
       return;
     }
-    const hideUntilKnown = loading && products.length === 0;
+    const hideUntilKnown = !initialLoadDone && loading && products.length === 0;
     onListingCountChange(hideUntilKnown ? null : adminTotal);
-  }, [currentView, adminTotal, loading, products.length, onListingCountChange]);
+  }, [currentView, adminTotal, loading, initialLoadDone, products.length, onListingCountChange]);
 
   useEffect(() => {
     loadVendors();
@@ -612,8 +622,13 @@ export function ProductList({
   );
 
   const commitSearchFromInput = useCallback(() => {
-    setCommittedSearchQuery(searchQuery.trim());
-  }, [searchQuery]);
+    const q = searchQuery.trim();
+    if (q === committedSearchQuery.trim()) {
+      void loadProductPage(true);
+      return;
+    }
+    setCommittedSearchQuery(q);
+  }, [searchQuery, committedSearchQuery, loadProductPage]);
 
   const onSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -951,6 +966,50 @@ export function ProductList({
   }, []);
 
   const adminTotalPages = Math.max(1, Math.ceil(adminTotal / adminPageSize) || 1);
+  const hasPendingServerSearch =
+    searchQuery.trim() !== committedSearchQuery.trim();
+  const showTableSkeleton = (!initialLoadDone && loading) || listRefreshing;
+
+  const productTableSkeletonRows = Array.from({ length: 8 }).map((_, index) => (
+    <tr key={`skeleton-row-${index}`} className="border-b border-slate-100 animate-pulse">
+      <td className="py-3 px-4">
+        <div className="w-4 h-4 bg-slate-200 rounded" />
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-slate-200 rounded-lg" />
+          <div className="space-y-2">
+            <div className="h-4 bg-slate-200 rounded w-32" />
+            <div className="h-3 bg-slate-200 rounded w-20"></div>
+          </div>
+        </div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="h-6 bg-slate-200 rounded w-16"></div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="h-4 bg-slate-200 rounded w-8"></div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="h-4 bg-slate-200 rounded w-24"></div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="h-4 bg-slate-200 rounded w-20"></div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="h-4 bg-slate-200 rounded w-16"></div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="h-4 bg-slate-200 rounded w-12"></div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 bg-slate-200 rounded" />
+          <div className="h-8 w-8 bg-slate-200 rounded" />
+        </div>
+      </td>
+    </tr>
+  ));
 
   return (
     <>
@@ -1000,27 +1059,13 @@ export function ProductList({
               <p className="text-slate-500 mt-1">{t('products.subtitle')}</p>
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2"
-                disabled={loading && listRefreshing}
-                onClick={() => {
-                  invalidateAdminAllProductsCache();
-                  void loadProductPage(true);
-                }}
-              >
-                <RefreshCw className={`w-4 h-4 ${listRefreshing ? "animate-spin" : ""}`} />
-                Refresh
-              </Button>
               <Button className="bg-slate-900 hover:bg-slate-800" onClick={() => setCurrentView("add")}>
                 {t('products.addProduct')}
               </Button>
             </div>
           </div>
 
-          {/* Loading State */}
-          {loading && (
+          {!initialLoadDone && loading && (
             <Card>
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -1039,66 +1084,27 @@ export function ProductList({
                       <th className="text-left py-3 px-4 font-medium text-slate-600 text-sm align-middle">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {Array.from({ length: 8 }).map((_, index) => (
-                      <tr key={`skeleton-row-${index}`} className="border-b border-slate-100 animate-pulse">
-                        <td className="py-3 px-4">
-                          <div className="w-4 h-4 bg-slate-200 rounded"></div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-slate-200 rounded-lg"></div>
-                            <div className="space-y-2">
-                              <div className="h-4 bg-slate-200 rounded w-32"></div>
-                              <div className="h-3 bg-slate-200 rounded w-20"></div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="h-6 bg-slate-200 rounded w-16"></div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="h-4 bg-slate-200 rounded w-8"></div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="h-4 bg-slate-200 rounded w-24"></div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="h-4 bg-slate-200 rounded w-20"></div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="h-4 bg-slate-200 rounded w-16"></div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="h-4 bg-slate-200 rounded w-12"></div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 bg-slate-200 rounded"></div>
-                            <div className="h-8 w-8 bg-slate-200 rounded"></div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
+                  <tbody>{productTableSkeletonRows}</tbody>
                 </table>
               </div>
             </Card>
           )}
 
-          {/* Products Content */}
-          {!loading && (
+          {initialLoadDone && (
             <>
               <Card className="p-4">
                     <div className="flex flex-col lg:flex-row items-start lg:items-center gap-4">
                       {/* Search */}
                       <div className="flex-1 min-w-[280px]">
                         <AdminClearableSearchInput
-                          placeholder="Search by name or SKU — press Enter to search"
+                          placeholder="Search by name or SKU — Press Search Button to Search"
                           value={searchQuery}
                           onValueChange={handleSearchInputChange}
                           onKeyDown={onSearchKeyDown}
                           onClear={() => setCommittedSearchQuery("")}
+                          onSubmit={commitSearchFromInput}
+                          submitDisabled={listRefreshing || !searchQuery.trim()}
+                          submitPending={hasPendingServerSearch}
                         />
                       </div>
                       
@@ -1185,7 +1191,32 @@ export function ProductList({
                       </tr>
                     </thead>
                     <tbody>
-                      {displayProducts.map((product) => (
+                      {showTableSkeleton ? (
+                        productTableSkeletonRows
+                      ) : displayProducts.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-10 px-4 text-center text-sm text-slate-500">
+                            {searchQuery.trim() ? (
+                              <>
+                                No products match on this page
+                                {hasPendingServerSearch ? (
+                                  <>
+                                    {" "}
+                                    — click <span className="font-medium text-slate-700">Search</span> to
+                                    search the full catalog
+                                  </>
+                                ) : (
+                                  <> for &ldquo;{searchQuery.trim()}&rdquo;</>
+                                )}
+                                .
+                              </>
+                            ) : (
+                              "No products found."
+                            )}
+                          </td>
+                        </tr>
+                      ) : (
+                      displayProducts.map((product) => (
                         <tr key={product.id} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="py-3 px-4">
                             <Checkbox
@@ -1334,7 +1365,8 @@ export function ProductList({
                             </DropdownMenu>
                           </td>
                         </tr>
-                      ))}
+                      ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1365,7 +1397,7 @@ export function ProductList({
                       variant="outline"
                       size="sm"
                       className="h-8"
-                      disabled={adminPage <= 1 || loading}
+                      disabled={adminPage <= 1 || listRefreshing}
                       onClick={() => setAdminPage((p) => Math.max(1, p - 1))}
                     >
                       <ChevronLeft className="w-4 h-4" />
@@ -1375,7 +1407,7 @@ export function ProductList({
                       variant="outline"
                       size="sm"
                       className="h-8"
-                      disabled={!adminHasMore || loading}
+                      disabled={!adminHasMore || listRefreshing}
                       onClick={() => setAdminPage((p) => p + 1)}
                     >
                       <ChevronRight className="w-4 h-4" />
