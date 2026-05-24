@@ -100,6 +100,10 @@ type ApplicationReviewShape = {
   phone: string;
   location: string;
   website?: string;
+  instagram?: string;
+  facebook?: string;
+  youtube?: string;
+  tiktok?: string;
   businessType: string;
   taxId: string;
   description: string;
@@ -128,6 +132,10 @@ function mapApiApplicationToReviewShape(app: Record<string, unknown>): Applicati
         ? `${app.city}, ${app.country}`
         : String((app.address as string) || "N/A"),
     website: app.website as string | undefined,
+    instagram: app.instagram as string | undefined,
+    facebook: app.facebook as string | undefined,
+    youtube: app.youtube as string | undefined,
+    tiktok: app.tiktok as string | undefined,
     businessType: String(app.businessType ?? ""),
     taxId: String((app.registrationNumber as string) || (app.taxId as string) || "N/A"),
     description: String(

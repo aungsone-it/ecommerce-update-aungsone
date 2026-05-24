@@ -15,7 +15,6 @@ import {
   CreditCard,
   Package,
   Image as ImageIcon,
-  ExternalLink
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
@@ -26,17 +25,24 @@ import { Separator } from "./ui/separator";
 import { vendorApplicationsApi } from "../../utils/api";
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
+import { VendorOnlinePresenceDisplay } from "./VendorOnlinePresenceFields";
+import { hasOnlinePresenceLinks, pickOnlinePresenceLinks } from "../utils/vendorOnlinePresence";
 
 type ApplicationStatus = "pending" | "approved" | "rejected";
 
 interface VendorApplication {
   id: string;
+  applicationType?: "professional" | "influencer";
   businessName: string;
   contactName: string;
   email: string;
   phone: string;
   location: string;
   website?: string;
+  instagram?: string;
+  facebook?: string;
+  youtube?: string;
+  tiktok?: string;
   businessType: string;
   taxId: string;
   description: string;
@@ -79,6 +85,7 @@ export function VendorApplicationReview({
   const [reviewNotes, setReviewNotes] = useState(application.notes || "");
   const [updating, setUpdating] = useState(false);
   const [viewingImage, setViewingImage] = useState<{ url: string; name: string } | null>(null);
+  const onlinePresenceLinks = pickOnlinePresenceLinks(application);
 
   const getStatusBadge = (status: ApplicationStatus) => {
     const variants: Record<ApplicationStatus, { color: string; label: string; icon: any }> = {
@@ -218,7 +225,14 @@ export function VendorApplicationReview({
               </Button>
               <div>
                 <h1 className="text-2xl font-semibold text-slate-900">Vendor Application Review</h1>
-                <p className="text-sm text-slate-500 mt-0.5">{application.businessName} - {application.contactName}</p>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  {application.businessName} - {application.contactName}
+                  {application.applicationType === "influencer" && (
+                    <Badge className="ml-2 bg-purple-50 text-purple-700 border-purple-200">
+                      Creator / Influencer
+                    </Badge>
+                  )}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -274,17 +288,21 @@ export function VendorApplicationReview({
             <div className="p-6">
               <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
                 <Building2 className="w-5 h-5" />
-                Business Information
+                {application.applicationType === "influencer" ? "Applicant Information" : "Business Information"}
               </h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50 p-4 rounded-lg">
-                  <Label className="text-xs text-slate-500 mb-1 block">Business Name</Label>
+                  <Label className="text-xs text-slate-500 mb-1 block">
+                    {application.applicationType === "influencer" ? "Store / Brand Name" : "Business Name"}
+                  </Label>
                   <p className="font-medium text-slate-900">{application.businessName}</p>
                 </div>
                 <div className="bg-slate-50 p-4 rounded-lg">
                   <Label className="text-xs text-slate-500 mb-1 block">Contact Person</Label>
                   <p className="font-medium text-slate-900">{application.contactName}</p>
                 </div>
+                {application.applicationType !== "influencer" && (
+                <>
                 <div className="bg-slate-50 p-4 rounded-lg">
                   <Label className="text-xs text-slate-500 mb-1 block">Business Type</Label>
                   <p className="font-medium text-slate-900">{application.businessType}</p>
@@ -293,6 +311,8 @@ export function VendorApplicationReview({
                   <Label className="text-xs text-slate-500 mb-1 block">Tax ID / Registration Number</Label>
                   <p className="font-medium text-slate-900">{application.taxId}</p>
                 </div>
+                </>
+                )}
                 <div className="bg-slate-50 p-4 rounded-lg">
                   <Label className="text-xs text-slate-500 mb-1 block">Email</Label>
                   <p className="font-medium text-slate-900">{application.email}</p>
@@ -301,22 +321,27 @@ export function VendorApplicationReview({
                   <Label className="text-xs text-slate-500 mb-1 block">Phone</Label>
                   <p className="font-medium text-slate-900">{application.phone}</p>
                 </div>
+                {application.applicationType !== "influencer" && application.location !== "N/A" && (
                 <div className="bg-slate-50 p-4 rounded-lg">
                   <Label className="text-xs text-slate-500 mb-1 block">Location</Label>
                   <p className="font-medium text-slate-900">{application.location}</p>
                 </div>
-                {application.website && (
-                  <div className="bg-slate-50 p-4 rounded-lg">
-                    <Label className="text-xs text-slate-500 mb-1 block">Website</Label>
-                    <a href={application.website} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline flex items-center gap-1">
-                      {application.website}
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
                 )}
               </div>
             </div>
           </Card>
+
+          {hasOnlinePresenceLinks(onlinePresenceLinks) && (
+          <Card className="border border-slate-200 bg-white">
+            <div className="p-6">
+              <h3 className="font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                <Globe className="w-5 h-5" />
+                Online Presence
+              </h3>
+              <VendorOnlinePresenceDisplay links={onlinePresenceLinks} title="" />
+            </div>
+          </Card>
+          )}
 
           {/* Product details */}
           <Card className="border border-slate-200 bg-white">
@@ -333,6 +358,7 @@ export function VendorApplicationReview({
                   </div>
                   <p className="font-semibold text-slate-900">{application.productsCategory}</p>
                 </div>
+                {application.applicationType !== "influencer" && application.estimatedProducts > 0 && (
                 <div className="bg-purple-50 p-4 rounded-lg border border-purple-100">
                   <div className="flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4 text-purple-600" />
@@ -340,6 +366,7 @@ export function VendorApplicationReview({
                   </div>
                   <p className="font-semibold text-slate-900">{application.estimatedProducts}</p>
                 </div>
+                )}
               </div>
             </div>
           </Card>

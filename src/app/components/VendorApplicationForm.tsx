@@ -12,6 +12,7 @@ import {
   X, 
   Mail,
   Sparkles,
+  Store,
 } from "lucide-react";
 import { toast } from "sonner";
 import { publicAnonKey } from "../../../utils/supabase/info";
@@ -23,6 +24,11 @@ import {
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
 import { Button } from "./ui/button";
+import { VendorOnlinePresenceFormFields } from "./VendorOnlinePresenceFields";
+import {
+  VENDOR_ONLINE_PRESENCE_FIELDS,
+  validateOptionalOnlinePresenceField,
+} from "../utils/vendorOnlinePresence";
 
 interface VendorApplicationFormProps {
   onBack?: () => void;
@@ -71,30 +77,11 @@ function validateRegistrationNumber(s: string): boolean {
   return /^[A-Za-z0-9\-/ ]+$/.test(t);
 }
 
-function validateVendorApplicationStrict(
-  formData: Record<string, unknown>,
-  files: { businessLicense: File | null; idDocument: File | null },
-  allowedBusinessTypes: readonly string[]
-): string[] {
+type VendorApplicationType = "professional" | "influencer";
+
+function validateSharedApplicationFields(formData: Record<string, unknown>): string[] {
   const errs: string[] = [];
   const str = (k: string) => String(formData[k] ?? "").trim();
-
-  const companyName = str("companyName");
-  if (companyName.length < 2 || companyName.length > 120) {
-    errs.push("Company name must be between 2 and 120 characters.");
-  }
-
-  const businessType = str("businessType");
-  if (!businessType || !allowedBusinessTypes.includes(businessType)) {
-    errs.push("Please select a valid business type.");
-  }
-
-  const reg = str("registrationNumber");
-  if (!validateRegistrationNumber(reg)) {
-    errs.push(
-      "Business registration number is required (4–40 characters: letters, numbers, spaces, hyphen or /)."
-    );
-  }
 
   const contactName = str("contactName");
   if (contactName.length < 2 || contactName.length > 100) {
@@ -130,10 +117,52 @@ function validateVendorApplicationStrict(
     errs.push("Select at least one product category.");
   }
 
-  const estRaw = String(formData.estimatedProducts ?? "").trim();
-  const est = parseInt(estRaw, 10);
-  if (!/^\d+$/.test(estRaw) || est < 1 || est > 1_000_000) {
-    errs.push("Estimated number of products must be a whole number from 1 to 1,000,000.");
+  const bankName = str("bankName");
+  if (bankName.length < 2 || bankName.length > 100) {
+    errs.push("Bank name must be between 2 and 100 characters.");
+  }
+
+  const accountName = str("accountName");
+  if (accountName.length < 2 || accountName.length > 120) {
+    errs.push("Account holder name must be between 2 and 120 characters.");
+  }
+
+  const acctDigits = str("accountNumber").replace(/\D/g, "");
+  if (!/^\d{6,22}$/.test(acctDigits)) {
+    errs.push("Account number must be 6–22 digits (spaces allowed for grouping).");
+  }
+
+  const agree = Boolean(formData.agreeToTerms);
+  const privacy = Boolean(formData.acceptPrivacy);
+  if (!agree) errs.push("You must agree to the terms and conditions.");
+  if (!privacy) errs.push("You must accept the privacy policy.");
+
+  return errs;
+}
+
+function validateProfessionalApplicationFields(
+  formData: Record<string, unknown>,
+  files: { businessLicense: File | null; idDocument: File | null },
+  allowedBusinessTypes: readonly string[]
+): string[] {
+  const errs: string[] = [];
+  const str = (k: string) => String(formData[k] ?? "").trim();
+
+  const companyName = str("companyName");
+  if (companyName.length < 2 || companyName.length > 120) {
+    errs.push("Company name must be between 2 and 120 characters.");
+  }
+
+  const businessType = str("businessType");
+  if (!businessType || !allowedBusinessTypes.includes(businessType)) {
+    errs.push("Please select a valid business type.");
+  }
+
+  const reg = str("registrationNumber");
+  if (!validateRegistrationNumber(reg)) {
+    errs.push(
+      "Business registration number is required (4–40 characters: letters, numbers, spaces, hyphen or /)."
+    );
   }
 
   const address = str("address");
@@ -156,21 +185,6 @@ function validateVendorApplicationStrict(
     errs.push("Postal code must be 2–12 characters (letters, numbers, spaces, or hyphen).");
   }
 
-  const bankName = str("bankName");
-  if (bankName.length < 2 || bankName.length > 100) {
-    errs.push("Bank name must be between 2 and 100 characters.");
-  }
-
-  const accountName = str("accountName");
-  if (accountName.length < 2 || accountName.length > 120) {
-    errs.push("Account holder name must be between 2 and 120 characters.");
-  }
-
-  const acctDigits = str("accountNumber").replace(/\D/g, "");
-  if (!/^\d{6,22}$/.test(acctDigits)) {
-    errs.push("Account number must be 6–22 digits (spaces allowed for grouping).");
-  }
-
   const website = str("website");
   if (website) {
     try {
@@ -185,19 +199,57 @@ function validateVendorApplicationStrict(
   if (fb && fb.length < 4) errs.push("Facebook link is too short (or leave it blank).");
   const ig = str("instagram");
   if (ig && ig.length < 2) errs.push("Instagram handle or URL is too short (or leave it blank).");
+  const yt = str("youtube");
+  if (yt && yt.length < 2) errs.push("YouTube link is too short (or leave it blank).");
+  const tt = str("tiktok");
+  if (tt && tt.length < 2) errs.push("TikTok handle or URL is too short (or leave it blank).");
 
   if (!files.businessLicense) errs.push("Upload a business license document.");
   if (!files.idDocument) errs.push("Upload an ID document (passport or driver license).");
 
-  const agree = Boolean(formData.agreeToTerms);
-  const privacy = Boolean(formData.acceptPrivacy);
-  if (!agree) errs.push("You must agree to the terms and conditions.");
-  if (!privacy) errs.push("You must accept the privacy policy.");
+  return errs;
+}
+
+function validateInfluencerApplicationFields(
+  formData: Record<string, unknown>,
+  files: { idDocument: File | null }
+): string[] {
+  const errs: string[] = [];
+  const str = (k: string) => String(formData[k] ?? "").trim();
+
+  const fb = str("facebook");
+  const ig = str("instagram");
+  const yt = str("youtube");
+  const tt = str("tiktok");
+  if (!fb && !ig && !yt && !tt) {
+    errs.push("Add at least one profile (Facebook, YouTube, TikTok, or Instagram). Website is optional.");
+  }
+
+  for (const { key } of VENDOR_ONLINE_PRESENCE_FIELDS) {
+    const msg = validateOptionalOnlinePresenceField(key, str(key));
+    if (msg) errs.push(msg);
+  }
+
+  if (!files.idDocument) errs.push("Upload an ID document (passport or national ID).");
 
   return errs;
 }
 
+function validateVendorApplicationStrict(
+  applicationType: VendorApplicationType,
+  formData: Record<string, unknown>,
+  files: { businessLicense: File | null; idDocument: File | null },
+  allowedBusinessTypes: readonly string[]
+): string[] {
+  const shared = validateSharedApplicationFields(formData);
+  if (applicationType === "professional") {
+    return [...shared, ...validateProfessionalApplicationFields(formData, files, allowedBusinessTypes)];
+  }
+  return [...shared, ...validateInfluencerApplicationFields(formData, files)];
+}
+
 export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplicationFormProps) {
+  const [applicationType, setApplicationType] = useState<VendorApplicationType>("professional");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [formData, setFormData] = useState({
@@ -215,7 +267,6 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     storeName: "",
     storeDescription: "",
     categories: [] as string[],
-    estimatedProducts: 0,
 
     // Business Address
     address: "",
@@ -231,6 +282,8 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     // Social Links
     website: "",
     facebook: "",
+    youtube: "",
+    tiktok: "",
     instagram: "",
 
     // Terms
@@ -316,12 +369,6 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
       setFormData((prev) => ({
         ...prev,
         [name]: (e.target as HTMLInputElement).checked,
-      }));
-    } else if (name === "estimatedProducts") {
-      const n = parseInt(value, 10);
-      setFormData((prev) => ({
-        ...prev,
-        estimatedProducts: Number.isNaN(n) ? 0 : n,
       }));
     } else {
       setFormData((prev) => ({
@@ -498,10 +545,22 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     }));
   };
 
+  const handleApplicationTypeChange = (next: VendorApplicationType) => {
+    setApplicationType(next);
+    if (next === "influencer") {
+      setFiles((prev) => ({ ...prev, businessLicense: null }));
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const validationErrors = validateVendorApplicationStrict(formData, files, BUSINESS_TYPE_OPTIONS);
+    const validationErrors = validateVendorApplicationStrict(
+      applicationType,
+      formData,
+      files,
+      BUSINESS_TYPE_OPTIONS
+    );
     if (validationErrors.length > 0) {
       const maxShow = 5;
       const head = validationErrors.slice(0, maxShow);
@@ -528,25 +587,39 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     setIsSubmitting(true);
 
     try {
-      const businessLicenseBase64 = await fileToBase64(files.businessLicense);
-      const idDocumentBase64 = await fileToBase64(files.idDocument);
+      const idDocumentBase64 = await fileToBase64(files.idDocument!);
+      const businessLicenseBase64 =
+        applicationType === "professional" && files.businessLicense
+          ? await fileToBase64(files.businessLicense)
+          : null;
 
       const applicationData = {
         ...formData,
+        applicationType,
+        ...(applicationType === "influencer"
+          ? {
+              companyName: formData.storeName,
+              businessType: "Creator / Influencer",
+            }
+          : {}),
         files: {
-          businessLicense: {
-            name: files.businessLicense.name,
-            type: files.businessLicense.type,
-            data: businessLicenseBase64
-          },
+          ...(businessLicenseBase64 && files.businessLicense
+            ? {
+                businessLicense: {
+                  name: files.businessLicense.name,
+                  type: files.businessLicense.type,
+                  data: businessLicenseBase64,
+                },
+              }
+            : {}),
           idDocument: {
-            name: files.idDocument.name,
-            type: files.idDocument.type,
-            data: idDocumentBase64
-          }
+            name: files.idDocument!.name,
+            type: files.idDocument!.type,
+            data: idDocumentBase64,
+          },
         },
         status: "pending",
-        submittedAt: new Date().toISOString()
+        submittedAt: new Date().toISOString(),
       };
 
       const response = await fetch(
@@ -636,7 +709,8 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                 What&apos;s next?
               </p>
               <p className="text-slate-700 text-sm sm:text-base leading-relaxed">
-                Our team will verify your documents and contact you via email.
+                Our team will verify your{" "}
+                {applicationType === "influencer" ? "ID" : "documents"} and contact you via email.
               </p>
               <div className="mt-5 flex items-center gap-3 rounded-xl bg-white/70 border border-orange-100/60 px-4 py-3.5">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
@@ -689,7 +763,52 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
       {/* Form */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <form noValidate onSubmit={handleSubmit} className="space-y-6">
-          {/* Business Information */}
+          {/* Application type toggle */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-5">
+            <p className="text-sm font-medium text-slate-700 mb-3">Who is applying?</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => handleApplicationTypeChange("professional")}
+                className={`rounded-xl border p-4 text-left transition-all ${
+                  applicationType === "professional"
+                    ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900"
+                    : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/80"
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
+                    <Store className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <span className="font-semibold text-slate-900">Professional Store</span>
+                </div>
+                <p className="text-sm text-slate-500">
+                  Registered business with company details, address, and business license.
+                </p>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleApplicationTypeChange("influencer")}
+                className={`rounded-xl border p-4 text-left transition-all ${
+                  applicationType === "influencer"
+                    ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900"
+                    : "border-slate-200 hover:border-slate-300 hover:bg-slate-50/80"
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <span className="font-semibold text-slate-900">Creator / Influencer</span>
+                </div>
+                <p className="text-sm text-slate-500">
+                  Individual seller — no company registration or business license required.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {applicationType === "professional" && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
@@ -750,6 +869,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
               </div>
             </div>
           </div>
+          )}
 
           {/* Contact Person */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -758,8 +878,14 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                 <User className="w-5 h-5 text-green-600" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-slate-900">Contact Person</h3>
-                <p className="text-sm text-slate-500">Primary contact information</p>
+                <h3 className="text-base font-semibold text-slate-900">
+                  {applicationType === "influencer" ? "Your Details" : "Contact Person"}
+                </h3>
+                <p className="text-sm text-slate-500">
+                  {applicationType === "influencer"
+                    ? "How we can reach you"
+                    : "Primary contact information"}
+                </p>
               </div>
             </div>
 
@@ -836,7 +962,11 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
               </div>
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Store Details</h3>
-                <p className="text-sm text-slate-500">Information about your store</p>
+                <p className="text-sm text-slate-500">
+                  {applicationType === "influencer"
+                    ? "Tell us about your shop or brand"
+                    : "Information about your store"}
+                </p>
               </div>
             </div>
 
@@ -894,28 +1024,29 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   ))}
                 </div>
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  Estimated Number of Products *
-                </label>
-                <input
-                  type="number"
-                  name="estimatedProducts"
-                  min={1}
-                  max={1000000}
-                  step={1}
-                  value={formData.estimatedProducts || ""}
-                  onChange={handleInputChange}
-                  aria-required="true"
-                  className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all md:max-w-md"
-                  placeholder="e.g. 50"
-                />
-              </div>
             </div>
           </div>
 
-          {/* Business Address */}
+          {applicationType === "influencer" && (
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Online Presence</h3>
+                <p className="text-sm text-slate-500">Add at least one profile (Facebook, YouTube, TikTok, or Instagram). Website is optional.</p>
+              </div>
+            </div>
+
+            <VendorOnlinePresenceFormFields
+              values={formData}
+              onChange={(key, value) => setFormData((prev) => ({ ...prev, [key]: value }))}
+            />
+          </div>
+          )}
+
+          {applicationType === "professional" && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 bg-orange-50 rounded-lg flex items-center justify-center">
@@ -985,6 +1116,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
               </div>
             </div>
           </div>
+          )}
 
           {/* Bank Information */}
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -1051,12 +1183,16 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
               </div>
               <div>
                 <h3 className="text-base font-semibold text-slate-900">Required Documents</h3>
-                <p className="text-sm text-slate-500">Images (max 500KB), PDF/DOC files (max 2MB)</p>
+                <p className="text-sm text-slate-500">
+                  {applicationType === "influencer"
+                    ? "Upload a valid ID — images max 500KB, PDF/DOC max 2MB"
+                    : "Images (max 500KB), PDF/DOC files (max 2MB)"}
+                </p>
               </div>
             </div>
 
             <div className="space-y-4">
-              {/* Business License */}
+              {applicationType === "professional" && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
                   Business License *
@@ -1086,11 +1222,14 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   </label>
                 )}
               </div>
+              )}
 
               {/* ID Document */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                  ID Document (Passport/Driver's License) *
+                  {applicationType === "influencer"
+                    ? "ID Document (Passport / National ID) *"
+                    : "ID Document (Passport/Driver's License) *"}
                 </label>
                 {files.idDocument ? (
                   <div className="flex items-center gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">

@@ -364,6 +364,25 @@ export const vendorsApi = {
 };
 
 // ============================================
+// SOCIAL PROFILE PREVIEW API
+// ============================================
+
+import type { SocialProfilePreview } from "../app/utils/socialProfile";
+
+export const socialProfilesApi = {
+  previewBatch: async (
+    profiles: { platform: string; url: string }[],
+    refreshKey = 0
+  ): Promise<{ success: boolean; profiles: SocialProfilePreview[] }> => {
+    return apiClient.post(
+      `/social-profiles/preview?_=${refreshKey || Date.now()}`,
+      { profiles, _t: Date.now() },
+      { silent: true, cache: "no-store" }
+    );
+  },
+};
+
+// ============================================
 // VENDOR APPLICATIONS API
 // ============================================
 

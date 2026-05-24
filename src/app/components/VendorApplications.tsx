@@ -47,12 +47,17 @@ type ApplicationStatus = "pending" | "approved" | "rejected";
 
 interface VendorApplication {
   id: string;
+  applicationType?: "professional" | "influencer";
   businessName: string;
   contactName: string;
   email: string;
   phone: string;
   location: string;
   website?: string;
+  instagram?: string;
+  facebook?: string;
+  youtube?: string;
+  tiktok?: string;
   businessType: string;
   taxId: string;
   description: string;
@@ -86,6 +91,10 @@ interface VendorApplicationsProps {
 function mapRawRecordToVendorApplication(app: Record<string, unknown>): VendorApplication {
   return {
     id: String(app.id ?? ""),
+    applicationType:
+      app.applicationType === "influencer" || app.businessType === "Creator / Influencer"
+        ? "influencer"
+        : "professional",
     businessName: (app.companyName || app.businessName || "Unknown") as string,
     contactName: (app.contactName || "N/A") as string,
     email: String(app.email ?? ""),
@@ -94,7 +103,11 @@ function mapRawRecordToVendorApplication(app: Record<string, unknown>): VendorAp
       app.city && app.country
         ? `${app.city}, ${app.country}`
         : String(app.address || "N/A"),
-    website: app.website as string | undefined,
+    website: app.website ? String(app.website).trim() || undefined : undefined,
+    instagram: app.instagram ? String(app.instagram).trim() || undefined : undefined,
+    facebook: app.facebook ? String(app.facebook).trim() || undefined : undefined,
+    youtube: app.youtube ? String(app.youtube).trim() || undefined : undefined,
+    tiktok: app.tiktok ? String(app.tiktok).trim() || undefined : undefined,
     businessType: String(app.businessType ?? ""),
     taxId: String(app.registrationNumber || app.taxId || "N/A"),
     description: String(app.storeDescription || app.description || "No description provided"),
@@ -406,11 +419,17 @@ export function VendorApplications({
                               <Badge variant="outline" className="bg-slate-50">
                                 {application.productsCategory}
                               </Badge>
-                              <Badge variant="outline" className="bg-slate-50">
-                                ~{application.estimatedProducts} Products
-                              </Badge>
-                              <Badge variant="outline" className="bg-slate-50">
-                                {application.businessType}
+                              <Badge
+                                variant="outline"
+                                className={
+                                  application.applicationType === "influencer"
+                                    ? "bg-purple-50 text-purple-700 border-purple-200"
+                                    : "bg-slate-50"
+                                }
+                              >
+                                {application.applicationType === "influencer"
+                                  ? "Creator / Influencer"
+                                  : application.businessType || "Professional Store"}
                               </Badge>
                             </div>
                           </div>

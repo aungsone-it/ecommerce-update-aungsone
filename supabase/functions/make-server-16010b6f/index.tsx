@@ -6,6 +6,7 @@ import authApp from "./auth_routes.tsx";
 import blogEngagementApp from "./blog_engagement_routes.tsx";
 import customerApp from "./customer_routes.tsx";
 import userApp from "./user_routes.tsx";
+import socialProfileApp from "./social_profile_routes.tsx";
 import { createPaymentIntent, verifyPayment } from "./stripe_routes.tsx";
 import {
   createKPayQr,
@@ -763,6 +764,7 @@ app.route("/make-server-16010b6f", customerApp);
 // USER PROFILE ROUTES
 // ============================================
 app.route("/make-server-16010b6f", userApp);
+app.route("/make-server-16010b6f", socialProfileApp);
 
 // ============================================
 // STRIPE PAYMENT ROUTES
@@ -7284,6 +7286,10 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
       businessType: (application as any).businessType,
       taxId: (application as any).registrationNumber || (application as any).taxId,
       website: (application as any).website,
+      facebook: (application as any).facebook,
+      instagram: (application as any).instagram,
+      youtube: (application as any).youtube,
+      tiktok: (application as any).tiktok,
       description: (application as any).storeDescription || (application as any).description,
       categories: (application as any).categories || [],
       contactName: (application as any).contactName,
@@ -7308,6 +7314,13 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
       logo: "",
       banner: "",
       isActive: true,
+      socialLinks: {
+        facebook: (application as any).facebook || "",
+        instagram: (application as any).instagram || "",
+        youtube: (application as any).youtube || "",
+        tiktok: (application as any).tiktok || "",
+        website: (application as any).website || "",
+      },
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

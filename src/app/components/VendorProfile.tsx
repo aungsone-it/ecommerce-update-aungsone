@@ -25,6 +25,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { AdminClearableSearchInput } from "./AdminClearableSearchInput";
+import { VendorOnlinePresenceProfileView } from "./VendorOnlinePresenceFields";
+import { pickOnlinePresenceLinks } from "../utils/vendorOnlinePresence";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -92,6 +94,10 @@ interface Vendor {
   storeSlug?: string;
   description?: string;
   website?: string;
+  facebook?: string;
+  instagram?: string;
+  youtube?: string;
+  tiktok?: string;
   businessName?: string;
   businessType?: string;
   businessAddress?: string;
@@ -350,7 +356,8 @@ class VendorProfileOrdersErrorBoundary extends Component<
 }
 
 export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, onLoginAsVendor }: VendorProfileProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "contract" | "storefront">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "contract" | "storefront" | "social">("overview");
+  const [socialRefreshKey, setSocialRefreshKey] = useState(() => Date.now());
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
@@ -392,6 +399,11 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
 
   // 🔥 Track vendor storefront settings to get phone and other updated info
   const [storefrontSettings, setStorefrontSettings] = useState<any>(null);
+
+  const onlinePresenceLinks = useMemo(
+    () => pickOnlinePresenceLinks({ ...vendor, socialLinks: storefrontSettings?.socialLinks }),
+    [vendor, storefrontSettings]
+  );
 
   // Fetch vendor's products — module cache first (instant revisit), then refresh when cache hit
   useEffect(() => {
@@ -1228,6 +1240,20 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
             >
               Storefront
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("social");
+                setSocialRefreshKey(Date.now());
+              }}
+              className={`py-4 px-2 border-b-2 transition-colors ${
+                activeTab === "social"
+                  ? "border-slate-900 text-slate-900 font-medium"
+                  : "border-transparent text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              Social Profile
+            </button>
           </div>
         </div>
 
@@ -1611,6 +1637,11 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               vendor={vendor}
               onPreviewStore={onPreviewVendorStore}
             />
+          )}
+
+          {/* Social Profile Tab */}
+          {activeTab === "social" && (
+            <VendorOnlinePresenceProfileView links={onlinePresenceLinks} refreshKey={socialRefreshKey} />
           )}
         </div>
       </Card>
