@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
+import { useStorefrontPolicyPaths } from "../hooks/useStorefrontPolicyPaths";
 import { X, Upload, User, Phone, Mail, Lock, Loader2, Eye, EyeOff } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -40,6 +41,7 @@ export function AuthModal({
   // 🔥 MUST call all hooks BEFORE any conditional returns (React Rules of Hooks)
   const navigate = useNavigate();
   const location = useLocation();
+  const { termsPath, privacyPath } = useStorefrontPolicyPaths();
   const { t } = useLanguage();
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
@@ -324,9 +326,23 @@ export function AuthModal({
           {mode === 'register' && (
             <p className="text-[10px] sm:text-xs text-slate-600 text-center mt-4 leading-relaxed">
               By creating an account, you agree to our{' '}
-              <button className="text-[10px] sm:text-xs text-slate-900 hover:text-amber-600 font-bold transition-colors">Terms of Service</button>
+              <Link
+                to={termsPath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] sm:text-xs text-slate-900 hover:text-amber-600 font-bold transition-colors underline underline-offset-2"
+              >
+                Terms of Service
+              </Link>
               {' '}and{' '}
-              <button className="text-[10px] sm:text-xs text-slate-900 hover:text-amber-600 font-bold transition-colors">Privacy Policy</button>
+              <Link
+                to={privacyPath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] sm:text-xs text-slate-900 hover:text-amber-600 font-bold transition-colors underline underline-offset-2"
+              >
+                Privacy Policy
+              </Link>
             </p>
           )}
         </CardContent>

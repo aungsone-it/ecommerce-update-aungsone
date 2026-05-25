@@ -16,6 +16,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
+import { PolicyAgreementLabel } from './PolicyAgreementLabel';
 
 interface VendorLoginProps {
   storeName?: string;
@@ -510,12 +511,11 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
                 onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
                 className="mt-0.5"
               />
-              <Label 
-                htmlFor="terms" 
+              <PolicyAgreementLabel
+                htmlFor="terms"
+                storeSlug={resolvedHostSlug || storeName}
                 className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed cursor-pointer"
-              >
-                {t('auth.login.agree')}
-              </Label>
+              />
             </div>
 
             {/* Sign In Button */}

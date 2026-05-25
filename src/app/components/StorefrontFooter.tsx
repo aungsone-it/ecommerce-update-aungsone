@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Separator } from "./ui/separator";
 import { useNavigate } from "react-router";
+import { useStorefrontPolicyPaths } from "../hooks/useStorefrontPolicyPaths";
 
 interface StorefrontFooterProps {
   siteSettings: {
@@ -26,6 +27,7 @@ export const StorefrontFooter = ({
   setViewMode
 }: StorefrontFooterProps) => {
   const navigate = useNavigate();
+  const { termsPath, privacyPath } = useStorefrontPolicyPaths();
   
   return (
   <footer className="bg-gradient-to-b from-slate-800 to-slate-900 text-white mt-8">
@@ -213,9 +215,21 @@ export const StorefrontFooter = ({
           © 2026 {siteSettings.storeName}. All rights reserved. Created by Aung Sone - Software Architect
         </p>
         <div className="flex items-center gap-6 flex-wrap justify-center">
-          <button className="hover:text-amber-400 transition-colors">Privacy Policy</button>
+          <button
+            type="button"
+            onClick={() => navigate(privacyPath)}
+            className="hover:text-amber-400 transition-colors"
+          >
+            Privacy Policy
+          </button>
           <span className="text-slate-600">•</span>
-          <button className="hover:text-amber-400 transition-colors">Terms of Service</button>
+          <button
+            type="button"
+            onClick={() => navigate(termsPath)}
+            className="hover:text-amber-400 transition-colors"
+          >
+            Terms of Service
+          </button>
           <span className="text-slate-600">•</span>
           <button className="hover:text-amber-400 transition-colors">Cookie Policy</button>
           <span className="text-slate-600">•</span>

@@ -461,6 +461,23 @@ export function LandingPage() {
           </div>
           <div className="border-t border-slate-800 pt-8 text-center text-sm">
             <p>&copy; 2026 {siteDisplayName}. All rights reserved.</p>
+            <div className="mt-3 flex items-center justify-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigate("/privacy")}
+                className="hover:text-white transition-colors"
+              >
+                Privacy Policy
+              </button>
+              <span className="text-slate-700">•</span>
+              <button
+                type="button"
+                onClick={() => navigate("/terms")}
+                className="hover:text-white transition-colors"
+              >
+                Terms of Service
+              </button>
+            </div>
           </div>
         </div>
       </footer>

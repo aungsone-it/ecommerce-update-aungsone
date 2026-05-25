@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
+import { PolicyAgreementLabel } from './PolicyAgreementLabel';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
 import { useAuth } from '../contexts/AuthContext';
@@ -206,12 +207,10 @@ export function Login() {
                 onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
                 className="mt-0.5"
               />
-              <Label 
-                htmlFor="terms" 
+              <PolicyAgreementLabel
+                htmlFor="terms"
                 className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed cursor-pointer"
-              >
-                {t('auth.login.agree')}
-              </Label>
+              />
             </div>
 
             {/* Error Message */}

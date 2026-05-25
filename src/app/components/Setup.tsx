@@ -11,6 +11,7 @@ import { usePlatformBranding } from '../hooks/usePlatformBranding';
 import { buildSuperAdminDocumentTitle } from '../utils/superAdminDocumentTitle';
 import { SUPER_ADMIN_SETUP_COMPLETE_EVENT } from './AppRouter';
 import { isValidEmail } from '../../utils/helpers';
+import { PolicyAgreementLabel } from './PolicyAgreementLabel';
 
 const inputClassName =
   'h-11 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 rounded-lg focus:border-slate-400 dark:focus:border-slate-500 transition-colors text-slate-900 dark:text-white placeholder:text-slate-400';
@@ -455,12 +456,10 @@ export function Setup() {
               className="mt-0.5"
               aria-invalid={!!fieldErrors.terms}
             />
-            <Label
+            <PolicyAgreementLabel
               htmlFor="setup-terms"
               className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed cursor-pointer"
-            >
-              {t('auth.login.agree')}
-            </Label>
+            />
           </div>
           <FieldError message={fieldErrors.terms} />
         </div>

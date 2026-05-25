@@ -25,6 +25,7 @@ import { API_BASE_URL } from "../../../utils/api-client";
 import { compressImage } from "../../../utils/imageCompression";
 import { cacheManager } from "../../utils/cacheManager";
 import { invalidateVendorStorefrontCatalogCache } from "../../utils/module-cache";
+import { notifyStorefrontPolicyUpdated } from "../../utils/storefrontPolicyRealtime";
 import { storeSlugFromBusinessName } from "../../../utils/storeSlug";
 import {
   setVendorAuthSessionCookie,
@@ -51,6 +52,8 @@ interface StoreSettings {
   contactPhone: string;
   address: string;
   customDomain: string;
+  termsContent?: string;
+  privacyPolicyContent?: string;
   domainStatus: 'none' | 'pending' | 'verified' | 'active';
   dnsVerified: boolean;
   isActive: boolean;
@@ -94,6 +97,8 @@ export function VendorAdminSettings({
     contactPhone: "",
     address: "",
     customDomain: "",
+    termsContent: "",
+    privacyPolicyContent: "",
     domainStatus: "none",
     dnsVerified: false,
     isActive: true,
@@ -297,6 +302,12 @@ export function VendorAdminSettings({
               },
             })
           );
+
+          notifyStorefrontPolicyUpdated({
+            scope: "vendor",
+            vendorId,
+            storeSlug: saved.storeSlug,
+          });
 
           toast.success(t("vendorAdmin.settings.saved"));
 
@@ -874,6 +885,41 @@ export function VendorAdminSettings({
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      <div className="max-w-3xl border border-slate-200 rounded-xl p-6 bg-white space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">{t("vendorAdmin.settings.legalPages")}</h2>
+          <p className="text-sm text-slate-600 mt-1">{t("vendorAdmin.settings.legalPagesDesc")}</p>
+        </div>
+        <div>
+          <Label className="text-sm font-normal text-slate-900 mb-2 block">
+            {t("settings.general.termsContent")}
+          </Label>
+          <Textarea
+            value={settings.termsContent || ""}
+            onChange={(e) => setSettings({ ...settings, termsContent: e.target.value })}
+            placeholder={t("settings.general.termsContentPlaceholder")}
+            rows={6}
+            className="bg-white border-slate-200 resize-y min-h-[140px]"
+          />
+          <p className="text-xs text-slate-500 mt-1">{t("settings.general.termsContentHint")}</p>
+        </div>
+        <div>
+          <Label className="text-sm font-normal text-slate-900 mb-2 block">
+            {t("settings.general.privacyContent")}
+          </Label>
+          <Textarea
+            value={settings.privacyPolicyContent || ""}
+            onChange={(e) =>
+              setSettings({ ...settings, privacyPolicyContent: e.target.value })
+            }
+            placeholder={t("settings.general.privacyContentPlaceholder")}
+            rows={6}
+            className="bg-white border-slate-200 resize-y min-h-[140px]"
+          />
+          <p className="text-xs text-slate-500 mt-1">{t("settings.general.privacyContentHint")}</p>
         </div>
       </div>
     </div>

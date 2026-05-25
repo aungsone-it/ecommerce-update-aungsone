@@ -97,6 +97,11 @@ const VendorAuthPage = lazy(() =>
 const KPayReturnPage = lazy(() =>
   import("./pages/KPayReturnPage").then((m) => ({ default: m.KPayReturnPage })),
 );
+const StorefrontPolicyPage = lazy(() =>
+  import("./pages/StorefrontPolicyPage").then((m) => ({
+    default: m.StorefrontPolicyPage,
+  })),
+);
 
 function VendorSubdomainIndexOrLanding() {
   if (isMarketplaceRootHost()) {
@@ -219,6 +224,22 @@ export const appRouteObjects: RouteObject[] = [
           {
             path: "saved",
             element: <VendorHostOrMarketplaceSaved />,
+          },
+          {
+            path: "terms",
+            element: <StorefrontPolicyPage type="terms" />,
+          },
+          {
+            path: "terms-of-service",
+            element: <StorefrontPolicyPage type="terms" />,
+          },
+          {
+            path: "privacy",
+            element: <StorefrontPolicyPage type="privacy" />,
+          },
+          {
+            path: "privacy-policy",
+            element: <StorefrontPolicyPage type="privacy" />,
           },
           {
             path: "blog",
@@ -360,6 +381,22 @@ export const appRouteObjects: RouteObject[] = [
           {
             path: "vendor/:storeName/kpay/return",
             element: <KPayReturnPage />,
+          },
+          {
+            path: "vendor/:storeName/terms",
+            element: <StorefrontPolicyPage type="terms" />,
+          },
+          {
+            path: "vendor/:storeName/terms-of-service",
+            element: <StorefrontPolicyPage type="terms" />,
+          },
+          {
+            path: "vendor/:storeName/privacy",
+            element: <StorefrontPolicyPage type="privacy" />,
+          },
+          {
+            path: "vendor/:storeName/privacy-policy",
+            element: <StorefrontPolicyPage type="privacy" />,
           },
           {
             path: "vendor/:storeName/:categorySlug",

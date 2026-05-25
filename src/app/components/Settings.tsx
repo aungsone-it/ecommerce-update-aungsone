@@ -71,6 +71,10 @@ import {
   PERSISTED_CATALOG_TTL_MS,
   LS_ADMIN_AUTH_USERS,
 } from "../utils/persistedLocalCache";
+import {
+  notifyStorefrontPolicyUpdated,
+  subscribeStorefrontPolicyUpdates,
+} from "../utils/storefrontPolicyRealtime";
 
 interface SettingsTab {
   id: string;
@@ -110,7 +114,8 @@ export function Settings() {
   const [storeEmail, setStoreEmail] = useState("info@secure.com");
   const [storePhone, setStorePhone] = useState("+95 9 XXX XXX XXX");
   const [storeAddress, setStoreAddress] = useState("123 Main St, Yangon, Myanmar");
-  const [storeDomain, setStoreDomain] = useState(""); // Custom domain for the store
+  const [termsContent, setTermsContent] = useState("");
+  const [privacyPolicyContent, setPrivacyPolicyContent] = useState("");
   const [currency, setCurrency] = useState("MMK");
   const [timezone, setTimezone] = useState("Asia/Yangon");
   const [storeLogo, setStoreLogo] = useState("");
@@ -212,7 +217,8 @@ export function Settings() {
           setStoreEmail(data.storeEmail || "info@secure.com");
           setStorePhone(data.storePhone || "+95 9 XXX XXX XXX");
           setStoreAddress(data.storeAddress || "123 Main St, Yangon, Myanmar");
-          setStoreDomain(data.storeDomain || "");
+          setTermsContent(data.termsContent || "");
+          setPrivacyPolicyContent(data.privacyPolicyContent || "");
           setCurrency(data.currency || "MMK");
           setTimezone(data.timezone || "Asia/Yangon");
           setStoreLogo(data.storeLogo || "");
@@ -236,6 +242,15 @@ export function Settings() {
     if (activeTab === 'appearance') {
       loadBannersSettings();
     }
+  }, [activeTab]);
+
+  // Live sync: Terms / Privacy textareas update when KV changes (other tabs or policy pages).
+  useEffect(() => {
+    if (activeTab !== "general") return;
+    return subscribeStorefrontPolicyUpdates({
+      includePlatform: true,
+      onUpdate: () => void loadGeneralSettings(),
+    });
   }, [activeTab]);
 
   const loadBannersSettings = async () => {
@@ -289,7 +304,8 @@ export function Settings() {
             storeEmail,
             storePhone,
             storeAddress,
-            storeDomain,
+            termsContent,
+            privacyPolicyContent,
             currency,
             timezone,
             storeLogo,
@@ -305,6 +321,7 @@ export function Settings() {
       window.dispatchEvent(new CustomEvent('logoUpdated', { 
         detail: { logoUrl: storeLogo, storeName: storeName } 
       }));
+      notifyStorefrontPolicyUpdated({ scope: "platform" });
 
       toast.success('Settings saved successfully!');
     } catch (err: any) {
@@ -1007,21 +1024,38 @@ export function Settings() {
                   />
                 </div>
 
-                <div>
-                  <Label htmlFor="storeDomain" className="text-sm font-medium text-slate-900 mb-2 block">
-                    Store Domain
-                  </Label>
-                  <Input
-                    id="storeDomain"
-                    type="url"
-                    value={storeDomain}
-                    onChange={(e) => setStoreDomain(e.target.value)}
-                    placeholder="https://www.yourstore.com"
-                    className="h-10 max-w-md"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Enter your custom domain for the store (e.g., https://store.migoo.com)
-                  </p>
+                <div className="grid grid-cols-1 gap-4 max-w-3xl">
+                  <div>
+                    <Label htmlFor="termsContent" className="text-sm font-medium text-slate-900 mb-2 block">
+                      {t('settings.general.termsContent')}
+                    </Label>
+                    <Textarea
+                      id="termsContent"
+                      value={termsContent}
+                      onChange={(e) => setTermsContent(e.target.value)}
+                      placeholder={t('settings.general.termsContentPlaceholder')}
+                      className="min-h-[180px] resize-y bg-white"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      {t('settings.general.termsContentHint')}
+                    </p>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="privacyPolicyContent" className="text-sm font-medium text-slate-900 mb-2 block">
+                      {t('settings.general.privacyContent')}
+                    </Label>
+                    <Textarea
+                      id="privacyPolicyContent"
+                      value={privacyPolicyContent}
+                      onChange={(e) => setPrivacyPolicyContent(e.target.value)}
+                      placeholder={t('settings.general.privacyContentPlaceholder')}
+                      className="min-h-[180px] resize-y bg-white"
+                    />
+                    <p className="text-xs text-slate-500 mt-1">
+                      {t('settings.general.privacyContentHint')}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

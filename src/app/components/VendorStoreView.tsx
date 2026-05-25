@@ -106,6 +106,7 @@ import {
   VendorAddressesSkeleton,
 } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
+import { VendorStorefrontFooter } from "./VendorStorefrontFooter";
 import { NotificationCenter } from "./NotificationCenter";
 import { useChatNotification } from "../contexts/ChatNotificationContext";
 import { authApi, wishlistApi } from "../../utils/api";
@@ -5385,15 +5386,12 @@ export function VendorStoreView({
           </div>
         </main>
 
-        {/* Footer - Same as main storefront */}
-        {onBack && (
-          <footer className="border-t mt-auto shrink-0 w-full">
-            <div className="max-w-7xl mx-auto px-4 py-8 text-center">
-              <p className="text-xs text-slate-500">
-                © {new Date().getFullYear()} {storeName}. All rights reserved.
-              </p>
-            </div>
-          </footer>
+        {!showVendorPageFullSkeleton && (
+          <VendorStorefrontFooter
+            storeName={storeName}
+            storeSlug={storeLinkSlug || canonicalPathSlug || storeSlug}
+            hostRootStorePaths={hostRootStorePaths}
+          />
         )}
 
         {/* Description image lightbox — matches marketplace full-screen gallery */}
@@ -5961,15 +5959,12 @@ export function VendorStoreView({
         </>
       )}
 
-      {/* Footer */}
-      {onBack && !showVendorPageFullSkeleton && (
-        <footer className="border-t mt-auto shrink-0 w-full">
-          <div className="max-w-7xl mx-auto px-4 py-8 text-center">
-            <p className="text-xs text-slate-500">
-              © {new Date().getFullYear()} {storeName}. All rights reserved.
-            </p>
-          </div>
-        </footer>
+      {!showVendorPageFullSkeleton && (
+        <VendorStorefrontFooter
+          storeName={storeName}
+          storeSlug={storeLinkSlug || canonicalPathSlug || storeSlug}
+          hostRootStorePaths={hostRootStorePaths}
+        />
       )}
 
       {/* 🔐 Auth Modal */}

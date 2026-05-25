@@ -46,6 +46,7 @@ import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 import { useDebounce } from "../hooks/useDebounce";
 import { useScrollAnimation } from "../hooks/useScrollAnimation";
 import { useFaviconLoader } from "../hooks/useFaviconLoader";
+import { useStorefrontPolicyPaths } from "../hooks/useStorefrontPolicyPaths";
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { supabase } from "../contexts/AuthContext";
 import { ProductGridSkeleton, ProductListSkeleton, BannerSkeleton } from "./SkeletonLoader";
@@ -703,6 +704,7 @@ function MarketplaceListProductRow({
 
 export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplication }: StorefrontProps) {
   const navigate = useNavigate();
+  const { termsPath, privacyPath } = useStorefrontPolicyPaths();
   const location = useLocation();
   const params = useParams();
   const { setIsCartOpen } = useCartVisibility();
@@ -5224,9 +5226,21 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             �� 2026 {siteSettings.storeName}. All rights reserved. Created by Aung Sone - Software Architect
           </p>
           <div className="flex items-center gap-6 flex-wrap justify-center">
-            <button className="hover:text-amber-400 transition-colors">Privacy Policy</button>
+            <button
+              type="button"
+              onClick={() => navigate(privacyPath)}
+              className="hover:text-amber-400 transition-colors"
+            >
+              Privacy Policy
+            </button>
             <span className="text-slate-600">•</span>
-            <button className="hover:text-amber-400 transition-colors">Terms of Service</button>
+            <button
+              type="button"
+              onClick={() => navigate(termsPath)}
+              className="hover:text-amber-400 transition-colors"
+            >
+              Terms of Service
+            </button>
             <span className="text-slate-600">•</span>
             <button className="hover:text-amber-400 transition-colors">Cookie Policy</button>
             <span className="text-slate-600">•</span>
