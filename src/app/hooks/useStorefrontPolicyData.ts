@@ -66,20 +66,65 @@ function pickPlatformContent(settings: PlatformSettings, kind: StorefrontPolicyK
   return String(saved || "").trim();
 }
 
-async function resolveVendorIdFromSlug(slug: string, signal?: AbortSignal): Promise<string | null> {
+type PolicyCacheEntry = {
+  storeName: string;
+  storeEmail?: string;
+  storeAddress?: string;
+  content: string;
+  vendorId?: string;
+};
+
+function policyCacheKey(storeSlug: string | null, kind: StorefrontPolicyKind): string {
+  return `migoo-policy:${storeSlug || "platform"}:${kind}`;
+}
+
+function readPolicyCache(
+  storeSlug: string | null,
+  kind: StorefrontPolicyKind
+): PolicyCacheEntry | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(policyCacheKey(storeSlug, kind));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PolicyCacheEntry;
+    if (!parsed || typeof parsed.content !== "string") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePolicyCache(
+  storeSlug: string | null,
+  kind: StorefrontPolicyKind,
+  entry: PolicyCacheEntry
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(policyCacheKey(storeSlug, kind), JSON.stringify(entry));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+async function fetchVendorStoreBySlug(
+  slug: string,
+  signal?: AbortSignal
+): Promise<{ settings: VendorStorefrontSettings; vendorId?: string } | null> {
   const response = await fetch(
-    `${API_BASE_URL}/vendors/by-slug/${encodeURIComponent(slug)}`,
+    `${API_BASE_URL}/vendor/store/${encodeURIComponent(slug)}`,
     {
       headers: { Authorization: `Bearer ${publicAnonKey}` },
-      cache: "no-store",
       signal,
     }
   ).catch(() => null);
   if (!response?.ok) return null;
   const data = (await response.json().catch(() => ({}))) as {
-    vendor?: { id?: string };
+    settings?: VendorStorefrontSettings & { vendorId?: string };
   };
-  return String(data.vendor?.id || "").trim() || null;
+  if (!data.settings) return null;
+  const vendorId = String(data.settings.vendorId || "").trim() || undefined;
+  return { settings: data.settings, vendorId };
 }
 
 async function fetchPlatformSettings(signal?: AbortSignal): Promise<PlatformSettings | null> {
@@ -95,23 +140,102 @@ async function fetchPlatformSettings(signal?: AbortSignal): Promise<PlatformSett
   return (await response.json().catch(() => null)) as PlatformSettings | null;
 }
 
-async function fetchVendorStorefrontSettings(
-  vendorId: string,
+async function fetchPolicyCacheEntry(
+  storeSlug: string | null,
+  kind: StorefrontPolicyKind,
   signal?: AbortSignal
-): Promise<VendorStorefrontSettings | null> {
-  const response = await fetch(
-    `${API_BASE_URL}/vendor/storefront/${encodeURIComponent(vendorId)}`,
-    {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-      cache: "no-store",
-      signal,
+): Promise<PolicyCacheEntry | null> {
+  if (storeSlug) {
+    const vendorStore = await fetchVendorStoreBySlug(storeSlug, signal);
+    if (signal?.aborted) return null;
+
+    if (vendorStore?.settings) {
+      const { settings, vendorId } = vendorStore;
+      const vendorContent = pickVendorPolicyPageContent(settings, kind);
+      let platformContent = "";
+
+      if (!vendorContent) {
+        const platform = await fetchPlatformSettings(signal);
+        if (signal?.aborted) return null;
+        platformContent = platform ? pickPlatformContent(platform, kind) : "";
+      }
+
+      return {
+        storeName: displayPlatformBrandName(settings.storeName, storeSlug),
+        storeEmail: settings.contactEmail,
+        storeAddress: settings.address,
+        content: vendorContent || platformContent || defaultContent(kind),
+        vendorId,
+      };
     }
-  ).catch(() => null);
-  if (!response?.ok) return null;
-  const data = (await response.json().catch(() => ({}))) as {
-    settings?: VendorStorefrontSettings;
+  }
+
+  const platform = await fetchPlatformSettings(signal);
+  if (signal?.aborted) return null;
+
+  if (!platform) return null;
+
+  return {
+    storeName: displayPlatformBrandName(platform.storeName, "SECURE"),
+    storeEmail: platform.storeEmail,
+    storeAddress: platform.storeAddress,
+    content: pickPlatformContent(platform, kind) || defaultContent(kind),
   };
-  return data.settings || null;
+}
+
+/** Warm session cache after storefront vendor settings load (same API response). */
+export function seedStorefrontPolicyCacheFromVendorSettings(
+  storeSlug: string,
+  settings: VendorStorefrontSettings & { vendorId?: string }
+): void {
+  const slug = String(storeSlug || "").trim();
+  if (!slug) return;
+
+  const vendorId = String(settings.vendorId || "").trim() || undefined;
+  const baseEntry = {
+    storeName: displayPlatformBrandName(settings.storeName, slug),
+    storeEmail: settings.contactEmail,
+    storeAddress: settings.address,
+    vendorId,
+  };
+
+  for (const kind of ["terms", "privacy"] as const) {
+    if (readPolicyCache(slug, kind)) continue;
+    const vendorContent = pickVendorPolicyPageContent(settings, kind);
+    if (!vendorContent) continue;
+    writePolicyCache(slug, kind, { ...baseEntry, content: vendorContent });
+  }
+}
+
+/** Background prefetch for footer / storefront links. */
+export async function prefetchStorefrontPolicyData(
+  storeSlug: string | null,
+  kind: StorefrontPolicyKind
+): Promise<void> {
+  if (readPolicyCache(storeSlug, kind)) return;
+  try {
+    const entry = await fetchPolicyCacheEntry(storeSlug, kind);
+    if (entry) writePolicyCache(storeSlug, kind, entry);
+  } catch {
+    /* ignore background prefetch errors */
+  }
+}
+
+function applyPolicyEntry(
+  entry: PolicyCacheEntry,
+  setters: {
+    setStoreName: (v: string) => void;
+    setStoreEmail: (v: string | undefined) => void;
+    setStoreAddress: (v: string | undefined) => void;
+    setContent: (v: string) => void;
+    setResolvedVendorId: (v: string | null) => void;
+  }
+): void {
+  setters.setStoreName(entry.storeName);
+  setters.setStoreEmail(entry.storeEmail);
+  setters.setStoreAddress(entry.storeAddress);
+  setters.setContent(entry.content);
+  setters.setResolvedVendorId(entry.vendorId ?? null);
 }
 
 export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontPolicyData {
@@ -129,12 +253,18 @@ export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontP
     !subdomainSlug &&
     !routeStoreName &&
     shouldResolveCustomDomainHost(window.location.hostname);
-  const [loading, setLoading] = useState(true);
-  const [storeName, setStoreName] = useState("SECURE");
-  const [storeEmail, setStoreEmail] = useState<string | undefined>();
-  const [storeAddress, setStoreAddress] = useState<string | undefined>();
-  const [content, setContent] = useState(() => defaultContent(kind));
-  const [resolvedVendorId, setResolvedVendorId] = useState<string | null>(null);
+  const initialCache = useMemo(
+    () => readPolicyCache(storeSlug, kind),
+    [storeSlug, kind]
+  );
+  const [loading, setLoading] = useState(() => !initialCache);
+  const [storeName, setStoreName] = useState(initialCache?.storeName || "");
+  const [storeEmail, setStoreEmail] = useState<string | undefined>(initialCache?.storeEmail);
+  const [storeAddress, setStoreAddress] = useState<string | undefined>(initialCache?.storeAddress);
+  const [content, setContent] = useState(initialCache?.content || "");
+  const [resolvedVendorId, setResolvedVendorId] = useState<string | null>(
+    initialCache?.vendorId ?? null
+  );
   const abortRef = useRef<AbortController | null>(null);
 
   const backPath = useMemo(() => {
@@ -154,50 +284,40 @@ export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontP
       try {
         if (needsHostLookup && hostSlugLoading) return;
 
-        const platform = await fetchPlatformSettings(controller.signal);
-        if (controller.signal.aborted) return;
-
-        const platformContent = platform ? pickPlatformContent(platform, kind) : "";
+        const setters = {
+          setStoreName,
+          setStoreEmail,
+          setStoreAddress,
+          setContent,
+          setResolvedVendorId,
+        };
 
         if (storeSlug) {
-          const vendorId = await resolveVendorIdFromSlug(storeSlug, controller.signal);
+          const entry = await fetchPolicyCacheEntry(storeSlug, kind, controller.signal);
           if (controller.signal.aborted) return;
-          setResolvedVendorId(vendorId);
 
-          if (vendorId) {
-            const vendorSettings = await fetchVendorStorefrontSettings(
-              vendorId,
-              controller.signal
-            );
-            if (controller.signal.aborted) return;
-
-            if (vendorSettings) {
-              const vendorContent = pickVendorPolicyPageContent(vendorSettings, kind);
-              setStoreName(
-                displayPlatformBrandName(vendorSettings.storeName, storeSlug)
-              );
-              setStoreEmail(vendorSettings.contactEmail || platform?.storeEmail);
-              setStoreAddress(vendorSettings.address || platform?.storeAddress);
-              setContent(vendorContent || platformContent || defaultContent(kind));
-              return;
-            }
+          if (entry) {
+            applyPolicyEntry(entry, setters);
+            writePolicyCache(storeSlug, kind, entry);
+            return;
           }
         } else {
           setResolvedVendorId(null);
         }
 
-        if (platform) {
-          setStoreName(displayPlatformBrandName(platform.storeName, "SECURE"));
-          setStoreEmail(platform.storeEmail);
-          setStoreAddress(platform.storeAddress);
-          setContent(platformContent || defaultContent(kind));
+        const platformEntry = await fetchPolicyCacheEntry(null, kind, controller.signal);
+        if (controller.signal.aborted) return;
+
+        if (platformEntry) {
+          applyPolicyEntry(platformEntry, setters);
+          writePolicyCache(null, kind, platformEntry);
         } else {
           setContent(defaultContent(kind));
         }
       } catch (error) {
         if (!controller.signal.aborted) {
           console.warn("Could not load storefront policy:", error);
-          setContent(defaultContent(kind));
+          setContent((prev) => prev || defaultContent(kind));
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -209,9 +329,9 @@ export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontP
   );
 
   useEffect(() => {
-    void loadPolicyData();
+    void loadPolicyData({ silent: Boolean(initialCache) });
     return () => abortRef.current?.abort();
-  }, [loadPolicyData]);
+  }, [loadPolicyData, initialCache]);
 
   useEffect(() => {
     return subscribeStorefrontPolicyUpdates({

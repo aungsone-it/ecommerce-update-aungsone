@@ -33,6 +33,7 @@ import { UnifiedKpaySummarySignInGate } from "../components/UnifiedKpaySummarySi
 import { VendorStorefrontFullSkeleton } from "../components/SkeletonLoaders";
 import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
+import { seedStorefrontPolicyCacheFromVendorSettings } from "../hooks/useStorefrontPolicyData";
 
 function parseVendorDashPath(pathname: string): { storeName: string; tail: string[] } | null {
   const parts = pathname.split("/").filter(Boolean);
@@ -302,7 +303,15 @@ export function VendorStorefrontPage() {
         );
         if (cancelled) return;
         const data = (await res.json().catch(() => ({}))) as {
-          settings?: { storeSlug?: string; vendorId?: string };
+          settings?: {
+            storeSlug?: string;
+            vendorId?: string;
+            storeName?: string;
+            contactEmail?: string;
+            address?: string;
+            termsContent?: string;
+            privacyPolicyContent?: string;
+          };
           storeUnavailable?: boolean;
         };
         const settings = data?.settings;
@@ -320,6 +329,7 @@ export function VendorStorefrontPage() {
           typeof settings.storeSlug === "string" && settings.storeSlug.trim()
             ? settings.storeSlug.trim()
             : slugToVerify;
+        seedStorefrontPolicyCacheFromVendorSettings(slug, settings);
         setCanonicalStoreSlug(slug);
         writeVendorSlugVerified(slugToVerify);
         setVendorExistence("found");
