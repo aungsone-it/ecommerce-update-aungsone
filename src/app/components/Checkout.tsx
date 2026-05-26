@@ -1,5 +1,5 @@
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   ChevronLeft,
   CreditCard,
@@ -42,7 +42,11 @@ import {
 } from "../utils/kpayClient";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
-import { resolveVendorSummaryPath } from "../utils/vendorCheckoutPaths";
+import {
+  isUnifiedKpaySummaryPath,
+  navigateUnifiedSummaryContinueShopping,
+  resolveVendorSummaryPath,
+} from "../utils/vendorCheckoutPaths";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -467,6 +471,35 @@ export function Checkout({
       return null;
     }
   }, [location.pathname, location.search]);
+  const [summaryStorefrontOrigin, setSummaryStorefrontOrigin] = useState<string | null>(
+    () => pwaPendingContext?.storefrontOrigin?.trim() || null,
+  );
+  const [summaryOrderVendor, setSummaryOrderVendor] = useState<string | null>(null);
+  const unifiedSummaryRoute = isUnifiedKpaySummaryPath(location.pathname);
+  const displayStoreName =
+    storeName || vendorName || summaryOrderVendor || "";
+  const handleContinueShopping = useCallback(() => {
+    if (unifiedSummaryRoute) {
+      navigateUnifiedSummaryContinueShopping(navigate, {
+        search: location.search,
+        storeSlug: storeName || vendorId || vendorName || null,
+        storefrontOrigin: summaryStorefrontOrigin,
+        orderVendor: summaryOrderVendor,
+      });
+      return;
+    }
+    onBack();
+  }, [
+    unifiedSummaryRoute,
+    navigate,
+    location.search,
+    storeName,
+    vendorId,
+    vendorName,
+    summaryStorefrontOrigin,
+    summaryOrderVendor,
+    onBack,
+  ]);
 
   // Shipping Form State - Pre-fill from saved addresses
   const [shippingInfo, setShippingInfo] = useState({
@@ -856,7 +889,27 @@ export function Checkout({
               storefrontOrigin: serverDraft.storefrontOrigin,
               draftOrder: serverDraft.draftOrder as KPayPwaPendingContext["draftOrder"],
             };
+          } else if (serverDraft?.storefrontOrigin?.trim()) {
+            pendingCtx = {
+              ...pendingCtx,
+              merchantOrderId: orderId,
+              storefrontOrigin: serverDraft.storefrontOrigin,
+              originPath: serverDraft.originPath,
+              summaryPath: serverDraft.summaryPath,
+            };
           }
+        }
+
+        const resolvedOrigin =
+          pendingCtx?.storefrontOrigin?.trim() ||
+          pwaPendingContext?.storefrontOrigin?.trim() ||
+          "";
+        if (resolvedOrigin) setSummaryStorefrontOrigin(resolvedOrigin);
+        const resolvedDraftVendor = (
+          pendingCtx?.draftOrder as { vendor?: string } | undefined
+        )?.vendor;
+        if (typeof resolvedDraftVendor === "string" && resolvedDraftVendor.trim()) {
+          setSummaryOrderVendor(resolvedDraftVendor.trim());
         }
 
         let response: Response | null = null;
@@ -990,6 +1043,8 @@ export function Checkout({
               vendorName || storeName
             );
         if (!o || cancelled) return;
+        const vendorLabel = String(o?.vendorName ?? o?.vendor ?? o?.storeName ?? "").trim();
+        if (vendorLabel) setSummaryOrderVendor(vendorLabel);
         const itemsFromOrder = Array.isArray(o.items)
           ? o.items.map((it: any, idx: number) => ({
               id: String(it?.id ?? idx),
@@ -1887,16 +1942,15 @@ export function Checkout({
           <div className="mt-4 flex justify-center">
             <Button
               className="h-11 w-64 rounded-lg bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
-              onClick={() => {
-                onBack();
-              }}
+              onClick={handleContinueShopping}
             >
               Continue Shopping
             </Button>
           </div>
 
           <p className="mt-4 text-center text-sm text-slate-600">
-            Thanks for purchasing from <span className="font-semibold text-slate-900">{storeName}</span>
+            Thanks for purchasing from{" "}
+            <span className="font-semibold text-slate-900">{displayStoreName}</span>
           </p>
         </div>
       </div>
@@ -1911,7 +1965,7 @@ export function Checkout({
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-        <Button variant="ghost" className="mb-6 hover:bg-white" onClick={onBack}>
+        <Button variant="ghost" className="mb-6 hover:bg-white" onClick={handleContinueShopping}>
           <ChevronLeft className="mr-2 h-4 w-4" />
           Continue Shopping
         </Button>

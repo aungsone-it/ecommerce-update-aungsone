@@ -5,6 +5,7 @@ import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import {
   extractStoreSlugFromPathname,
   isHostRootCheckoutPath,
+  isUnifiedKpaySummaryPath,
   readKpayPendingStoreContext,
   toMarketplaceVendorCheckoutPath,
 } from "../utils/vendorCheckoutPaths";
@@ -47,6 +48,8 @@ export function VendorHostOnlyStorefront() {
   useLayoutEffect(() => {
     if (vendorHost || loading || marketplaceSlug) return;
     if (!pendingSlug || !isHostRootCheckoutPath(location.pathname)) return;
+    // Unified KPay return URL stays on `/summary` (walwal.online/summary or localhost dev).
+    if (isUnifiedKpaySummaryPath(location.pathname)) return;
 
     const target = toMarketplaceVendorCheckoutPath(pendingSlug, location.pathname);
     if (target === location.pathname) return;
@@ -64,8 +67,13 @@ export function VendorHostOnlyStorefront() {
 
   if (loading && !marketplaceSlug) return <RouteLoadingFallback />;
 
+  const unifiedKpaySummary = isUnifiedKpaySummaryPath(location.pathname);
+
   const canRender =
-    vendorHost || marketplaceSlug || (pendingSlug && isHostRootCheckoutPath(location.pathname));
+    vendorHost ||
+    marketplaceSlug ||
+    (pendingSlug && isHostRootCheckoutPath(location.pathname)) ||
+    unifiedKpaySummary;
 
   if (!canRender) return <NotFound />;
 

@@ -5,7 +5,7 @@ import {
   getVendorSubdomainMarketplaceHomeUrl,
   isOnVendorSubdomainHost,
 } from "../utils/vendorSubdomainHooks";
-import { publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey, projectId } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 import {
   shouldPreserveVendorStorefrontFaviconOnUnload,
@@ -14,12 +14,22 @@ import {
 import { resetDocumentFavicon, applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
 import { resolveVendorPathSlug, vendorPathStoreSlugsMatch } from "../utils/vendorStorePaths";
 import {
+  isUnifiedKpaySummaryPath,
+  navigateUnifiedSummaryContinueShopping,
+  readKpayReturnQueryOrderId,
+  resolveKpayReturnStoreSlug,
+  resolveStoreSlugFromPwaCheckoutDraft,
+} from "../utils/vendorCheckoutPaths";
+import { fetchPwaCheckoutDraft } from "../utils/kpayClient";
+import {
   buildVendorStorefrontDocumentTitle,
   vendorProfileSegmentToDocTitleMode,
 } from "../utils/vendorStorefrontDocumentTitle";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
+import { Checkout } from "../components/Checkout";
+import { UnifiedKpaySummarySignInGate } from "../components/UnifiedKpaySummarySignInGate";
 import { VendorStorefrontFullSkeleton } from "../components/SkeletonLoaders";
 import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -216,7 +226,55 @@ export function VendorStorefrontPage() {
   const { slug: customHostSlug, loading: customHostLoading } = useResolvedVendorHostSlug();
   const vendorHostSlug = subdomainSlug ?? customHostSlug ?? null;
   const pathBasedStoreName = params.storeName ?? vendorDash?.storeName ?? undefined;
-  const storeName = pathBasedStoreName ?? vendorHostSlug ?? undefined;
+  const unifiedSummaryRoute = isUnifiedKpaySummaryPath(location.pathname);
+  const kpayReturnOrderId = useMemo(
+    () => readKpayReturnQueryOrderId(location.search),
+    [location.search],
+  );
+  const syncKpayStoreSlug = useMemo(
+    () =>
+      unifiedSummaryRoute
+        ? resolveKpayReturnStoreSlug({
+            pathname: location.pathname,
+            search: location.search,
+          })
+        : null,
+    [unifiedSummaryRoute, location.pathname, location.search],
+  );
+  const [draftStoreSlug, setDraftStoreSlug] = useState<string | null>(null);
+  const [draftSlugLoading, setDraftSlugLoading] = useState(
+    () => unifiedSummaryRoute && !syncKpayStoreSlug && Boolean(kpayReturnOrderId),
+  );
+
+  useEffect(() => {
+    if (!unifiedSummaryRoute || syncKpayStoreSlug || !kpayReturnOrderId) {
+      setDraftSlugLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDraftSlugLoading(true);
+    void fetchPwaCheckoutDraft({
+      projectId,
+      publicAnonKey,
+      merchantOrderId: kpayReturnOrderId,
+    })
+      .then((draft) => {
+        if (cancelled) return;
+        setDraftStoreSlug(resolveStoreSlugFromPwaCheckoutDraft(draft));
+      })
+      .finally(() => {
+        if (!cancelled) setDraftSlugLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [unifiedSummaryRoute, syncKpayStoreSlug, kpayReturnOrderId]);
+
+  const kpayUnifiedStoreSlug = syncKpayStoreSlug || draftStoreSlug;
+  const storeName =
+    pathBasedStoreName ??
+    vendorHostSlug ??
+    (unifiedSummaryRoute ? kpayUnifiedStoreSlug ?? undefined : undefined);
   const slugToVerify = storeName ? resolveVendorPathSlug(storeName) : "";
 
   const [vendorExistence, setVendorExistence] = useState<"idle" | "checking" | "found" | "not_found">(() =>
@@ -383,6 +441,34 @@ export function VendorStorefrontPage() {
     return <VendorStorefrontFullSkeleton />;
   }
 
+  if (unifiedSummaryRoute && draftSlugLoading) {
+    return <VendorStorefrontFullSkeleton />;
+  }
+
+  if (unifiedSummaryRoute && !storeName) {
+    return (
+      <AuthProvider>
+        <CartProvider>
+          <UnifiedKpaySummarySignInGate>
+            <div className="min-h-screen bg-slate-50">
+              <Checkout
+                onBack={() =>
+                  navigateUnifiedSummaryContinueShopping(navigate, {
+                    search: location.search,
+                    storeSlug: kpayUnifiedStoreSlug,
+                  })
+                }
+                storeName={kpayUnifiedStoreSlug || ""}
+                vendorId={kpayUnifiedStoreSlug || ""}
+                vendorName={kpayUnifiedStoreSlug || ""}
+              />
+            </div>
+          </UnifiedKpaySummarySignInGate>
+        </CartProvider>
+      </AuthProvider>
+    );
+  }
+
   const backToMarketplaceHome = () => {
     const target = getVendorSubdomainMarketplaceHomeUrl();
     if (target.startsWith("http")) {
@@ -418,17 +504,33 @@ export function VendorStorefrontPage() {
   return (
     <AuthProvider>
       <CartProvider>
-        <VendorStoreView
-          vendorId={resolvedStoreName}
-          storeSlug={pathStoreSlug ?? resolvedStoreName}
-          hostRootStorePaths={!!(subdomainSlug || customHostSlug)}
-          onBack={handleBack}
-          initialProductSlug={productSlug}
-          profileSegment={profileSegment}
-          profileOrderId={profileOrderId}
-          savedPage={savedPage}
-          categorySlug={categorySlug}
-        />
+        {unifiedSummaryRoute ? (
+          <UnifiedKpaySummarySignInGate>
+            <VendorStoreView
+              vendorId={resolvedStoreName}
+              storeSlug={pathStoreSlug ?? resolvedStoreName}
+              hostRootStorePaths={!!(subdomainSlug || customHostSlug)}
+              onBack={handleBack}
+              initialProductSlug={productSlug}
+              profileSegment={profileSegment}
+              profileOrderId={profileOrderId}
+              savedPage={savedPage}
+              categorySlug={categorySlug}
+            />
+          </UnifiedKpaySummarySignInGate>
+        ) : (
+          <VendorStoreView
+            vendorId={resolvedStoreName}
+            storeSlug={pathStoreSlug ?? resolvedStoreName}
+            hostRootStorePaths={!!(subdomainSlug || customHostSlug)}
+            onBack={handleBack}
+            initialProductSlug={productSlug}
+            profileSegment={profileSegment}
+            profileOrderId={profileOrderId}
+            savedPage={savedPage}
+            categorySlug={categorySlug}
+          />
+        )}
       </CartProvider>
     </AuthProvider>
   );

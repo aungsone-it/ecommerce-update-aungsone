@@ -1,7 +1,193 @@
 import { matchPath } from "react-router";
-import { resolveVendorSubdomainStoreSlug } from "./vendorSubdomainHooks";
-import { buildCheckoutSummaryPath, KPAY_PWA_PENDING_STORAGE_KEY } from "./kpayClient";
-import { resolveVendorPathSlug } from "./vendorStorePaths";
+import {
+  resolveVendorSubdomainHostContext,
+  resolveVendorSubdomainStoreSlug,
+} from "./vendorSubdomainHooks";
+import {
+  buildCheckoutSummaryPath,
+  KPAY_PWA_PENDING_STORAGE_KEY,
+  parsePwaCallbackInfo,
+  type PwaCheckoutDraftResponse,
+} from "./kpayClient";
+import { getEffectiveVendorSubdomainBase } from "./vendorSubdomainBase";
+import { subdomainHostLabelForStoreSlug } from "./subdomainSlugMap";
+import { buildVendorStoreHomePath, resolveVendorPathSlug } from "./vendorStorePaths";
+
+const MARKETPLACE_APEX = "walwal.online";
+
+/** Marketplace apex (`walwal.online/`) — branding home and unified KPay return host. */
+export function isMarketplaceApexHost(hostname?: string): boolean {
+  const host = (hostname ?? (typeof window !== "undefined" ? window.location.hostname : ""))
+    .split(":")[0]
+    .toLowerCase();
+  const envBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
+    .trim()
+    .toLowerCase();
+  const effectiveBase = getEffectiveVendorSubdomainBase() || envBase;
+  if (host === MARKETPLACE_APEX || host === `www.${MARKETPLACE_APEX}`) return true;
+  if (effectiveBase && (host === effectiveBase || host === `www.${effectiveBase}`)) return true;
+  return false;
+}
+
+/**
+ * Host for the single KBZ return URL (`walwal.online/summary`, or `localhost:5173/summary` in dev).
+ * Vendor subdomains (e.g. gogo.walwal.online) use their own `/summary`.
+ */
+export function isUnifiedKpayReturnHost(hostname?: string): boolean {
+  const host = (hostname ?? (typeof window !== "undefined" ? window.location.hostname : ""))
+    .split(":")[0]
+    .toLowerCase();
+  if (isMarketplaceApexHost(host)) return true;
+  if (isLocalDevHostname(host)) {
+    return !resolveVendorSubdomainHostContext(host).isVendorSubdomainHost;
+  }
+  return false;
+}
+
+export function isUnifiedKpaySummaryPath(pathname: string, hostname?: string): boolean {
+  const path = (pathname.split("?")[0] || "").replace(/\/$/, "") || "/";
+  return path === "/summary" && isUnifiedKpayReturnHost(hostname);
+}
+
+/** @deprecated Use isUnifiedKpaySummaryPath */
+export function isApexKpaySummaryPath(pathname: string): boolean {
+  return isUnifiedKpaySummaryPath(pathname);
+}
+
+export function readKpayReturnQueryOrderId(search: string): string {
+  const qs = new URLSearchParams(search);
+  return (qs.get("merch_order_id") || qs.get("merchOrderId") || "").trim();
+}
+
+export function resolveStoreSlugFromStorefrontOrigin(
+  origin: string | null | undefined,
+): string | null {
+  const o = (origin || "").trim();
+  if (!o) return null;
+  try {
+    const { storeSlugCandidate } = resolveVendorSubdomainHostContext(new URL(o).hostname);
+    return storeSlugCandidate;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveStoreSlugFromPwaCheckoutDraft(
+  draft: PwaCheckoutDraftResponse | null | undefined,
+): string | null {
+  if (!draft) return null;
+  const fromPath =
+    extractStoreSlugFromPathname(draft.originPath || "") ||
+    extractStoreSlugFromPathname(draft.summaryPath || "");
+  if (fromPath) return resolveVendorPathSlug(fromPath);
+  const fromOrigin = resolveStoreSlugFromStorefrontOrigin(draft.storefrontOrigin);
+  if (fromOrigin) return fromOrigin;
+  const vendor = (draft.draftOrder as { vendor?: string; vendorId?: string } | undefined)?.vendor;
+  if (typeof vendor === "string" && vendor.trim()) {
+    return resolveVendorPathSlug(vendor.trim());
+  }
+  return null;
+}
+
+export function resolveKpayReturnStoreSlug(params: {
+  pathname?: string;
+  search?: string;
+}): string | null {
+  const pending = readKpayPendingStoreContext();
+  const fromPending =
+    (pending?.storeName && pending.storeName.trim()) ||
+    extractStoreSlugFromPathname(pending?.originPath || "") ||
+    extractStoreSlugFromPathname(pending?.summaryPath || "");
+  if (fromPending) return resolveVendorPathSlug(fromPending);
+
+  const fromPendingOrigin = resolveStoreSlugFromStorefrontOrigin(pending?.storefrontOrigin);
+  if (fromPendingOrigin) return fromPendingOrigin;
+
+  const qs = new URLSearchParams(params.search || "");
+  const cb = parsePwaCallbackInfo(qs.get("callback_info"));
+  const fromCallback = resolveStoreSlugFromStorefrontOrigin(cb?.storefrontOrigin);
+  if (fromCallback) return fromCallback;
+
+  return null;
+}
+
+export function hasKpaySummaryReturnContext(params: {
+  pathname: string;
+  search: string;
+}): boolean {
+  if (!isUnifiedKpaySummaryPath(params.pathname)) return false;
+  if (readKpayReturnQueryOrderId(params.search)) return true;
+  if (resolveKpayReturnStoreSlug(params)) return true;
+  if (parsePwaCallbackInfo(new URLSearchParams(params.search).get("callback_info"))) {
+    return true;
+  }
+  return Boolean(readKpayPendingStoreContext());
+}
+
+/** Where "Continue Shopping" should go after unified `/summary` (vendor host, not branding apex). */
+export function resolveUnifiedSummaryContinueShoppingTarget(params: {
+  search?: string;
+  storeSlug?: string | null;
+  storefrontOrigin?: string | null;
+  orderVendor?: string | null;
+}): string {
+  const qs = new URLSearchParams(params.search || "");
+  const pending = readKpayPendingStoreContext();
+  const callback = parsePwaCallbackInfo(qs.get("callback_info"));
+
+  const origin =
+    (params.storefrontOrigin || "").trim() ||
+    pending?.storefrontOrigin?.trim() ||
+    callback?.storefrontOrigin?.trim() ||
+    "";
+
+  if (origin) {
+    try {
+      const u = new URL(origin);
+      return `${u.origin}/`;
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const slugRaw =
+    (params.storeSlug && params.storeSlug.trim()) ||
+    resolveKpayReturnStoreSlug({ search: params.search || "" }) ||
+    (params.orderVendor ? resolveVendorPathSlug(params.orderVendor) : null) ||
+    null;
+
+  if (!slugRaw) return "/";
+
+  const slug = resolveVendorPathSlug(slugRaw);
+  const base = getEffectiveVendorSubdomainBase();
+  if (base && typeof window !== "undefined") {
+    const hostLabel = subdomainHostLabelForStoreSlug(slug);
+    if (hostLabel) {
+      const protocol = window.location.protocol;
+      const port = window.location.port ? `:${window.location.port}` : "";
+      return `${protocol}//${hostLabel}.${base}${port}/`;
+    }
+  }
+
+  return buildVendorStoreHomePath({ pathSlug: slug, hostRootStorePaths: false });
+}
+
+export function navigateUnifiedSummaryContinueShopping(
+  navigate: (path: string, options?: { replace?: boolean }) => void,
+  params: {
+    search?: string;
+    storeSlug?: string | null;
+    storefrontOrigin?: string | null;
+    orderVendor?: string | null;
+  },
+): void {
+  const target = resolveUnifiedSummaryContinueShoppingTarget(params);
+  if (/^https?:\/\//i.test(target)) {
+    window.location.assign(target);
+    return;
+  }
+  navigate(target, { replace: true });
+}
 
 export function isLocalDevHostname(hostname?: string): boolean {
   const h = (
@@ -57,10 +243,12 @@ export function readKpayPendingStoreContext(): KpayPendingStoreContext | null {
     const p = JSON.parse(raw) as KpayPendingStoreContext & {
       draftOrder?: { vendor?: string };
     };
+    const draftVendor = (p.draftOrder as { vendor?: string; vendorId?: string } | undefined)?.vendor;
     const storeName =
       (typeof p.storeName === "string" && p.storeName.trim()) ||
       extractStoreSlugFromPathname(p.originPath || "") ||
       extractStoreSlugFromPathname(p.summaryPath || "") ||
+      (typeof draftVendor === "string" && draftVendor.trim()) ||
       undefined;
     return {
       storeName,
@@ -100,6 +288,9 @@ export function resolveVendorSummaryPath(params: {
   const slug = rawSlug ? resolveVendorPathSlug(rawSlug) : null;
 
   if (slug && (path === "/summary" || path.endsWith("/summary"))) {
+    if (path === "/summary" && isUnifiedKpayReturnHost()) {
+      return "/summary";
+    }
     return path.startsWith("/vendor/") || path.startsWith("/vendor-")
       ? path
       : `/vendor/${encodeURIComponent(slug)}/summary`;
@@ -165,6 +356,9 @@ export function resolveSummaryRedirectTarget(params: {
   }
 
   if (slug) {
+    if (isUnifiedKpayReturnHost()) {
+      return `/summary${params.search}`;
+    }
     return `/vendor/${encodeURIComponent(slug)}/summary${params.search}`;
   }
 
