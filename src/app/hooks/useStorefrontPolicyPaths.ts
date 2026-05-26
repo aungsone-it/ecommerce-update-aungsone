@@ -1,8 +1,9 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useParams } from "react-router";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { resolveStorefrontPolicyPaths } from "../utils/storefrontPolicyPaths";
+import { prefetchStorefrontPolicyData } from "./useStorefrontPolicyData";
 
 type UseStorefrontPolicyPathsOptions = {
   /** When true, links use `/terms` and `/privacy` (subdomain / custom domain). */
@@ -20,19 +21,25 @@ export function useStorefrontPolicyPaths(
   const detectedVendorHost = !!(hostSlug || subdomainSlug);
   const onVendorHost = options?.onVendorHost ?? detectedVendorHost;
 
-  return useMemo(() => {
-    const storeSlug =
+  const storeSlug = useMemo(() => {
+    const raw =
       explicitStoreSlug ||
       hostSlug ||
       subdomainSlug ||
       routeStoreName ||
-      null;
-    return resolveStorefrontPolicyPaths({ storeSlug, onVendorHost });
-  }, [
-    explicitStoreSlug,
-    hostSlug,
-    subdomainSlug,
-    routeStoreName,
-    onVendorHost,
-  ]);
+      "";
+    return String(raw).trim() || null;
+  }, [explicitStoreSlug, hostSlug, subdomainSlug, routeStoreName]);
+
+  const paths = useMemo(
+    () => resolveStorefrontPolicyPaths({ storeSlug, onVendorHost }),
+    [storeSlug, onVendorHost]
+  );
+
+  useEffect(() => {
+    void prefetchStorefrontPolicyData(storeSlug, "terms");
+    void prefetchStorefrontPolicyData(storeSlug, "privacy");
+  }, [storeSlug]);
+
+  return paths;
 }

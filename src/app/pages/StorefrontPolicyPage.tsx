@@ -8,7 +8,7 @@ import type { StorefrontPolicyKind } from "../utils/storefrontPolicyPaths";
 
 export function StorefrontPolicyPage({ type }: { type: StorefrontPolicyKind }) {
   const { t } = useLanguage();
-  const { storeName, storeEmail, storeAddress, content, loading, backPath } =
+  const { storeName, storeEmail, storeAddress, content, backPath } =
     useStorefrontPolicyData(type);
 
   const title =
@@ -24,7 +24,7 @@ export function StorefrontPolicyPage({ type }: { type: StorefrontPolicyKind }) {
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <Link to={backPath} className="text-xl font-bold uppercase tracking-wide text-slate-900">
-            {storeName}
+            {storeName || "…"}
           </Link>
           <Button asChild variant="outline" size="sm">
             <Link to={backPath}>
@@ -42,19 +42,21 @@ export function StorefrontPolicyPage({ type }: { type: StorefrontPolicyKind }) {
           </div>
           <div>
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-amber-700">
-              {storeName}
+              {storeName || "…"}
             </p>
             <h1 className="mt-2 text-3xl font-bold text-slate-950 sm:text-4xl">{title}</h1>
-            <p className="mt-3 text-sm text-slate-500">
-              {loading
-                ? t("storefrontPolicy.loading")
-                : t("storefrontPolicy.updatedFromSettings")}
-            </p>
+            {content ? (
+              <p className="mt-3 text-sm text-slate-500">
+                {t("storefrontPolicy.updatedFromSettings")}
+              </p>
+            ) : null}
           </div>
         </div>
 
         <article className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
-          <div className="whitespace-pre-wrap text-base leading-8 text-slate-700">{content}</div>
+          {content ? (
+            <div className="whitespace-pre-wrap text-base leading-8 text-slate-700">{content}</div>
+          ) : null}
         </article>
 
         {(storeEmail || storeAddress) && (
