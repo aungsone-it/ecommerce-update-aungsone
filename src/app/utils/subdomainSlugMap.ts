@@ -64,6 +64,36 @@ export function subdomainHostLabelForStoreSlug(storeSlug: string): string | null
   return null;
 }
 
+/** DNS label for `{label}.{apex}` — mapped slugs, bare slugs (migoo), or display names (Go Go → gogo). */
+export function resolveSubdomainHostLabelForStore(input: {
+  storeSlug: string;
+  storeName?: string | null;
+}): string | null {
+  const slug = String(input.storeSlug || "").trim().toLowerCase();
+  if (!slug) return null;
+
+  const mapped = subdomainHostLabelForStoreSlug(slug);
+  if (mapped) return mapped;
+
+  if (/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(slug) && !slug.includes("-")) {
+    return slug;
+  }
+
+  const name = String(input.storeName || "").trim();
+  if (name) {
+    const fromProfile = subdomainHostLabelForVendorProfile({
+      storeSlug: slug,
+      storeName: name,
+    });
+    if (fromProfile) return fromProfile;
+
+    const compact = hyphenSlugFromDisplayName(name).replace(/-/g, "");
+    if (compact && /^[a-z0-9]+$/.test(compact)) return compact;
+  }
+
+  return null;
+}
+
 function isDefaultTechnicalStoreSlug(slug: string, vendorId?: string): boolean {
   const s = String(slug || "").trim();
   if (/^vendor-vendor_/i.test(s)) return true;

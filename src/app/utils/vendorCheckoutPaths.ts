@@ -10,8 +10,10 @@ import {
   type PwaCheckoutDraftResponse,
 } from "./kpayClient";
 import { getEffectiveVendorSubdomainBase } from "./vendorSubdomainBase";
-import { subdomainHostLabelForStoreSlug } from "./subdomainSlugMap";
+import { resolveSubdomainHostLabelForStore } from "./subdomainSlugMap";
 import { buildVendorStoreHomePath, resolveVendorPathSlug } from "./vendorStorePaths";
+import { API_BASE_URL } from "../../utils/api-client";
+import { publicAnonKey } from "../../../utils/supabase/info";
 
 const MARKETPLACE_APEX = "walwal.online";
 
@@ -125,6 +127,87 @@ export function hasKpaySummaryReturnContext(params: {
 }
 
 /** Where "Continue Shopping" should go after unified `/summary` (vendor host, not branding apex). */
+export function buildVendorSubdomainHomeUrl(params: {
+  storeSlug: string;
+  storeName?: string | null;
+}): string | null {
+  const base = getEffectiveVendorSubdomainBase();
+  if (!base || typeof window === "undefined") return null;
+
+  const slug = resolveVendorPathSlug(params.storeSlug);
+  const hostLabel = resolveSubdomainHostLabelForStore({
+    storeSlug: slug,
+    storeName: params.storeName,
+  });
+  if (!hostLabel) return null;
+
+  const protocol = window.location.protocol;
+  const port = window.location.port ? `:${window.location.port}` : "";
+  return `${protocol}//${hostLabel}.${base}${port}/`;
+}
+
+function normalizeStorefrontOriginUrl(origin: string | null | undefined): string | null {
+  const raw = (origin || "").trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    return `${u.origin}/`;
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve vendor home URL: checkout origin → verified custom domain → subdomain → /vendor/:slug. */
+export async function resolveVendorStorefrontHomeUrl(params: {
+  storeSlug?: string | null;
+  storeName?: string | null;
+  storefrontOrigin?: string | null;
+}): Promise<string> {
+  const fromOrigin = normalizeStorefrontOriginUrl(params.storefrontOrigin);
+  if (fromOrigin) return fromOrigin;
+
+  const slugRaw =
+    (params.storeSlug && params.storeSlug.trim()) ||
+    (params.storeName ? resolveVendorPathSlug(params.storeName) : null);
+  if (!slugRaw) return "/";
+
+  const slug = resolveVendorPathSlug(slugRaw);
+  const storeName = params.storeName?.trim() || null;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/vendor/store/${encodeURIComponent(slug)}`, {
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    });
+    if (res.ok) {
+      const data = (await res.json()) as {
+        settings?: { customDomain?: string; domainStatus?: string; storeSlug?: string };
+      };
+      const settings = data?.settings;
+      const customDomain = String(settings?.customDomain || "").trim().toLowerCase();
+      const domainStatus = String(settings?.domainStatus || "").trim().toLowerCase();
+      if (customDomain && domainStatus === "verified") {
+        return `https://${customDomain}/`;
+      }
+      const canonicalSlug =
+        typeof settings?.storeSlug === "string" && settings.storeSlug.trim()
+          ? settings.storeSlug.trim()
+          : slug;
+      const subdomainUrl = buildVendorSubdomainHomeUrl({
+        storeSlug: canonicalSlug,
+        storeName,
+      });
+      if (subdomainUrl) return subdomainUrl;
+    }
+  } catch {
+    /* fall through to sync heuristics */
+  }
+
+  const subdomainUrl = buildVendorSubdomainHomeUrl({ storeSlug: slug, storeName });
+  if (subdomainUrl) return subdomainUrl;
+
+  return buildVendorStoreHomePath({ pathSlug: slug, hostRootStorePaths: false });
+}
+
 export function resolveUnifiedSummaryContinueShoppingTarget(params: {
   search?: string;
   storeSlug?: string | null;
@@ -136,19 +219,11 @@ export function resolveUnifiedSummaryContinueShoppingTarget(params: {
   const callback = parsePwaCallbackInfo(qs.get("callback_info"));
 
   const origin =
-    (params.storefrontOrigin || "").trim() ||
-    pending?.storefrontOrigin?.trim() ||
-    callback?.storefrontOrigin?.trim() ||
-    "";
+    normalizeStorefrontOriginUrl(params.storefrontOrigin) ||
+    normalizeStorefrontOriginUrl(pending?.storefrontOrigin) ||
+    normalizeStorefrontOriginUrl(callback?.storefrontOrigin);
 
-  if (origin) {
-    try {
-      const u = new URL(origin);
-      return `${u.origin}/`;
-    } catch {
-      /* fall through */
-    }
-  }
+  if (origin) return origin;
 
   const slugRaw =
     (params.storeSlug && params.storeSlug.trim()) ||
@@ -159,29 +234,34 @@ export function resolveUnifiedSummaryContinueShoppingTarget(params: {
   if (!slugRaw) return "/";
 
   const slug = resolveVendorPathSlug(slugRaw);
-  const base = getEffectiveVendorSubdomainBase();
-  if (base && typeof window !== "undefined") {
-    const hostLabel = subdomainHostLabelForStoreSlug(slug);
-    if (hostLabel) {
-      const protocol = window.location.protocol;
-      const port = window.location.port ? `:${window.location.port}` : "";
-      return `${protocol}//${hostLabel}.${base}${port}/`;
-    }
-  }
+  const subdomainUrl = buildVendorSubdomainHomeUrl({
+    storeSlug: slug,
+    storeName: params.orderVendor || params.storeSlug,
+  });
+  if (subdomainUrl) return subdomainUrl;
 
   return buildVendorStoreHomePath({ pathSlug: slug, hostRootStorePaths: false });
 }
 
-export function navigateUnifiedSummaryContinueShopping(
+export async function navigateUnifiedSummaryContinueShopping(
   navigate: (path: string, options?: { replace?: boolean }) => void,
   params: {
     search?: string;
     storeSlug?: string | null;
     storefrontOrigin?: string | null;
     orderVendor?: string | null;
+    preResolvedHomeUrl?: string | null;
   },
-): void {
-  const target = resolveUnifiedSummaryContinueShoppingTarget(params);
+): Promise<void> {
+  const preResolved = normalizeStorefrontOriginUrl(params.preResolvedHomeUrl);
+  const target =
+    preResolved ||
+    (await resolveVendorStorefrontHomeUrl({
+      storeSlug: params.storeSlug,
+      storeName: params.orderVendor || params.storeSlug,
+      storefrontOrigin: params.storefrontOrigin,
+    }));
+
   if (/^https?:\/\//i.test(target)) {
     window.location.assign(target);
     return;

@@ -45,6 +45,7 @@ import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import {
   isUnifiedKpaySummaryPath,
   navigateUnifiedSummaryContinueShopping,
+  resolveVendorStorefrontHomeUrl,
   resolveVendorSummaryPath,
 } from "../utils/vendorCheckoutPaths";
 
@@ -475,16 +476,48 @@ export function Checkout({
     () => pwaPendingContext?.storefrontOrigin?.trim() || null,
   );
   const [summaryOrderVendor, setSummaryOrderVendor] = useState<string | null>(null);
+  const [summaryStorefrontHomeUrl, setSummaryStorefrontHomeUrl] = useState<string | null>(null);
   const unifiedSummaryRoute = isUnifiedKpaySummaryPath(location.pathname);
   const displayStoreName =
     storeName || vendorName || summaryOrderVendor || "";
+
+  useEffect(() => {
+    if (!unifiedSummaryRoute) return;
+
+    const slug = storeName || vendorId || summaryOrderVendor || null;
+    if (!summaryStorefrontOrigin?.trim() && !slug) return;
+
+    let cancelled = false;
+    void resolveVendorStorefrontHomeUrl({
+      storeSlug: slug,
+      storeName: summaryOrderVendor || storeName || vendorName,
+      storefrontOrigin: summaryStorefrontOrigin,
+    }).then((url) => {
+      if (!cancelled && url && url !== "/") {
+        setSummaryStorefrontHomeUrl(url);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    unifiedSummaryRoute,
+    summaryStorefrontOrigin,
+    summaryOrderVendor,
+    storeName,
+    vendorId,
+    vendorName,
+  ]);
+
   const handleContinueShopping = useCallback(() => {
     if (unifiedSummaryRoute) {
-      navigateUnifiedSummaryContinueShopping(navigate, {
+      void navigateUnifiedSummaryContinueShopping(navigate, {
         search: location.search,
         storeSlug: storeName || vendorId || vendorName || null,
         storefrontOrigin: summaryStorefrontOrigin,
         orderVendor: summaryOrderVendor,
+        preResolvedHomeUrl: summaryStorefrontHomeUrl,
       });
       return;
     }
@@ -498,6 +531,7 @@ export function Checkout({
     vendorName,
     summaryStorefrontOrigin,
     summaryOrderVendor,
+    summaryStorefrontHomeUrl,
     onBack,
   ]);
 
@@ -1045,6 +1079,20 @@ export function Checkout({
         if (!o || cancelled) return;
         const vendorLabel = String(o?.vendorName ?? o?.vendor ?? o?.storeName ?? "").trim();
         if (vendorLabel) setSummaryOrderVendor(vendorLabel);
+
+        const draftLookupId =
+          orderId ||
+          String(o?.kpay?.merchantOrderId ?? o?.orderNumber ?? "").trim();
+        if (draftLookupId && !resolvedOrigin) {
+          const draftForOrigin = await fetchPwaCheckoutDraft({
+            projectId,
+            publicAnonKey,
+            merchantOrderId: draftLookupId,
+          });
+          const draftOrigin = draftForOrigin?.storefrontOrigin?.trim();
+          if (draftOrigin) setSummaryStorefrontOrigin(draftOrigin);
+        }
+
         const itemsFromOrder = Array.isArray(o.items)
           ? o.items.map((it: any, idx: number) => ({
               id: String(it?.id ?? idx),

@@ -452,12 +452,12 @@ export function VendorStorefrontPage() {
           <UnifiedKpaySummarySignInGate>
             <div className="min-h-screen bg-slate-50">
               <Checkout
-                onBack={() =>
-                  navigateUnifiedSummaryContinueShopping(navigate, {
+                onBack={() => {
+                  void navigateUnifiedSummaryContinueShopping(navigate, {
                     search: location.search,
                     storeSlug: kpayUnifiedStoreSlug,
-                  })
-                }
+                  });
+                }}
                 storeName={kpayUnifiedStoreSlug || ""}
                 vendorId={kpayUnifiedStoreSlug || ""}
                 vendorName={kpayUnifiedStoreSlug || ""}
