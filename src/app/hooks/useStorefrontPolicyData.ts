@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import {
@@ -9,7 +9,16 @@ import {
 } from "../utils/vendorHostResolution";
 import { displayPlatformBrandName } from "../utils/platformBranding";
 import { subscribeStorefrontPolicyUpdates } from "../utils/storefrontPolicyRealtime";
+import type { StorefrontPolicyLivePatch } from "../utils/storefrontPolicyRealtime";
 import type { StorefrontPolicyKind } from "../utils/storefrontPolicyPaths";
+import { moduleCache, CACHE_KEYS, fetchSiteSettings } from "../utils/module-cache";
+import {
+  LS_STOREFRONT_POLICY_PREFIX,
+  PERSISTED_POLICY_TTL_MS,
+  readPersistedJson,
+  removePersistedKey,
+  writePersistedJson,
+} from "../utils/persistedLocalCache";
 
 export type StorefrontPolicyData = {
   storeName: string;
@@ -75,6 +84,10 @@ type PolicyCacheEntry = {
 };
 
 function policyCacheKey(storeSlug: string | null, kind: StorefrontPolicyKind): string {
+  return `${LS_STOREFRONT_POLICY_PREFIX}${storeSlug || "platform"}:${kind}`;
+}
+
+function policySessionKey(storeSlug: string | null, kind: StorefrontPolicyKind): string {
   return `migoo-policy:${storeSlug || "platform"}:${kind}`;
 }
 
@@ -83,15 +96,18 @@ function readPolicyCache(
   kind: StorefrontPolicyKind
 ): PolicyCacheEntry | null {
   if (typeof window === "undefined") return null;
+
   try {
-    const raw = sessionStorage.getItem(policyCacheKey(storeSlug, kind));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as PolicyCacheEntry;
-    if (!parsed || typeof parsed.content !== "string") return null;
-    return parsed;
+    const sessionRaw = sessionStorage.getItem(policySessionKey(storeSlug, kind));
+    if (sessionRaw) {
+      const parsed = JSON.parse(sessionRaw) as PolicyCacheEntry;
+      if (parsed && typeof parsed.content === "string") return parsed;
+    }
   } catch {
-    return null;
+    /* ignore */
   }
+
+  return readPersistedJson<PolicyCacheEntry>(policyCacheKey(storeSlug, kind), PERSISTED_POLICY_TTL_MS);
 }
 
 function writePolicyCache(
@@ -101,52 +117,120 @@ function writePolicyCache(
 ): void {
   if (typeof window === "undefined") return;
   try {
-    sessionStorage.setItem(policyCacheKey(storeSlug, kind), JSON.stringify(entry));
+    sessionStorage.setItem(policySessionKey(storeSlug, kind), JSON.stringify(entry));
   } catch {
     /* ignore quota */
   }
+  writePersistedJson(policyCacheKey(storeSlug, kind), entry);
 }
+
+export function invalidateStorefrontPolicyCache(
+  storeSlug?: string | null,
+  kind?: StorefrontPolicyKind
+): void {
+  if (typeof window === "undefined") return;
+  const slug = storeSlug != null ? String(storeSlug).trim() : "";
+  const kinds: StorefrontPolicyKind[] = kind ? [kind] : ["terms", "privacy"];
+  const slugs = slug ? [slug] : ["platform"];
+
+  for (const s of slugs) {
+    for (const k of kinds) {
+      try {
+        sessionStorage.removeItem(policySessionKey(s || null, k));
+      } catch {
+        /* ignore */
+      }
+      removePersistedKey(policyCacheKey(s || null, k));
+    }
+  }
+}
+
+/** Drop in-memory vendor store cache so realtime / admin saves fetch fresh policy text. */
+export function bustVendorStorePolicyCaches(storeSlug?: string | null): void {
+  const slug = String(storeSlug || "").trim();
+  if (slug) {
+    vendorStoreMemory.delete(slug);
+    vendorStoreInflight.delete(slug);
+    invalidateStorefrontPolicyCache(slug);
+    return;
+  }
+  vendorStoreMemory.clear();
+  vendorStoreInflight.clear();
+  invalidateStorefrontPolicyCache(null);
+}
+
+const vendorStoreMemory = new Map<
+  string,
+  { settings: VendorStorefrontSettings; vendorId?: string; savedAt: number }
+>();
+const vendorStoreInflight = new Map<
+  string,
+  Promise<{ settings: VendorStorefrontSettings; vendorId?: string } | null>
+>();
+const VENDOR_STORE_MEM_TTL_MS = 5 * 60 * 1000;
 
 async function fetchVendorStoreBySlug(
   slug: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts?: { forceRefresh?: boolean }
 ): Promise<{ settings: VendorStorefrontSettings; vendorId?: string } | null> {
-  const response = await fetch(
-    `${API_BASE_URL}/vendor/store/${encodeURIComponent(slug)}`,
-    {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-      signal,
-    }
-  ).catch(() => null);
-  if (!response?.ok) return null;
-  const data = (await response.json().catch(() => ({}))) as {
-    settings?: VendorStorefrontSettings & { vendorId?: string };
-  };
-  if (!data.settings) return null;
-  const vendorId = String(data.settings.vendorId || "").trim() || undefined;
-  return { settings: data.settings, vendorId };
+  const key = String(slug || "").trim();
+  if (!key) return null;
+
+  if (opts?.forceRefresh) {
+    vendorStoreMemory.delete(key);
+    vendorStoreInflight.delete(key);
+  }
+
+  const cached = vendorStoreMemory.get(key);
+  if (cached && Date.now() - cached.savedAt < VENDOR_STORE_MEM_TTL_MS) {
+    return { settings: cached.settings, vendorId: cached.vendorId };
+  }
+
+  let inflight = vendorStoreInflight.get(key);
+  if (!inflight) {
+    inflight = (async () => {
+      const response = await fetch(`${API_BASE_URL}/vendor/store/${encodeURIComponent(key)}`, {
+        headers: { Authorization: `Bearer ${publicAnonKey}` },
+        signal,
+      }).catch(() => null);
+      if (!response?.ok) return null;
+      const data = (await response.json().catch(() => ({}))) as {
+        settings?: VendorStorefrontSettings & { vendorId?: string };
+      };
+      if (!data.settings) return null;
+      const vendorId = String(data.settings.vendorId || "").trim() || undefined;
+      const result = { settings: data.settings, vendorId };
+      vendorStoreMemory.set(key, { ...result, savedAt: Date.now() });
+      return result;
+    })().finally(() => {
+      vendorStoreInflight.delete(key);
+    });
+    vendorStoreInflight.set(key, inflight);
+  }
+
+  return inflight;
 }
 
 async function fetchPlatformSettings(signal?: AbortSignal): Promise<PlatformSettings | null> {
-  const response = await fetch(
-    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/settings/general`,
-    {
-      headers: { Authorization: `Bearer ${publicAnonKey}` },
-      cache: "no-store",
-      signal,
-    }
-  ).catch(() => null);
-  if (!response?.ok) return null;
-  return (await response.json().catch(() => null)) as PlatformSettings | null;
+  if (signal?.aborted) return null;
+  try {
+    return (await moduleCache.get(CACHE_KEYS.STOREFRONT_SETTINGS, fetchSiteSettings, false)) as
+      | PlatformSettings
+      | null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchPolicyCacheEntry(
   storeSlug: string | null,
   kind: StorefrontPolicyKind,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts?: { forceRefresh?: boolean }
 ): Promise<PolicyCacheEntry | null> {
   if (storeSlug) {
-    const vendorStore = await fetchVendorStoreBySlug(storeSlug, signal);
+    const vendorStore = await fetchVendorStoreBySlug(storeSlug, signal, opts);
     if (signal?.aborted) return null;
 
     if (vendorStore?.settings) {
@@ -274,7 +358,7 @@ export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontP
   }, [storeSlug, routeStoreName]);
 
   const loadPolicyData = useCallback(
-    async (opts?: { silent?: boolean }) => {
+    async (opts?: { silent?: boolean; forceRefresh?: boolean }) => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -293,7 +377,9 @@ export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontP
         };
 
         if (storeSlug) {
-          const entry = await fetchPolicyCacheEntry(storeSlug, kind, controller.signal);
+          const entry = await fetchPolicyCacheEntry(storeSlug, kind, controller.signal, {
+            forceRefresh: opts?.forceRefresh,
+          });
           if (controller.signal.aborted) return;
 
           if (entry) {
@@ -305,7 +391,9 @@ export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontP
           setResolvedVendorId(null);
         }
 
-        const platformEntry = await fetchPolicyCacheEntry(null, kind, controller.signal);
+        const platformEntry = await fetchPolicyCacheEntry(null, kind, controller.signal, {
+          forceRefresh: opts?.forceRefresh,
+        });
         if (controller.signal.aborted) return;
 
         if (platformEntry) {
@@ -334,12 +422,50 @@ export function useStorefrontPolicyData(kind: StorefrontPolicyKind): StorefrontP
   }, [loadPolicyData, initialCache]);
 
   useEffect(() => {
+    const applyLivePatch = (patch: StorefrontPolicyLivePatch) => {
+      if (patch.kind !== kind) return;
+      if (storeSlug) {
+        if (patch.scope === "platform") return;
+        const patchSlug = String(patch.storeSlug || "").trim().toLowerCase();
+        const watchSlug = String(storeSlug).trim().toLowerCase();
+        if (patchSlug && patchSlug !== watchSlug) return;
+      } else if (patch.scope !== "platform") {
+        return;
+      }
+
+      const entry: PolicyCacheEntry = {
+        storeName: displayPlatformBrandName(patch.storeName, storeSlug || "SECURE"),
+        storeEmail: patch.storeEmail,
+        storeAddress: patch.storeAddress,
+        content: patch.content || defaultContent(kind),
+        vendorId: patch.vendorId,
+      };
+
+      applyPolicyEntry(entry, {
+        setStoreName,
+        setStoreEmail,
+        setStoreAddress,
+        setContent,
+        setResolvedVendorId,
+      });
+      writePolicyCache(storeSlug, kind, entry);
+      if (patch.vendorId) setResolvedVendorId(patch.vendorId);
+      setLoading(false);
+    };
+
     return subscribeStorefrontPolicyUpdates({
       vendorId: resolvedVendorId,
+      storeSlug,
+      kind,
       includePlatform: true,
-      onUpdate: () => void loadPolicyData({ silent: true }),
+      onLivePatch: applyLivePatch,
+      onUpdate: () => {
+        bustVendorStorePolicyCaches(storeSlug);
+        moduleCache.invalidate(CACHE_KEYS.STOREFRONT_SETTINGS);
+        void loadPolicyData({ silent: true, forceRefresh: true });
+      },
     });
-  }, [resolvedVendorId, loadPolicyData]);
+  }, [resolvedVendorId, storeSlug, kind, loadPolicyData]);
 
   return {
     storeName,

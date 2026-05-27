@@ -47,6 +47,36 @@ export function isStorefrontPolicyPath(pathname: string): boolean {
   );
 }
 
+/** Parse `/vendor/:slug/terms` or host-root `/terms` for early prefetch. */
+export function parseStorefrontPolicyRoute(pathname: string): {
+  kind: StorefrontPolicyKind | null;
+  routeStoreSlug: string | null;
+  usesHostSlug: boolean;
+} {
+  const path = (pathname.replace(/\/+$/, "") || "/").toLowerCase();
+  const vendorMatch = path.match(
+    /^\/vendor\/([^/]+)\/(terms-of-service|terms|privacy-policy|privacy)$/
+  );
+  if (vendorMatch) {
+    const segment = vendorMatch[2];
+    return {
+      kind: POLICY_SEGMENTS.terms.includes(segment) ? "terms" : "privacy",
+      routeStoreSlug: decodeURIComponent(vendorMatch[1]),
+      usesHostSlug: false,
+    };
+  }
+  const rootMatch = path.match(/^\/(terms-of-service|terms|privacy-policy|privacy)$/);
+  if (rootMatch) {
+    const segment = rootMatch[1];
+    return {
+      kind: POLICY_SEGMENTS.terms.includes(segment) ? "terms" : "privacy",
+      routeStoreSlug: null,
+      usesHostSlug: true,
+    };
+  }
+  return { kind: null, routeStoreSlug: null, usesHostSlug: false };
+}
+
 /** Marketplace path when browsing via `/vendor/:storeName/...` on localhost or apex. */
 export function marketplaceVendorPolicyPath(
   storeSlug: string,

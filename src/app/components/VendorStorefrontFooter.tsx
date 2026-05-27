@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useStorefrontPolicyPaths } from "../hooks/useStorefrontPolicyPaths";
+import { prefetchStorefrontPolicyData } from "../hooks/useStorefrontPolicyData";
 
 type VendorStorefrontFooterProps = {
   storeName: string;
@@ -29,6 +30,8 @@ export function VendorStorefrontFooter({
           <Link
             to={termsPath}
             className="font-medium text-slate-600 hover:text-amber-600 transition-colors underline-offset-2 hover:underline"
+            onMouseEnter={() => void prefetchStorefrontPolicyData(storeSlug, "terms")}
+            onFocus={() => void prefetchStorefrontPolicyData(storeSlug, "terms")}
           >
             {t("auth.login.termsLink")}
           </Link>
@@ -38,6 +41,8 @@ export function VendorStorefrontFooter({
           <Link
             to={privacyPath}
             className="font-medium text-slate-600 hover:text-amber-600 transition-colors underline-offset-2 hover:underline"
+            onMouseEnter={() => void prefetchStorefrontPolicyData(storeSlug, "privacy")}
+            onFocus={() => void prefetchStorefrontPolicyData(storeSlug, "privacy")}
           >
             {t("auth.login.privacyLink")}
           </Link>

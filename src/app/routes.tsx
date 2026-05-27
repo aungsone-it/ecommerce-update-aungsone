@@ -97,11 +97,7 @@ const VendorAuthPage = lazy(() =>
 const KPayReturnPage = lazy(() =>
   import("./pages/KPayReturnPage").then((m) => ({ default: m.KPayReturnPage })),
 );
-const StorefrontPolicyPage = lazy(() =>
-  import("./pages/StorefrontPolicyPage").then((m) => ({
-    default: m.StorefrontPolicyPage,
-  })),
-);
+import { StorefrontPolicyPage } from "./pages/StorefrontPolicyPage";
 
 function VendorSubdomainIndexOrLanding() {
   if (isMarketplaceRootHost()) {

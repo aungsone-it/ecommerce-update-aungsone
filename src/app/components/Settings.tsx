@@ -249,6 +249,14 @@ export function Settings() {
     if (activeTab !== "general") return;
     return subscribeStorefrontPolicyUpdates({
       includePlatform: true,
+      onLivePatch: (patch) => {
+        if (patch.scope !== "platform") return;
+        if (patch.storeName) setStoreName(patch.storeName);
+        if (patch.storeEmail) setStoreEmail(patch.storeEmail);
+        if (patch.storeAddress) setStoreAddress(patch.storeAddress);
+        if (patch.kind === "terms") setTermsContent(patch.content);
+        if (patch.kind === "privacy") setPrivacyPolicyContent(patch.content);
+      },
       onUpdate: () => void loadGeneralSettings(),
     });
   }, [activeTab]);
@@ -321,7 +329,16 @@ export function Settings() {
       window.dispatchEvent(new CustomEvent('logoUpdated', { 
         detail: { logoUrl: storeLogo, storeName: storeName } 
       }));
-      notifyStorefrontPolicyUpdated({ scope: "platform" });
+      notifyStorefrontPolicyUpdated({
+        scope: "platform",
+        snapshot: {
+          storeName,
+          storeEmail,
+          storeAddress,
+          termsContent,
+          privacyPolicyContent,
+        },
+      });
 
       toast.success('Settings saved successfully!');
     } catch (err: any) {

@@ -25,7 +25,7 @@ import { API_BASE_URL } from "../../../utils/api-client";
 import { compressImage } from "../../../utils/imageCompression";
 import { cacheManager } from "../../utils/cacheManager";
 import { invalidateVendorStorefrontCatalogCache } from "../../utils/module-cache";
-import { notifyStorefrontPolicyUpdated } from "../../utils/storefrontPolicyRealtime";
+import { notifyStorefrontPolicyUpdated, subscribeStorefrontPolicyUpdates } from "../../utils/storefrontPolicyRealtime";
 import { storeSlugFromBusinessName } from "../../../utils/storeSlug";
 import {
   setVendorAuthSessionCookie,
@@ -223,6 +223,29 @@ export function VendorAdminSettings({
     };
   }, [vendorId]);
 
+  // Live sync Terms / Privacy fields when KV changes (other admin tabs or super-admin).
+  useEffect(() => {
+    if (!vendorId) return;
+    return subscribeStorefrontPolicyUpdates({
+      vendorId,
+      storeSlug: settings.storeSlug || null,
+      includePlatform: false,
+      onLivePatch: (patch) => {
+        if (patch.scope !== "vendor") return;
+        if (patch.vendorId && String(patch.vendorId) !== String(vendorId)) return;
+        setSettings((prev) => ({
+          ...prev,
+          ...(patch.storeName ? { storeName: patch.storeName } : {}),
+          ...(patch.storeEmail ? { contactEmail: patch.storeEmail } : {}),
+          ...(patch.storeAddress ? { address: patch.storeAddress } : {}),
+          ...(patch.kind === "terms" ? { termsContent: patch.content } : {}),
+          ...(patch.kind === "privacy" ? { privacyPolicyContent: patch.content } : {}),
+        }));
+      },
+      onUpdate: () => void loadSettings(true),
+    });
+  }, [vendorId, settings.storeSlug]);
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -307,6 +330,15 @@ export function VendorAdminSettings({
             scope: "vendor",
             vendorId,
             storeSlug: saved.storeSlug,
+            snapshot: {
+              storeName: saved.storeName,
+              storeEmail: saved.contactEmail,
+              storeAddress: saved.address,
+              termsContent: saved.termsContent,
+              privacyPolicyContent: saved.privacyPolicyContent,
+              vendorId,
+              storeSlug: saved.storeSlug,
+            },
           });
 
           toast.success(t("vendorAdmin.settings.saved"));

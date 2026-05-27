@@ -17,6 +17,9 @@ import { LoadingProvider, useLoading } from "../contexts/LoadingContext";
 import { ChatNotificationProvider, useChatNotification } from "../contexts/ChatNotificationContext";
 import { shouldResolveCustomDomainHost } from "../utils/vendorHostResolution";
 import { PlatformBrandingHead } from "./PlatformBrandingHead";
+import { parseStorefrontPolicyRoute } from "../utils/storefrontPolicyPaths";
+import { prefetchStorefrontPolicyData } from "../hooks/useStorefrontPolicyData";
+import { StorefrontPolicyLiveBridge } from "./StorefrontPolicyLiveBridge";
 
 // Public layout without authentication
 export function RootLayout() {
@@ -78,9 +81,21 @@ function RootLayoutContent() {
     void import("../pages/VendorStorefrontPage");
   }, [subdomainStoreSlug, customHostSlug]);
 
+  // Start Terms / Privacy fetch as soon as the route matches (before page mount).
+  useEffect(() => {
+    const { kind, routeStoreSlug, usesHostSlug } = parseStorefrontPolicyRoute(location.pathname);
+    if (!kind) return;
+    const storeSlug = usesHostSlug
+      ? subdomainStoreSlug || customHostSlug || null
+      : routeStoreSlug;
+    if (!storeSlug && usesHostSlug) return;
+    void prefetchStorefrontPolicyData(storeSlug, kind);
+  }, [location.pathname, subdomainStoreSlug, customHostSlug]);
+
   return (
     <>
       <PlatformBrandingHead />
+      <StorefrontPolicyLiveBridge />
       <CanonicalSubdomainRedirect />
       <SubdomainVendorRedirect />
       <Outlet />

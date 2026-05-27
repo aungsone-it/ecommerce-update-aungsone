@@ -154,6 +154,10 @@ export const LS_STOREFRONT_CATEGORIES = "migoo-ls-storefront-categories-v2";
 /** Site settings object from fetchSiteSettings. */
 export const LS_STOREFRONT_SETTINGS = "migoo-ls-storefront-settings-v2";
 
+/** Public Terms / Privacy payloads — keyed as `${LS_STOREFRONT_POLICY_PREFIX}${slug}:${kind}`. */
+export const LS_STOREFRONT_POLICY_PREFIX = "migoo-ls-policy:";
+export const PERSISTED_POLICY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export function lsVendorCatalogPage1Key(
   vendorId: string,
   qNorm: string,
