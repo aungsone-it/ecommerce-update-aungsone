@@ -16,10 +16,16 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Checkbox } from './ui/checkbox';
+import {
+  resolveVendorAdminPortalContext,
+  vendorAdminPortalMismatchMessage,
+  vendorAuthMatchesAdminPortal,
+} from '../utils/vendorAdminPortalAccess';
 import { PolicyAgreementLabel } from './PolicyAgreementLabel';
 
 interface VendorLoginProps {
   storeName?: string;
+  portalMismatchError?: string;
 }
 
 function humanizeStoreLabel(raw?: string): string {
@@ -82,8 +88,8 @@ function fallbackHostLabelFromVendorProfile(input: {
   return null;
 }
 
-export function VendorLogin({ storeName }: VendorLoginProps) {
-  const { login, vendor } = useVendorAuth();
+export function VendorLogin({ storeName, portalMismatchError }: VendorLoginProps) {
+  const { login, vendor, logout } = useVendorAuth();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
   const { slug: resolvedHostSlug, loading: hostSlugLoading } = useResolvedVendorHostSlug();
@@ -102,15 +108,33 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
         shouldResolveCustomDomainHost(window.location.hostname))
   );
 
-  // After login: prefer vendor subdomain /admin when slug/name maps; else /store/:slug/admin.
-  // Re-fetch storefront so storeName/slug match KV before resolving gogo.* (branding-page login).
+  // After login: only enter admin when auth store slug matches this portal URL.
   useEffect(() => {
     if (hostSlugLoading) return;
     if (!vendor?.vendorId || !vendor.storeSlug) return;
 
+    const portalContext = resolveVendorAdminPortalContext({
+      subdomainSlug: resolveVendorSubdomainStoreSlug(),
+      customHostSlug: resolvedHostSlug,
+      routeStoreName: storeName,
+    });
+
+    if (
+      portalContext.requiresMatch &&
+      !vendorAuthMatchesAdminPortal(vendor.storeSlug, portalContext.expectedStoreSlug)
+    ) {
+      logout();
+      setError(
+        vendorAdminPortalMismatchMessage(
+          portalContext.expectedStoreSlug,
+          vendor.storeSlug
+        )
+      );
+      return;
+    }
+
     const onVendorHost = !!resolveVendorSubdomainStoreSlug() || !!resolvedHostSlug;
     if (onVendorHost) {
-      console.log('✅ [VendorLogin] On vendor host → /admin');
       navigate('/admin', { replace: true });
       return;
     }
@@ -195,7 +219,13 @@ export function VendorLogin({ storeName }: VendorLoginProps) {
     return () => {
       cancelled = true;
     };
-  }, [vendor, navigate, resolvedHostSlug, hostSlugLoading]);
+  }, [vendor, navigate, resolvedHostSlug, hostSlugLoading, logout, storeName]);
+
+  useEffect(() => {
+    if (portalMismatchError) {
+      setError(portalMismatchError);
+    }
+  }, [portalMismatchError]);
 
   useEffect(() => {
     const titleBase = (vendorName || humanizeStoreLabel(storeName) || "Vendor Store").trim();

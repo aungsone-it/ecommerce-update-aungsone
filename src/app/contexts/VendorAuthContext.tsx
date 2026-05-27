@@ -9,6 +9,10 @@ import {
   clearVendorAuthSessionCookie,
   type VendorAuthCookieVendor,
 } from '../utils/vendorAuthCookie';
+import {
+  resolveVendorAdminPortalContext,
+  vendorAuthMatchesAdminPortal,
+} from '../utils/vendorAdminPortalAccess';
 
 /** Signed URL from KV profile image after upload (same endpoint as User Profile). */
 async function fetchVendorProfileAvatarUrl(vendorId: string): Promise<string | undefined> {
@@ -119,6 +123,20 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
       const valid = await isVendorSessionStillValid(restored);
       if (!valid) {
         console.warn('⚠️ [VendorAuth] Stored session failed server revalidation, clearing local state');
+        setVendor(null);
+        localStorage.removeItem('vendorAuth');
+        clearVendorAuthSessionCookie();
+        return;
+      }
+
+      const portalContext = resolveVendorAdminPortalContext();
+      if (
+        portalContext.requiresMatch &&
+        !vendorAuthMatchesAdminPortal(restored.storeSlug, portalContext.expectedStoreSlug)
+      ) {
+        console.warn(
+          '⚠️ [VendorAuth] Stored session vendor does not match this admin portal URL; clearing session'
+        );
         setVendor(null);
         localStorage.removeItem('vendorAuth');
         clearVendorAuthSessionCookie();
