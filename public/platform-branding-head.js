@@ -222,28 +222,37 @@
     installDefaultIcon();
   }
 
-  fetch(
-    "https://" +
-      PROJECT_ID +
-      ".supabase.co/functions/v1/make-server-16010b6f/settings/general",
-    { headers: { Authorization: "Bearer " + ANON_KEY } }
-  )
-    .then(function (res) {
-      return res.ok ? res.json() : null;
-    })
-    .then(function (data) {
-      if (!data) return;
-      var next = {
-        storeLogo: typeof data.storeLogo === "string" ? data.storeLogo : "",
-        storeName:
-          typeof data.storeName === "string" && normalizeStoreName(data.storeName).trim()
-            ? normalizeStoreName(data.storeName)
-            : "SECURE",
-      };
-      writeCache(next);
-      applyBranding(next);
-    })
-    .catch(function () {
-      /* React hook will retry */
-    });
+  function refreshBrandingFromServer() {
+    fetch(
+      "https://" +
+        PROJECT_ID +
+        ".supabase.co/functions/v1/make-server-16010b6f/settings/general",
+      { headers: { Authorization: "Bearer " + ANON_KEY } }
+    )
+      .then(function (res) {
+        return res.ok ? res.json() : null;
+      })
+      .then(function (data) {
+        if (!data) return;
+        var next = {
+          storeLogo: typeof data.storeLogo === "string" ? data.storeLogo : "",
+          storeName:
+            typeof data.storeName === "string" && normalizeStoreName(data.storeName).trim()
+              ? normalizeStoreName(data.storeName)
+              : "SECURE",
+        };
+        writeCache(next);
+        applyBranding(next);
+      })
+      .catch(function () {
+        /* React hook will retry */
+      });
+  }
+
+  // Keep first paint free of non-critical branding network work.
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(refreshBrandingFromServer, { timeout: 2500 });
+  } else {
+    setTimeout(refreshBrandingFromServer, 800);
+  }
 })();
