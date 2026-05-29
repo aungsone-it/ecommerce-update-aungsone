@@ -3638,13 +3638,25 @@ export function VendorStoreView({
         return categoriesData || [];
       };
 
-      const [categoriesData] = await Promise.all([
-        loadCategories(),
-        savedPage ? Promise.resolve() : refetchVendorCatalogPage1(forceRefresh),
-      ]);
+      const categoriesPromise = loadCategories()
+        .then((categoriesData) => {
+          setVendorCategories(categoriesData);
+          return categoriesData;
+        })
+        .catch((catErr) => {
+          console.warn("⚠️ [VENDOR STORE] Categories fetch failed (non-fatal):", catErr);
+          setVendorCategories([]);
+          return [];
+        });
 
-      setVendorCategories(categoriesData);
+      if (!savedPage) {
+        await refetchVendorCatalogPage1(forceRefresh);
+      }
+
       setServerStatus("healthy");
+
+      // Keep category fetch off the critical rendering path.
+      void categoriesPromise;
 
       // Stale-while-revalidate: LS paints instantly; always reconcile with server so deleted products vanish.
       if (!savedPage && !forceRefresh) {

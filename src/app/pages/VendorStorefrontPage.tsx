@@ -277,9 +277,15 @@ export function VendorStorefrontPage() {
     vendorHostSlug ??
     (unifiedSummaryRoute ? kpayUnifiedStoreSlug ?? undefined : undefined);
   const slugToVerify = storeName ? resolveVendorPathSlug(storeName) : "";
+  const isHostRoutedStorefront = !!(onVendorSubdomainHost || customHostSlug);
+  const shouldBlockOnVendorExistenceCheck = !isHostRoutedStorefront;
 
   const [vendorExistence, setVendorExistence] = useState<"idle" | "checking" | "found" | "not_found">(() =>
-    slugToVerify && readVendorSlugVerified(slugToVerify) ? "found" : slugToVerify ? "checking" : "idle"
+    slugToVerify
+      ? readVendorSlugVerified(slugToVerify) || isHostRoutedStorefront
+        ? "found"
+        : "checking"
+      : "idle"
   );
   const [canonicalStoreSlug, setCanonicalStoreSlug] = useState<string | null>(null);
 
@@ -292,7 +298,7 @@ export function VendorStorefrontPage() {
 
     let cancelled = false;
     const alreadyVerified = readVendorSlugVerified(slugToVerify);
-    if (!alreadyVerified) {
+    if (!alreadyVerified && shouldBlockOnVendorExistenceCheck) {
       setVendorExistence("checking");
     }
     void (async () => {
@@ -344,7 +350,7 @@ export function VendorStorefrontPage() {
     return () => {
       cancelled = true;
     };
-  }, [slugToVerify]);
+  }, [slugToVerify, shouldBlockOnVendorExistenceCheck]);
 
   const resolvedStoreName =
     vendorExistence === "found" && canonicalStoreSlug ? canonicalStoreSlug : storeName;
@@ -491,7 +497,7 @@ export function VendorStorefrontPage() {
   let storefrontGate: ReactNode = null;
   if (!resolvedStoreName) {
     storefrontGate = <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />;
-  } else if (slugToVerify && vendorExistence !== "found") {
+  } else if (shouldBlockOnVendorExistenceCheck && slugToVerify && vendorExistence !== "found") {
     storefrontGate =
       vendorExistence === "not_found" ? (
         <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />
