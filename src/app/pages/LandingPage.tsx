@@ -1,11 +1,9 @@
 import { ArrowRight, ShoppingBag, Store, TrendingUp, Shield, Zap, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { useNavigate } from "react-router";
-import Slider from "react-slick";
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
 import { useEffect, useState } from "react";
 import { usePlatformBranding } from "../hooks/usePlatformBranding";
+import { logoDisplayImageUrl } from "../utils/module-cache";
 import { buildPlatformLandingDocumentTitle } from "../utils/superAdminDocumentTitle";
 import { displayPlatformBrandName } from "../utils/platformBranding";
 import {
@@ -76,8 +74,6 @@ export function LandingPage() {
 
     const load = async () => {
       setIsLoadingVendors(true);
-      setIsLoadingStats(true);
-      setIsLoadingCategories(true);
 
       try {
         const data = await fetchLandingPlatformSettingsCached();
@@ -103,7 +99,11 @@ export function LandingPage() {
       } finally {
         if (!cancelled) setIsLoadingVendors(false);
       }
+    };
 
+    const loadDeferred = async () => {
+      setIsLoadingStats(true);
+      setIsLoadingCategories(true);
       try {
         const data = await fetchLandingStatsCached();
         if (cancelled) return;
@@ -134,8 +134,23 @@ export function LandingPage() {
     };
 
     void load();
+    let idleHandle: ReturnType<typeof setTimeout> | number = 0;
+    if (typeof requestIdleCallback === "function") {
+      idleHandle = requestIdleCallback(() => {
+        if (!cancelled) void loadDeferred();
+      });
+    } else {
+      idleHandle = window.setTimeout(() => {
+        if (!cancelled) void loadDeferred();
+      }, 200);
+    }
     return () => {
       cancelled = true;
+      if (typeof requestIdleCallback === "function" && typeof cancelIdleCallback === "function") {
+        cancelIdleCallback(idleHandle as number);
+      } else {
+        clearTimeout(idleHandle as ReturnType<typeof setTimeout>);
+      }
     };
   }, []);
 
@@ -163,8 +178,12 @@ export function LandingPage() {
             >
               {siteLogo ? (
                 <img
-                  src={siteLogo}
+                  src={logoDisplayImageUrl(siteLogo)}
                   alt=""
+                  width={36}
+                  height={36}
+                  decoding="async"
+                  fetchPriority="high"
                   className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200 shrink-0"
                 />
               ) : null}
@@ -376,40 +395,19 @@ export function LandingPage() {
               </button>
             </div>
 
-            {/* Desktop: Carousel */}
-            <div className="hidden md:block vendor-carousel">
-              <Slider
-                dots={false}
-                infinite={vendors.length >= 5}
-                speed={500}
-                slidesToShow={Math.min(5, vendors.length)}
-                slidesToScroll={1}
-                autoplay={vendors.length >= 5}
-                autoplaySpeed={3000}
-                arrows={false}
-                pauseOnHover={true}
-                responsive={[
-                  {
-                    breakpoint: 1024,
-                    settings: {
-                      slidesToShow: Math.min(4, vendors.length),
-                      infinite: vendors.length >= 4,
-                    }
-                  }
-                ]}
-              >
-                {vendors.map((vendor) => (
-                  <div key={vendor.id} className="px-4">
-                    <div className="bg-white border border-slate-200 rounded-lg p-6 h-32 flex flex-col items-center justify-center text-center hover:border-purple-300 transition-colors">
-                      <Store className="w-8 h-8 text-purple-600 mb-2" />
-                      <h4 className="font-semibold text-slate-900 text-sm mb-1">
-                        {vendor.storeName || vendor.businessName || vendor.name}
-                      </h4>
-                      <p className="text-xs text-slate-500">{vendor.category || "General"}</p>
-                    </div>
+            {/* Desktop: lightweight horizontal scroll (no react-slick bundle) */}
+            <div className="hidden md:flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
+              {vendors.map((vendor) => (
+                <div key={vendor.id} className="w-[200px] flex-shrink-0">
+                  <div className="bg-white border border-slate-200 rounded-lg p-6 h-32 flex flex-col items-center justify-center text-center hover:border-purple-300 transition-colors">
+                    <Store className="w-8 h-8 text-purple-600 mb-2" />
+                    <h4 className="font-semibold text-slate-900 text-sm mb-1 line-clamp-1">
+                      {vendor.storeName || vendor.businessName || vendor.name}
+                    </h4>
+                    <p className="text-xs text-slate-500">{vendor.category || "General"}</p>
                   </div>
-                ))}
-              </Slider>
+                </div>
+              ))}
             </div>
           </div>
         </section>

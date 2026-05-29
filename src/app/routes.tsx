@@ -25,7 +25,11 @@ import {
   AdminEntryLayout,
   AdminSubdomainLeaf,
 } from "./components/AdminSubdomainOrSuper";
-import { OrderRealtimeBridge } from "./components/OrderRealtimeBridge";
+const OrderRealtimeBridge = lazy(() =>
+  import("./components/OrderRealtimeBridge").then((m) => ({
+    default: m.OrderRealtimeBridge,
+  }))
+);
 import {
   VendorHostOnlyStorefront,
   VendorHostOrMarketplaceSaved,
@@ -105,13 +109,11 @@ function VendorSubdomainIndexOrLanding() {
   }
   const onVendorSubdomainHost = isOnVendorSubdomainHost();
   const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
+  const { slug: customSlug } = useResolvedVendorHostSlug();
   const customDomainLikeHost =
     typeof window !== "undefined" &&
     shouldResolveCustomDomainHost(window.location.hostname);
-  if (loading && !onVendorSubdomainHost) {
-    return <RouteLoadingFallback />;
-  }
+  // Mount vendor shell immediately on vendor-like hosts (custom domain shows storefront skeleton while slug resolves).
   if (onVendorSubdomainHost || sub || customSlug || customDomainLikeHost) {
     return <VendorStorefrontPage />;
   }
@@ -132,7 +134,9 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
             <ErrorBoundary>
               <ScrollController />
               <KPayVendorReturnRedirect />
-              <OrderRealtimeBridge />
+              <Suspense fallback={null}>
+                <OrderRealtimeBridge />
+              </Suspense>
               {children}
             </ErrorBoundary>
           </VendorAuthProvider>

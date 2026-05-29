@@ -1652,12 +1652,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       if (!isMounted) return;
       if (healthCheck.isHealthy) {
         // Wait for both products and categories to load before marking as healthy
-        await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
+        await Promise.all([loadProducts(), loadCategories(), loadSiteSettings()]);
         if (!isMounted) return;
         setInitialCatalogFetchDone(true);
         updateServerStatus('healthy');
         sessionStorage.setItem('migoo-initialized', 'true');
         markCatalogBackgroundRefreshed();
+        void Promise.all([loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]).catch(
+          (err) => console.warn('Deferred storefront extras failed:', err)
+        );
       } else {
         setServerStatus('unhealthy');
         // Auto-retry #1 after 5 seconds
@@ -1667,12 +1670,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           const retryCheck = await checkServerHealth(15000);
           if (!isMounted) return;
           if (retryCheck.isHealthy) {
-            await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
+            await Promise.all([loadProducts(), loadCategories(), loadSiteSettings()]);
             if (!isMounted) return;
             setInitialCatalogFetchDone(true);
             updateServerStatus('healthy');
             sessionStorage.setItem('migoo-initialized', 'true');
             markCatalogBackgroundRefreshed();
+            void Promise.all([loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]).catch(
+              (err) => console.warn('Deferred storefront extras failed:', err)
+            );
             toast.success('✅ Connected to server successfully!');
           } else {
             setServerStatus('unhealthy');
@@ -1683,12 +1689,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               const retry2Check = await checkServerHealth(20000);
               if (!isMounted) return;
               if (retry2Check.isHealthy) {
-                await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
+                await Promise.all([loadProducts(), loadCategories(), loadSiteSettings()]);
                 if (!isMounted) return;
                 setInitialCatalogFetchDone(true);
                 updateServerStatus('healthy');
                 sessionStorage.setItem('migoo-initialized', 'true');
                 markCatalogBackgroundRefreshed();
+                void Promise.all([loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]).catch(
+                  (err) => console.warn('Deferred storefront extras failed:', err)
+                );
                 toast.success('✅ Connected to server successfully!');
               } else {
                 setServerStatus('unhealthy');
@@ -1699,12 +1708,15 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                   const retry3Check = await checkServerHealth(30000);
                   if (!isMounted) return;
                   if (retry3Check.isHealthy) {
-                    await Promise.all([loadProducts(), loadCategories(), loadSiteSettings(), loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]);
+                    await Promise.all([loadProducts(), loadCategories(), loadSiteSettings()]);
                     if (!isMounted) return;
                     setInitialCatalogFetchDone(true);
                     updateServerStatus('healthy');
                     sessionStorage.setItem('migoo-initialized', 'true');
                     markCatalogBackgroundRefreshed();
+                    void Promise.all([loadBanners(), loadFeaturedCampaigns(), loadAppearanceSettings()]).catch(
+                      (err) => console.warn('Deferred storefront extras failed:', err)
+                    );
                     toast.success('✅ Connected to server successfully!');
                   } else {
                     setInitialCatalogFetchDone(true);

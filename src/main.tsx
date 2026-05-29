@@ -7,8 +7,21 @@ import {
   primePlatformBrandingFaviconFromCache,
 } from "./app/utils/platformBranding";
 import { isOnVendorSubdomainHost } from "./app/utils/vendorSubdomainHooks";
+import {
+  fetchVendorSlugByCustomDomain,
+  shouldResolveCustomDomainHost,
+} from "./app/utils/vendorHostResolution";
 
 // Cache bust: 20260307181500
+if (typeof window !== "undefined") {
+  const host = window.location.hostname;
+  if (isOnVendorSubdomainHost() || shouldResolveCustomDomainHost(host)) {
+    void import("./app/pages/VendorStorefrontPage");
+    if (shouldResolveCustomDomainHost(host)) {
+      void fetchVendorSlugByCustomDomain(host);
+    }
+  }
+}
 if (
   typeof window !== "undefined" &&
   isPlatformBrandedPublicPath(window.location.pathname, {

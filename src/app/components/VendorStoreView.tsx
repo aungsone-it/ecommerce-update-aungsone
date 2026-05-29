@@ -537,7 +537,8 @@ function resolveVendorProductFromSlug(products: Product[], decoded: string): Pro
 }
 
 /** Browse mode: small pages + load more. Search mode: max edge page size so live filter + server q cover the catalog. */
-const VENDOR_BROWSE_PAGE_SIZE = 24;
+/** Smaller first page = faster mobile LCP (fewer images above the fold). */
+const VENDOR_BROWSE_PAGE_SIZE = 12;
 /** Saved products grid — same page size as browse; server + moduleCache + localStorage per page. */
 const VENDOR_SAVED_PAGE_SIZE = 24;
 const VENDOR_SEARCH_PAGE_SIZE = 100;

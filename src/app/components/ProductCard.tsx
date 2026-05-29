@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { Plus, Heart, Star } from "lucide-react";
 import { Card } from "./ui/card";
 import { LazyImage } from "./LazyImage";
-import { motion } from "motion/react";
 import {
   initVariantSelections,
   matchVariantForProduct,
@@ -110,10 +109,7 @@ export const ProductCard = ({
             onConfirm={handleVariantModalConfirm}
           />
         )}
-        <motion.div
-          whileHover={{ y: -2 }}
-          transition={{ duration: 0.15, ease: "easeOut" }}
-        >
+        <div className="transition-transform duration-150 hover:-translate-y-0.5">
           <Card
             className="group overflow-hidden border-0 hover:shadow-xl transition-all duration-300 cursor-pointer bg-white shadow-md rounded-2xl animate-scale-in w-full"
             onClick={onProductClick}
@@ -162,37 +158,35 @@ export const ProductCard = ({
                   {/* Action Buttons */}
                   <div className="flex gap-2">
                     {/* Wishlist Button */}
-                    <motion.button
-                      className="w-9 h-9 bg-slate-100 hover:bg-amber-600 rounded-lg flex items-center justify-center transition-all group/btn"
+                    <button
+                      type="button"
+                      className="w-9 h-9 bg-slate-100 hover:bg-amber-600 rounded-lg flex items-center justify-center transition-all group/btn active:scale-95"
                       onClick={onToggleWishlist}
-                      whileTap={{ scale: 0.92 }}
-                      transition={{ duration: 0.1 }}
                     >
                       <Heart
                         className={`w-4.5 h-4.5 transition-colors ${isWishlisted ? "fill-amber-600 text-amber-600 group-hover/btn:fill-white group-hover/btn:text-white" : "text-slate-600 group-hover/btn:text-white"}`}
                       />
-                    </motion.button>
+                    </button>
 
                     {/* Add to Cart Button */}
-                    <motion.button
-                      className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                    <button
+                      type="button"
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all active:scale-95 ${
                         outOfStock
                           ? "bg-slate-300 cursor-not-allowed"
                           : "bg-amber-600 hover:bg-amber-700"
                       }`}
                       onClick={handleAdd}
                       disabled={outOfStock}
-                      whileTap={outOfStock ? undefined : { scale: 0.92 }}
-                      transition={{ duration: 0.1 }}
                     >
                       <Plus className={`w-4.5 h-4.5 ${outOfStock ? "text-slate-500" : "text-white"}`} />
-                    </motion.button>
+                    </button>
                   </div>
                 </div>
               </div>
             </div>
           </Card>
-        </motion.div>
+        </div>
       </>
     );
   }
@@ -209,10 +203,7 @@ export const ProductCard = ({
           onConfirm={handleVariantModalConfirm}
         />
       )}
-      <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ duration: 0.15, ease: "easeOut" }}
-      >
+      <div className="transition-transform duration-150 hover:-translate-y-1">
         <Card
           className="group overflow-hidden border-0 hover:shadow-xl transition-all duration-300 cursor-pointer flex flex-col gap-3 bg-white shadow-md rounded-lg animate-scale-in w-full"
           onClick={onProductClick}
@@ -234,16 +225,15 @@ export const ProductCard = ({
             {/* Action Buttons - Hidden by default on desktop, shown on hover. Always visible on mobile */}
             <div className="absolute top-2 right-2 md:top-2.5 md:right-2.5 flex flex-col gap-1.5 z-10 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200">
               {/* Add to Cart Button */}
-              <motion.button
-                className={`w-7 h-7 md:w-9 md:h-9 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all group/btn ${
+              <button
+                type="button"
+                className={`w-7 h-7 md:w-9 md:h-9 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all group/btn active:scale-95 ${
                   outOfStock
                     ? "bg-slate-200/90 cursor-not-allowed"
                     : "bg-white/90 hover:bg-amber-600"
                 }`}
                 onClick={handleAdd}
                 disabled={outOfStock}
-                whileTap={outOfStock ? undefined : { scale: 0.92 }}
-                transition={{ duration: 0.1 }}
               >
                 <Plus
                   className={`w-3.5 h-3.5 md:w-4.5 md:h-4.5 transition-colors ${
@@ -252,19 +242,18 @@ export const ProductCard = ({
                       : "text-slate-900 group-hover/btn:text-white"
                   }`}
                 />
-              </motion.button>
+              </button>
 
               {/* Wishlist Button */}
-              <motion.button
-                className="w-7 h-7 md:w-9 md:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn"
+              <button
+                type="button"
+                className="w-7 h-7 md:w-9 md:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn active:scale-95"
                 onClick={onToggleWishlist}
-                whileTap={{ scale: 0.92 }}
-                transition={{ duration: 0.1 }}
               >
                 <Heart
                   className={`w-3.5 h-3.5 md:w-4.5 md:h-4.5 transition-colors ${isWishlisted ? "fill-amber-600 text-amber-600 group-hover/btn:fill-white group-hover/btn:text-white" : "text-slate-600 group-hover/btn:text-white"}`}
                 />
-              </motion.button>
+              </button>
             </div>
           </div>
 
@@ -300,7 +289,7 @@ export const ProductCard = ({
             </div>
           </div>
         </Card>
-      </motion.div>
+      </div>
     </>
   );
 };
