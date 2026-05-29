@@ -7,6 +7,23 @@ This document summarizes active performance and cache behavior that should be ma
 - Keep UI interactions near-instant for cart/wishlist/order surfaces.
 - Minimize duplicate Supabase API calls.
 - Preserve correctness under refresh, tab switching, and multi-device use.
+- Keep storefront **LCP** low on mobile (vendor subdomains and marketplace).
+
+## Image delivery (LCP)
+
+- Supabase Storage public URLs are rewritten to the **render/image** endpoint with sensible defaults:
+  - Grid/product cards: **480px** (`gridDisplayImageUrl`)
+  - Header logos: **128px** (`logoDisplayImageUrl`)
+  - Hero banners: **960px** (`bannerDisplayImageUrl`)
+- Override all sizes with `VITE_SUPABASE_THUMB_MAX` in env (requires Storage image transformations on your Supabase plan).
+- First four product cards per grid use `priority` on `LazyImage` / `ProductCard` for faster above-the-fold paint.
+- Banner slides use `<img fetchPriority="high">` instead of CSS `background-image`.
+
+## Frontend load
+
+- Google Fonts load **non-blocking** from `index.html` (reduced weight families).
+- `react-quill` CSS is imported only inside `RichTextEditor` (admin), not on every storefront route.
+- `index.html` preconnects to Supabase for faster API and image fetches.
 
 ## Current implemented patterns
 

@@ -2462,32 +2462,52 @@ export async function getCachedImageUrl(
 export function getCacheableImageProps(src: string) {
   return {
     src,
-    // Force browser to cache aggressively
     crossOrigin: 'anonymous' as const,
     referrerPolicy: 'no-referrer' as const,
     decoding: 'async' as const,
-    loading: 'lazy' as const,
   };
 }
 
 const SUPABASE_STORAGE_OBJECT_PUBLIC = "/storage/v1/object/public/";
 
-/**
- * List/grid only: rewrite Supabase Storage *public* object URLs to the image render endpoint
- * so clients download a resized image (lower egress). No-op unless `VITE_SUPABASE_THUMB_MAX` is set
- * (try 400–600). Requires a Supabase plan with Storage image transformations.
- */
-export function gridDisplayImageUrl(src: string): string {
-  if (!src) return src;
+/** Default grid thumb width when env is unset (PageSpeed / mobile LCP). */
+const DEFAULT_GRID_THUMB_MAX = 480;
+const DEFAULT_LOGO_THUMB_MAX = 128;
+const DEFAULT_BANNER_THUMB_MAX = 960;
+
+function resolveThumbMax(explicitMax: number | undefined, fallback: number): number {
+  if (explicitMax != null && Number.isFinite(explicitMax) && explicitMax >= 64 && explicitMax <= 4096) {
+    return Math.round(explicitMax);
+  }
   const raw = import.meta.env.VITE_SUPABASE_THUMB_MAX;
-  const max =
+  const fromEnv =
     raw != null && String(raw).trim() !== "" ? Number(raw) : Number.NaN;
-  if (!Number.isFinite(max) || max < 64 || max > 4096) return src;
+  if (Number.isFinite(fromEnv) && fromEnv >= 64 && fromEnv <= 4096) {
+    return Math.round(fromEnv);
+  }
+  return fallback;
+}
+
+/**
+ * Rewrite Supabase Storage public URLs to the image render endpoint (smaller downloads → better LCP).
+ * Uses `VITE_SUPABASE_THUMB_MAX` when set; otherwise sensible defaults per use-case.
+ */
+export function gridDisplayImageUrl(src: string, maxWidth?: number): string {
+  if (!src) return src;
+  const max = resolveThumbMax(maxWidth, DEFAULT_GRID_THUMB_MAX);
   if (!src.includes(SUPABASE_STORAGE_OBJECT_PUBLIC)) return src;
   const base = src.replace(
     SUPABASE_STORAGE_OBJECT_PUBLIC,
     "/storage/v1/render/image/public/"
   );
   const joiner = base.includes("?") ? "&" : "?";
-  return `${base}${joiner}width=${Math.round(max)}&height=${Math.round(max)}&resize=cover&quality=80`;
+  return `${base}${joiner}width=${max}&height=${max}&resize=cover&quality=80`;
+}
+
+export function logoDisplayImageUrl(src: string): string {
+  return gridDisplayImageUrl(src, DEFAULT_LOGO_THUMB_MAX);
+}
+
+export function bannerDisplayImageUrl(src: string): string {
+  return gridDisplayImageUrl(src, DEFAULT_BANNER_THUMB_MAX);
 }

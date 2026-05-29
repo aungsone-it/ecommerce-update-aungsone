@@ -1,4 +1,5 @@
 import { useRef, useMemo } from 'react';
+import 'react-quill/dist/quill.snow.css';
 import ReactQuill from 'react-quill';
 import { ImagePlus } from 'lucide-react';
 import imageCompression from 'browser-image-compression';

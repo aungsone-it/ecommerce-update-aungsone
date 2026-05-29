@@ -155,6 +155,19 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and [DEPLOYMENT_CHECKLIST.md](DEPLO
 | [docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md](docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md) | Short non-technical guide |
 | [ATTRIBUTIONS.md](ATTRIBUTIONS.md) | Third-party attributions |
 
+## Performance (PageSpeed / LCP)
+
+Target hosts (e.g. `https://gogo.walwal.online`) should enable **Supabase Storage image transformations** so resized product images ship by default.
+
+| Optimization | Effect |
+|--------------|--------|
+| Auto image thumbs (480px grid, 128px logos, 960px banners) | Cuts mobile LCP from multi‑MB originals |
+| Priority load on first 4 product cards + store logo | Faster above-the-fold paint |
+| Non-blocking fonts + no global Quill CSS on storefront | Better FCP |
+| Supabase preconnect | Faster catalog/API fetch |
+
+After deploy, re-run [PageSpeed Insights](https://pagespeed.web.dev/) on mobile and desktop. See [docs/PERFORMANCE_AND_CACHING.md](docs/PERFORMANCE_AND_CACHING.md).
+
 ## Important Caveats
 
 - Some internal identifiers still use `kpay` for backwards compatibility; user-facing copy uses **KBZPay**.

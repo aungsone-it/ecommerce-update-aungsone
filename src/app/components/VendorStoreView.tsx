@@ -2095,6 +2095,7 @@ export function VendorStoreView({
                 <CacheFriendlyImg
                   src={storeLogo}
                   alt=""
+                  logo
                   className="w-11 h-11 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                 />
               ) : (
@@ -4822,6 +4823,7 @@ export function VendorStoreView({
                     src={storeLogo}
                     alt=""
                     priority
+                    logo
                     className="w-9 h-9 md:w-10 md:h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                   />
                 ) : (
@@ -5532,6 +5534,7 @@ export function VendorStoreView({
                   src={storeLogo}
                   alt=""
                   priority
+                  logo
                   className="w-9 h-9 md:w-10 md:h-10 rounded-xl object-cover ring-2 ring-slate-100 shrink-0"
                 />
               ) : (
@@ -5776,9 +5779,10 @@ export function VendorStoreView({
                 return (
                   <>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6">
-                      {savedHere.map((product) => (
+                      {savedHere.map((product, index) => (
                         <ProductCard
                           key={product.id}
+                          priority={index < 4}
                           product={productToCardProduct(product)}
                           onProductClick={() => {
                             const segment = buildVendorProductUrlSegment(product);
@@ -5892,9 +5896,10 @@ export function VendorStoreView({
             {serverStatus === 'healthy' && filteredProducts.length > 0 && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children">
-                  {filteredProducts.map((product) => (
+                  {filteredProducts.map((product, index) => (
                     <ProductCard
                       key={product.id}
+                      priority={index < 4}
                       product={productToCardProduct(product)}
                       onProductClick={async () => {
                         const segment = buildVendorProductUrlSegment(product);

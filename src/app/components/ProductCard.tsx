@@ -39,7 +39,9 @@ interface ProductCardProps {
   onToggleWishlist: (e: React.MouseEvent) => void;
   isWishlisted: boolean;
   formatPriceMMK: (price: string | number) => string;
-  viewType?: "grid" | "list"; // Add viewType prop
+  viewType?: "grid" | "list";
+  /** First row above-the-fold cards — eager image load for LCP */
+  priority?: boolean;
 }
 
 export const ProductCard = ({
@@ -49,7 +51,8 @@ export const ProductCard = ({
   onToggleWishlist,
   isWishlisted,
   formatPriceMMK,
-  viewType = "grid" // Default to grid
+  viewType = "grid",
+  priority = false,
 }: ProductCardProps) => {
   const [variantModalOpen, setVariantModalOpen] = useState(false);
 
@@ -121,6 +124,7 @@ export const ProductCard = ({
                 <LazyImage
                   src={heroImageForGrid}
                   alt={product.name}
+                  priority={priority}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 />
                 {outOfStock && (
@@ -218,6 +222,7 @@ export const ProductCard = ({
             <LazyImage
               src={heroImageForGrid}
               alt={product.name}
+              priority={priority}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
             {outOfStock && (

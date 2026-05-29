@@ -1,36 +1,50 @@
 import type { ImgHTMLAttributes } from "react";
-import { getCacheableImageProps } from "../utils/module-cache";
+import {
+  getCacheableImageProps,
+  gridDisplayImageUrl,
+  logoDisplayImageUrl,
+} from "../utils/module-cache";
 
 export type CacheFriendlyImgProps = ImgHTMLAttributes<HTMLImageElement> & {
   src: string;
   alt: string;
-  /** Hero image on product detail — eager load + high fetch priority */
+  /** Above-the-fold / LCP — eager load + high fetch priority */
   priority?: boolean;
+  /** Header / avatar-sized logo (128px transform) */
+  logo?: boolean;
 };
 
+function resolveDisplaySrc(src: string, priority: boolean, logo?: boolean): string {
+  if (!src) return src;
+  if (logo) return logoDisplayImageUrl(src);
+  if (priority) return gridDisplayImageUrl(src, 960);
+  return gridDisplayImageUrl(src);
+}
+
 /**
- * Storefront / storage-friendly <img>: anonymous CORS + lazy loading + fetchPriority hints
- * so browsers reuse cache and defer below-the-fold work (fewer duplicate Storage reads).
+ * Storefront / storage-friendly <img>: resized Supabase URLs + fetch priority hints.
  */
 export function CacheFriendlyImg({
   src,
   alt,
   className,
   priority = false,
+  logo = false,
   loading,
   ...rest
 }: CacheFriendlyImgProps) {
-  const cache = getCacheableImageProps(src);
+  const displaySrc = resolveDisplaySrc(src, priority, logo);
+  const cache = getCacheableImageProps(displaySrc);
   return (
     <img
       {...cache}
       {...rest}
-      src={src}
+      src={displaySrc}
       alt={alt}
       className={className}
       loading={loading ?? (priority ? "eager" : "lazy")}
       decoding="async"
-      fetchPriority={priority ? "high" : "low"}
+      fetchPriority={priority ? "high" : "auto"}
     />
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, memo } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, ArrowRight } from "lucide-react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { bannerDisplayImageUrl } from "../utils/module-cache";
 
 interface BannerSliderProps {
   banners: {
@@ -75,26 +76,23 @@ export const BannerSlider = memo(function BannerSlider({
     }
   };
 
-  // Generate background style
+  const currentBgImage = currentBannerData?.backgroundImage
+    ? bannerDisplayImageUrl(currentBannerData.backgroundImage)
+    : null;
+
   const getBackgroundStyle = () => {
     const banner = banners[currentBanner];
-    
+
     if (banner.backgroundImage) {
-      return {
-        backgroundImage: `url(${banner.backgroundImage})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat'
-      };
+      return {};
     }
-    
+
     if (banner.backgroundColor) {
-      // Check if it's a hex/rgb color or a Tailwind class
       if (banner.backgroundColor.startsWith('#') || banner.backgroundColor.startsWith('rgb')) {
         return { backgroundColor: banner.backgroundColor };
       }
     }
-    
+
     return {};
   };
 
@@ -121,11 +119,23 @@ export const BannerSlider = memo(function BannerSlider({
       className={`relative overflow-hidden group h-[290px] sm:h-[320px] md:h-[460px] ${getBackgroundClasses()}`}
       style={getBackgroundStyle()}
     >
-      {/* Background layer with fade transition */}
-      <div 
-        className={`absolute inset-0 transition-opacity duration-700 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}
-        style={getBackgroundStyle()}
-      />
+      {currentBgImage ? (
+        <img
+          src={currentBgImage}
+          alt=""
+          decoding="async"
+          fetchPriority="high"
+          loading="eager"
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-700 ${
+            isTransitioning ? 'opacity-0' : 'opacity-100'
+          }`}
+        />
+      ) : (
+        <div
+          className={`absolute inset-0 transition-opacity duration-700 ${isTransitioning ? 'opacity-0' : 'opacity-100'}`}
+          style={getBackgroundStyle()}
+        />
+      )}
       
       {/* Overlay for better text readability when using background images - Only show if text content exists */}
       {banners[currentBanner].backgroundImage && (
