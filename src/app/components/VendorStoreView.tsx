@@ -5795,7 +5795,7 @@ export function VendorStoreView({
                       {savedHere.map((product, index) => (
                         <ProductCard
                           key={product.id}
-                          priority={index < 4}
+                          priority={index < 1}
                           product={productToCardProduct(product)}
                           onProductClick={() => {
                             const segment = buildVendorProductUrlSegment(product);
@@ -5912,7 +5912,7 @@ export function VendorStoreView({
                   {filteredProducts.map((product, index) => (
                     <ProductCard
                       key={product.id}
-                      priority={index < 4}
+                      priority={index < 1}
                       product={productToCardProduct(product)}
                       onProductClick={async () => {
                         const segment = buildVendorProductUrlSegment(product);

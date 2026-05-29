@@ -2471,9 +2471,9 @@ export function getCacheableImageProps(src: string) {
 const SUPABASE_STORAGE_OBJECT_PUBLIC = "/storage/v1/object/public/";
 
 /** Default grid thumb width when env is unset (PageSpeed / mobile LCP). */
-const DEFAULT_GRID_THUMB_MAX = 480;
-const DEFAULT_LOGO_THUMB_MAX = 128;
-const DEFAULT_BANNER_THUMB_MAX = 960;
+const DEFAULT_GRID_THUMB_MAX = 320;
+const DEFAULT_LOGO_THUMB_MAX = 96;
+const DEFAULT_BANNER_THUMB_MAX = 720;
 
 function resolveThumbMax(explicitMax: number | undefined, fallback: number): number {
   if (explicitMax != null && Number.isFinite(explicitMax) && explicitMax >= 64 && explicitMax <= 4096) {
@@ -2501,7 +2501,7 @@ export function gridDisplayImageUrl(src: string, maxWidth?: number): string {
     "/storage/v1/render/image/public/"
   );
   const joiner = base.includes("?") ? "&" : "?";
-  return `${base}${joiner}width=${max}&height=${max}&resize=cover&quality=80`;
+  return `${base}${joiner}width=${max}&height=${max}&resize=cover&quality=70`;
 }
 
 export function logoDisplayImageUrl(src: string): string {
