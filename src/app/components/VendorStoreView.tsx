@@ -3649,6 +3649,7 @@ export function VendorStoreView({
           return [];
         });
 
+      const hadCatalogSnapshot = productsRef.current.length > 0;
       if (!savedPage) {
         await refetchVendorCatalogPage1(forceRefresh);
       }
@@ -3659,7 +3660,7 @@ export function VendorStoreView({
       void categoriesPromise;
 
       // Stale-while-revalidate: LS paints instantly; always reconcile with server so deleted products vanish.
-      if (!savedPage && !forceRefresh) {
+      if (!savedPage && !forceRefresh && hadCatalogSnapshot) {
         void refetchVendorCatalogPage1(true);
       }
     } catch (error) {
@@ -5795,7 +5796,7 @@ export function VendorStoreView({
                       {savedHere.map((product, index) => (
                         <ProductCard
                           key={product.id}
-                          priority={index < 1}
+                          priority={index < 2}
                           product={productToCardProduct(product)}
                           onProductClick={() => {
                             const segment = buildVendorProductUrlSegment(product);
@@ -5912,7 +5913,7 @@ export function VendorStoreView({
                   {filteredProducts.map((product, index) => (
                     <ProductCard
                       key={product.id}
-                      priority={index < 1}
+                      priority={index < 2}
                       product={productToCardProduct(product)}
                       onProductClick={async () => {
                         const segment = buildVendorProductUrlSegment(product);

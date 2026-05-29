@@ -2469,9 +2469,10 @@ export function getCacheableImageProps(src: string) {
 }
 
 const SUPABASE_STORAGE_OBJECT_PUBLIC = "/storage/v1/object/public/";
+const SUPABASE_STORAGE_OBJECT_SIGNED = "/storage/v1/object/sign/";
 
 /** Default grid thumb width when env is unset (PageSpeed / mobile LCP). */
-const DEFAULT_GRID_THUMB_MAX = 320;
+const DEFAULT_GRID_THUMB_MAX = 256;
 const DEFAULT_LOGO_THUMB_MAX = 96;
 const DEFAULT_BANNER_THUMB_MAX = 720;
 
@@ -2495,11 +2496,20 @@ function resolveThumbMax(explicitMax: number | undefined, fallback: number): num
 export function gridDisplayImageUrl(src: string, maxWidth?: number): string {
   if (!src) return src;
   const max = resolveThumbMax(maxWidth, DEFAULT_GRID_THUMB_MAX);
-  if (!src.includes(SUPABASE_STORAGE_OBJECT_PUBLIC)) return src;
-  const base = src.replace(
-    SUPABASE_STORAGE_OBJECT_PUBLIC,
-    "/storage/v1/render/image/public/"
-  );
+  let base = src;
+  if (src.includes(SUPABASE_STORAGE_OBJECT_PUBLIC)) {
+    base = src.replace(
+      SUPABASE_STORAGE_OBJECT_PUBLIC,
+      "/storage/v1/render/image/public/"
+    );
+  } else if (src.includes(SUPABASE_STORAGE_OBJECT_SIGNED)) {
+    base = src.replace(
+      SUPABASE_STORAGE_OBJECT_SIGNED,
+      "/storage/v1/render/image/sign/"
+    );
+  } else {
+    return src;
+  }
   const joiner = base.includes("?") ? "&" : "?";
   return `${base}${joiner}width=${max}&height=${max}&resize=cover&quality=70`;
 }

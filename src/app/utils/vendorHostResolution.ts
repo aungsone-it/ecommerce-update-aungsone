@@ -8,6 +8,7 @@ import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 
 const CACHE_PREFIX = "migoo-vendor-slug:";
+const inflightByDomainRequests = new Map<string, Promise<string | null>>();
 
 function normalizeHostForLookup(host: string): string {
   return host.split(":")[0].toLowerCase();
@@ -90,21 +91,33 @@ export async function fetchVendorSlugByCustomDomain(
     if (cached) return cached;
   }
 
-  try {
-    const res = await fetch(
-      `${API_BASE_URL}/vendor/by-domain?domain=${encodeURIComponent(
-        h
-      )}`,
-      { headers: { Authorization: `Bearer ${publicAnonKey}` } }
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as { storeSlug?: string };
-    const slug = typeof data.storeSlug === "string" && data.storeSlug.trim() ? data.storeSlug.trim() : null;
-    if (slug) writeCachedSlug(h, slug);
-    return slug;
-  } catch {
-    return null;
-  }
+  const inflight = inflightByDomainRequests.get(h);
+  if (inflight) return inflight;
+
+  const req = (async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/vendor/by-domain?domain=${encodeURIComponent(
+          h
+        )}`,
+        { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as { storeSlug?: string };
+      const slug =
+        typeof data.storeSlug === "string" && data.storeSlug.trim()
+          ? data.storeSlug.trim()
+          : null;
+      if (slug) writeCachedSlug(h, slug);
+      return slug;
+    } catch {
+      return null;
+    } finally {
+      inflightByDomainRequests.delete(h);
+    }
+  })();
+  inflightByDomainRequests.set(h, req);
+  return req;
 }
 
 /** Mirrors AnimatedOutlet grouping for vendor-only hosts (subdomain/custom domain). */
@@ -187,7 +200,7 @@ export function useResolvedVendorHostSlug(): {
     }
     let cancelled = false;
     void (async () => {
-      const slug = await fetchVendorSlugByCustomDomain(h, { force: true });
+      const slug = await fetchVendorSlugByCustomDomain(h, { force: !cached });
       if (cancelled) return;
       setCustomSlug(slug);
       setLoading(false);

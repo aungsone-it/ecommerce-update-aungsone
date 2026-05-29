@@ -234,6 +234,7 @@ export const ProductCard = ({
                 }`}
                 onClick={handleAdd}
                 disabled={outOfStock}
+                aria-label={outOfStock ? `${product.name} out of stock` : `Add ${product.name} to cart`}
               >
                 <Plus
                   className={`w-3.5 h-3.5 md:w-4.5 md:h-4.5 transition-colors ${
@@ -249,6 +250,7 @@ export const ProductCard = ({
                 type="button"
                 className="w-7 h-7 md:w-9 md:h-9 bg-white/90 backdrop-blur-sm rounded-lg flex items-center justify-center shadow-md transition-all hover:bg-amber-600 group/btn active:scale-95"
                 onClick={onToggleWishlist}
+                aria-label={isWishlisted ? `Remove ${product.name} from wishlist` : `Add ${product.name} to wishlist`}
               >
                 <Heart
                   className={`w-3.5 h-3.5 md:w-4.5 md:h-4.5 transition-colors ${isWishlisted ? "fill-amber-600 text-amber-600 group-hover/btn:fill-white group-hover/btn:text-white" : "text-slate-600 group-hover/btn:text-white"}`}
