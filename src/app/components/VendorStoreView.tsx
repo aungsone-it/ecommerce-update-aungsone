@@ -23,6 +23,7 @@ import {
   lsVendorSavedWishlistPageKey,
   lsWishlistProductIdsKey,
 } from "../utils/persistedLocalCache";
+import { normalizeVendorStorefrontProducts } from "../utils/vendorStorefrontProductStats";
 import {
   getCustomerOrderStatusColor,
   getCustomerOrderStatusLabel,
@@ -580,7 +581,9 @@ function vendorHomeStateFromCatalogPayload(
   storePhone: string;
   canonicalVendorId: string | null;
 } {
-  const products = Array.isArray(fromLs.products) ? (fromLs.products as Product[]) : [];
+  const products = normalizeVendorStorefrontProducts(
+    Array.isArray(fromLs.products) ? (fromLs.products as Product[]) : []
+  );
   const pageSize = VENDOR_BROWSE_PAGE_SIZE;
   const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, "", "all", pageSize);
   moduleCache.prime(cacheKey, fromLs);
@@ -953,7 +956,7 @@ export function VendorStoreView({
 
   const applyVendorCatalogSlice = useCallback(
     (slice: { products: Product[]; total: number; page: number; hasMore: boolean }) => {
-      setProducts(slice.products);
+      setProducts(normalizeVendorStorefrontProducts(slice.products));
       setVendorCatalogTotal(slice.total);
       setVendorCatalogPage(slice.page);
       setVendorCatalogHasMore(slice.hasMore);
@@ -5105,9 +5108,11 @@ export function VendorStoreView({
                       <Star key={i} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                     ))}
                   </div>
-                  <span className="text-xs text-slate-600 font-medium">4.8/5.0</span>
+                  <span className="text-xs text-slate-600 font-medium">
+                    {(selectedProduct.rating ?? 4.8).toFixed(1)}/5.0
+                  </span>
                   <Separator orientation="vertical" className="h-3 hidden sm:block" />
-                  <span className="text-xs text-slate-600">{selectedProduct.reviewCount || 0} sold</span>
+                  <span className="text-xs text-slate-600">{selectedProduct.reviewCount ?? 0} sold</span>
                 </div>
               </div>
 

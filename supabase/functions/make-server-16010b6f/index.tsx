@@ -2909,6 +2909,21 @@ function sortStorefrontProductRows(rows: any[], sort: string): any[] {
   return copy;
 }
 
+/** Stable mock sold count per product — avoids random values changing on every refresh. */
+function stableVendorStorefrontSoldCount(p: any): number {
+  const fromProduct = Number(p.salesVolume);
+  if (Number.isFinite(fromProduct) && fromProduct > 0) {
+    return Math.floor(fromProduct);
+  }
+  const seed = String(p.id ?? p.sku ?? "");
+  if (!seed) return 0;
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return (hash % 90) + 10;
+}
+
 /**
  * Slim list payload for bootstrap/catalog pages — trims description etc., but MUST keep
  * variantOptions + variants so product detail can render selectors without waiting on GET /products/:id.
@@ -2927,8 +2942,8 @@ function mapVendorStorefrontProductRow(p: any) {
     inventory: p.inventory || 0,
     trackQuantity: p.trackQuantity !== undefined ? p.trackQuantity : true,
     continueSellingOutOfStock: p.continueSellingOutOfStock || false,
-    rating: 4.5,
-    reviewCount: Math.floor(Math.random() * 100),
+    rating: 4.8,
+    reviewCount: stableVendorStorefrontSoldCount(p),
     hasVariants: p.hasVariants || false,
     variants: p.variants || [],
     variantOptions: p.variantOptions || [],

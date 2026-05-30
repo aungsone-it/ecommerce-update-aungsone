@@ -21,6 +21,7 @@ import {
   isVendorUncategorizedFilter,
   VENDOR_STORE_UNCATEGORIZED_SLUG,
 } from "./vendorStoreCategory";
+import { normalizeVendorStorefrontProducts } from "./vendorStorefrontProductStats";
 import {
   readPersistedJson,
   writePersistedJson,
@@ -1360,7 +1361,7 @@ export async function fetchVendorProducts(
   }
 
   const data = await response.json();
-  const list = data.products || [];
+  const list = normalizeVendorStorefrontProducts(data.products || []);
   const page = Number(data.page ?? opts?.page ?? 1);
   const pageSize = Number(data.pageSize ?? opts?.pageSize ?? 24);
   const total = Number(data.total ?? list.length);
