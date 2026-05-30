@@ -15,12 +15,14 @@ import {
 import { resetDocumentFavicon, applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
 import { resolveVendorPathSlug, vendorPathStoreSlugsMatch } from "../utils/vendorStorePaths";
 import {
+  hasVendorKpayReturnSignals,
   isUnifiedKpaySummaryPath,
   navigateUnifiedSummaryContinueShopping,
   readKpayReturnQueryOrderId,
   resolveKpayReturnStoreSlug,
   resolveStoreSlugFromPwaCheckoutDraft,
 } from "../utils/vendorCheckoutPaths";
+import { maybeRedirectKpayReturnToUnifiedSummary } from "../utils/kpayUnifiedSummaryRedirect";
 import { fetchPwaCheckoutDraft } from "../utils/kpayClient";
 import {
   buildVendorStorefrontDocumentTitle,
@@ -222,6 +224,24 @@ function VendorStoreNotFoundPanel({ onBackHome }: { onBackHome: () => void }) {
 export function VendorStorefrontPage() {
   const params = useParams();
   const location = useLocation();
+
+  useLayoutEffect(() => {
+    maybeRedirectKpayReturnToUnifiedSummary();
+  }, [location.pathname, location.search]);
+
+  const pendingUnifiedKpayRedirect = useMemo(
+    () =>
+      hasVendorKpayReturnSignals({
+        pathname: location.pathname,
+        search: location.search,
+      }),
+    [location.pathname, location.search],
+  );
+
+  if (pendingUnifiedKpayRedirect) {
+    return <div className="min-h-screen bg-white" aria-busy="true" />;
+  }
+
   const vendorDash = parseVendorDashPath(location.pathname);
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
   const onVendorSubdomainHost = isOnVendorSubdomainHost();

@@ -9,24 +9,71 @@
         localStorage.removeItem("migoo-theme");
       } catch (e) {}
     </script>
+    <style>
+      html.kpay-unified-redirect,
+      html.kpay-unified-redirect body {
+        background: #fff;
+        overflow: hidden;
+      }
+    </style>
     <script>
       (function () {
         try {
           var search = location.search || "";
-          if (!/(?:^|[?&])(?:merch_order_id|merchOrderId)=([^&]+)/i.test(search)) return;
           var path = (location.pathname || "/").replace(/\/+$/, "") || "/";
           var host = location.hostname.toLowerCase();
           var isWalwal = host === "walwal.online" || host === "www.walwal.online";
           var isPlainLocal =
             host === "localhost" || host === "127.0.0.1" || host === "[::1]";
           if ((isWalwal || isPlainLocal) && path === "/summary") return;
+
+          var hasKpayQuery =
+            /(?:^|[?&])(?:merch_order_id|merchOrderId|prepay_id|prepayId|callback_info)=/i.test(
+              search
+            );
+          var pendingKpay = false;
+          try {
+            pendingKpay = Boolean(localStorage.getItem("kpay_pwa_pending_order"));
+          } catch (e) {}
+
+          var shouldRedirect = false;
+          if (hasKpayQuery && (path === "/summary" || path === "/kpay/return" || path === "/")) {
+            shouldRedirect = true;
+          } else if (path === "/summary" && pendingKpay) {
+            shouldRedirect = true;
+          } else if (path === "/kpay/return") {
+            shouldRedirect = true;
+          }
+
+          if (!shouldRedirect) return;
+
+          if (!hasKpayQuery && pendingKpay) {
+            try {
+              var raw = localStorage.getItem("kpay_pwa_pending_order");
+              if (raw) {
+                var pending = JSON.parse(raw);
+                var qs = new URLSearchParams(search.replace(/^\?/, ""));
+                if (pending.merchantOrderId && !qs.get("merch_order_id") && !qs.get("merchOrderId")) {
+                  qs.set("merch_order_id", pending.merchantOrderId);
+                }
+                if (pending.prepayId && !qs.get("prepay_id") && !qs.get("prepayId")) {
+                  qs.set("prepay_id", pending.prepayId);
+                }
+                var merged = qs.toString();
+                search = merged ? "?" + merged : "";
+              }
+            } catch (e) {}
+          }
+
           var port = location.port ? ":" + location.port : "";
           var unifiedOrigin =
             isWalwal || isPlainLocal
               ? location.protocol + "//" + (isPlainLocal ? "localhost" : host) + port
               : "https://walwal.online";
           var target = unifiedOrigin + "/summary" + search;
-          if (location.href.split("#")[0] !== target) location.replace(target);
+          if (location.href.split("#")[0] === target) return;
+          document.documentElement.className += " kpay-unified-redirect";
+          location.replace(target);
         } catch (e) {}
       })();
     </script>

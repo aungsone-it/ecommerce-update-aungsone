@@ -61,6 +61,79 @@ export function readKpayReturnQueryOrderId(search: string): string {
   return (qs.get("merch_order_id") || qs.get("merchOrderId") || "").trim();
 }
 
+export function readKpayReturnPrepayId(search: string): string {
+  const qs = new URLSearchParams(search);
+  return (qs.get("prepay_id") || qs.get("prepayId") || "").trim();
+}
+
+function readKpayPendingRecord(): {
+  merchantOrderId?: string;
+  prepayId?: string;
+} | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(KPAY_PWA_PENDING_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as { merchantOrderId?: string; prepayId?: string };
+  } catch {
+    return null;
+  }
+}
+
+/** Merge pending PWA checkout ids into the return query when KBZ omits them. */
+export function enrichKpayReturnSearch(search: string): string {
+  const qs = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  if (!readKpayReturnQueryOrderId(`?${qs.toString()}`)) {
+    const pendingId = String(readKpayPendingRecord()?.merchantOrderId || "").trim();
+    if (pendingId) qs.set("merch_order_id", pendingId);
+  }
+  if (!readKpayReturnPrepayId(`?${qs.toString()}`)) {
+    const pendingPrepay = String(readKpayPendingRecord()?.prepayId || "").trim();
+    if (pendingPrepay) qs.set("prepay_id", pendingPrepay);
+  }
+  const q = qs.toString();
+  return q ? `?${q}` : "";
+}
+
+/** True when the current vendor host session should move to unified `/summary`. */
+export function hasVendorKpayReturnSignals(params?: {
+  pathname?: string;
+  search?: string;
+}): boolean {
+  if (typeof window === "undefined") return false;
+  if (isUnifiedKpayReturnHost()) return false;
+
+  const search = params?.search ?? window.location.search ?? "";
+  const path =
+    (params?.pathname ?? window.location.pathname).split("?")[0].replace(/\/$/, "") || "/";
+
+  if (readKpayReturnQueryOrderId(search)) return true;
+  if (readKpayReturnPrepayId(search)) return true;
+  if (parsePwaCallbackInfo(new URLSearchParams(search).get("callback_info"))) return true;
+
+  // KBZ often opens vendor `/summary` with no query after in-app payment.
+  if (path === "/summary" && readKpayPendingStoreContext()) return true;
+  if (path === "/kpay/return") return true;
+
+  if (
+    path === "/" &&
+    (readKpayReturnQueryOrderId(search) || readKpayReturnPrepayId(search))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function buildUnifiedKpaySummaryRedirectUrl(params?: {
+  pathname?: string;
+  search?: string;
+}): string | null {
+  if (!hasVendorKpayReturnSignals(params)) return null;
+  const search = enrichKpayReturnSearch(params?.search ?? window.location.search ?? "");
+  return `${resolveUnifiedKpayReturnBaseUrl()}${UNIFIED_KPAY_SUMMARY_PATH}${search}`;
+}
+
 export function resolveStoreSlugFromStorefrontOrigin(
   origin: string | null | undefined,
 ): string | null {

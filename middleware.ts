@@ -93,6 +93,17 @@ export const config = {
   matcher: ["/((?!assets/|favicon\\.ico|robots\\.txt|manifest\\.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)"],
 };
 
+function hasKpayReturnQuery(search: string): boolean {
+  return /(?:^|[?&])(?:merch_order_id|merchOrderId|prepay_id|prepayId|callback_info)=/i.test(
+    search || "",
+  );
+}
+
+function shouldEdgeRedirectVendorKpayToUnifiedSummary(path: string, search: string): boolean {
+  if (!hasKpayReturnQuery(search)) return false;
+  return path === "/summary" || path === "/kpay/return" || path === "/";
+}
+
 export default function middleware(request: Request): Response {
   const host = normalizeHost(request.headers.get("host") || "");
 
@@ -122,6 +133,14 @@ export default function middleware(request: Request): Response {
   const sub = subdomainMatch[1].toLowerCase();
   if (RESERVED_SUBDOMAINS.has(sub)) {
     return next();
+  }
+
+  const requestUrl = new URL(request.url);
+  const path = (requestUrl.pathname.replace(/\/+$/, "") || "/");
+  const search = requestUrl.search || "";
+  if (shouldEdgeRedirectVendorKpayToUnifiedSummary(path, search)) {
+    const unified = new URL(`https://${baseDomain}/summary${search}`);
+    return Response.redirect(unified.toString(), 302);
   }
 
   const mergedMap = mergeSlugMapFromEnv((process.env.VENDOR_SUBDOMAIN_SLUG_MAP || "").trim());
