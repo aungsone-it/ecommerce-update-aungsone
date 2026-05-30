@@ -1,0 +1,10 @@
+@import 'tailwindcss' source(none);
+@custom-variant dark (&:is(.dark *));
+
+/* Vendor storefront utilities — sync-imported by vendor shop route modules. Keep in sync with tailwind.css @source not list. */
+@source '../app/pages/VendorStorefrontPage.tsx';
+@source '../app/pages/StorefrontPolicyPage.tsx';
+@source '../app/components/VendorStoreView.tsx';
+@source '../app/components/VendorStorefrontFooter.tsx';
+@source '../app/components/UnifiedKpaySummarySignInGate.tsx';
+@source '../app/components/SkeletonLoaders.tsx';

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import "../utils/vendorStorefrontStyles";
 import { useParams, useNavigate, useLocation, matchPath } from "react-router";
 import {
   resolveVendorSubdomainStoreSlug,

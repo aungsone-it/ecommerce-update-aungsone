@@ -68,4 +68,21 @@
 @source not '../app/components/RequestAnalyzer.tsx';
 @source not '../app/components/ui/chart.tsx';
 
+/* Vendor storefront utilities live in vendor-storefront-tailwind.css (sync import on vendor shop routes). */
+@source not '../app/pages/VendorStorefrontPage.tsx';
+@source not '../app/pages/StorefrontPolicyPage.tsx';
+@source not '../app/components/VendorStoreView.tsx';
+@source not '../app/components/VendorStorefrontFooter.tsx';
+@source not '../app/components/UnifiedKpaySummarySignInGate.tsx';
+@source not '../app/components/SkeletonLoaders.tsx';
+
+/* Legacy marketplace mega-store (no active route) — drop dead CSS from the global bundle. */
+@source not '../app/components/Storefront.tsx';
+@source not '../app/components/StorefrontCached.tsx';
+@source not '../app/components/StorefrontFooter.tsx';
+@source not '../app/components/StorefrontAuth.tsx';
+@source not '../app/components/StorefrontProductDetail.tsx';
+@source not '../app/pages/StorefrontPage.tsx';
+@source not '../app/components/SkeletonLoader.tsx';
+
 @import 'tw-animate-css';
