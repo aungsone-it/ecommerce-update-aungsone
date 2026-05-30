@@ -1115,7 +1115,7 @@ export function VendorStoreView({
 
   const wasCheckoutRouteRef = useRef(false);
 
-  const { addToCart, totalItems, clearCart } = useCart();
+  const { addToCart, totalItems } = useCart();
 
   // Product description gallery lightbox (full-screen overlay + prev/next)
   const [descLightboxOpen, setDescLightboxOpen] = useState(false);
@@ -4033,15 +4033,6 @@ export function VendorStoreView({
         return false;
       }
 
-      if (overrides?.buyNow) {
-        if (!user) {
-          toast.error("Please sign in to continue to checkout");
-          setShowAuthModal(true);
-          setAuthMode("login");
-          return false;
-        }
-        clearCart();
-      }
       const parseNum = (x: unknown, fallback: number) => {
         if (x == null || x === "") return fallback;
         const n = typeof x === "number" ? x : parseFloat(String(x).replace(/[^0-9.-]/g, ""));
@@ -4093,24 +4084,8 @@ export function VendorStoreView({
         ? { commissionRate: snapRate }
         : {};
 
-      addToCart(
-        {
-          id: cartId,
-          sku,
-          name: product.name,
-          price,
-          image,
-          productId: product.id,
-          inventory,
-          vendorId: vendorId,
-          ...commissionPatch,
-        },
-        qty
-      );
-      setQuantity(1);
       if (overrides?.buyNow) {
-        // Seed checkout mini summary immediately so Buy Now never flashes empty summary
-        // when route remount happens before cart context rehydrates.
+        // Buy Now bypasses the cart — checkout reads a one-shot localStorage override only.
         try {
           const checkoutPathOnly = String(checkoutPath || "/checkout").split("?")[0] || "/checkout";
           const miniKey = `checkout-mini-summary:${checkoutPathOnly}`;
@@ -4130,17 +4105,33 @@ export function VendorStoreView({
             total: (Number(price) || 0) * (Number(qty) || 1),
             savedAt: new Date().toISOString(),
           };
-          localStorage.setItem(
-            miniKey,
-            JSON.stringify(oneItemPayload)
-          );
+          localStorage.setItem(miniKey, JSON.stringify(oneItemPayload));
           localStorage.setItem(buyNowKey, JSON.stringify(oneItemPayload));
         } catch {
           /* ignore localStorage failures */
         }
+        setQuantity(1);
         setCartOpen(false);
         navigate(checkoutPath);
-      } else if (typeof window !== "undefined" && window.innerWidth >= 768) {
+        return true;
+      }
+
+      addToCart(
+        {
+          id: cartId,
+          sku,
+          name: product.name,
+          price,
+          image,
+          productId: product.id,
+          inventory,
+          vendorId: vendorId,
+          ...commissionPatch,
+        },
+        qty
+      );
+      setQuantity(1);
+      if (typeof window !== "undefined" && window.innerWidth >= 768) {
         setCartOpen(true);
       }
       return true;

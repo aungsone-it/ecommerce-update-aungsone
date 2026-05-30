@@ -3433,15 +3433,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       return;
     }
     
-    // 🔒 Require authentication to checkout
-    if (!user) {
-      toast.error("Please sign in to place an order");
-      setShowAuthModal(true);
-      setAuthMode('login');
-      setShowCart(false);
-      return;
-    }
-    
     // 🧹 Clear buyNowItem when going to regular cart checkout (not express checkout)
     if (cart.length > 0) {
       setBuyNowItem(null);
@@ -3507,15 +3498,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         : null;
     if (!canPurchase(product, variantForStock, quantity)) {
       toast.error("This item is out of stock");
-      return;
-    }
-
-    // 🔒 Require authentication to buy now
-    if (!user) {
-      toast.error("Please sign in to place an order");
-      setShowAuthModal(true);
-      setAuthMode('login');
-      setSelectedProduct(null); // Close product modal
       return;
     }
 

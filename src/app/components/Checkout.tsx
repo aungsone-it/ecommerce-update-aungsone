@@ -1257,8 +1257,6 @@ export function Checkout({
     if (!resolveOrderEmail()) missingFields.push("Email");
     if (!shippingInfo.address.trim()) missingFields.push("Address");
     if (!shippingInfo.city.trim()) missingFields.push("City");
-    if (!shippingInfo.zipCode.trim()) missingFields.push("Postal Code");
-    if (!shippingInfo.country.trim()) missingFields.push("Country/Region");
     if (!orderNote.trim()) missingFields.push("Delivery Notes");
     return missingFields;
   };
@@ -1809,10 +1807,12 @@ export function Checkout({
       navigate(summaryPath, { replace: true });
     }
     
-    // Clear cart after successful order
-    setTimeout(() => {
-      clearCart();
-    }, 500);
+    // Clear cart after successful order (cart checkout only — Buy Now never touched the cart)
+    if (!buyNowOverride?.items?.length) {
+      setTimeout(() => {
+        clearCart();
+      }, 500);
+    }
   };
 
   if (showSummaryLoading) {
@@ -2089,43 +2089,15 @@ export function Checkout({
                       className={checkoutInputClass}
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="vs-city" className="mb-1.5 block text-sm font-normal text-slate-700">
-                        City
-                      </Label>
-                      <Input
-                        id="vs-city"
-                        placeholder="Yangon"
-                        value={shippingInfo.city}
-                        onChange={(e) => setShippingInfo({ ...shippingInfo, city: e.target.value })}
-                        className={checkoutInputClass}
-                      />
-                    </div>
-                    <div>
-                      <div className="mb-1.5 flex items-baseline justify-between">
-                        <Label htmlFor="vs-zip" className="text-sm font-normal text-slate-700">
-                          Postal Code *
-                        </Label>
-                      </div>
-                      <Input
-                        id="vs-zip"
-                        placeholder="11011"
-                        value={shippingInfo.zipCode}
-                        onChange={(e) => setShippingInfo({ ...shippingInfo, zipCode: e.target.value })}
-                        className={checkoutInputClass}
-                      />
-                    </div>
-                  </div>
                   <div>
-                    <Label htmlFor="vs-country" className="mb-1.5 block text-sm font-normal text-slate-700">
-                      Country/Region
+                    <Label htmlFor="vs-city" className="mb-1.5 block text-sm font-normal text-slate-700">
+                      City
                     </Label>
                     <Input
-                      id="vs-country"
-                      placeholder="Myanmar"
-                      value={shippingInfo.country}
-                      onChange={(e) => setShippingInfo({ ...shippingInfo, country: e.target.value })}
+                      id="vs-city"
+                      placeholder="Yangon"
+                      value={shippingInfo.city}
+                      onChange={(e) => setShippingInfo({ ...shippingInfo, city: e.target.value })}
                       className={checkoutInputClass}
                     />
                   </div>

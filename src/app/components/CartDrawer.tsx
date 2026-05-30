@@ -346,12 +346,6 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
               type="button"
               className="h-11 w-full bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
               onClick={() => {
-                if (!user) {
-                  toast.error("Please sign in to proceed with checkout");
-                  onClose();
-                  onShowAuthModal?.();
-                  return;
-                }
                 if (onCheckout) {
                   onCheckout();
                 } else {
