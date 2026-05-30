@@ -1,7 +1,12 @@
-import { useState } from "react";
+import { useState, useLayoutEffect } from "react";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { loadAdminStyles } from "../utils/loadAdminStyles";
 
 export function AdminSlugFixer() {
+  useLayoutEffect(() => {
+    void loadAdminStyles();
+  }, []);
+
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);

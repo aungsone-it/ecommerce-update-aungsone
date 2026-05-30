@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams, useParams, useNavigate, useLocation } from "react-router";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
@@ -40,6 +40,7 @@ import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { useBadgeCounts } from "../hooks/useBadgeCounts";
 import { usePlatformBranding } from "../hooks/usePlatformBranding";
 import { buildSuperAdminDocumentTitle } from "../utils/superAdminDocumentTitle";
+import { loadAdminStyles } from "../utils/loadAdminStyles";
 import { SmartCache } from "../../utils/cache";
 import { moduleCache, CACHE_KEYS } from "../utils/module-cache";
 import {
@@ -78,6 +79,10 @@ const ADMIN_PAGES = {
 type AdminPage = typeof ADMIN_PAGES[keyof typeof ADMIN_PAGES];
 
 export function AdminPage() {
+  useLayoutEffect(() => {
+    void loadAdminStyles();
+  }, []);
+
   const [searchParams] = useSearchParams();
   const params = useParams();
   const location = useLocation();

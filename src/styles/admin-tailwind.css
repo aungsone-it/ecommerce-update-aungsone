@@ -1,0 +1,70 @@
+@import 'tailwindcss' source(none);
+
+/* Admin route entry pages */
+@source '../app/pages/AdminPage.tsx';
+@source '../app/pages/AddCustomerPage.tsx';
+@source '../app/pages/VendorAdminPage.tsx';
+@source '../app/pages/VendorAdminProductViewPage.tsx';
+@source '../app/pages/SetupPage.tsx';
+
+/* Vendor admin panel */
+@source '../app/components/vendor-admin/**';
+@source '../app/components/VendorAdminPortal.tsx';
+
+/* Super-admin modules (not used on customer storefront routes) */
+@source '../app/components/Setup.tsx';
+@source '../app/components/Dashboard.tsx';
+@source '../app/components/ProductList.tsx';
+@source '../app/components/Categories.tsx';
+@source '../app/components/Inventory.tsx';
+@source '../app/components/Orders.tsx';
+@source '../app/components/CustomersEnhanced.tsx';
+@source '../app/components/Customers.tsx';
+@source '../app/components/Chat.tsx';
+@source '../app/components/Marketing.tsx';
+@source '../app/components/LiveStreamMulti.tsx';
+@source '../app/components/LiveStream.tsx';
+@source '../app/components/BlogPost.tsx';
+@source '../app/components/AddBlogPost.tsx';
+@source '../app/components/BlogCategory.tsx';
+@source '../app/components/BlogPostDetail.tsx';
+@source '../app/components/Vendor.tsx';
+@source '../app/components/VendorProfile.tsx';
+@source '../app/components/VendorApplications.tsx';
+@source '../app/components/VendorPromotions.tsx';
+@source '../app/components/VendorApplicationReview.tsx';
+@source '../app/components/VendorForm.tsx';
+@source '../app/components/VendorAddEdit.tsx';
+@source '../app/components/Collaborator.tsx';
+@source '../app/components/CollaboratorProfile.tsx';
+@source '../app/components/CollaboratorApplications.tsx';
+@source '../app/components/CollaboratorForm.tsx';
+@source '../app/components/Finances.tsx';
+@source '../app/components/Logistics.tsx';
+@source '../app/components/Settings.tsx';
+@source '../app/components/AdminGlobalSearch.tsx';
+@source '../app/components/SideNav.tsx';
+@source '../app/components/TopNav.tsx';
+@source '../app/components/UserProfile.tsx';
+@source '../app/components/OrderDetails.tsx';
+@source '../app/components/OrderDetailView.tsx';
+@source '../app/components/ServerDiagnostics.tsx';
+@source '../app/components/AdminBreadcrumb.tsx';
+@source '../app/components/AdminSlugFixer.tsx';
+@source '../app/components/AdminDateRangeFilterPopover.tsx';
+@source '../app/components/AdminClearableSearchInput.tsx';
+@source '../app/components/RichTextEditor.tsx';
+@source '../app/components/ModernRichTextEditor.tsx';
+@source '../app/components/EmojiPickerLazy.tsx';
+@source '../app/components/CampaignForm.tsx';
+@source '../app/components/AddProductPage.tsx';
+@source '../app/components/ProductFormPage.tsx';
+@source '../app/components/ShopifyProductForm.tsx';
+@source '../app/components/CategoryForm.tsx';
+@source '../app/components/PaymentSettings.tsx';
+@source '../app/components/Invoice.tsx';
+@source '../app/components/PrintInvoice.tsx';
+@source '../app/components/TestDataManager.tsx';
+@source '../app/components/CacheDebugPanel.tsx';
+@source '../app/components/RequestAnalyzer.tsx';
+@source '../app/components/ui/chart.tsx';
