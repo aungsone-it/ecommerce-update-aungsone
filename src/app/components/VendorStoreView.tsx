@@ -5041,7 +5041,7 @@ export function VendorStoreView({
         {renderVendorMobileSearchOverlay()}
 
         {/* Product Details Content */}
-        <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-3 sm:py-4 md:px-6 md:py-5 lg:px-8">
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 pt-3 sm:pt-4 md:px-6 md:pt-5 lg:px-8 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:pb-5">
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
             <button onClick={() => {
@@ -5099,7 +5099,7 @@ export function VendorStoreView({
             </div>
 
             {/* Product Info */}
-            <div className="space-y-6">
+            <div className="flex flex-col gap-6">
               {/* Title and Category */}
               <div>
                 <div className="flex items-center gap-2 mb-2.5 flex-wrap">
@@ -5205,8 +5205,72 @@ export function VendorStoreView({
                   </div>
                 )}
 
-              {/* Product Details */}
-              <Card className="border border-slate-200 shadow-sm">
+              {/* Action Buttons — desktop inline only */}
+              <div className="md:order-2 hidden md:flex gap-2 items-center">
+                <Button
+                  disabled={!vendorCanPurchase}
+                  className={!vendorCanPurchase
+                    ? "bg-slate-300 h-10 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
+                    : "bg-amber-600 hover:bg-amber-700 h-10 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
+                  }
+                  onClick={() => {
+                    if (!vendorCanPurchase) return;
+                    handleAddToCart(selectedProduct);
+                  }}
+                >
+                  <span className="block leading-none">
+                    {vendorOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
+                  </span>
+                </Button>
+                <Button 
+                  disabled={!vendorCanPurchase}
+                  variant="outline"
+                  className={!vendorCanPurchase
+                    ? "h-10 border-2 border-slate-300 bg-slate-100 text-slate-400 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
+                    : "h-10 border-2 border-amber-600 hover:bg-amber-50 hover:border-amber-700 text-amber-700 hover:text-amber-800 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
+                  }
+                  onClick={() => {
+                    if (!vendorCanPurchase) return;
+                    handleAddToCart(selectedProduct, { buyNow: true });
+                  }}
+                >
+                  <span className="block leading-none">
+                    BUY NOW
+                  </span>
+                </Button>
+                <Button 
+                  variant="outline"
+                  className="h-10 w-10 p-0 border-2 border-slate-300 hover:bg-slate-100 hover:border-slate-400 flex items-center justify-center flex-shrink-0 transition-all rounded-lg"
+                  onClick={() => toggleWishlist(selectedProduct.id, selectedProduct.name, selectedProduct)}
+                >
+                  <Heart className={`w-4 h-4 ${wishlist.includes(selectedProduct.id) ? "fill-amber-600 text-amber-600" : "text-slate-600"}`} />
+                </Button>
+              </div>
+
+              {/* Trust Badges */}
+              <div className="order-3 md:order-3 grid grid-cols-3 gap-2 sm:gap-4 pt-6 border-t border-slate-200">
+                <div className="text-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
+                    <Truck className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-700" />
+                  </div>
+                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">Free Delivery</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
+                    <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-blue-700" />
+                  </div>
+                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">Buyer Protection</p>
+                </div>
+                <div className="text-center">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
+                    <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6 text-amber-700" />
+                  </div>
+                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">7-Day Returns</p>
+                </div>
+              </div>
+
+              {/* Product Details — desktop: above buttons; mobile: below sticky purchase bar */}
+              <Card className="order-2 md:order-1 border border-slate-200 shadow-sm">
                 <CardContent className="p-5">
                   <h3 className="font-semibold text-slate-900 mb-5 text-sm">Product Details</h3>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-5">
@@ -5261,72 +5325,48 @@ export function VendorStoreView({
                   </div>
                 </CardContent>
               </Card>
+            </div>
+          </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-2 items-center">
-                <Button
-                  disabled={!vendorCanPurchase}
-                  className={!vendorCanPurchase
-                    ? "bg-slate-300 h-10 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
-                    : "bg-amber-600 hover:bg-amber-700 h-10 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
-                  }
-                  onClick={() => {
-                    if (!vendorCanPurchase) return;
-                    handleAddToCart(selectedProduct);
-                  }}
-                >
-                  <span className="block leading-none">
-                    {vendorOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
-                  </span>
-                </Button>
-                <Button 
-                  disabled={!vendorCanPurchase}
-                  variant="outline"
-                  className={!vendorCanPurchase
-                    ? "h-10 border-2 border-slate-300 bg-slate-100 text-slate-400 font-semibold rounded-lg text-sm px-6 cursor-not-allowed flex items-center justify-center transition-all py-0"
-                    : "h-10 border-2 border-amber-600 hover:bg-amber-50 hover:border-amber-700 text-amber-700 hover:text-amber-800 font-semibold transition-all rounded-lg text-sm px-6 flex items-center justify-center py-0"
-                  }
-                  onClick={() => {
-                    if (!vendorCanPurchase) return;
-                    // Buy now: open checkout in-place. Do not navigate to store home — sibling
-                    // routes remount VendorStorefrontPage and drop showCheckout + cart state.
-                    handleAddToCart(selectedProduct, { buyNow: true });
-                  }}
-                >
-                  <span className="block leading-none">
-                    BUY NOW
-                  </span>
-                </Button>
-                <Button 
-                  variant="outline"
-                  className="h-10 w-10 p-0 border-2 border-slate-300 hover:bg-slate-100 hover:border-slate-400 flex items-center justify-center flex-shrink-0 transition-all rounded-lg"
-                  onClick={() => toggleWishlist(selectedProduct.id, selectedProduct.name, selectedProduct)}
-                >
-                  <Heart className={`w-4 h-4 ${wishlist.includes(selectedProduct.id) ? "fill-amber-600 text-amber-600" : "text-slate-600"}`} />
-                </Button>
-              </div>
-
-              {/* Trust Badges */}
-              <div className="grid grid-cols-3 gap-2 sm:gap-4 pt-6 border-t border-slate-200">
-                <div className="text-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
-                    <Truck className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-700" />
-                  </div>
-                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">Free Delivery</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
-                    <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-blue-700" />
-                  </div>
-                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">Buyer Protection</p>
-                </div>
-                <div className="text-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
-                    <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6 text-amber-700" />
-                  </div>
-                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">7-Day Returns</p>
-                </div>
-              </div>
+          {/* Mobile sticky purchase bar — fixed bottom, not shown on desktop */}
+          <div className="md:hidden fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 backdrop-blur-sm px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] shadow-[0_-4px_20px_rgba(15,23,42,0.08)]">
+            <div className="flex gap-2 items-center max-w-7xl mx-auto">
+              <Button
+                disabled={!vendorCanPurchase}
+                className={!vendorCanPurchase
+                  ? "flex-1 min-w-0 bg-slate-300 h-11 font-semibold rounded-lg text-sm cursor-not-allowed flex items-center justify-center transition-all py-0"
+                  : "flex-1 min-w-0 bg-amber-600 hover:bg-amber-700 h-11 font-semibold transition-all rounded-lg text-sm flex items-center justify-center py-0"
+                }
+                onClick={() => {
+                  if (!vendorCanPurchase) return;
+                  handleAddToCart(selectedProduct);
+                }}
+              >
+                <span className="block leading-none truncate">
+                  {vendorOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
+                </span>
+              </Button>
+              <Button
+                disabled={!vendorCanPurchase}
+                variant="outline"
+                className={!vendorCanPurchase
+                  ? "flex-1 min-w-0 h-11 border-2 border-slate-300 bg-slate-100 text-slate-400 font-semibold rounded-lg text-sm cursor-not-allowed flex items-center justify-center transition-all py-0"
+                  : "flex-1 min-w-0 h-11 border-2 border-amber-600 hover:bg-amber-50 hover:border-amber-700 text-amber-700 hover:text-amber-800 font-semibold transition-all rounded-lg text-sm flex items-center justify-center py-0"
+                }
+                onClick={() => {
+                  if (!vendorCanPurchase) return;
+                  handleAddToCart(selectedProduct, { buyNow: true });
+                }}
+              >
+                <span className="block leading-none truncate">BUY NOW</span>
+              </Button>
+              <Button
+                variant="outline"
+                className="h-11 w-11 shrink-0 p-0 border-2 border-slate-300 hover:bg-slate-100 hover:border-slate-400 flex items-center justify-center transition-all rounded-lg"
+                onClick={() => toggleWishlist(selectedProduct.id, selectedProduct.name, selectedProduct)}
+              >
+                <Heart className={`w-4 h-4 ${wishlist.includes(selectedProduct.id) ? "fill-amber-600 text-amber-600" : "text-slate-600"}`} />
+              </Button>
             </div>
           </div>
 
@@ -5501,7 +5541,11 @@ export function VendorStoreView({
         />
         </div>
         {!cartOpen && (
-          <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
+          <BackToTop
+            scrollContainerRef={vendorScrollRootRef}
+            scrollContainerKey={vendorScrollRebindKey}
+            aboveStickyPurchaseBar
+          />
         )}
       </>
     );

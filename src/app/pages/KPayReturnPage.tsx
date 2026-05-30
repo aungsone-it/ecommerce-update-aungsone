@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -12,12 +12,7 @@ import {
   parsePwaCallbackInfo,
   type KPaySession,
 } from "../utils/kpayClient";
-import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
-import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
-import {
-  extractStoreSlugFromPathname,
-  resolveVendorSummaryPath,
-} from "../utils/vendorCheckoutPaths";
+import { maybeRedirectKpayReturnToUnifiedSummary } from "../utils/kpayUnifiedSummaryRedirect";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 
 type ReturnState =
@@ -61,8 +56,6 @@ export function KPayReturnPage() {
     () => parsePwaCallbackInfo(searchParams.get("callback_info")),
     [searchParams],
   );
-  const vendorSubdomainSlug = resolveVendorSubdomainStoreSlug();
-  const { slug: customHostSlug } = useResolvedVendorHostSlug();
 
   const [localPending] = useState(() => {
     if (typeof window === "undefined") return null;
@@ -82,14 +75,28 @@ export function KPayReturnPage() {
   });
 
   const [serverDraft, setServerDraft] = useState<{
-    summaryPath?: string;
     storefrontOrigin?: string;
     originPath?: string;
   } | null>(null);
-  const [draftFetchDone, setDraftFetchDone] = useState(false);
   const [state, setState] = useState<ReturnState>({ kind: "loading" });
   const finalizeDoneRef = useRef(false);
   const redirectDoneRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!merchantOrderId || redirectDoneRef.current) return;
+    if (maybeRedirectKpayReturnToUnifiedSummary()) {
+      redirectDoneRef.current = true;
+      return;
+    }
+    redirectDoneRef.current = true;
+    navigateToSummary(
+      buildPwaSummaryAbsoluteUrl({
+        merchantOrderId,
+        prepayId: prepayIdFromUrl,
+      }),
+      navigate,
+    );
+  }, [merchantOrderId, prepayIdFromUrl, navigate]);
 
   useEffect(() => {
     if (!merchantOrderId) return;
@@ -97,13 +104,14 @@ export function KPayReturnPage() {
       .then((draft) => {
         if (draft) {
           setServerDraft({
-            summaryPath: draft.summaryPath,
             storefrontOrigin: draft.storefrontOrigin,
             originPath: draft.originPath,
           });
         }
       })
-      .finally(() => setDraftFetchDone(true));
+      .catch(() => {
+        /* non-fatal */
+      });
   }, [merchantOrderId]);
 
   const storefrontOriginResolved =
@@ -112,61 +120,13 @@ export function KPayReturnPage() {
     callbackFromUrl?.storefrontOrigin ||
     "";
 
-  const summaryPathResolved =
-    serverDraft?.summaryPath ||
-    localPending?.summaryPath ||
-    callbackFromUrl?.summaryPath ||
-    "/summary";
-
-  const storeNameForSummary = useMemo(
-    () =>
-      localPending?.storeName ||
-      extractStoreSlugFromPathname(serverDraft?.originPath || localPending?.originPath || "") ||
-      extractStoreSlugFromPathname(summaryPathResolved) ||
-      customHostSlug ||
-      vendorSubdomainSlug ||
-      null,
-    [
-      localPending,
-      serverDraft,
-      summaryPathResolved,
-      customHostSlug,
-      vendorSubdomainSlug,
-    ],
-  );
-
-  const summaryPathForRedirect = useMemo(
-    () =>
-      resolveVendorSummaryPath({
-        pathname: summaryPathResolved,
-        storeName: storeNameForSummary,
-        onVendorHost: vendorSubdomainSlug != null || customHostSlug != null,
-      }),
-    [
-      summaryPathResolved,
-      storeNameForSummary,
-      vendorSubdomainSlug,
-      customHostSlug,
-    ],
-  );
-
   const summaryTarget = useMemo(
     () =>
       buildPwaSummaryAbsoluteUrl({
-        storefrontOrigin: storefrontOriginResolved || null,
-        summaryPath: summaryPathForRedirect,
-        originPath: serverDraft?.originPath || localPending?.originPath,
         merchantOrderId,
         prepayId: prepayIdFromUrl,
       }),
-    [
-      merchantOrderId,
-      prepayIdFromUrl,
-      storefrontOriginResolved,
-      summaryPathForRedirect,
-      serverDraft,
-      localPending,
-    ],
+    [merchantOrderId, prepayIdFromUrl],
   );
 
   useEffect(() => {
@@ -236,25 +196,6 @@ export function KPayReturnPage() {
   const isPaid = state.kind === "ok" && state.session.status === "paid";
   const isFailed = state.kind === "ok" && state.session.status === "failed";
   const isPending = state.kind === "ok" && state.session.status === "pending";
-
-  // After KBZ UAT app payment, land on vendor subdomain /summary (not this return host).
-  useEffect(() => {
-    if (!merchantOrderId || isFailed || redirectDoneRef.current) return;
-
-    const hasOrigin = Boolean(storefrontOriginResolved);
-    if (!hasOrigin && !draftFetchDone) return;
-    if (!hasOrigin) return;
-
-    redirectDoneRef.current = true;
-    navigateToSummary(summaryTarget, navigate);
-  }, [
-    merchantOrderId,
-    isFailed,
-    storefrontOriginResolved,
-    draftFetchDone,
-    summaryTarget,
-    navigate,
-  ]);
 
   const backToStore = useMemo(() => {
     const origin = storefrontOriginResolved;

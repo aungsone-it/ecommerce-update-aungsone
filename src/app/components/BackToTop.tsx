@@ -7,9 +7,15 @@ export type BackToTopProps = {
   scrollContainerRef?: RefObject<HTMLElement | null>;
   /** When the scroll root DOM node is replaced, bump this so listeners re-attach (stable ref object). */
   scrollContainerKey?: string | number;
+  /** Lift above vendor mobile sticky purchase bar (product detail). */
+  aboveStickyPurchaseBar?: boolean;
 };
 
-export function BackToTop({ scrollContainerRef, scrollContainerKey }: BackToTopProps) {
+export function BackToTop({
+  scrollContainerRef,
+  scrollContainerKey,
+  aboveStickyPurchaseBar = false,
+}: BackToTopProps) {
   const [isVisible, setIsVisible] = useState(false);
   const useContainer = scrollContainerRef != null;
 
@@ -48,7 +54,11 @@ export function BackToTop({ scrollContainerRef, scrollContainerKey }: BackToTopP
       {isVisible && (
         <Button
           onClick={scrollToTop}
-          className="fixed bottom-4 md:bottom-[112px] right-4 md:right-6 z-50 w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center p-1.5 animate-fade-in-right"
+          className={
+            aboveStickyPurchaseBar
+              ? "fixed bottom-[calc(5.5rem+0.625rem+env(safe-area-inset-bottom,0px))] md:bottom-[112px] right-4 md:right-6 z-50 w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center p-1.5 animate-fade-in-right"
+              : "fixed bottom-4 md:bottom-[112px] right-4 md:right-6 z-50 w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center p-1.5 animate-fade-in-right"
+          }
           size="icon"
         >
           <ArrowUp className="w-5 h-5 md:w-6 md:h-6 text-white" strokeWidth={2.5} />

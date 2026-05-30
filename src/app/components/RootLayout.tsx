@@ -20,6 +20,7 @@ import { PlatformBrandingHead } from "./PlatformBrandingHead";
 import { parseStorefrontPolicyRoute } from "../utils/storefrontPolicyPaths";
 import { prefetchStorefrontPolicyData } from "../hooks/useStorefrontPolicyData";
 import { StorefrontPolicyLiveBridge } from "./StorefrontPolicyLiveBridge";
+import { isVendorStorefrontProductDetailPath } from "../utils/vendorStorefrontLayout";
 
 // Public layout without authentication
 export function RootLayout() {
@@ -67,6 +68,7 @@ function RootLayoutContent() {
     /^\/vendor\/[^/]+\/reset-password$/.test(location.pathname);
   const isVendorLoginPage = location.pathname === '/vendor/login';
   const isAdminPortal = isAdminPortalRoute(location.pathname);
+  const isVendorProductDetailPage = isVendorStorefrontProductDetailPath(location.pathname);
 
   // Warm vendor storefront chunks on vendor-like hosts to avoid first-visit blink on
   // routes like /product/:slug, /saved and /profile when code-split chunks are cold.
@@ -116,6 +118,7 @@ function RootLayoutContent() {
           onOpen={resetForceOpenFloatingChat}
           vendorId={vendorId}
           isAuthenticated={!!user}
+          aboveStickyPurchaseBar={isVendorProductDetailPage}
         />
       )}
       {/* Global Back to Top - Hidden when cart is open OR when app is loading OR on vendor application page OR on landing page */}

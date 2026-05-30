@@ -1,12 +1,6 @@
-import { useLayoutEffect, useMemo } from "react";
-import { useLocation, useNavigate } from "react-router";
-import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
-import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
-import {
-  extractStoreSlugFromPathname,
-  readKpayPendingStoreContext,
-  resolveSummaryRedirectTarget,
-} from "../utils/vendorCheckoutPaths";
+import { useLayoutEffect } from "react";
+import { useLocation } from "react-router";
+import { maybeRedirectKpayReturnToUnifiedSummary } from "../utils/kpayUnifiedSummaryRedirect";
 
 /**
  * KBZ PWA UAT often redirects to the store root with `?merch_order_id=...`
@@ -15,35 +9,10 @@ import {
  */
 export function KPayVendorReturnRedirect() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: custom } = useResolvedVendorHostSlug();
-  const vendorHost = sub != null || custom != null;
-
-  const storeName = useMemo(
-    () =>
-      extractStoreSlugFromPathname(location.pathname) ||
-      readKpayPendingStoreContext()?.storeName ||
-      custom ||
-      sub ||
-      null,
-    [location.pathname, custom, sub],
-  );
 
   useLayoutEffect(() => {
-    const target = resolveSummaryRedirectTarget({
-      pathname: location.pathname,
-      search: location.search,
-      onVendorHost: vendorHost,
-      storeName,
-    });
-    if (!target) return;
-    if (/^https?:\/\//i.test(target)) {
-      window.location.replace(target);
-      return;
-    }
-    navigate(target, { replace: true });
-  }, [vendorHost, storeName, location.pathname, location.search, navigate]);
+    maybeRedirectKpayReturnToUnifiedSummary();
+  }, [location.pathname, location.search]);
 
   return null;
 }

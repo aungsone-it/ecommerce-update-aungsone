@@ -1,0 +1,27 @@
+import {
+  UNIFIED_KPAY_SUMMARY_PATH,
+  isUnifiedKpayReturnHost,
+  readKpayReturnQueryOrderId,
+  resolveUnifiedKpayReturnBaseUrl,
+} from "./vendorCheckoutPaths";
+
+/** Hard-redirect KPay return traffic to unified `/summary` before React paints. */
+export function maybeRedirectKpayReturnToUnifiedSummary(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const search = window.location.search || "";
+  const merchOrderId = readKpayReturnQueryOrderId(search);
+  if (!merchOrderId) return false;
+
+  const path = (window.location.pathname.split("?")[0] || "").replace(/\/$/, "") || "/";
+  if (path === UNIFIED_KPAY_SUMMARY_PATH && isUnifiedKpayReturnHost()) {
+    return false;
+  }
+
+  const target = `${resolveUnifiedKpayReturnBaseUrl()}${UNIFIED_KPAY_SUMMARY_PATH}${search}`;
+  const here = window.location.href.split("#")[0];
+  if (here === target) return false;
+
+  window.location.replace(target);
+  return true;
+}

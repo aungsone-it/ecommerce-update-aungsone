@@ -66,6 +66,8 @@ interface FloatingChatProps {
   onOpen?: () => void;
   vendorId?: string; // Vendor ID if chatting on a vendor storefront
   isAuthenticated?: boolean; // NEW: Check if user is logged in
+  /** Lift chat bubble above vendor mobile sticky purchase bar (product detail). */
+  aboveStickyPurchaseBar?: boolean;
 }
 
 function sanitizeChatEmailToken(email: string): string {
@@ -75,7 +77,7 @@ function sanitizeChatEmailToken(email: string): string {
     .replace(/[^a-z0-9]/g, "-");
 }
 
-export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false }: FloatingChatProps) {
+export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false, aboveStickyPurchaseBar = false }: FloatingChatProps) {
   const docVisible = useDocumentVisible();
   const chatBrandLabel = vendorId ? "this store" : "SECURE";
   
@@ -781,7 +783,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     return (
       <>
         <div 
-          className={`fixed bottom-16 md:bottom-[176px] right-4 md:right-6 z-50 flex justify-center transition-all duration-700 ease-out ${
+          className={`fixed right-4 md:right-6 z-50 flex justify-center transition-all duration-700 ease-out ${
+            aboveStickyPurchaseBar
+              ? "bottom-[calc(5.5rem+0.625rem+2.5rem+0.625rem+env(safe-area-inset-bottom,0px))] md:bottom-[176px]"
+              : "bottom-16 md:bottom-[176px]"
+          } ${
             isMounted 
               ? 'translate-x-0 opacity-100' 
               : 'translate-x-20 opacity-0'

@@ -2169,12 +2169,12 @@ export function Checkout({
                   <div>
                     <div className="mb-1.5 flex items-baseline justify-between">
                       <Label htmlFor="vs-notes" className="text-sm font-normal text-slate-700">
-                        Delivery Notes
+                        Notes
                       </Label>
                     </div>
                     <Textarea
                       id="vs-notes"
-                      placeholder="Add delivery instructions..."
+                      placeholder="Add notes..."
                       value={orderNote}
                       onChange={(e) => setOrderNote(e.target.value)}
                       className="min-h-[80px] resize-none rounded-lg border-slate-200 bg-slate-50 text-sm focus:border-slate-900 focus:ring-0"

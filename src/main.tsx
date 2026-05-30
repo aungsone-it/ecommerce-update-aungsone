@@ -11,9 +11,13 @@ import {
   fetchVendorSlugByCustomDomain,
   shouldResolveCustomDomainHost,
 } from "./app/utils/vendorHostResolution";
+import { maybeRedirectKpayReturnToUnifiedSummary } from "./app/utils/kpayUnifiedSummaryRedirect";
 
 // Cache bust: 20260307181500
-if (typeof window !== "undefined") {
+const kpayUnifiedSummaryRedirecting =
+  typeof window !== "undefined" && maybeRedirectKpayReturnToUnifiedSummary();
+
+if (typeof window !== "undefined" && !kpayUnifiedSummaryRedirecting) {
   const host = window.location.hostname;
   if (isOnVendorSubdomainHost() || shouldResolveCustomDomainHost(host)) {
     void import("./app/pages/VendorStorefrontPage");
@@ -31,8 +35,10 @@ if (
   primePlatformBrandingFaviconFromCache();
 }
 
-createRoot(document.getElementById("root")!).render(
-  <ErrorBoundary>
-    <App />
-  </ErrorBoundary>,
-);
+if (!kpayUnifiedSummaryRedirecting) {
+  createRoot(document.getElementById("root")!).render(
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>,
+  );
+}
