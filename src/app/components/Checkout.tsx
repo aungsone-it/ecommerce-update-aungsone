@@ -1318,7 +1318,6 @@ export function Checkout({
     const missingFields: string[] = [];
     if (!shippingInfo.fullName.trim()) missingFields.push("Full Name");
     if (!shippingInfo.phone.trim()) missingFields.push("Phone Number");
-    if (!resolveOrderEmail()) missingFields.push("Email");
     if (!shippingInfo.address.trim()) missingFields.push("Address");
     if (!shippingInfo.city.trim()) missingFields.push("City");
     return missingFields;
@@ -1359,10 +1358,6 @@ export function Checkout({
         return;
       }
       const orderEmail = resolveOrderEmail();
-      if (!orderEmail) {
-        toast.error("Please enter your email address");
-        return;
-      }
       setKpayPwaLoading(true);
       const merchantOrderId = buildMerchantOrderId("ORD");
       const originPath =
@@ -2036,10 +2031,12 @@ export function Checkout({
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Phone</p>
                   <p className="text-sm font-medium text-slate-900">{shippingInfo.phone}</p>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Email</p>
-                  <p className="text-sm font-medium text-slate-900 truncate">{shippingInfo.email}</p>
-                </div>
+                {resolveOrderEmail() && (
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Email</p>
+                    <p className="text-sm font-medium text-slate-900 truncate">{resolveOrderEmail()}</p>
+                  </div>
+                )}
                 <div className="col-span-2">
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Delivery Address</p>
                   <p className="text-sm font-medium text-slate-900">
@@ -2072,8 +2069,6 @@ export function Checkout({
 
   const checkoutInputClass =
     "h-11 bg-slate-50 border-slate-200 text-slate-900 text-sm rounded-lg focus:border-slate-900 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0";
-
-  const needsEmailInput = !effectiveUser?.email;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -2119,21 +2114,6 @@ export function Checkout({
                     />
                   </div>
                 </div>
-                {needsEmailInput && (
-                  <div className="mt-4">
-                    <Label htmlFor="vs-email" className="mb-1.5 block text-sm font-normal text-slate-700">
-                      Email
-                    </Label>
-                    <Input
-                      id="vs-email"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={shippingInfo.email}
-                      onChange={(e) => setShippingInfo({ ...shippingInfo, email: e.target.value })}
-                      className={checkoutInputClass}
-                    />
-                  </div>
-                )}
               </div>
 
               {/* Address */}
