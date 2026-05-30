@@ -2087,7 +2087,7 @@ export function Checkout({
                 <h2 className="mb-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
                   Contact
                 </h2>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="vs-name" className="mb-1.5 block text-sm font-normal text-slate-700">
                       Full Name
