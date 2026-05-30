@@ -37,8 +37,8 @@ export function StatCard({
       <div className="flex h-full min-h-0 flex-1 flex-col p-6">
         <div className="flex min-h-0 flex-1 items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{title}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">{value}</p>
+            <p className="text-sm font-medium text-slate-600">{title}</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{value}</p>
             <p
               className={cn(
                 "mt-2 text-sm font-medium",
@@ -68,13 +68,13 @@ export function StatCard({
           >
             <button
               type="button"
-              className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
             >
               {t("finances.filterByDate")}
             </button>
           </AdminDateRangeFilterPopover>
           {dateRange?.from && dateRange?.to && (
-            <span className="text-xs text-slate-500 dark:text-slate-400">
+            <span className="text-xs text-slate-500">
               {format(dateRange.from, "MMM d, yyyy")} – {format(dateRange.to, "MMM d, yyyy")}
             </span>
           )}

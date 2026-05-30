@@ -5,7 +5,7 @@ import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { useLayoutEffect, useMemo } from "react";
 import { applyDocumentFavicon, resetDocumentFavicon } from "../utils/documentFavicon";
-import { loadAdminStyles } from "../utils/loadAdminStyles";
+import "../utils/adminStyles";
 
 function readCachedVendorLogoBySlug(slug: string | undefined): string {
   if (typeof window === "undefined") return "";
@@ -39,10 +39,6 @@ function readCachedVendorLogoBySlug(slug: string | undefined): string {
 }
 
 export function VendorAdminPage() {
-  useLayoutEffect(() => {
-    void loadAdminStyles();
-  }, []);
-
   const { vendor, logout } = useVendorAuth();
   const { slug: customHostSlug } = useResolvedVendorHostSlug();
   const fallbackSlug = useMemo(() => {

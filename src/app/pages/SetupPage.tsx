@@ -1,11 +1,6 @@
-import { useLayoutEffect } from "react";
 import { Setup } from "../components/Setup";
-import { loadAdminStyles } from "../utils/loadAdminStyles";
+import "../utils/adminStyles";
 
 export function SetupPage() {
-  useLayoutEffect(() => {
-    void loadAdminStyles();
-  }, []);
-
   return <Setup />;
 }

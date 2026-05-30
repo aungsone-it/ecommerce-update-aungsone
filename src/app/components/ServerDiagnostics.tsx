@@ -108,9 +108,9 @@ export function ServerDiagnostics() {
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl p-4 max-w-md z-50">
+    <div className="fixed bottom-4 right-4 bg-white border border-slate-200 rounded-lg shadow-xl p-4 max-w-md z-50">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="font-semibold text-slate-900 dark:text-white">
+        <h3 className="font-semibold text-slate-900">
           🔍 Server Diagnostics
         </h3>
         <button
@@ -123,7 +123,7 @@ export function ServerDiagnostics() {
       </div>
 
       {results.length === 0 ? (
-        <div className="text-sm text-slate-600 dark:text-slate-400 p-4 text-center">
+        <div className="text-sm text-slate-600 p-4 text-center">
           <p className="mb-2">⚠️ Server health check failed</p>
           <p className="text-xs">Click "Run Test" to diagnose the issue</p>
         </div>
@@ -134,10 +134,10 @@ export function ServerDiagnostics() {
               key={index}
               className={`p-2 rounded ${
                 result.status === 'success'
-                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                  ? 'bg-green-50 text-green-700'
                   : result.status === 'error'
-                  ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
-                  : 'bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                  ? 'bg-red-50 text-red-700'
+                  : 'bg-slate-50 text-slate-600'
               }`}
             >
               <div className="font-semibold">{result.endpoint}</div>
@@ -147,28 +147,28 @@ export function ServerDiagnostics() {
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400">
+      <div className="mt-3 pt-3 border-t border-slate-200 text-xs text-slate-600">
         <p>
           <strong>Server:</strong> {projectId}.supabase.co
         </p>
         <p className="mt-1">
           {results.length === 0 && (
-            <span className="text-amber-600 dark:text-amber-400">
+            <span className="text-amber-600">
               ⏳ Waiting for diagnostics...
             </span>
           )}
           {results.every(r => r.status === 'success') && results.length > 0 && (
-            <span className="text-green-600 dark:text-green-400">
+            <span className="text-green-600">
               ✅ All systems operational
             </span>
           )}
           {results.some(r => r.status === 'error') && (
-            <span className="text-red-600 dark:text-red-400">
+            <span className="text-red-600">
               ❌ Some endpoints are failing
             </span>
           )}
           {isRunning && (
-            <span className="text-blue-600 dark:text-blue-400">
+            <span className="text-blue-600">
               ⏳ Testing in progress...
             </span>
           )}

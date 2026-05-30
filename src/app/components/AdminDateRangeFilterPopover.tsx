@@ -46,9 +46,9 @@ export function AdminDateRangeFilterPopover({
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent className="w-auto p-0" align={align}>
-        <div className="border-b border-slate-200 p-3 dark:border-slate-700">
-          <p className="text-sm font-medium text-slate-900 dark:text-white">{title}</p>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{hintText}</p>
+        <div className="border-b border-slate-200 p-3">
+          <p className="text-sm font-medium text-slate-900">{title}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{hintText}</p>
         </div>
         <CalendarComponent
           mode="range"
@@ -61,7 +61,7 @@ export function AdminDateRangeFilterPopover({
           numberOfMonths={2}
         />
         {value?.from && (
-          <div className="flex justify-end border-t border-slate-200 p-2 dark:border-slate-700">
+          <div className="flex justify-end border-t border-slate-200 p-2">
             <Button
               variant="ghost"
               size="sm"

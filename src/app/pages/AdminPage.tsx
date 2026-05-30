@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import "../utils/adminStyles";
 import { useSearchParams, useParams, useNavigate, useLocation } from "react-router";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
@@ -40,7 +41,6 @@ import { AdminBreadcrumb } from "../components/AdminBreadcrumb";
 import { useBadgeCounts } from "../hooks/useBadgeCounts";
 import { usePlatformBranding } from "../hooks/usePlatformBranding";
 import { buildSuperAdminDocumentTitle } from "../utils/superAdminDocumentTitle";
-import { loadAdminStyles } from "../utils/loadAdminStyles";
 import { SmartCache } from "../../utils/cache";
 import { moduleCache, CACHE_KEYS } from "../utils/module-cache";
 import {
@@ -79,10 +79,6 @@ const ADMIN_PAGES = {
 type AdminPage = typeof ADMIN_PAGES[keyof typeof ADMIN_PAGES];
 
 export function AdminPage() {
-  useLayoutEffect(() => {
-    void loadAdminStyles();
-  }, []);
-
   const [searchParams] = useSearchParams();
   const params = useParams();
   const location = useLocation();
@@ -668,12 +664,12 @@ export function AdminPage() {
       case ADMIN_PAGES.VENDOR_STORE_VIEW:
         return (
           <div className="p-8 max-w-lg">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 mb-2">
+            <h2 className="text-lg font-semibold text-slate-900 mb-2">
               Vendor storefront preview
             </h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+            <p className="text-sm text-slate-600 mb-4">
               Open a specific vendor&apos;s shop from the marketplace URL{" "}
-              <code className="text-xs bg-slate-100 dark:bg-slate-800 px-1 rounded">/vendor/&lt;slug&gt;</code>
+              <code className="text-xs bg-slate-100 px-1 rounded">/vendor/&lt;slug&gt;</code>
               , or use <strong>Preview store</strong> on a vendor in the Vendors list. This admin section does not
               embed a store without choosing which vendor.
             </p>
@@ -727,7 +723,7 @@ export function AdminPage() {
       )}
 
       {!viewingUserProfile && !viewingOrder && (
-        <div key={appKey} className="flex h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
+        <div key={appKey} className="flex h-screen bg-slate-50 overflow-hidden">
           {sidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-40 lg:hidden"
@@ -792,7 +788,7 @@ export function AdminPage() {
             
             <main className="flex-1 overflow-auto pt-16 scrollbar-custom">
               {currentPage !== ADMIN_PAGES.CHAT && (
-                <div className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm px-4 sm:px-8 py-2">
+                <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm px-4 sm:px-8 py-2">
                   <AdminBreadcrumb
                     currentPage={currentPage}
                     onNavigate={(page) => {

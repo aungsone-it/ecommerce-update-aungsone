@@ -1,4 +1,5 @@
-import { useState, useRef, useLayoutEffect } from "react";
+import { useState, useRef } from "react";
+import "../utils/adminStyles";
 import { useNavigate } from "react-router";
 import { ArrowLeft, UserPlus, Save, Loader2, Upload, X, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { Button } from "../components/ui/button";
@@ -22,13 +23,8 @@ import {
 } from "../components/ui/alert-dialog";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import imageCompression from "browser-image-compression";
-import { loadAdminStyles } from "../utils/loadAdminStyles";
 
 export function AddCustomerPage() {
-  useLayoutEffect(() => {
-    void loadAdminStyles();
-  }, []);
-
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);

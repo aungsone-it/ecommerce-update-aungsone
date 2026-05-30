@@ -1,3 +1,4 @@
+/* Scope dark:* utilities to a .dark ancestor only — never set .dark (light theme always). */
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -46,43 +47,6 @@
   --font-brand: 'Rubik', sans-serif;
 }
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --font-weight-medium: 500;
-  --font-weight-normal: 400;
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -125,10 +89,6 @@
 }
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
-  }
-
   body {
     @apply bg-background text-foreground;
     font-family: 'Noto Sans Myanmar', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -143,6 +103,7 @@
 
   html {
     font-size: var(--font-size);
+    color-scheme: light;
     scrollbar-width: thin;
     scrollbar-color: rgb(203 213 225) transparent;
   }
@@ -167,21 +128,6 @@
   html:hover::-webkit-scrollbar-thumb,
   body:hover::-webkit-scrollbar-thumb {
     background-color: rgb(148 163 184);
-  }
-
-  .dark html,
-  .dark body {
-    scrollbar-color: rgb(71 85 105) transparent;
-  }
-
-  .dark html::-webkit-scrollbar-thumb,
-  .dark body::-webkit-scrollbar-thumb {
-    background-color: rgb(71 85 105);
-  }
-
-  .dark html:hover::-webkit-scrollbar-thumb,
-  .dark body:hover::-webkit-scrollbar-thumb {
-    background-color: rgb(100 116 139);
   }
 
   h1 {
@@ -384,19 +330,6 @@
     background-color: rgb(148 163 184);
   }
 
-  /* Dark mode scrollbar */
-  .dark .scrollbar-thin {
-    scrollbar-color: rgb(71 85 105) transparent;
-  }
-
-  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgb(71 85 105);
-  }
-
-  .dark .scrollbar-thin:hover::-webkit-scrollbar-thumb {
-    background-color: rgb(100 116 139);
-  }
-
   /* Custom scrollbar styling for main content area */
   .scrollbar-custom {
     scrollbar-width: thin;
@@ -420,21 +353,8 @@
   .scrollbar-custom:hover::-webkit-scrollbar-thumb {
     background-color: rgb(148 163 184);
   }
-
-  /* Dark mode scrollbar for main content */
-  .dark .scrollbar-custom {
-    scrollbar-color: rgb(71 85 105) transparent;
-  }
-
-  .dark .scrollbar-custom::-webkit-scrollbar-thumb {
-    background-color: rgb(71 85 105);
-  }
-
-  .dark .scrollbar-custom:hover::-webkit-scrollbar-thumb {
-    background-color: rgb(100 116 139);
-  }
   
-  /* 🎨 Premium Dark Scrollbar - Sleek minimal design */
+  /* Premium scrollbar — dark thumb on light panels */
   .scrollbar-dark {
     scrollbar-width: thin;
     scrollbar-color: rgba(30, 41, 59, 0.5) transparent;
@@ -458,19 +378,6 @@
 
   .scrollbar-dark:hover::-webkit-scrollbar-thumb {
     background-color: rgba(30, 41, 59, 0.7);
-  }
-
-  /* Dark mode - even darker scrollbar */
-  .dark .scrollbar-dark {
-    scrollbar-color: rgba(71, 85, 105, 0.6) transparent;
-  }
-
-  .dark .scrollbar-dark::-webkit-scrollbar-thumb {
-    background-color: rgba(71, 85, 105, 0.6);
-  }
-
-  .dark .scrollbar-dark:hover::-webkit-scrollbar-thumb {
-    background-color: rgba(100, 116, 139, 0.8);
   }
   
   /* Reduce motion for accessibility */
@@ -515,4 +422,17 @@
   .animate-fade-in-right {
     animation: fadeInFromRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   }
+}
+
+/*
+ * Admin CSS loads a second Tailwind preflight (in @layer base) that resets
+ * border-color to currentColor — making plain `border` look harsh/black.
+ * Unlayered so it wins over that preflight; explicit border-* utilities still override.
+ */
+*, ::before, ::after, ::backdrop {
+  border-color: var(--border);
+}
+
+*:focus-visible {
+  outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
 }

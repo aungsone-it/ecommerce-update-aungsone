@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect } from "react";
+import { useState, useEffect } from "react";
+import "../utils/adminStyles";
 import { useNavigate, useLocation } from "react-router";
 import { pathnameUnderAdmin } from "../utils/vendorSubdomainHooks";
 import {
@@ -11,7 +12,6 @@ import { Badge } from "../components/ui/badge";
 import { Card } from "../components/ui/card";
 import { getCachedVendorProductsAdmin } from "../utils/module-cache";
 import { useVendorAuth } from "../contexts/VendorAuthContext";
-import { loadAdminStyles } from "../utils/loadAdminStyles";
 
 interface Product {
   id: string;
@@ -47,10 +47,6 @@ const stripHtml = (html: string) => {
 };
 
 export function VendorAdminProductViewPage() {
-  useLayoutEffect(() => {
-    void loadAdminStyles();
-  }, []);
-
   const { storeName, productId } = useVendorAdminRouteParams();
   const navigate = useNavigate();
   const location = useLocation();

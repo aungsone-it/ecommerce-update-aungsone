@@ -133,10 +133,6 @@ export const enTranslations: Record<string, string> = {
     'role.productManager.perm5': 'No access to user data or financial information',
     
     // Appearance Tab
-    'settings.appearance.theme': 'Theme',
-    'settings.appearance.theme.light': 'Light',
-    'settings.appearance.theme.dark': 'Dark',
-    'settings.appearance.theme.auto': 'Auto',
     'settings.appearance.accentColor': 'Accent color',
     'settings.appearance.save': 'Save appearance',
     

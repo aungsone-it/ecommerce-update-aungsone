@@ -44,10 +44,10 @@ function FinancesStatMmk({ value }: { value: number }) {
   const n = typeof value === "number" && Number.isFinite(value) ? value : 0;
   return (
     <p className="mt-1 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-1 gap-y-0.5">
-      <span className="min-w-0 max-w-full font-bold tabular-nums leading-tight text-slate-900 dark:text-white [font-size:clamp(0.75rem,6.25cqi,1.5rem)] break-words">
+      <span className="min-w-0 max-w-full font-bold tabular-nums leading-tight text-slate-900 [font-size:clamp(0.75rem,6.25cqi,1.5rem)] break-words">
         {formatNumber(n)}
       </span>
-      <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-none [font-size:clamp(0.5rem,3.25cqi,0.625rem)]">
+      <span className="shrink-0 font-medium text-slate-500 uppercase tracking-wider leading-none [font-size:clamp(0.5rem,3.25cqi,0.625rem)]">
         MMK
       </span>
     </p>
@@ -397,8 +397,8 @@ export function Finances() {
     return (
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{t('finances.title')}</h1>
-          <p className="text-slate-600 dark:text-slate-400">{t('finances.subtitle')}</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('finances.title')}</h1>
+          <p className="text-slate-600">{t('finances.subtitle')}</p>
         </div>
         
         {/* Skeleton stat cards */}
@@ -430,13 +430,13 @@ export function Finances() {
     return (
       <div className="p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{t('finances.title')}</h1>
-          <p className="text-slate-600 dark:text-slate-400">{t('finances.subtitle')}</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('finances.title')}</h1>
+          <p className="text-slate-600">{t('finances.subtitle')}</p>
         </div>
         <div className="flex items-center justify-center h-64">
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6 max-w-md">
-            <p className="text-red-800 dark:text-red-200 font-medium mb-2">Failed to load financial data</p>
-            <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md">
+            <p className="text-red-800 font-medium mb-2">Failed to load financial data</p>
+            <p className="text-red-600 text-sm">{error}</p>
             <Button 
               onClick={() => window.location.reload()} 
               className="mt-4"
@@ -453,10 +453,10 @@ export function Finances() {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">{t('finances.title')}</h1>
-        <p className="text-slate-600 dark:text-slate-400">{t('finances.subtitle')}</p>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">{t('finances.title')}</h1>
+        <p className="text-slate-600">{t('finances.subtitle')}</p>
         {revalidating && (
-          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-900">
             <RefreshCw className="h-3.5 w-3.5 animate-spin shrink-0" />
             Syncing latest numbers…
           </div>
@@ -490,16 +490,16 @@ export function Finances() {
           <CardContent className="flex h-full min-h-0 flex-1 flex-col p-6">
             <div className="flex min-h-0 flex-1 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t("finances.totalRevenue")}</p>
+                <p className="text-sm font-medium text-slate-600">{t("finances.totalRevenue")}</p>
                 <FinancesStatMmk value={revenueStatTotal} />
                 <div className="mt-2 flex items-center gap-1">
                   <ArrowUpRight className="h-4 w-4 text-green-600" />
                   <span className="text-sm font-medium text-green-600">+12.5%</span>
-                  <span className="text-sm text-slate-500 dark:text-slate-400">vs last month</span>
+                  <span className="text-sm text-slate-500">vs last month</span>
                 </div>
               </div>
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-green-100">
+                <TrendingUp className="h-6 w-6 text-green-600" />
               </div>
             </div>
             <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
@@ -513,13 +513,13 @@ export function Finances() {
               >
                 <button
                   type="button"
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
                 >
                   {t("finances.filterByDate")}
                 </button>
               </AdminDateRangeFilterPopover>
               {revenueCardDateRange?.from && revenueCardDateRange?.to && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="text-xs text-slate-500">
                   {format(revenueCardDateRange.from, "MMM d, yyyy")} – {format(revenueCardDateRange.to, "MMM d, yyyy")}
                 </span>
               )}
@@ -531,14 +531,14 @@ export function Finances() {
           <CardContent className="flex h-full min-h-0 flex-1 flex-col p-6">
             <div className="flex min-h-0 flex-1 items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{t("finances.commissionPayout")}</p>
+                <p className="text-sm font-medium text-slate-600">{t("finances.commissionPayout")}</p>
                 <FinancesStatMmk value={commissionPayoutStatTotal} />
-                <p className="mt-2 text-xs leading-snug text-slate-500 dark:text-slate-400">
+                <p className="mt-2 text-xs leading-snug text-slate-500">
                   {t("finances.commissionPayoutHint")}
                 </p>
               </div>
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-                <Coins className="h-6 w-6 text-amber-700 dark:text-amber-400" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100">
+                <Coins className="h-6 w-6 text-amber-700" />
               </div>
             </div>
             <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
@@ -552,13 +552,13 @@ export function Finances() {
               >
                 <button
                   type="button"
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline-offset-2 hover:underline"
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
                 >
                   {t("finances.filterByDate")}
                 </button>
               </AdminDateRangeFilterPopover>
               {vendorCardDateRange?.from && vendorCardDateRange?.to && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="text-xs text-slate-500">
                   {format(vendorCardDateRange.from, "MMM d, yyyy")} – {format(vendorCardDateRange.to, "MMM d, yyyy")}
                 </span>
               )}
@@ -764,17 +764,17 @@ export function Finances() {
               </div>
 
               {hasActiveFilters && (
-                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div className="mt-4 pt-4 border-t border-slate-200">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">
+                    <span className="text-slate-600">
                       Showing {filteredTransactions.length} of {scopedTransactions.length} transactions
                     </span>
                     <div className="flex gap-4">
-                      <span className="text-slate-600 dark:text-slate-400">
-                        Revenue: <span className="font-medium text-slate-900 dark:text-white">${filteredTotalRevenue.toFixed(2)}</span>
+                      <span className="text-slate-600">
+                        Revenue: <span className="font-medium text-slate-900">${filteredTotalRevenue.toFixed(2)}</span>
                       </span>
-                      <span className="text-slate-600 dark:text-slate-400">
-                        Commission: <span className="font-medium text-slate-900 dark:text-white">${filteredTotalCommission.toFixed(2)}</span>
+                      <span className="text-slate-600">
+                        Commission: <span className="font-medium text-slate-900">${filteredTotalCommission.toFixed(2)}</span>
                       </span>
                     </div>
                   </div>
@@ -789,22 +789,22 @@ export function Finances() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-700">
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Transaction ID</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Date</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Customer</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Vendor</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Method</th>
-                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Amount</th>
-                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Commission</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Status</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Actions</th>
+                    <tr className="border-b border-slate-200">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Transaction ID</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Date</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Customer</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Vendor</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Method</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Amount</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Commission</th>
+                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">Status</th>
+                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredTransactions.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="text-center py-12 text-slate-500 dark:text-slate-400">
+                        <td colSpan={9} className="text-center py-12 text-slate-500">
                           No transactions found
                         </td>
                       </tr>
@@ -814,23 +814,23 @@ export function Finances() {
                         const MethodIcon = methodInfo.icon;
                         
                         return (
-                          <tr key={transaction.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                            <td className="py-3 px-4 text-sm font-medium text-slate-900 dark:text-white">{transaction.id}</td>
-                            <td className="py-3 px-4 text-sm text-slate-600 dark:text-slate-400">
+                          <tr key={transaction.id} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="py-3 px-4 text-sm font-medium text-slate-900">{transaction.id}</td>
+                            <td className="py-3 px-4 text-sm text-slate-600">
                               {format(new Date(transaction.date), "MMM dd, yyyy")}
                             </td>
-                            <td className="py-3 px-4 text-sm text-slate-900 dark:text-white">{transaction.customer}</td>
-                            <td className="py-3 px-4 text-sm text-slate-900 dark:text-white">{transaction.vendor}</td>
+                            <td className="py-3 px-4 text-sm text-slate-900">{transaction.customer}</td>
+                            <td className="py-3 px-4 text-sm text-slate-900">{transaction.vendor}</td>
                             <td className="py-3 px-4">
                               <div className="flex items-center gap-2">
                                 <MethodIcon className={`w-4 h-4 text-white`} />
-                                <span className="text-sm text-slate-900 dark:text-white">{transaction.method}</span>
+                                <span className="text-sm text-slate-900">{transaction.method}</span>
                               </div>
                             </td>
-                            <td className="py-3 px-4 text-sm font-medium text-right text-slate-900 dark:text-white">
+                            <td className="py-3 px-4 text-sm font-medium text-right text-slate-900">
                               ${(transaction.amount || 0).toFixed(2)}
                             </td>
-                            <td className="py-3 px-4 text-sm text-right text-green-600 dark:text-green-400">
+                            <td className="py-3 px-4 text-sm text-right text-green-600">
                               ${(transaction.commission || 0).toFixed(2)}
                             </td>
                             <td className="py-3 px-4 text-center">
@@ -857,8 +857,8 @@ export function Finances() {
                 </table>
               </div>
               {filteredTransactions.length > 0 && filteredTransactions.length > TX_PAGE_SIZE && (
-                <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-200 dark:border-slate-700 pt-4">
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-slate-200 pt-4">
+                  <p className="text-sm text-slate-600">
                     Showing {(txnListPage - 1) * TX_PAGE_SIZE + 1}–
                     {Math.min(txnListPage * TX_PAGE_SIZE, filteredTransactions.length)} of {filteredTransactions.length}
                   </p>
@@ -873,7 +873,7 @@ export function Finances() {
                     >
                       <ChevronLeft className="h-4 w-4" />
                     </Button>
-                    <span className="text-sm text-slate-600 dark:text-slate-400 tabular-nums">
+                    <span className="text-sm text-slate-600 tabular-nums">
                       {txnListPage} / {txnListTotalPages}
                     </span>
                     <Button
@@ -900,28 +900,28 @@ export function Finances() {
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-700">
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Vendor</th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Email</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Orders</th>
-                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Payout</th>
-                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600 dark:text-slate-400">Status</th>
+                    <tr className="border-b border-slate-200">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Vendor</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-slate-600">Email</th>
+                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">Orders</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-slate-600">Payout</th>
+                      <th className="text-center py-3 px-4 text-sm font-medium text-slate-600">Status</th>
                     </tr>
                   </thead>
                   <tbody>
                     {vendorPayoutsFromScope.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="text-center py-12 text-slate-500 dark:text-slate-400">
+                        <td colSpan={5} className="text-center py-12 text-slate-500">
                           No vendor payouts found
                         </td>
                       </tr>
                     ) : (
                       vendorPayoutsFromScope.map((payout: any) => (
-                        <tr key={payout.id} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <td className="py-3 px-4 text-sm font-medium text-slate-900 dark:text-white">{payout.vendor}</td>
-                          <td className="py-3 px-4 text-sm text-slate-600 dark:text-slate-400">{payout.email}</td>
-                          <td className="py-3 px-4 text-sm text-center text-slate-900 dark:text-white">{payout.orders}</td>
-                          <td className="py-3 px-4 text-sm font-medium text-right text-slate-900 dark:text-white">
+                        <tr key={payout.id} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="py-3 px-4 text-sm font-medium text-slate-900">{payout.vendor}</td>
+                          <td className="py-3 px-4 text-sm text-slate-600">{payout.email}</td>
+                          <td className="py-3 px-4 text-sm text-center text-slate-900">{payout.orders}</td>
+                          <td className="py-3 px-4 text-sm font-medium text-right text-slate-900">
                             ${(payout.payout || 0).toFixed(2)}
                           </td>
                           <td className="py-3 px-4 text-center">
@@ -952,13 +952,13 @@ export function Finances() {
                         <MethodIcon className="w-6 h-6 text-white" />
                       </div>
                       <div>
-                        <p className="text-sm font-medium text-slate-600 dark:text-slate-400">{method.method}</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-500">{method.transactions} transactions</p>
+                        <p className="text-sm font-medium text-slate-600">{method.method}</p>
+                        <p className="text-xs text-slate-500">{method.transactions} transactions</p>
                       </div>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-slate-900 dark:text-white">${(method.amount || 0).toFixed(2)}</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">{(method.percentage || 0).toFixed(1)}% of total</p>
+                      <p className="text-2xl font-bold text-slate-900">${(method.amount || 0).toFixed(2)}</p>
+                      <p className="text-sm text-slate-600 mt-1">{(method.percentage || 0).toFixed(1)}% of total</p>
                     </div>
                   </CardContent>
                 </Card>
@@ -982,78 +982,78 @@ export function Finances() {
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Customer</p>
-                  <p className="text-sm text-slate-900 dark:text-white">{selectedTransaction.customer}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-500">{selectedTransaction.customerEmail}</p>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Customer</p>
+                  <p className="text-sm text-slate-900">{selectedTransaction.customer}</p>
+                  <p className="text-xs text-slate-500">{selectedTransaction.customerEmail}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Vendor</p>
-                  <p className="text-sm text-slate-900 dark:text-white">{selectedTransaction.vendor}</p>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Vendor</p>
+                  <p className="text-sm text-slate-900">{selectedTransaction.vendor}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Date</p>
-                  <p className="text-sm text-slate-900 dark:text-white">
+                  <p className="text-sm font-medium text-slate-600 mb-1">Date</p>
+                  <p className="text-sm text-slate-900">
                     {format(new Date(selectedTransaction.date), "MMMM dd, yyyy 'at' HH:mm")}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Payment Method</p>
-                  <p className="text-sm text-slate-900 dark:text-white">{selectedTransaction.method}</p>
+                  <p className="text-sm font-medium text-slate-600 mb-1">Payment Method</p>
+                  <p className="text-sm text-slate-900">{selectedTransaction.method}</p>
                 </div>
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-3">Products</p>
+              <div className="border-t border-slate-200 pt-4">
+                <p className="text-sm font-medium text-slate-600 mb-3">Products</p>
                 {selectedTransaction.products && selectedTransaction.products.length > 0 ? (
                   <div className="space-y-2">
                     {selectedTransaction.products.map((product: any, index: number) => (
                       <div key={index} className="flex justify-between text-sm">
-                        <span className="text-slate-900 dark:text-white">
+                        <span className="text-slate-900">
                           {product.name || product.title} × {product.quantity}
                         </span>
-                        <span className="text-slate-600 dark:text-slate-400">
+                        <span className="text-slate-600">
                           ${((product.price || product.total) * product.quantity).toFixed(2)}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-500 dark:text-slate-500">No product details available</p>
+                  <p className="text-sm text-slate-500">No product details available</p>
                 )}
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-2">
+              <div className="border-t border-slate-200 pt-4 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Subtotal</span>
-                  <span className="text-slate-900 dark:text-white">${selectedTransaction.amount.toFixed(2)}</span>
+                  <span className="text-slate-600">Subtotal</span>
+                  <span className="text-slate-900">${selectedTransaction.amount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600 dark:text-slate-400">Platform Commission</span>
-                  <span className="text-green-600 dark:text-green-400">-${selectedTransaction.commission.toFixed(2)}</span>
+                  <span className="text-slate-600">Platform Commission</span>
+                  <span className="text-green-600">-${selectedTransaction.commission.toFixed(2)}</span>
                 </div>
                 {selectedTransaction.gatewayFee > 0 && (
                   <div className="flex justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-400">Gateway Fee</span>
-                    <span className="text-slate-600 dark:text-slate-400">-${selectedTransaction.gatewayFee.toFixed(2)}</span>
+                    <span className="text-slate-600">Gateway Fee</span>
+                    <span className="text-slate-600">-${selectedTransaction.gatewayFee.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-medium pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-900 dark:text-white">Vendor Payout</span>
-                  <span className="text-slate-900 dark:text-white">${selectedTransaction.vendorPayout.toFixed(2)}</span>
+                <div className="flex justify-between text-base font-medium pt-2 border-t border-slate-200">
+                  <span className="text-slate-900">Vendor Payout</span>
+                  <span className="text-slate-900">${selectedTransaction.vendorPayout.toFixed(2)}</span>
                 </div>
               </div>
 
               {selectedTransaction.shippingAddress && (
-                <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Shipping Address</p>
-                  <p className="text-sm text-slate-900 dark:text-white">{selectedTransaction.shippingAddress}</p>
+                <div className="border-t border-slate-200 pt-4">
+                  <p className="text-sm font-medium text-slate-600 mb-1">Shipping Address</p>
+                  <p className="text-sm text-slate-900">{selectedTransaction.shippingAddress}</p>
                 </div>
               )}
 
               {selectedTransaction.trackingNumber && (
-                <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-1">Tracking Number</p>
-                  <p className="text-sm text-slate-900 dark:text-white font-mono">{selectedTransaction.trackingNumber}</p>
+                <div className="border-t border-slate-200 pt-4">
+                  <p className="text-sm font-medium text-slate-600 mb-1">Tracking Number</p>
+                  <p className="text-sm text-slate-900 font-mono">{selectedTransaction.trackingNumber}</p>
                 </div>
               )}
             </div>

@@ -297,8 +297,8 @@ export function SideNav({
 
   return (
     <aside className={`
-      w-64 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 h-screen fixed left-0 top-0 flex flex-col border-r border-slate-200 dark:border-slate-700 z-50 
-      transition-transform duration-300 ease-in-out shadow-2xl shadow-slate-200/60 dark:shadow-black/40
+      w-64 bg-white text-slate-900 h-screen fixed left-0 top-0 flex flex-col border-r border-slate-200 z-50 
+      transition-transform duration-300 ease-in-out shadow-2xl shadow-slate-200/60
       lg:translate-x-0
       ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
     `}>
@@ -306,7 +306,7 @@ export function SideNav({
       <Link
         to="/admin"
         onClick={() => setSidebarOpen?.(false)}
-        className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors cursor-pointer w-full"
+        className="h-16 flex items-center px-6 border-b border-slate-200 hover:bg-slate-50 transition-colors cursor-pointer w-full"
       >
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -336,13 +336,13 @@ export function SideNav({
             </div>
           </div>
           <div className="flex flex-col justify-center">
-            <span className="text-xl leading-tight text-slate-900 dark:text-white uppercase font-bold" style={{ fontFamily: 'Rubik, sans-serif', letterSpacing: '0.05em' }}>{storeName}</span>
+            <span className="text-xl leading-tight text-slate-900 uppercase font-bold" style={{ fontFamily: 'Rubik, sans-serif', letterSpacing: '0.05em' }}>{storeName}</span>
           </div>
         </div>
       </Link>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-6 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 hover:scrollbar-thumb-slate-400 dark:hover:scrollbar-thumb-slate-500 scrollbar-thumb-rounded-full">
+      <nav className="flex-1 px-4 py-6 overflow-y-auto scrollbar-thin scrollbar-track-transparent scrollbar-thumb-slate-300 hover:scrollbar-thumb-slate-400 scrollbar-thumb-rounded-full">
         <ul className="space-y-1.5">
           {filteredNavItems.map((item) => {
             const isActive = currentPage === item.label;
@@ -353,8 +353,8 @@ export function SideNav({
                   onClick={() => handleNavClick(item)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
                     isActive
-                      ? "bg-slate-800 dark:bg-slate-600 text-white shadow-lg shadow-slate-800/30 dark:shadow-slate-600/30"
-                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
+                      ? "bg-slate-800 text-white shadow-lg shadow-slate-800/30"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                   }`}
                 >
                   <item.icon className={`w-5 h-5 transition-transform duration-300 ${!isActive && 'group-hover:scale-110'}`} />
@@ -375,7 +375,7 @@ export function SideNav({
                 
                 {/* Sub Navigation */}
                 {item.subItems && expandedItems.includes(item.label) && (
-                  <ul className="mt-2 ml-6 space-y-1 border-l-2 border-slate-200 dark:border-slate-700 pl-4">
+                  <ul className="mt-2 ml-6 space-y-1 border-l-2 border-slate-200 pl-4">
                     {item.subItems.map((subItem) => {
                       const isSubActive = currentPage === subItem.label;
                       
@@ -385,12 +385,12 @@ export function SideNav({
                             onClick={() => handleSubNavClick(subItem.label)}
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-300 ${
                               isSubActive
-                                ? "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-medium shadow-md"
-                                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-white hover:shadow-sm"
+                                ? "bg-slate-100 text-slate-900 font-medium shadow-md"
+                                : "text-slate-500 hover:bg-slate-50 hover:text-slate-900 hover:shadow-sm"
                             }`}
                           >
                             <div className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
-                              isSubActive ? 'bg-slate-900 dark:bg-slate-200 scale-125 shadow-sm' : 'bg-slate-300 dark:bg-slate-600'
+                              isSubActive ? 'bg-slate-900 scale-125 shadow-sm' : 'bg-slate-300'
                             }`} />
                             <span className="flex-1 text-left text-sm">{t(getNavKey(subItem.label))}</span>
                           </button>
@@ -406,12 +406,12 @@ export function SideNav({
       </nav>
 
       {/* Creator Credit */}
-      <div className="p-4 border-t border-slate-200 dark:border-slate-700">
+      <div className="p-4 border-t border-slate-200">
         <div className="text-center">
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
-            {t('footer.createdBy')} <span className="text-slate-600 dark:text-slate-400 font-semibold">AungSone</span>
+          <p className="text-[10px] text-slate-400 font-medium">
+            {t('footer.createdBy')} <span className="text-slate-600 font-semibold">AungSone</span>
           </p>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500">{t('footer.role')}</p>
+          <p className="text-[10px] text-slate-400">{t('footer.role')}</p>
         </div>
       </div>
     </aside>

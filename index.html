@@ -2,6 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      try {
+        document.documentElement.classList.remove("dark");
+        document.documentElement.style.colorScheme = "light";
+        localStorage.removeItem("migoo-theme");
+      } catch (e) {}
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script src="/platform-branding-head.js" defer></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />

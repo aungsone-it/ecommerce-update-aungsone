@@ -134,10 +134,6 @@ export const zhTranslations: Record<string, string> = {
     'role.productManager.perm5': '无法访问用户数据或财务信息',
     
     // Appearance Tab
-    'settings.appearance.theme': '主题',
-    'settings.appearance.theme.light': '浅色',
-    'settings.appearance.theme.dark': '深色',
-    'settings.appearance.theme.auto': '自动',
     'settings.appearance.accentColor': '强调色',
     'settings.appearance.save': '保存外观',
     

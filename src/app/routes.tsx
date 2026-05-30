@@ -8,7 +8,6 @@ import { ScrollController } from "./components/ScrollController";
 import { KPayVendorReturnRedirect } from "./components/KPayVendorReturnRedirect";
 import { RouteLoadingFallback } from "./components/RouteLoadingFallback";
 import { NotFound } from "./pages/NotFound";
-import { ThemeProvider } from "./contexts/ThemeContext";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
@@ -127,22 +126,20 @@ function LazyBoundary({ children }: { children: ReactNode }) {
 // Wrapper component for all providers
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   return (
-    <ThemeProvider>
-      <LanguageProvider>
-        <AuthProvider>
-          <VendorAuthProvider>
-            <ErrorBoundary>
-              <ScrollController />
-              <KPayVendorReturnRedirect />
-              <Suspense fallback={null}>
-                <OrderRealtimeBridge />
-              </Suspense>
-              {children}
-            </ErrorBoundary>
-          </VendorAuthProvider>
-        </AuthProvider>
-      </LanguageProvider>
-    </ThemeProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <VendorAuthProvider>
+          <ErrorBoundary>
+            <ScrollController />
+            <KPayVendorReturnRedirect />
+            <Suspense fallback={null}>
+              <OrderRealtimeBridge />
+            </Suspense>
+            {children}
+          </ErrorBoundary>
+        </VendorAuthProvider>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }
 

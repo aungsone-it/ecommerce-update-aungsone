@@ -1,19 +1,17 @@
 @import 'tailwindcss' source(none);
+@custom-variant dark (&:is(.dark *));
 
-/* Admin route entry pages */
+/* Admin-only Tailwind utilities — imported synchronously by admin route modules. */
 @source '../app/pages/AdminPage.tsx';
 @source '../app/pages/AddCustomerPage.tsx';
 @source '../app/pages/VendorAdminPage.tsx';
 @source '../app/pages/VendorAdminProductViewPage.tsx';
 @source '../app/pages/SetupPage.tsx';
-
-/* Vendor admin panel */
 @source '../app/components/vendor-admin/**';
 @source '../app/components/VendorAdminPortal.tsx';
-
-/* Super-admin modules (not used on customer storefront routes) */
 @source '../app/components/Setup.tsx';
 @source '../app/components/Dashboard.tsx';
+@source '../app/components/StatCard.tsx';
 @source '../app/components/ProductList.tsx';
 @source '../app/components/Categories.tsx';
 @source '../app/components/Inventory.tsx';
@@ -64,6 +62,7 @@
 @source '../app/components/PaymentSettings.tsx';
 @source '../app/components/Invoice.tsx';
 @source '../app/components/PrintInvoice.tsx';
+@source '../app/components/BarcodeLazy.tsx';
 @source '../app/components/TestDataManager.tsx';
 @source '../app/components/CacheDebugPanel.tsx';
 @source '../app/components/RequestAnalyzer.tsx';
