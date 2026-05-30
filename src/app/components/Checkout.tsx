@@ -500,20 +500,32 @@ export function Checkout({
   const [summaryOrderVendor, setSummaryOrderVendor] = useState<string | null>(null);
   const [summaryStorefrontHomeUrl, setSummaryStorefrontHomeUrl] = useState<string | null>(null);
   const unifiedSummaryRoute = isUnifiedKpaySummaryPath(location.pathname);
+  const onSummaryRoute = useMemo(
+    () => /\/summary$/.test(location.pathname),
+    [location.pathname]
+  );
   const displayStoreName =
     storeName || vendorName || summaryOrderVendor || "";
 
   useEffect(() => {
-    if (!unifiedSummaryRoute) return;
+    if (!onSummaryRoute) return;
 
     const slug = storeName || vendorId || summaryOrderVendor || null;
-    if (!summaryStorefrontOrigin?.trim() && !slug) return;
+    const originHint =
+      summaryStorefrontOrigin?.trim() ||
+      pwaPendingContext?.storefrontOrigin?.trim() ||
+      (vendorSubdomainSlug != null || customHostSlug != null
+        ? typeof window !== "undefined"
+          ? window.location.origin
+          : null
+        : null);
+    if (!originHint && !slug) return;
 
     let cancelled = false;
     void resolveVendorStorefrontHomeUrl({
       storeSlug: slug,
       storeName: summaryOrderVendor || storeName || vendorName,
-      storefrontOrigin: summaryStorefrontOrigin,
+      storefrontOrigin: originHint,
     }).then((url) => {
       if (!cancelled && url && url !== "/") {
         setSummaryStorefrontHomeUrl(url);
@@ -524,20 +536,31 @@ export function Checkout({
       cancelled = true;
     };
   }, [
-    unifiedSummaryRoute,
+    onSummaryRoute,
     summaryStorefrontOrigin,
     summaryOrderVendor,
     storeName,
     vendorId,
     vendorName,
+    vendorSubdomainSlug,
+    customHostSlug,
+    pwaPendingContext?.storefrontOrigin,
   ]);
 
   const handleContinueShopping = useCallback(() => {
-    if (unifiedSummaryRoute) {
+    if (onSummaryRoute) {
+      const storefrontOrigin =
+        summaryStorefrontOrigin?.trim() ||
+        pwaPendingContext?.storefrontOrigin?.trim() ||
+        (vendorSubdomainSlug != null || customHostSlug != null
+          ? typeof window !== "undefined"
+            ? window.location.origin
+            : null
+          : null);
       void navigateUnifiedSummaryContinueShopping(navigate, {
         search: location.search,
-        storeSlug: storeName || vendorId || vendorName || null,
-        storefrontOrigin: summaryStorefrontOrigin,
+        storeSlug: storeName || vendorId || vendorName || summaryOrderVendor || null,
+        storefrontOrigin,
         orderVendor: summaryOrderVendor,
         preResolvedHomeUrl: summaryStorefrontHomeUrl,
       });
@@ -545,15 +568,18 @@ export function Checkout({
     }
     onBack();
   }, [
-    unifiedSummaryRoute,
+    onSummaryRoute,
     navigate,
     location.search,
     storeName,
     vendorId,
     vendorName,
-    summaryStorefrontOrigin,
     summaryOrderVendor,
+    summaryStorefrontOrigin,
     summaryStorefrontHomeUrl,
+    pwaPendingContext?.storefrontOrigin,
+    vendorSubdomainSlug,
+    customHostSlug,
     onBack,
   ]);
 
@@ -1075,6 +1101,15 @@ export function Checkout({
           response = await fetch(orderEndpoint, {
             headers: { Authorization: `Bearer ${publicAnonKey}` },
           });
+        } else if (
+          pendingCtx?.draftOrder &&
+          (orderId || pendingCtx.merchantOrderId)
+        ) {
+          applyDraftPreview(
+            orderId || String(pendingCtx.merchantOrderId),
+            pendingCtx.draftOrder
+          );
+          return;
         } else {
           return;
         }
@@ -1474,7 +1509,6 @@ export function Checkout({
     effectiveUser?.email,
   ]);
 
-  const onSummaryRoute = /\/summary$/.test(location.pathname);
   const showSummaryLoading = onSummaryRoute && step !== "success" && summaryResolving;
 
   // After a QR is issued, payment completion is written to KV by the public `kpay-webhook`

@@ -231,7 +231,16 @@ export function resolveUnifiedSummaryContinueShoppingTarget(params: {
     (params.orderVendor ? resolveVendorPathSlug(params.orderVendor) : null) ||
     null;
 
-  if (!slugRaw) return "/";
+  if (!slugRaw) {
+    if (typeof window !== "undefined") {
+      const fromPendingPath = pending?.originPath?.split("?")[0] || "";
+      if (fromPendingPath && fromPendingPath !== "/checkout") {
+        const home = fromPendingPath.replace(/\/checkout(?:\/success)?\/?$/, "") || "/";
+        return home.startsWith("/") ? home : `/${home}`;
+      }
+    }
+    return "/";
+  }
 
   const slug = resolveVendorPathSlug(slugRaw);
   const subdomainUrl = buildVendorSubdomainHomeUrl({

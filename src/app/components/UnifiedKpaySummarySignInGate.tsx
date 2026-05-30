@@ -1,4 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useLocation } from "react-router";
 import { UserCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
@@ -8,6 +9,7 @@ import { VendorStorefrontFullSkeleton } from "./SkeletonLoaders";
 import { useAuth } from "../contexts/AuthContext";
 import { authApi } from "../../utils/api";
 import { MIGOO_USER_SESSION_CHANGED_EVENT, notifyMigooUserSessionChanged } from "../../constants";
+import { hasKpaySummaryReturnContext } from "../utils/vendorCheckoutPaths";
 
 function readMigooCustomer(): { id: string } | null {
   if (typeof window === "undefined") return null;
@@ -22,7 +24,16 @@ function readMigooCustomer(): { id: string } | null {
 }
 
 export function UnifiedKpaySummarySignInGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
   const { user: authUser, loading: authLoading } = useAuth();
+  const allowGuestSummary = useMemo(
+    () =>
+      hasKpaySummaryReturnContext({
+        pathname: location.pathname,
+        search: location.search,
+      }),
+    [location.pathname, location.search],
+  );
   const [migooUser, setMigooUser] = useState(readMigooCustomer);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -48,10 +59,18 @@ export function UnifiedKpaySummarySignInGate({ children }: { children: ReactNode
   const signedIn = Boolean(migooUser?.id || authUser?.id);
 
   useEffect(() => {
+    if (allowGuestSummary) {
+      setShowAuthModal(false);
+      return;
+    }
     if (!authLoading && !signedIn) {
       setShowAuthModal(true);
     }
-  }, [authLoading, signedIn]);
+  }, [authLoading, signedIn, allowGuestSummary]);
+
+  if (allowGuestSummary) {
+    return <>{children}</>;
+  }
 
   const handleLogin = async () => {
     if (!authForm.email || !authForm.password) {
