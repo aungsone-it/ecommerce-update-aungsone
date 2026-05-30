@@ -48,6 +48,7 @@ import {
   resolveVendorStorefrontHomeUrl,
   resolveVendorSummaryPath,
 } from "../utils/vendorCheckoutPaths";
+import { normalizeCheckoutStoragePath } from "../utils/vendorStorePaths";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -190,22 +191,39 @@ function notifyCustomerOrdersUpdated(userId: string | null | undefined, reason =
 
 const CHECKOUT_LATEST_SUMMARY_KEY = "checkout-summary:latest";
 
-function consumeCheckoutBuyNowOverride(key: string): CheckoutBuyNowOverride | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CheckoutBuyNowOverride;
-    if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) return null;
-    localStorage.removeItem(key); // one-shot; prevents stale override on later normal checkouts
-    return {
-      items: parsed.items,
-      total: Number(parsed.total || 0),
-      savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : new Date().toISOString(),
-    };
-  } catch {
-    return null;
+function checkoutBuyNowStorageKeys(pathname: string): string[] {
+  const normalized = normalizeCheckoutStoragePath(pathname);
+  const keys = new Set<string>([
+    `checkout-buy-now:${normalized}`,
+    `checkout-buy-now:${pathname.split("?")[0]?.split("#")[0] || normalized}`,
+  ]);
+  if (normalized === "/checkout") {
+    keys.add("checkout-buy-now://checkout");
   }
+  return [...keys];
+}
+
+function consumeCheckoutBuyNowOverride(pathname: string): CheckoutBuyNowOverride | null {
+  if (typeof window === "undefined") return null;
+  for (const key of checkoutBuyNowStorageKeys(pathname)) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as CheckoutBuyNowOverride;
+      if (!parsed || !Array.isArray(parsed.items) || parsed.items.length === 0) continue;
+      for (const legacyKey of checkoutBuyNowStorageKeys(pathname)) {
+        localStorage.removeItem(legacyKey);
+      }
+      return {
+        items: parsed.items,
+        total: Number(parsed.total || 0),
+        savedAt: typeof parsed.savedAt === "string" ? parsed.savedAt : new Date().toISOString(),
+      };
+    } catch {
+      /* try next key */
+    }
+  }
+  return null;
 }
 
 function readCheckoutMiniSummaryCache(key: string): CheckoutMiniSummaryCache | null {
@@ -372,18 +390,22 @@ export function Checkout({
   const navigate = useNavigate();
   const location = useLocation();
   const { items, totalPrice, clearCart } = useCart();
+  const checkoutStoragePath = useMemo(
+    () => normalizeCheckoutStoragePath(location.pathname),
+    [location.pathname]
+  );
   const checkoutMiniCacheKey = useMemo(
-    () => `checkout-mini-summary:${location.pathname}`,
-    [location.pathname]
+    () => `checkout-mini-summary:${checkoutStoragePath}`,
+    [checkoutStoragePath]
   );
-  const checkoutBuyNowOverrideKey = useMemo(
-    () => `checkout-buy-now:${location.pathname}`,
-    [location.pathname]
-  );
-  const initialMiniSummaryCache = useMemo(
-    () => readCheckoutMiniSummaryCache(checkoutMiniCacheKey),
-    [checkoutMiniCacheKey]
-  );
+  const initialMiniSummaryCache = useMemo(() => {
+    const normalized = readCheckoutMiniSummaryCache(checkoutMiniCacheKey);
+    if (normalized) return normalized;
+    if (checkoutStoragePath === "/checkout") {
+      return readCheckoutMiniSummaryCache("checkout-mini-summary://checkout");
+    }
+    return null;
+  }, [checkoutMiniCacheKey, checkoutStoragePath]);
   const { user: authUser } = useAuth();
   const migoo = getMigooCustomerFromStorage();
 
@@ -778,7 +800,7 @@ export function Checkout({
     () => Number(initialMiniSummaryCache?.total || 0)
   );
   const [buyNowOverride] = useState<CheckoutBuyNowOverride | null>(
-    () => consumeCheckoutBuyNowOverride(checkoutBuyNowOverrideKey)
+    () => consumeCheckoutBuyNowOverride(location.pathname)
   );
 
   useEffect(() => {

@@ -125,6 +125,8 @@ import { applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
 import { buildVendorStorefrontDocumentTitle } from "../utils/vendorStorefrontDocumentTitle";
 import {
   buildVendorStoreHomePath,
+  buildVendorStoreCheckoutPath,
+  normalizeCheckoutStoragePath,
   resolveVendorStoreLinkSlug,
   resolveVendorPathSlug,
   pathVendorStoreSlugFromPathname,
@@ -789,7 +791,22 @@ export function VendorStoreView({
     storeSlug,
     vendorId,
   ]);
-  const checkoutPath = `${storeBase}/checkout`;
+  const checkoutPath = useMemo(
+    () =>
+      buildVendorStoreCheckoutPath({
+        pathSlug: storeLinkSlug || canonicalPathSlug || storeSlug || vendorId,
+        hostRootStorePaths,
+        useVendorDashPrefix: location.pathname.startsWith("/vendor-"),
+      }),
+    [
+      hostRootStorePaths,
+      location.pathname,
+      storeLinkSlug,
+      canonicalPathSlug,
+      storeSlug,
+      vendorId,
+    ]
+  );
 
   const navigateStoreHome = useCallback(() => {
     navigate(
@@ -4090,7 +4107,7 @@ export function VendorStoreView({
       if (overrides?.buyNow) {
         // Buy Now bypasses the cart — checkout reads a one-shot localStorage override only.
         try {
-          const checkoutPathOnly = String(checkoutPath || "/checkout").split("?")[0] || "/checkout";
+          const checkoutPathOnly = normalizeCheckoutStoragePath(checkoutPath);
           const miniKey = `checkout-mini-summary:${checkoutPathOnly}`;
           const buyNowKey = `checkout-buy-now:${checkoutPathOnly}`;
           const oneItemPayload = {

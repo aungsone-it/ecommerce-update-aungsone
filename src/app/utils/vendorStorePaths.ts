@@ -138,3 +138,41 @@ export function buildVendorStoreHomePath(params: {
   const enc = encodeURIComponent(slug);
   return params.useVendorDashPrefix ? `/vendor-${enc}` : `/vendor/${enc}`;
 }
+
+/** Join storefront paths without producing `//segment` when base is `/`. */
+export function joinStorefrontPath(base: string, ...parts: string[]): string {
+  const segments = [
+    ...String(base || "")
+      .split("/")
+      .filter(Boolean),
+    ...parts.flatMap((part) =>
+      String(part || "")
+        .split("/")
+        .filter(Boolean)
+    ),
+  ];
+  return segments.length ? `/${segments.join("/")}` : "/";
+}
+
+export function buildVendorStoreCheckoutPath(params: {
+  pathSlug: string;
+  hostRootStorePaths?: boolean;
+  useVendorDashPrefix?: boolean;
+}): string {
+  return joinStorefrontPath(buildVendorStoreHomePath(params), "checkout");
+}
+
+export function buildVendorStoreSummaryPath(params: {
+  pathSlug: string;
+  hostRootStorePaths?: boolean;
+  useVendorDashPrefix?: boolean;
+}): string {
+  return joinStorefrontPath(buildVendorStoreHomePath(params), "summary");
+}
+
+/** Normalize pathname for checkout localStorage keys (handles legacy `//checkout`). */
+export function normalizeCheckoutStoragePath(pathname: string): string {
+  const raw = String(pathname || "/checkout").split("?")[0]?.split("#")[0] || "/checkout";
+  const collapsed = raw.replace(/\/{2,}/g, "/");
+  return collapsed.startsWith("/") ? collapsed : `/${collapsed}`;
+}
