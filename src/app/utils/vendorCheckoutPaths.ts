@@ -84,7 +84,12 @@ export function resolveStoreSlugFromPwaCheckoutDraft(
   if (fromPath) return resolveVendorPathSlug(fromPath);
   const fromOrigin = resolveStoreSlugFromStorefrontOrigin(draft.storefrontOrigin);
   if (fromOrigin) return fromOrigin;
-  const vendor = (draft.draftOrder as { vendor?: string; vendorId?: string } | undefined)?.vendor;
+  const draftOrder = draft.draftOrder as { vendor?: string; vendorId?: string } | undefined;
+  const vendorId = draftOrder?.vendorId;
+  if (typeof vendorId === "string" && vendorId.trim()) {
+    return resolveVendorPathSlug(vendorId.trim());
+  }
+  const vendor = draftOrder?.vendor;
   if (typeof vendor === "string" && vendor.trim()) {
     return resolveVendorPathSlug(vendor.trim());
   }
@@ -104,6 +109,25 @@ export function resolveKpayReturnStoreSlug(params: {
 
   const fromPendingOrigin = resolveStoreSlugFromStorefrontOrigin(pending?.storefrontOrigin);
   if (fromPendingOrigin) return fromPendingOrigin;
+
+  try {
+    const raw = localStorage.getItem(KPAY_PWA_PENDING_STORAGE_KEY);
+    if (raw) {
+      const pendingDraft = JSON.parse(raw) as {
+        draftOrder?: { vendorId?: string; vendor?: string };
+      };
+      const pendingVendorId = pendingDraft?.draftOrder?.vendorId;
+      if (typeof pendingVendorId === "string" && pendingVendorId.trim()) {
+        return resolveVendorPathSlug(pendingVendorId.trim());
+      }
+      const pendingVendor = pendingDraft?.draftOrder?.vendor;
+      if (typeof pendingVendor === "string" && pendingVendor.trim()) {
+        return resolveVendorPathSlug(pendingVendor.trim());
+      }
+    }
+  } catch {
+    /* ignore */
+  }
 
   const qs = new URLSearchParams(params.search || "");
   const cb = parsePwaCallbackInfo(qs.get("callback_info"));
@@ -363,6 +387,26 @@ export function isHostRootCheckoutPath(pathname: string): boolean {
   return HOST_ROOT_CHECKOUT_PATHS.has(path);
 }
 
+/** Post-KPay order summary always renders on the unified return host (`walwal.online/summary`). */
+export const UNIFIED_KPAY_SUMMARY_PATH = "/summary";
+
+export function resolveUnifiedKpayPostPaymentSummaryPath(): string {
+  return UNIFIED_KPAY_SUMMARY_PATH;
+}
+
+/** Origin for the unified KBZ post-payment summary (`https://walwal.online` in production). */
+export function resolveUnifiedKpayReturnBaseUrl(): string {
+  if (typeof window === "undefined") return `https://${MARKETPLACE_APEX}`;
+  const host = window.location.hostname.toLowerCase();
+  if (isLocalDevHostname(host)) {
+    if (isUnifiedKpayReturnHost(host)) return window.location.origin;
+    const port = window.location.port ? `:${window.location.port}` : "";
+    return `${window.location.protocol}//localhost${port}`;
+  }
+  if (isUnifiedKpayReturnHost(host)) return window.location.origin;
+  return `https://${MARKETPLACE_APEX}`;
+}
+
 /** Summary route for the current host: `/summary` on vendor subdomain, `/vendor/:slug/summary` on localhost/apex. */
 export function resolveVendorSummaryPath(params: {
   pathname: string;
@@ -429,27 +473,14 @@ export function resolveSummaryRedirectTarget(params: {
   ).trim();
   if (!merchOrderId) return null;
 
-  if (path === "/summary" || path.endsWith("/summary") || path === "/kpay/return") {
-    return null;
+  if (path === "/kpay/return") return null;
+
+  const search = params.search || "";
+
+  if (isUnifiedKpayReturnHost()) {
+    if (path === UNIFIED_KPAY_SUMMARY_PATH) return null;
+    return `${UNIFIED_KPAY_SUMMARY_PATH}${search}`;
   }
 
-  const rawSlug =
-    params.storeName ||
-    extractStoreSlugFromPathname(path) ||
-    readKpayPendingStoreContext()?.storeName ||
-    null;
-  const slug = rawSlug ? resolveVendorPathSlug(rawSlug) : null;
-
-  if (params.onVendorHost) {
-    return `/summary${params.search}`;
-  }
-
-  if (slug) {
-    if (isUnifiedKpayReturnHost()) {
-      return `/summary${params.search}`;
-    }
-    return `/vendor/${encodeURIComponent(slug)}/summary${params.search}`;
-  }
-
-  return null;
+  return `${resolveUnifiedKpayReturnBaseUrl()}${UNIFIED_KPAY_SUMMARY_PATH}${search}`;
 }

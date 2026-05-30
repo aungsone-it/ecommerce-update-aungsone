@@ -76,7 +76,7 @@ export type PwaCheckoutDraftRecord = {
   savedAt: string;
 };
 
-/** Absolute URL for post-payment summary (vendor subdomain / custom domain safe). */
+/** Absolute URL for post-payment summary — always unified apex (`walwal.online/summary`). */
 export function buildPwaSummaryAbsoluteUrl(
   draft: PwaCheckoutDraftRecord | null,
   fallbackSpaBase: string,
@@ -88,26 +88,17 @@ export function buildPwaSummaryAbsoluteUrl(
   if (merchantOrderId) qs.set("merch_order_id", merchantOrderId);
   const q = qs.toString();
 
-  const rawSummary = text(draft?.summaryPath);
-  const summaryPath = !rawSummary || rawSummary === "/" ? "/summary" : rawSummary;
-  const storefrontOrigin = text(draft?.storefrontOrigin);
-
-  if (storefrontOrigin) {
-    const base = storefrontOrigin.replace(/\/$/, "");
-    const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
-    return q ? `${base}${path}?${q}` : `${base}${path}`;
+  // Summary UI lives on the unified return host. `draft.storefrontOrigin` is only
+  // used client-side for "Continue Shopping" back to the vendor storefront.
+  void draft;
+  let spaOrigin = "";
+  try {
+    spaOrigin = new URL(fallbackSpaBase).origin;
+  } catch {
+    spaOrigin = String(fallbackSpaBase || "").trim().replace(/\/$/, "");
   }
-
-  if (/^https?:\/\//i.test(summaryPath)) {
-    const u = new URL(summaryPath);
-    if (prepayId) u.searchParams.set("prepay_id", prepayId);
-    if (merchantOrderId) u.searchParams.set("merch_order_id", merchantOrderId);
-    return u.toString();
-  }
-
-  const spa = new URL(fallbackSpaBase);
-  const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
-  return q ? `${spa.origin}${path}?${q}` : `${spa.origin}${path}`;
+  const path = "/summary";
+  return q ? `${spaOrigin}${path}?${q}` : `${spaOrigin}${path}`;
 }
 
 export async function savePwaCheckoutDraft(record: PwaCheckoutDraftRecord): Promise<void> {

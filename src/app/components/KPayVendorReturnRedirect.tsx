@@ -10,8 +10,8 @@ import {
 
 /**
  * KBZ PWA UAT often redirects to the store root with `?merch_order_id=...`
- * (merchant return URL registered as homepage). Send those sessions to `/summary`
- * on vendor hosts or `/vendor/:store/summary` on localhost / marketplace apex.
+ * (merchant return URL registered as homepage). Send those sessions to unified
+ * `walwal.online/summary` (or localhost `/summary` in dev).
  */
 export function KPayVendorReturnRedirect() {
   const location = useLocation();
@@ -38,6 +38,10 @@ export function KPayVendorReturnRedirect() {
       storeName,
     });
     if (!target) return;
+    if (/^https?:\/\//i.test(target)) {
+      window.location.replace(target);
+      return;
+    }
     navigate(target, { replace: true });
   }, [vendorHost, storeName, location.pathname, location.search, navigate]);
 

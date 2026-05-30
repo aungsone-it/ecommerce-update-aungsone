@@ -506,7 +506,25 @@ export function buildKPaySummaryReturnUrl(params: {
   });
 }
 
-/** Full URL for summary after PWA pay — required for vendor subdomains (gogo.walwal.online/summary). */
+function unifiedKpayReturnOrigin(): string {
+  if (typeof window === "undefined") return "https://walwal.online";
+  const host = window.location.hostname.toLowerCase();
+  const isLocal =
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    host.endsWith(".localhost");
+  if (host === "walwal.online" || host === "www.walwal.online") {
+    return window.location.origin;
+  }
+  if (isLocal) {
+    const port = window.location.port ? `:${window.location.port}` : "";
+    return `${window.location.protocol}//localhost${port}`;
+  }
+  return "https://walwal.online";
+}
+
+/** Full URL for summary after PWA pay — always unified return host (`walwal.online/summary`). */
 export function buildPwaSummaryAbsoluteUrl(params: {
   storefrontOrigin?: string | null;
   summaryPath?: string | null;
@@ -519,45 +537,13 @@ export function buildPwaSummaryAbsoluteUrl(params: {
   if (params.prepayId) qs.set("prepay_id", params.prepayId);
   const q = qs.toString();
 
-  const summaryPath = normalizePwaSummaryPath(
-    (params.summaryPath && params.summaryPath.trim()) ||
-      buildCheckoutSummaryPath(params.originPath || "/checkout"),
-  );
+  void params.storefrontOrigin;
+  void params.summaryPath;
+  void params.originPath;
 
-  const origin = (params.storefrontOrigin || "").trim().replace(/\/$/, "");
-  if (origin) {
-    let path = summaryPath;
-    try {
-      const host = new URL(origin).hostname.toLowerCase();
-      const isLocal =
-        host === "localhost" ||
-        host === "127.0.0.1" ||
-        host.endsWith(".localhost");
-      if (isLocal && path === "/summary") {
-        const fromOrigin = (params.originPath || "").trim();
-        const m = fromOrigin.match(/^\/vendor\/([^/]+)(?:\/|$)/i);
-        if (m?.[1]) {
-          path = `/vendor/${encodeURIComponent(resolveVendorPathSlug(decodeURIComponent(m[1])))}/summary`;
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    return q ? `${origin}${path}?${q}` : `${origin}${path}`;
-  }
-
-  if (/^https?:\/\//i.test(summaryPath)) {
-    const u = new URL(summaryPath);
-    if (params.merchantOrderId) u.searchParams.set("merch_order_id", params.merchantOrderId);
-    if (params.prepayId) u.searchParams.set("prepay_id", params.prepayId);
-    return u.toString();
-  }
-
-  const path = summaryPath.startsWith("/") ? summaryPath : `/${summaryPath}`;
-  if (typeof window !== "undefined") {
-    return q ? `${window.location.origin}${path}?${q}` : `${window.location.origin}${path}`;
-  }
-  return q ? `${path}?${q}` : path;
+  const path = "/summary";
+  const origin = unifiedKpayReturnOrigin();
+  return q ? `${origin}${path}?${q}` : `${origin}${path}`;
 }
 
 export function clearKPayPwaPendingStorage(): void {

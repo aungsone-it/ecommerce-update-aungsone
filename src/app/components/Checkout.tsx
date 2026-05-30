@@ -45,6 +45,7 @@ import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import {
   isUnifiedKpaySummaryPath,
   navigateUnifiedSummaryContinueShopping,
+  resolveUnifiedKpayPostPaymentSummaryPath,
   resolveVendorStorefrontHomeUrl,
   resolveVendorSummaryPath,
 } from "../utils/vendorCheckoutPaths";
@@ -470,6 +471,12 @@ export function Checkout({
         onVendorHost: vendorSubdomainSlug != null || customHostSlug != null,
       }),
     [location.pathname, storeName, vendorSubdomainSlug, customHostSlug],
+  );
+  /** KBZ PWA return always lands on unified `/summary` (walwal.online/summary). */
+  const pwaReturnSummaryPath = resolveUnifiedKpayPostPaymentSummaryPath();
+  const pwaSummarySnapshotKey = useMemo(
+    () => `checkout-summary:${pwaReturnSummaryPath}`,
+    [pwaReturnSummaryPath],
   );
   const summarySnapshotStorageKey = useMemo(
     () => `checkout-summary:${summaryPath}`,
@@ -1314,7 +1321,6 @@ export function Checkout({
     if (!resolveOrderEmail()) missingFields.push("Email");
     if (!shippingInfo.address.trim()) missingFields.push("Address");
     if (!shippingInfo.city.trim()) missingFields.push("City");
-    if (!orderNote.trim()) missingFields.push("Delivery Notes");
     return missingFields;
   };
 
@@ -1399,16 +1405,19 @@ export function Checkout({
         amount: finalTotal,
         currency: "MMK",
         title: `Order ${merchantOrderId}`,
-        callbackInfo: buildPwaCallbackInfo({ storefrontOrigin, summaryPath }),
+        callbackInfo: buildPwaCallbackInfo({
+          storefrontOrigin,
+          summaryPath: pwaReturnSummaryPath,
+        }),
         originPath,
-        summaryPath,
+        summaryPath: pwaReturnSummaryPath,
         storefrontOrigin,
         draftOrder,
       });
       // Persist enough context for the /kpay/return route to finalize the order.
       try {
         // Fresh PWA flow should not reuse a previous order-summary snapshot.
-        localStorage.removeItem(`checkout-summary:${summaryPath}`);
+        localStorage.removeItem(pwaSummarySnapshotKey);
         localStorage.removeItem(CHECKOUT_LATEST_SUMMARY_KEY);
         localStorage.setItem(
           KPAY_PWA_PENDING_STORAGE_KEY,
@@ -1419,7 +1428,7 @@ export function Checkout({
             currency: "MMK",
             redirectedAt: new Date().toISOString(),
             originPath,
-            summaryPath,
+            summaryPath: pwaReturnSummaryPath,
             storefrontOrigin,
             storeName,
             draftOrder,
@@ -2160,7 +2169,7 @@ export function Checkout({
                   <div>
                     <div className="mb-1.5 flex items-baseline justify-between">
                       <Label htmlFor="vs-notes" className="text-sm font-normal text-slate-700">
-                        Delivery Notes *
+                        Delivery Notes
                       </Label>
                     </div>
                     <Textarea
