@@ -25,7 +25,7 @@ Publish the `dist/` folder to your host.
 
 ### SPA fallback is mandatory
 
-All unknown routes must rewrite to `index.html` (for example `/admin/orders`, `/store/vendor-slug`, `/vendor/vendor-slug/admin`).
+All unknown routes must rewrite to `index.html` (for example `/admin/orders`, `/vendor/vendor-slug/cosmetic`, `gogo.example.com/product/sku`).
 
 Examples:
 - Vercel: use existing `vercel.json` rewrite rules.
@@ -78,8 +78,9 @@ Set these in Supabase project secrets when required by your enabled flows:
 
 ## 5) Domain and vendor host notes
 
-- Vendor storefront routes are supported by path and/or subdomain logic.
-- For subdomain routing, set domain mapping env vars consistently across frontend and edge/middleware configuration.
+- **Customer shopping** runs on vendor storefront hosts (subdomain, custom domain, or path-based `/vendor/:slug` in dev) — not on a shared marketplace `/products` route.
+- **Platform apex** (`walwal.online`) serves landing, super-admin, vendor onboarding, and unified KBZPay `/summary`.
+- For subdomain routing, set domain mapping env vars consistently across frontend and edge/middleware configuration (`middleware.ts`).
 - If using a proxy/CDN, keep TLS from CDN to origin in strict mode.
 
 ## 6) Rollout checklist
@@ -87,7 +88,7 @@ Set these in Supabase project secrets when required by your enabled flows:
 1. Deploy backend changes first when API contracts changed.
 2. Deploy frontend build with matching env values.
 3. Verify auth + admin login + vendor login.
-4. Verify product list/detail, cart, checkout, and order creation.
+4. Verify vendor storefront product list/detail, category tabs, cart, checkout, and order creation (on a **vendor URL**, not apex `/products`).
 5. Verify KBZPay webhook processing in the target environment.
 6. Verify destructive admin actions require authorized secret headers.
 7. Monitor Supabase logs and frontend errors for at least one traffic cycle.

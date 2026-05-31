@@ -7,7 +7,7 @@ This document summarizes active performance and cache behavior that should be ma
 - Keep UI interactions near-instant for cart/wishlist/order surfaces.
 - Minimize duplicate Supabase API calls.
 - Preserve correctness under refresh, tab switching, and multi-device use.
-- Keep storefront **LCP** low on mobile (vendor subdomains and marketplace).
+- Keep storefront **LCP** low on mobile (vendor subdomains and custom domains).
 
 ## Image delivery (LCP)
 
@@ -18,6 +18,12 @@ This document summarizes active performance and cache behavior that should be ma
 - Override all sizes with `VITE_SUPABASE_THUMB_MAX` in env (requires Storage image transformations on your Supabase plan).
 - First four product cards per grid use `priority` on `LazyImage` / `ProductCard` for faster above-the-fold paint.
 - Banner slides use `<img fetchPriority="high">` instead of CSS `background-image`.
+
+## Vendor catalog caching
+
+- Vendor product pages are fetched with server pagination and optional **category** filter (`VendorStoreView` → `fetchVendorProducts`).
+- Cache keys include vendor id, page, search query, category, and page size — category tab changes must refetch, not only filter the first loaded page in memory.
+- Persisted localStorage slices are keyed per vendor + category where applicable.
 
 ## Frontend load
 

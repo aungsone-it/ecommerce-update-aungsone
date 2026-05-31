@@ -4,10 +4,22 @@ This is the canonical payment reference for this repo.
 
 ## Active payment flows
 
-- KBZPay QR checkout flow
+- KBZPay QR checkout flow (vendor storefront checkout)
 - KBZPay mobile browser (PWA) flow
-- KBZPay return-page handling
+- KBZPay return-page handling (`/kpay/return`)
+- **Unified post-payment summary** on platform apex: `https://walwal.online/summary` (PWA app return)
 - KBZPay webhook processing and status syncing
+
+## Return URL model
+
+| Stage | Where |
+|-------|--------|
+| Customer checks out | Vendor storefront host (subdomain, custom domain, or `/vendor/:slug/checkout`) |
+| KBZ app completes payment | Browser opens with `merch_order_id` / `prepay_id` query params |
+| Order summary UI | **Platform apex** `/summary` (redirect from vendor hosts when needed) |
+| Continue Shopping | Back to `storefrontOrigin` stored on the checkout draft (the vendor where payment started) |
+
+Implementation: `kpayUnifiedSummaryRedirect.ts`, `index.html` inline redirect, `middleware.ts` edge redirect, `vendorCheckoutPaths.ts`.
 
 ## Main implementation locations
 

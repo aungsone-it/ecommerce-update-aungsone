@@ -88,16 +88,16 @@ scp -r dist/* user@server:/var/www/html/
 ### Immediate Tests (After Deploy):
 
 #### 1. **App Loads Successfully**
-- [ ] Visit your deployed URL
-- [ ] Homepage loads without errors
+- [ ] Visit platform apex URL — landing page loads (not a shared product catalog)
+- [ ] Visit a vendor storefront URL (subdomain or `/vendor/:slug`)
 - [ ] No console errors (press F12)
 - [ ] Images load correctly
 
 #### 2. **Navigation Works**
-- [ ] Click through main pages
-- [ ] Storefront loads
-- [ ] Admin panel accessible
-- [ ] Vendor pages work
+- [ ] Vendor storefront home and category tabs load (e.g. `/cosmetic`)
+- [ ] Product detail and checkout reachable on vendor host
+- [ ] Admin panel accessible (`/admin`)
+- [ ] Vendor admin and public store both work
 
 #### 3. **Cache System Working**
 - [ ] Press `F12` → Console tab

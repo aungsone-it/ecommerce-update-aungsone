@@ -1,77 +1,137 @@
 # Architecture and Routing Reference
 
-This file is the evergreen technical reference for current app structure.
+This file is the evergreen technical reference for the **current** app structure (vendor-first storefronts; no shared marketplace catalog route).
 
 ## 1) Stack
 
 - React + TypeScript + Vite frontend
-- React Router route trees for public/admin/vendor paths
+- React Router route trees for public / admin / vendor paths
 - Supabase Auth + Edge Functions + Storage + database tables
 - Shared API client in `src/utils/api-client.ts`
 
 ## 2) Runtime layout
 
-- App bootstraps in `src/app/main.tsx` and `src/app/App.tsx`.
+- App bootstraps in `src/main.tsx` and `src/app/App.tsx`.
 - Main routing lives in `src/app/routes.tsx`.
-- Global providers wrap routes (theme, language, auth, vendor auth, error handling).
-- Heavy feature surfaces include:
-  - `src/app/components/Storefront.tsx`
-  - `src/app/pages/AdminPage.tsx`
-  - `src/app/components/VendorStoreView.tsx`
+- Global providers wrap routes (language, auth, vendor auth, error handling, KPay return redirect).
+- Primary feature surfaces:
+  - **Customer shopping:** `src/app/pages/VendorStorefrontPage.tsx` → `src/app/components/VendorStoreView.tsx`
+  - **Checkout / summary:** `src/app/components/Checkout.tsx`
+  - **Platform landing (apex):** `src/app/pages/LandingPage.tsx`
+  - **Super admin:** `src/app/pages/AdminPage.tsx`
+  - **Vendor admin:** `src/app/pages/VendorAdminPage.tsx`
 
-## 3) Route trees
+### Legacy / not routed
 
-### Public tree
+- `src/app/components/Storefront.tsx` — former multi-vendor marketplace UI; **not mounted** in `routes.tsx`. Do not add new customer features here.
+- `src/app/pages/StorefrontPage.tsx` — wrapper for legacy `Storefront`; not used by the router.
 
-- `/` landing/storefront entry
-- marketplace/customer routes (`/store`, `/products`, `/product/:sku`, `/checkout`, profile/account routes)
-- vendor onboarding/auth routes (`/vendor/application`, `/vendor/setup`, `/vendor/login`)
-- vendor storefront routes under `/store/:storeName/*` and `/vendor/:storeName/*`
+## 3) Host model
+
+| Host type | Example | `/` behavior |
+|-----------|---------|--------------|
+| Platform apex | `walwal.online` | `LandingPage` (marketing / vendor directory) |
+| Vendor subdomain | `gogo.walwal.online` | `VendorStorefrontPage` (that vendor’s catalog) |
+| Custom domain | `migoo.store` | `VendorStorefrontPage` (resolved slug) |
+| Localhost path dev | `localhost:5173` | `LandingPage` or `/vendor/:slug` |
+
+Vendor identity is resolved from **hostname** (subdomain map, custom domain lookup) and/or **path** (`/vendor/:storeName/...`).
+
+## 4) Route trees
+
+### Platform apex (public)
+
+| Path | Component / behavior |
+|------|----------------------|
+| `/` | `LandingPage` on apex; `VendorStorefrontPage` on vendor hosts |
+| `/admin/*` | Super-admin portal |
+| `/vendor/application`, `/vendor/setup`, `/vendor/login` | Vendor onboarding / auth |
+| `/summary` | Unified KBZPay post-payment summary (`VendorHostOnlyStorefront` on apex) |
+| `/kpay/return` | `KPayReturnPage` |
+| `/terms`, `/privacy` | Policy pages (vendor content when on vendor host) |
+
+### Vendor storefront — path-based
+
+Under `/vendor/:storeName/`:
+
+- Store home: `/vendor/:storeName`
+- Category: `/vendor/:storeName/:categorySlug`
+- Product: `/vendor/:storeName/product/:productSlug`
+- Checkout flow: `/checkout`, `/checkout/success`, `/summary`, `/kpay/return`
+- Account: `/profile/*`, `/saved`
+- Policies: `/terms`, `/privacy`
+- Admin: `/vendor/:storeName/admin/*`
+
+### Vendor storefront — host-root (subdomain / custom domain)
+
+Same features without the `/vendor/:slug` prefix:
+
+- `/`, `/:categorySlug`, `/product/:slug`, `/checkout`, `/saved`, `/profile/*`, `/terms`, `/privacy`
+
+Guarded by `VendorHostOrMarketplaceRoutes.tsx` — routes return **404** on the platform apex unless the host resolves to a vendor.
+
+### Legacy redirects
+
+`LegacyStoreRedirect` handles old bookmarks:
+
+- `/store/*` → `/vendor/*` (where mappable)
+- `/products`, `/products/*` → `/` (marketplace catalog removed)
+- `/blog/*` → redirect or 404 per `legacyStorePath.ts`
 
 ### Super-admin tree
 
-- `/admin`
-- `/admin/:section`
-- additional admin child routes as defined in router
-
-Super-admin access is protected by auth/setup checks in admin wrappers.
+- `/admin`, `/admin/:section`, `/admin/setup`
+- Protected by admin auth and setup checks
 
 ### Vendor-admin tree
 
-- `/store/:storeName/admin/*`
-- legacy compatibility paths under `/vendor/:storeName/admin/*`
+- `/vendor/:storeName/admin/*` (primary)
+- Legacy `/store/:storeName/admin/*` may redirect depending on deployment
 
-## 4) Auth model
+## 5) Customer catalog implementation
 
-- Customer auth is handled by the main auth context.
-- Super-admin flow is guarded by admin auth and setup checks.
-- Vendor flow is guarded by vendor auth context and vendor route guards.
+- Product grid, categories, search, and pagination live in **`VendorStoreView`**.
+- Category tabs use **server-side category filtering** (`fetchVendorProducts` with `category` param) — not client-only filtering of the first loaded page.
+- Module cache keys include vendor id, page, query, and category (`CACHE_KEYS.vendorProductsPage`).
 
-## 5) Data/API model
+## 6) Auth model
+
+- Customer auth: main `AuthContext` (used on vendor storefront checkout/profile).
+- Super-admin: admin auth + setup checks in admin wrappers.
+- Vendor: `VendorAuthContext` + `VendorProtectedLayout` on admin routes.
+
+## 7) Payments / KBZPay routing
+
+- Checkout starts on the **vendor storefront** host where the customer is shopping.
+- PWA return URL targets unified apex summary: `walwal.online/summary` (see `vendorCheckoutPaths.ts`, `kpayUnifiedSummaryRedirect.ts`, `index.html` inline redirect, edge `middleware.ts`).
+- `storefrontOrigin` on the checkout draft drives **Continue Shopping** back to the vendor host.
+
+## 8) Data/API model
 
 - Frontend calls Supabase Edge endpoints through the shared API client.
-- Current primary server function namespace: `make-server-16010b6f`.
-- Payment webhook endpoint is implemented in `kpay-webhook`.
-- Critical destructive admin operations require explicit guard validation on the backend.
+- Primary server function namespace: `make-server-16010b6f`.
+- Payment webhook: `kpay-webhook`.
+- Public vendor catalog: `GET .../vendor/products/:vendorId?page=&pageSize=&category=&q=`.
 
-## 6) Reliability/performance behaviors
+## 9) Reliability / performance behaviors
 
-- Request caching and coalescing is used in client data helpers.
-- Recent updates optimize cart/wishlist immediate persistence and cross-device syncing paths.
-- Badge/profile refreshes and certain background refresh actions are throttled to reduce duplicate API usage.
-- API client now throws typed timeout/network errors instead of silently returning empty payloads.
+- Request caching and coalescing in client data helpers (`module-cache.ts`).
+- Cart/wishlist immediate persistence + server sync.
+- Throttled badge/profile refresh.
+- Typed timeout/network errors from API client.
 
-## 7) Routing pitfalls to watch
+## 10) Routing pitfalls to watch
 
-- Keep specific routes above generic dynamic segments.
-- Avoid route collisions between `/admin/*` and vendor-admin paths.
-- Preserve SPA fallback at hosting layer for all deep links.
-- For vendor slug changes, ensure redirect/normalization behavior remains consistent.
+- Keep specific routes above generic dynamic segments (`:categorySlug` is last among public siblings).
+- Do not re-introduce apex `/products` or a shared marketplace cart without revisiting host guards.
+- Preserve SPA fallback at the hosting layer for all deep links (`/vendor/go-go/cosmetic`, `/admin/orders`, etc.).
+- Vendor slug changes: keep redirect/normalization consistent (`LegacyStoreRedirect`, subdomain slug map).
+- KPay: vendor-host `/summary` with return query params should redirect to apex before painting vendor chrome.
 
-## 8) Maintainer checklist for route/API changes
+## 11) Maintainer checklist for route/API changes
 
 1. Update route declarations and guard wrappers together.
-2. Verify deep-link behavior with hard refresh in production-like host.
+2. Verify deep-link behavior with hard refresh on **vendor subdomain** and **path-based** URLs.
 3. Verify auth states (logged out, logged in, role-restricted).
 4. Verify Edge endpoints and frontend calls stay contract-compatible.
 5. Update this document and `README.md` when behavior changes.
