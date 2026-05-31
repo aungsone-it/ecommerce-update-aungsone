@@ -11,7 +11,6 @@ export type SuperAdminNavPage =
   | "Inventory"
   | "Orders"
   | "Vendor"
-  | "Promo Setting"
   | "Chat"
   | "Customers"
   | "Finances"
@@ -26,7 +25,6 @@ const ALL_PAGES: SuperAdminNavPage[] = [
   "Inventory",
   "Orders",
   "Vendor",
-  "Promo Setting",
   "Chat",
   "Customers",
   "Finances",

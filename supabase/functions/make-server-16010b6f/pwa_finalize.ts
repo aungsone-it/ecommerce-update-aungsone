@@ -3,6 +3,7 @@
  * localStorage is often empty when KBZPay returns in its in-app WebView.
  */
 import * as kv from "./kv_store.tsx";
+import { normalizeOrderShippingFields } from "./order_shipping.ts";
 
 const DRAFT_KEY_PREFIX = "kpay_pwa_draft:";
 
@@ -133,6 +134,14 @@ function buildOrderBodyFromDraft(
       ? (d.shippingInfo as Record<string, unknown>)
       : {};
 
+  const shipping = normalizeOrderShippingFields({
+    address: ship.address || "",
+    city: ship.city || "",
+    state: ship.state || "",
+    zipCode: ship.zipCode || "",
+    country: ship.country || "",
+  });
+
   return {
     orderNumber: merchantOrderId,
     userId: d.userId ?? null,
@@ -153,18 +162,12 @@ function buildOrderBodyFromDraft(
     couponId: d.couponId || null,
     couponDiscount: Number(d.discount || 0),
     items: Array.isArray(d.items) ? d.items : [],
-    address: ship.address || "",
-    city: ship.city || "",
-    zipCode: ship.zipCode || "",
-    country: ship.country || "",
-    shippingAddress: [
-      ship.address || "",
-      ship.city || "",
-      ship.zipCode || "",
-      ship.country || "",
-    ]
-      .filter(Boolean)
-      .join(", "),
+    address: shipping.address,
+    city: shipping.city,
+    state: shipping.state,
+    zipCode: shipping.zipCode,
+    country: shipping.country,
+    shippingAddress: shipping.shippingAddress,
     notes: d.notes || "",
     kpay: {
       method: "pwa",

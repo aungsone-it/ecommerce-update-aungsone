@@ -72,6 +72,7 @@ export function OrderDetailView({ order, onBack, formatPriceMMK }: OrderDetailVi
     email: String(order?.email || order?.customer?.email || ""),
     address: String(order?.customer?.address || order?.address || ""),
     city: String(order?.customer?.city || order?.city || ""),
+    state: String(order?.customer?.state || order?.state || order?.region || ""),
     zipCode: String(order?.customer?.zipCode || order?.zipCode || ""),
     country: String(order?.customer?.country || order?.country || ""),
   };
@@ -212,7 +213,9 @@ export function OrderDetailView({ order, onBack, formatPriceMMK }: OrderDetailVi
               <div className="col-span-2">
                 <p className="mb-1 text-xs uppercase tracking-wider text-slate-500">Delivery Address</p>
                 <p className="text-sm font-medium text-slate-900">
-                  {[shipping.address, shipping.city, shipping.zipCode, shipping.country].filter(Boolean).join(", ")}
+                  {[shipping.address, shipping.city, shipping.state, shipping.zipCode, shipping.country]
+                    .filter(Boolean)
+                    .join(", ")}
                 </p>
               </div>
             </div>

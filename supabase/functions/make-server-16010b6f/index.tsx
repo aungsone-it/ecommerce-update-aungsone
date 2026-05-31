@@ -31,6 +31,7 @@ import {
 import { appendStaffActivity } from "./staff_activity_helpers.tsx";
 import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
 import { hashPasswordPlain, verifyPasswordPlain, isPasswordHashFormat } from "./password_crypto.tsx";
+import { applyNormalizedShippingToOrderBody } from "./order_shipping.ts";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
 const originalConsoleError = console.error;
@@ -5107,7 +5108,7 @@ app.post("/make-server-16010b6f/orders", async (c) => {
     const parsedDiscount = body.discount ? (typeof body.discount === 'string' ? parseFloat(body.discount) : body.discount) : 0;
     
     const orderData = {
-      ...body,
+      ...applyNormalizedShippingToOrderBody(body),
       id,
       total: parsedTotal,
       subtotal: parsedSubtotal,

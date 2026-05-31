@@ -20,6 +20,13 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../contexts/AuthContext";
@@ -49,6 +56,12 @@ import {
   resolveVendorStorefrontHomeUrl,
   resolveVendorSummaryPath,
 } from "../utils/vendorCheckoutPaths";
+import {
+  myanmarRegionSelectOptions,
+  myanmarTownshipSelectOptions,
+  resolveMyanmarRegionForTownship,
+  isTownshipInMyanmarRegion,
+} from "../utils/myanmarRegions";
 import { normalizeCheckoutStoragePath } from "../utils/vendorStorePaths";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
@@ -111,6 +124,7 @@ type CheckoutSummarySnapshot = {
     phone: string;
     address: string;
     city: string;
+    state: string;
     zipCode: string;
     country: string;
   };
@@ -158,6 +172,7 @@ type KPayPwaPendingContext = {
       phone: string;
       address: string;
       city: string;
+      state: string;
       zipCode: string;
       country: string;
     };
@@ -358,11 +373,13 @@ function buildPwaFinalizeOrderPayload(
     items: Array.isArray(d.items) ? d.items : [],
     address: d.shippingInfo?.address || "",
     city: d.shippingInfo?.city || "",
+    state: d.shippingInfo?.state || "",
     zipCode: d.shippingInfo?.zipCode || "",
     country: d.shippingInfo?.country || "",
     shippingAddress: [
       d.shippingInfo?.address || "",
       d.shippingInfo?.city || "",
+      d.shippingInfo?.state || "",
       d.shippingInfo?.zipCode || "",
       d.shippingInfo?.country || "",
     ]
@@ -591,17 +608,35 @@ export function Checkout({
   ]);
 
   // Shipping Form State - Pre-fill from saved addresses
-  const [shippingInfo, setShippingInfo] = useState({
-    fullName: initialSummarySnapshot?.shippingInfo?.fullName || "",
-    email: initialSummarySnapshot?.shippingInfo?.email || "",
-    phone: initialSummarySnapshot?.shippingInfo?.phone || "",
-    address: initialSummarySnapshot?.shippingInfo?.address || "",
-    city: initialSummarySnapshot?.shippingInfo?.city || "",
-    zipCode: initialSummarySnapshot?.shippingInfo?.zipCode || "",
-    country: initialSummarySnapshot?.shippingInfo?.country || "",
+  const [shippingInfo, setShippingInfo] = useState(() => {
+    const initialCity = initialSummarySnapshot?.shippingInfo?.city || "";
+    const initialState =
+      initialSummarySnapshot?.shippingInfo?.state ||
+      resolveMyanmarRegionForTownship(initialCity) ||
+      "";
+    return {
+      fullName: initialSummarySnapshot?.shippingInfo?.fullName || "",
+      email: initialSummarySnapshot?.shippingInfo?.email || "",
+      phone: initialSummarySnapshot?.shippingInfo?.phone || "",
+      address: initialSummarySnapshot?.shippingInfo?.address || "",
+      city: initialCity,
+      state: initialState,
+      zipCode: initialSummarySnapshot?.shippingInfo?.zipCode || "",
+      country: initialSummarySnapshot?.shippingInfo?.country || "",
+    };
   });
 
-  // Pre-fill from cached addresses (same key as VendorStoreView) + API — matches main marketplace behavior
+  const regionSelectOptions = useMemo(
+    () => myanmarRegionSelectOptions(shippingInfo.state),
+    [shippingInfo.state]
+  );
+
+  const townshipSelectOptions = useMemo(
+    () => myanmarTownshipSelectOptions(shippingInfo.state, shippingInfo.city),
+    [shippingInfo.state, shippingInfo.city]
+  );
+
+  // Pre-fill from cached addresses
   useEffect(() => {
 
     const applyAddress = (
@@ -617,6 +652,10 @@ export function Checkout({
         phone: (typeof addr?.phone === "string" ? addr.phone : "") || profile.phone || "",
         address: combined || line1,
         city: typeof addr?.city === "string" ? addr.city : "",
+        state:
+          (typeof addr?.state === "string" && addr.state.trim()
+            ? addr.state
+            : resolveMyanmarRegionForTownship(typeof addr?.city === "string" ? addr.city : "") || ""),
         zipCode: typeof addr?.zipCode === "string" ? addr.zipCode : "",
         country: typeof addr?.country === "string" ? addr.country : "",
       });
@@ -798,23 +837,15 @@ export function Checkout({
     };
   }, [kpaySession?.merchantOrderId, paymentMethod]);
 
-  // Coupon State with localStorage persistence
+  // Coupon UI removed — keep state null so orders never apply legacy persisted codes
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
   const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<any>(() => {
-    const saved = localStorage.getItem('migoo-applied-coupon');
-    return saved ? JSON.parse(saved) : null;
-  });
   const [couponError, setCouponError] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
-  
-  // Persist appliedCoupon to localStorage
+
   useEffect(() => {
-    if (appliedCoupon) {
-      localStorage.setItem('migoo-applied-coupon', JSON.stringify(appliedCoupon));
-    } else {
-      localStorage.removeItem('migoo-applied-coupon');
-    }
-  }, [appliedCoupon]);
+    localStorage.removeItem("migoo-applied-coupon");
+  }, []);
   
   // Calculate discount first; payable subtotal is computed from the same source as UI summary
   // so payment amount won't briefly drop to 0 while cart context is rehydrating.
@@ -944,6 +975,7 @@ export function Checkout({
         phone: String(ship.phone ?? d.phone ?? ""),
         address: String(ship.address ?? ""),
         city: String(ship.city ?? ""),
+        state: String(ship.state ?? ""),
         zipCode: String(ship.zipCode ?? ""),
         country: String(ship.country ?? ""),
       });
@@ -1179,6 +1211,7 @@ export function Checkout({
           phone: String(o?.phone ?? shippingInfo.phone ?? ""),
           address: String(o?.address ?? shippingInfo.address ?? ""),
           city: String(o?.city ?? shippingInfo.city ?? ""),
+          state: String(o?.state ?? shippingInfo.state ?? ""),
           zipCode: String(o?.zipCode ?? shippingInfo.zipCode ?? ""),
           country: String(o?.country ?? shippingInfo.country ?? ""),
         };
@@ -1319,7 +1352,8 @@ export function Checkout({
     if (!shippingInfo.fullName.trim()) missingFields.push("Full Name");
     if (!shippingInfo.phone.trim()) missingFields.push("Phone Number");
     if (!shippingInfo.address.trim()) missingFields.push("Address");
-    if (!shippingInfo.city.trim()) missingFields.push("City");
+    if (!shippingInfo.state.trim()) missingFields.push("State/Region");
+    if (!shippingInfo.city.trim()) missingFields.push("Township");
     return missingFields;
   };
 
@@ -1666,9 +1700,15 @@ export function Checkout({
               ? item.commissionRate
               : undefined,
         })),
+        address: shippingInfo.address,
+        city: shippingInfo.city,
+        state: shippingInfo.state,
+        zipCode: shippingInfo.zipCode,
+        country: shippingInfo.country,
         shippingAddress: [
           shippingInfo.address,
           shippingInfo.city,
+          shippingInfo.state,
           shippingInfo.zipCode?.trim(),
           shippingInfo.country,
         ]
@@ -1741,6 +1781,7 @@ export function Checkout({
             phone: shippingInfo.phone,
             addressLine1: shippingInfo.address,
             city: shippingInfo.city,
+            state: shippingInfo.state,
             zipCode: shippingInfo.zipCode,
             isDefault: false, // User can set default later in profile
             createdAt: new Date().toISOString(),
@@ -1766,6 +1807,7 @@ export function Checkout({
           const addressExists = existingAddresses.some(addr =>
             addr.addressLine1 === newAddress.addressLine1 &&
             addr.city === newAddress.city &&
+            addr.state === newAddress.state &&
             addr.zipCode === newAddress.zipCode
           );
           
@@ -2040,7 +2082,7 @@ export function Checkout({
                 <div className="col-span-2">
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Delivery Address</p>
                   <p className="text-sm font-medium text-slate-900">
-                    {[shippingInfo.address, shippingInfo.city, shippingInfo.zipCode, shippingInfo.country]
+                    {[shippingInfo.address, shippingInfo.city, shippingInfo.state, shippingInfo.zipCode, shippingInfo.country]
                       .filter(Boolean)
                       .join(", ")}
                   </p>
@@ -2067,8 +2109,17 @@ export function Checkout({
     );
   }
 
+  const checkoutLabelClass = "mb-1.5 block text-sm font-medium text-slate-800";
   const checkoutInputClass =
-    "h-11 bg-slate-50 border-slate-200 text-slate-900 text-sm rounded-lg focus:border-slate-900 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0";
+    "h-11 min-h-11 bg-slate-50 border-slate-200 text-slate-900 text-sm rounded-lg placeholder:text-slate-500 focus:border-slate-900 focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:ring-transparent";
+  const checkoutSelectClass = [
+    checkoutInputClass,
+    "w-full !h-11 px-3 shadow-none",
+    "data-[placeholder]:text-slate-500",
+    "disabled:cursor-not-allowed disabled:opacity-100",
+    "disabled:data-[placeholder]:text-slate-500",
+    "[&_svg]:text-slate-500 [&_svg]:opacity-80",
+  ].join(" ");
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -2089,7 +2140,7 @@ export function Checkout({
                 </h2>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="vs-name" className="mb-1.5 block text-sm font-normal text-slate-700">
+                    <Label htmlFor="vs-name" className={checkoutLabelClass}>
                       Full Name
                     </Label>
                     <Input
@@ -2101,7 +2152,7 @@ export function Checkout({
                     />
                   </div>
                   <div>
-                    <Label htmlFor="vs-phone" className="mb-1.5 block text-sm font-normal text-slate-700">
+                    <Label htmlFor="vs-phone" className={checkoutLabelClass}>
                       Phone Number
                     </Label>
                     <Input
@@ -2123,7 +2174,7 @@ export function Checkout({
                 </h2>
                 <div className="space-y-4">
                   <div>
-                    <Label htmlFor="vs-address" className="mb-1.5 block text-sm font-normal text-slate-700">
+                    <Label htmlFor="vs-address" className={checkoutLabelClass}>
                       Address
                     </Label>
                     <Input
@@ -2135,20 +2186,65 @@ export function Checkout({
                     />
                   </div>
                   <div>
-                    <Label htmlFor="vs-city" className="mb-1.5 block text-sm font-normal text-slate-700">
-                      City
+                    <Label htmlFor="vs-state" className={checkoutLabelClass}>
+                      State/Region
                     </Label>
-                    <Input
-                      id="vs-city"
-                      placeholder="Yangon"
-                      value={shippingInfo.city}
-                      onChange={(e) => setShippingInfo({ ...shippingInfo, city: e.target.value })}
-                      className={checkoutInputClass}
-                    />
+                    <Select
+                      value={shippingInfo.state || undefined}
+                      onValueChange={(value) =>
+                        setShippingInfo({
+                          ...shippingInfo,
+                          state: value,
+                          city: isTownshipInMyanmarRegion(value, shippingInfo.city)
+                            ? shippingInfo.city
+                            : "",
+                        })
+                      }
+                    >
+                      <SelectTrigger id="vs-state" className={checkoutSelectClass}>
+                        <SelectValue placeholder="Select state/region" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {regionSelectOptions.map((state) => (
+                          <SelectItem key={state} value={state}>
+                            {state}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="vs-city" className={checkoutLabelClass}>
+                      Township
+                    </Label>
+                    <Select
+                      value={shippingInfo.city || undefined}
+                      onValueChange={(value) =>
+                        setShippingInfo({ ...shippingInfo, city: value })
+                      }
+                      disabled={!shippingInfo.state.trim()}
+                    >
+                      <SelectTrigger id="vs-city" className={checkoutSelectClass}>
+                        <SelectValue
+                          placeholder={
+                            shippingInfo.state.trim()
+                              ? "Select township"
+                              : "Select state/region first"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {townshipSelectOptions.map((city) => (
+                          <SelectItem key={city} value={city}>
+                            {city}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div>
                     <div className="mb-1.5 flex items-baseline justify-between">
-                      <Label htmlFor="vs-notes" className="text-sm font-normal text-slate-700">
+                      <Label htmlFor="vs-notes" className="text-sm font-medium text-slate-800">
                         Notes
                       </Label>
                     </div>
@@ -2376,92 +2472,11 @@ export function Checkout({
                 ))}
               </div>
 
-              <div className="border-b border-slate-200 pb-4">
-                <h4 className="mb-3 text-sm font-semibold text-slate-900">Coupon Code</h4>
-
-                {!appliedCoupon ? (
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        placeholder="ENTER COUPON CODE"
-                        value={couponCode}
-                        onChange={(e) => {
-                          setCouponCode(e.target.value.toUpperCase());
-                          setCouponError("");
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleApplyCoupon();
-                        }}
-                        disabled={couponLoading}
-                        className={`${checkoutInputClass} h-10.5 flex-1 uppercase`}
-                      />
-                      <Button
-                        type="button"
-                        className="h-10.5 shrink-0 bg-slate-200 px-5 font-medium text-slate-800 hover:bg-slate-300"
-                        onClick={handleApplyCoupon}
-                        disabled={couponLoading || !couponCode.trim()}
-                      >
-                        {couponLoading ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                            Applying...
-                          </>
-                        ) : (
-                          "Apply"
-                        )}
-                      </Button>
-                    </div>
-                    {couponError && (
-                      <p className="text-xs text-red-600 mt-2 flex items-center gap-1">
-                        <XCircle className="w-3 h-3" />
-                        {couponError}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="w-5 h-5 text-emerald-600" />
-                        <div>
-                          <p className="text-sm font-bold text-emerald-700">{appliedCoupon.campaign?.code}</p>
-                          <p className="text-xs text-emerald-600">
-                            {appliedCoupon.campaign?.discountType === 'percentage' 
-                              ? `${appliedCoupon.campaign?.discount}% off` 
-                              : `${appliedCoupon.campaign?.discount} MMK off`}
-                            {discountAmount > 0 && ` · You save ${discountAmount.toFixed(0)} MMK!`}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setAppliedCoupon(null);
-                          setCouponCode('');
-                        }}
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 px-2"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
               <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Subtotal</span>
                   <span className="font-semibold text-slate-900">{summaryDisplayTotal.toFixed(0)} MMK</span>
                 </div>
-                
-                {appliedCoupon && discountAmount > 0 && (
-                  <div className="flex justify-between text-sm text-emerald-600">
-                    <span className="flex items-center gap-1">Discount</span>
-                    <span className="font-semibold">-{discountAmount.toFixed(0)} MMK</span>
-                  </div>
-                )}
 
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">Shipping</span>

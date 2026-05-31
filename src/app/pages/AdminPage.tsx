@@ -250,6 +250,11 @@ export function AdminPage() {
   // 🔗 URL → currentPage: Initialize from URL
   useEffect(() => {
     const section = resolvedAdminSection;
+    if (section === "marketing") {
+      setCurrentPage(ADMIN_PAGES.HOME);
+      navigate("/admin", { replace: true });
+      return;
+    }
     if (section && sectionToPage[section]) {
       setCurrentPage(sectionToPage[section]);
     } else if (!section) {

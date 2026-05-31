@@ -76,6 +76,11 @@ import {
   broadcastOrderStatusUpdate,
   subscribeOrderStatusUpdates,
 } from "../utils/ordersRealtime";
+import {
+  buildOrderShippingAddressLine,
+  extractOrderShippingFields,
+} from "../utils/orderShippingAddress";
+import { OrderShippingAddressBlock } from "./OrderShippingAddressBlock";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded" | "pending_refund";
@@ -117,6 +122,11 @@ interface OrderItem {
   shippingStatus: ShippingStatus;
   products: Product[];
   shippingAddress: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
   trackingNumber?: string;
   notes?: string;
   deliveryService?: string;
@@ -483,7 +493,9 @@ const getShippingBadge = (status: ShippingStatus | string, t: (key: string) => s
 };
 
 function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
-  return (apiOrders || []).map((order: any) => ({
+  return (apiOrders || []).map((order: any) => {
+    const shipping = extractOrderShippingFields(order);
+    return {
     id: order.id,
     orderNumber: order.orderNumber || order.id,
     date: order.createdAt ? new Date(order.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -513,7 +525,12 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
       image: item.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop',
       sku: item.sku || 'N/A'
     })),
-    shippingAddress: order.shippingAddress || '',
+    shippingAddress: buildOrderShippingAddressLine(shipping),
+    address: shipping.address,
+    city: shipping.city,
+    state: shipping.state,
+    zipCode: shipping.zipCode,
+    country: shipping.country,
     trackingNumber: order.trackingNumber,
     notes: order.notes,
     deliveryService: order.deliveryService,
@@ -532,7 +549,8 @@ function mapApiOrdersToOrderItems(apiOrders: any[]): OrderItem[] {
     refundRequestNo: order.refundRequestNo || order.kpay?.refund?.refundRequestNo || "",
     refundAmount: Number(order.refundAmount || order.kpay?.refund?.amount || 0) || 0,
     refundedAt: order.refundedAt || order.kpay?.refund?.refundedAt || order.kpay?.refund?.failedAt || "",
-  }));
+  };
+  });
 }
 
 export function Orders({
@@ -1891,7 +1909,7 @@ export function Orders({
                     <MapPin className="w-4 h-4 text-slate-400 mt-1" />
                     <div>
                       <p className="text-sm text-slate-500">Shipping Address</p>
-                      <p className="font-medium text-slate-900">{selectedOrder.shippingAddress}</p>
+                      <OrderShippingAddressBlock order={selectedOrder} />
                     </div>
                   </div>
                   {selectedOrder.trackingNumber && (

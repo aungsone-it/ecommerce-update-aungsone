@@ -1,10 +1,9 @@
-import { X, Minus, Plus, Trash2, Tag, ArrowRight } from "lucide-react";
+import { X, Minus, Plus, Trash2, ArrowRight } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Separator } from "./ui/separator";
 import { useCart } from "./CartContext";
-import { useState, useEffect } from "react";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+import { useEffect } from "react";
 import { toast } from "sonner";
 
 interface CartDrawerProps {
@@ -48,80 +47,6 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
       };
     }
   }, [isOpen]);
-
-  const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<any>(() => {
-    const saved = localStorage.getItem("migoo-applied-coupon");
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [couponLoading, setCouponLoading] = useState(false);
-  const [couponError, setCouponError] = useState("");
-
-  useEffect(() => {
-    if (appliedCoupon) {
-      localStorage.setItem("migoo-applied-coupon", JSON.stringify(appliedCoupon));
-    } else {
-      localStorage.removeItem("migoo-applied-coupon");
-    }
-  }, [appliedCoupon]);
-
-  const discount = appliedCoupon?.campaign?.discountAmount || 0;
-  const finalPrice = totalPrice - discount;
-
-  const handleApplyCoupon = async () => {
-    if (!couponCode.trim()) {
-      setCouponError("Please enter a coupon code");
-      return;
-    }
-
-    setCouponLoading(true);
-    setCouponError("");
-
-    try {
-      const code = couponCode.trim().toUpperCase();
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/campaigns/validate`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          body: JSON.stringify({
-            code,
-            cartTotal: totalPrice,
-            cartItems: items.map((item) => ({
-              id: item.id,
-              sku: item.sku || item.id,
-              price: item.price,
-              quantity: item.quantity,
-            })),
-          }),
-        }
-      );
-
-      const data = await response.json();
-
-      if (data.valid && data.campaign) {
-        setAppliedCoupon(data);
-        setCouponError("");
-      } else {
-        setCouponError(data.error || "Invalid coupon code");
-        setAppliedCoupon(null);
-      }
-    } catch {
-      setCouponError("Failed to validate coupon");
-      setAppliedCoupon(null);
-    } finally {
-      setCouponLoading(false);
-    }
-  };
-
-  const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponCode("");
-    setCouponError("");
-  };
 
   if (!isOpen) return null;
 
@@ -261,83 +186,17 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
         {items.length > 0 && (
           <div className="shrink-0 space-y-4 border-t border-slate-200 bg-slate-50 p-6">
             <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm font-medium text-slate-800">
-                <Tag className="h-4 w-4 text-slate-600" />
-                Have a coupon code?
-              </label>
-
-              {!appliedCoupon ? (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={couponCode}
-                    onChange={(e) => {
-                      setCouponCode(e.target.value.toUpperCase());
-                      setCouponError("");
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleApplyCoupon();
-                    }}
-                    placeholder="ENTER COUPON CODE"
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm uppercase tracking-wide placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300"
-                    disabled={couponLoading}
-                  />
-                  <Button
-                    type="button"
-                    onClick={handleApplyCoupon}
-                    disabled={couponLoading || !couponCode.trim()}
-                    className="shrink-0 bg-slate-500 px-4 text-white hover:bg-slate-600"
-                  >
-                    {couponLoading ? "…" : "Apply"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 p-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Tag className="h-4 w-4 shrink-0 text-green-600" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-green-800">{appliedCoupon.campaign?.code}</p>
-                      <p className="text-xs text-green-700">
-                        {appliedCoupon.campaign?.discountType === "percentage"
-                          ? `${appliedCoupon.campaign?.discount}% off`
-                          : `${appliedCoupon.campaign?.discount} MMK off`}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={handleRemoveCoupon}
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 shrink-0 text-red-600 hover:bg-red-50"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
-
-              {couponError && <p className="text-xs font-medium text-red-600">{couponError}</p>}
-            </div>
-
-            <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-600">Subtotal ({totalItems} items)</span>
                 <span className="font-medium text-slate-900">{formatMmk(totalPrice)}</span>
               </div>
-
-              {appliedCoupon && (
-                <div className="flex items-center justify-between text-sm text-green-700">
-                  <span>Discount ({appliedCoupon.campaign?.code})</span>
-                  <span className="font-semibold">−{formatMmk(discount)}</span>
-                </div>
-              )}
 
               <Separator />
 
               <div className="flex items-center justify-between">
                 <span className="font-bold text-slate-900">Total</span>
                 <p className="text-right text-xl font-bold text-slate-900">
-                  {formatMmk(finalPrice)}
+                  {formatMmk(totalPrice)}
                 </p>
               </div>
             </div>

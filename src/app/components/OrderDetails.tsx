@@ -30,6 +30,7 @@ import {
   deriveOrderPaymentMethodKey,
   formatOrderPaymentMethodFromOrder,
 } from "../utils/orderPaymentMethod";
+import { OrderShippingAddressBlock } from "./OrderShippingAddressBlock";
 
 type OrderStatus = "pending" | "processing" | "fulfilled" | "cancelled" | "ready-to-ship";
 type PaymentStatus = "paid" | "unpaid" | "refunded" | "pending_refund";
@@ -62,6 +63,11 @@ interface OrderItem {
   shippingStatus: ShippingStatus;
   products: Product[];
   shippingAddress: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  country?: string;
   trackingNumber?: string;
   notes?: string;
   deliveryService?: string;
@@ -519,7 +525,7 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
                       <MapPin className="w-4 h-4 text-slate-400 mt-1" />
                       <div>
                         <p className="text-sm text-slate-500 mb-1">Address</p>
-                        <p className="font-medium text-slate-900">{order.shippingAddress}</p>
+                        <OrderShippingAddressBlock order={order} />
                       </div>
                     </div>
                     {order.trackingNumber && (
