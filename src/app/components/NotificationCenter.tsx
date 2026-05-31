@@ -214,10 +214,10 @@ export function NotificationCenter({
             />
             <div
               ref={panelRef}
-              className="fixed z-[101] left-2 right-2 top-16 w-auto sm:left-auto sm:right-4 sm:top-[4.25rem] sm:w-96"
+              className="fixed z-[101] right-2 top-16 w-[min(calc(100vw-1rem),24rem)] max-w-sm sm:right-4 sm:top-[4.25rem]"
             >
-              <Card className="shadow-2xl border-slate-200">
-            <div className="p-3 sm:p-4 border-b border-slate-200">
+              <Card className="shadow-2xl border-slate-200 overflow-hidden gap-0">
+            <div className="shrink-0 p-3 sm:p-4 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="font-semibold text-slate-900 text-sm">Notifications</h3>
@@ -249,14 +249,16 @@ export function NotificationCenter({
               </div>
             </div>
 
-            <ScrollArea className="h-[50vh] sm:h-[60vh] max-h-[400px] sm:max-h-[500px]">
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 sm:py-12 text-center">
-                  <Bell className="w-10 h-10 sm:w-12 sm:h-12 text-slate-300 mb-3" />
+            {notifications.length === 0 ? (
+              <div className="grid h-[min(50vh,22rem)] w-full place-items-center px-4">
+                <div className="flex flex-col items-center text-center">
+                  <Bell className="w-12 h-12 text-slate-300 mb-4" />
                   <p className="text-sm font-medium text-slate-600">No notifications</p>
-                  <p className="text-xs text-slate-400 mt-1">We'll notify you when something arrives</p>
+                  <p className="text-xs text-slate-400 mt-1.5">We'll notify you when something arrives</p>
                 </div>
-              ) : (
+              </div>
+            ) : (
+              <ScrollArea className="min-h-[min(50vh,22rem)] max-h-[min(65vh,32rem)]">
                 <div className="divide-y divide-slate-100">
                   {notifications.map((notification) => {
                     const Icon = notification.icon || getNotificationIcon(notification.type);
@@ -301,8 +303,8 @@ export function NotificationCenter({
                     );
                   })}
                 </div>
-              )}
-            </ScrollArea>
+              </ScrollArea>
+            )}
 
             {notifications.length > 0 && (
               <>

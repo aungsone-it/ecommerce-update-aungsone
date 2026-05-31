@@ -102,6 +102,7 @@ import { OrderDetailView } from "./OrderDetailView";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import {
   ProductDetailSkeleton,
+  ProductGridSkeleton,
   VendorStorefrontFullSkeleton,
   VendorOrdersListSkeleton,
   VendorAddressesSkeleton,
@@ -3857,6 +3858,7 @@ export function VendorStoreView({
     if (vendorCatalogRefetchDebounceRef.current) {
       clearTimeout(vendorCatalogRefetchDebounceRef.current);
     }
+    const refetchDebounceMs = debouncedVendorServerQ.trim() ? 180 : 0;
     vendorCatalogRefetchDebounceRef.current = setTimeout(() => {
       vendorCatalogRefetchDebounceRef.current = null;
       const runId = ++vendorCatalogRefetchRunRef.current;
@@ -3913,7 +3915,7 @@ export function VendorStoreView({
           }
         }
       })();
-    }, 180);
+    }, refetchDebounceMs);
     return () => {
       if (vendorCatalogRefetchDebounceRef.current) {
         clearTimeout(vendorCatalogRefetchDebounceRef.current);
@@ -4563,6 +4565,25 @@ export function VendorStoreView({
       return matchesSearch && matchesCategory;
     });
   }, [products, searchQuery, catalogCategoryForFetch]);
+
+  /** Loaded rows still belong to a previous category tab until page-1 refetch finishes. */
+  const productsMatchServerCategory = useMemo(() => {
+    if (catalogCategoryForFetch === "all") return true;
+    if (products.length === 0) return true;
+    return (
+      clientFilterProductsForCatalogCategory(products, catalogCategoryForFetch).length ===
+      products.length
+    );
+  }, [products, catalogCategoryForFetch, clientFilterProductsForCatalogCategory]);
+
+  const isCategoryCatalogStale = useMemo(
+    () =>
+      !savedPage &&
+      products.length > 0 &&
+      filteredProducts.length === 0 &&
+      !productsMatchServerCategory,
+    [savedPage, products.length, filteredProducts.length, productsMatchServerCategory]
+  );
 
   /** Full-page skeleton on /saved: wishlist GET or first product hydration — not while refetching with cards visible */
   const showSavedPageSkeleton = useMemo(
@@ -5947,7 +5968,14 @@ export function VendorStoreView({
               </div>
             )}
 
-            {serverStatus === 'healthy' && products.length > 0 && filteredProducts.length === 0 && (
+            {serverStatus === 'healthy' && isCategoryCatalogStale && (
+              <ProductGridSkeleton count={10} />
+            )}
+
+            {serverStatus === 'healthy' &&
+              !isCategoryCatalogStale &&
+              products.length > 0 &&
+              filteredProducts.length === 0 && (
               <div className="text-center py-20">
                 <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">No matching products</h3>

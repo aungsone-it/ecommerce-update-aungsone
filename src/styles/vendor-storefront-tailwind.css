@@ -6,5 +6,6 @@
 @source '../app/pages/StorefrontPolicyPage.tsx';
 @source '../app/components/VendorStoreView.tsx';
 @source '../app/components/VendorStorefrontFooter.tsx';
+@source '../app/components/NotificationCenter.tsx';
 @source '../app/components/UnifiedKpaySummarySignInGate.tsx';
 @source '../app/components/SkeletonLoaders.tsx';
