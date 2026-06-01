@@ -35,6 +35,7 @@ import { Separator } from "./ui/separator";
 import { Skeleton } from "./ui/skeleton";
 import { format } from "date-fns";
 import { PrintInvoice } from "./PrintInvoice";
+import { runBrowserPrintThen } from "../utils/invoicePrintSession";
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { ordersApi } from "../../utils/api";
 import { ApiError, getAdminOperationHeaders } from "../../utils/api-client";
@@ -926,28 +927,20 @@ export function Orders({
   };
 
   const executeBulkPrint = () => {
-    console.log("🖨️ Printing invoices for orders:", selectedOrders);
-    
-    // Get the selected orders
-    const ordersToPrint = orders.filter(order => selectedOrders.includes(order.id));
-    console.log("📦 Orders to print:", ordersToPrint);
-    console.log("📦 First order data:", ordersToPrint[0]);
-    
     setIsPrintDialogOpen(false);
-    
-    // Show bulk invoices for printing
     setShowBulkInvoices(true);
-    
-    // Wait for DOM to update, then print
+
+    const ordersToPrint = orders.filter((order) => selectedOrders.includes(order.id));
+    if (ordersToPrint.length === 0) {
+      setShowBulkInvoices(false);
+      return;
+    }
+
     setTimeout(() => {
-      window.print();
-      
-      // Hide bulk invoices and clear selection after print dialog closes
-      // Use longer timeout to ensure print dialog fully closes
-      setTimeout(() => {
+      runBrowserPrintThen(() => {
         setShowBulkInvoices(false);
         setSelectedOrders([]);
-      }, 1000);
+      });
     }, 300);
   };
 

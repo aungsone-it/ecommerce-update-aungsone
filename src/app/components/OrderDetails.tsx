@@ -2,13 +2,15 @@ import { ArrowLeft, Printer, Mail, User, ShoppingCart, Clock, FileText, MapPin, 
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Card, CardContent } from "./ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Invoice } from "./Invoice";
-import { useState, useEffect } from "react";
+import { PrintInvoice } from "./PrintInvoice";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { toast } from "sonner";
 import { ordersApi } from "../../utils/api";
 import { ApiError } from "../../utils/api-client";
+import { useInvoicePrintJob } from "../utils/invoicePrintSession";
+import { toInvoiceSheetOrder } from "../utils/invoiceOrderMapper";
+import type { InvoiceSheetOrder } from "./InvoiceSheet";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
   normalizeOrderLineParentProductId,
@@ -146,7 +148,7 @@ const getShippingBadge = (status: ShippingStatus | string) => {
 };
 
 export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProps) {
-  const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
+  const [printOrders, setPrintOrders] = useState<InvoiceSheetOrder[] | null>(null);
   const [orderStatus, setOrderStatus] = useState<OrderStatus>(normalizeOrderStatus(order.status));
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
     () => normalizePaymentStatus(derivePaymentStatusFromOrder(order)) as PaymentStatus
@@ -189,6 +191,19 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
   
   // Calculate discount percentage
   const discountPercentage = displaySubtotal > 0 ? Math.round((actualDiscount / displaySubtotal) * 100) : 0;
+
+  const invoiceSheetOrder = useMemo(() => toInvoiceSheetOrder({
+    ...order,
+    products: orderProducts,
+  }), [order, orderProducts]);
+
+  const clearPrintOrders = useCallback(() => setPrintOrders(null), []);
+
+  useInvoicePrintJob(printOrders, clearPrintOrders);
+
+  const handlePrintInvoice = () => {
+    setPrintOrders([invoiceSheetOrder]);
+  };
 
   const handleOrderStatusChange = async (newStatus: OrderStatus) => {
     if (newStatus === orderStatus) return;
@@ -289,7 +304,7 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Button variant="outline" onClick={() => setIsInvoiceOpen(true)}>
+              <Button variant="outline" onClick={handlePrintInvoice}>
                 <Printer className="w-4 h-4 mr-2" />
                 Print Invoice
               </Button>
@@ -567,18 +582,7 @@ export function OrderDetails({ order, onBack, onOrderUpdated }: OrderDetailsProp
         </div>
       </div>
 
-      {/* Invoice Dialog */}
-      <Dialog open={isInvoiceOpen} onOpenChange={setIsInvoiceOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Invoice</DialogTitle>
-            <DialogDescription>
-              This is the invoice for order {order.orderNumber}.
-            </DialogDescription>
-          </DialogHeader>
-          <Invoice order={order} />
-        </DialogContent>
-      </Dialog>
+      {printOrders && <PrintInvoice orders={printOrders} />}
     </div>
   );
 }

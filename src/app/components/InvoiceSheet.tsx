@@ -54,7 +54,13 @@ function parseTotal(value: number | string | undefined): number {
   return parsePrice(value);
 }
 
-export function InvoiceSheet({ order }: { order: InvoiceSheetOrder }) {
+export function InvoiceSheet({
+  order,
+  variant = "preview",
+}: {
+  order: InvoiceSheetOrder;
+  variant?: "preview" | "print";
+}) {
   const lineItems = order.products || order.items || [];
   const productTotal = lineItems.reduce(
     (sum, item) => sum + parsePrice(item.price) * (item.quantity || 1),
@@ -78,6 +84,11 @@ export function InvoiceSheet({ order }: { order: InvoiceSheetOrder }) {
       ? order.customer
       : order.customer?.fullName || order.customer?.name || "Guest Customer";
 
+  const barcodeProps =
+    variant === "print"
+      ? { width: 2, height: 72, fontSize: 16 }
+      : { width: 1, height: 35, fontSize: 9 };
+
   return (
     <div className="invoice-page">
       <div className="invoice-header">
@@ -88,9 +99,9 @@ export function InvoiceSheet({ order }: { order: InvoiceSheetOrder }) {
         <div className="barcode-section">
           <Barcode
             value={order.orderNumber.replace("#", "").replace("ORD-", "MOS")}
-            width={1}
-            height={35}
-            fontSize={9}
+            width={barcodeProps.width}
+            height={barcodeProps.height}
+            fontSize={barcodeProps.fontSize}
             margin={0}
             displayValue={true}
           />

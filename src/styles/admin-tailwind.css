@@ -60,7 +60,6 @@
 @source '../app/components/ShopifyProductForm.tsx';
 @source '../app/components/CategoryForm.tsx';
 @source '../app/components/PaymentSettings.tsx';
-@source '../app/components/Invoice.tsx';
 @source '../app/components/PrintInvoice.tsx';
 @source '../app/components/BarcodeLazy.tsx';
 @source '../app/components/TestDataManager.tsx';

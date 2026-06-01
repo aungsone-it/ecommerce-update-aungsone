@@ -60,7 +60,6 @@
 @source not '../app/components/ShopifyProductForm.tsx';
 @source not '../app/components/CategoryForm.tsx';
 @source not '../app/components/PaymentSettings.tsx';
-@source not '../app/components/Invoice.tsx';
 @source not '../app/components/PrintInvoice.tsx';
 @source not '../app/components/BarcodeLazy.tsx';
 @source not '../app/components/TestDataManager.tsx';
