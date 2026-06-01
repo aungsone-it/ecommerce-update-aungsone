@@ -617,7 +617,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
           <div className="print-only">
             {selectedOrders.map(orderId => {
               const order = orders.find(o => o.id === orderId);
-              return order ? <PrintInvoice key={order.id} order={order} /> : null;
+              return order ? <PrintInvoice key={order.id} orders={[order]} /> : null;
             })}
           </div>
         )}
@@ -896,7 +896,7 @@ export function VendorAdminOrders({ vendorId }: VendorAdminOrdersProps) {
         <div className="print-only">
           {selectedOrders.map(orderId => {
             const order = orders.find(o => o.id === orderId);
-            return order ? <PrintInvoice key={order.id} order={order} /> : null;
+            return order ? <PrintInvoice key={order.id} orders={[order]} /> : null;
           })}
         </div>
       )}
