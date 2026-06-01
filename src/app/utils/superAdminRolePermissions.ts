@@ -100,6 +100,7 @@ export function getAllowedSuperAdminPages(role: string | undefined): Set<SuperAd
       "Product",
       "Categories",
       "Inventory",
+      "Chat",
       "Settings", // General + Appearance only; Users tab hidden in Settings.tsx
     ]);
   }
