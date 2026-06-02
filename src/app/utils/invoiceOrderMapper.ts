@@ -14,6 +14,7 @@ export function toInvoiceSheetOrder(order: {
   discount?: number;
   couponCode?: string;
   notes?: string;
+  vendor?: string;
 }): InvoiceSheetOrder {
   return {
     orderNumber: order.orderNumber,
@@ -28,5 +29,6 @@ export function toInvoiceSheetOrder(order: {
     discount: order.discount,
     couponCode: order.couponCode,
     notes: order.notes,
+    vendor: order.vendor,
   };
 }

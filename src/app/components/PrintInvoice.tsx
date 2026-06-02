@@ -17,7 +17,7 @@ export function PrintInvoice({ orders }: PrintInvoiceProps) {
   const printPortal = (
     <div className="invoice-print-portal">
       {orders.map((order, index) => (
-        <InvoiceSheet key={`${order.orderNumber}-${index}`} order={order} variant="print" />
+        <InvoiceSheet key={`${order.orderNumber}-${index}`} order={order} />
       ))}
     </div>
   );

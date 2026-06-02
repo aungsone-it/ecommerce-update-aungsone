@@ -23,6 +23,7 @@ export interface InvoiceSheetOrder {
   discount?: number;
   couponCode?: string;
   notes?: string;
+  vendor?: string;
 }
 
 function formatCurrency(amount: number): string {
@@ -54,13 +55,7 @@ function parseTotal(value: number | string | undefined): number {
   return parsePrice(value);
 }
 
-export function InvoiceSheet({
-  order,
-  variant = "preview",
-}: {
-  order: InvoiceSheetOrder;
-  variant?: "preview" | "print";
-}) {
+export function InvoiceSheet({ order }: { order: InvoiceSheetOrder }) {
   const lineItems = order.products || order.items || [];
   const productTotal = lineItems.reduce(
     (sum, item) => sum + parsePrice(item.price) * (item.quantity || 1),
@@ -84,13 +79,14 @@ export function InvoiceSheet({
       ? order.customer
       : order.customer?.fullName || order.customer?.name || "Guest Customer";
 
-  const barcodeProps =
-    variant === "print"
-      ? { width: 2, height: 72, fontSize: 16 }
-      : { width: 1, height: 35, fontSize: 9 };
+  const vendorName =
+    String(order.vendor || "").trim() || BRANDING.APP_NAME || "our store";
+
+  const barcodeProps = { width: 1, height: 35, fontSize: 14 };
 
   return (
     <div className="invoice-page">
+      <div className="invoice-body">
       <div className="invoice-header">
         <div className="brand">
           <h1 className="brand-name">{BRANDING.APP_NAME}</h1>
@@ -184,9 +180,10 @@ export function InvoiceSheet({
           <span className="total-amount">{formatCurrency(total)}</span>
         </div>
       </div>
+      </div>
 
       <div className="footer-section">
-        <p className="thank-you">Thank you for ordering from us!</p>
+        <p className="thank-you">Thanks for Purchasing from {vendorName}!</p>
       </div>
     </div>
   );

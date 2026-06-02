@@ -21,8 +21,9 @@ export const INVOICE_PRINT_STYLES = `
     display: none !important;
   }
 
-  /* Respect the paper size chosen in the print dialog (A4, Letter, etc.) */
+  /* Respect the paper size chosen in the print dialog (A4, Letter, 100×150 mm, etc.) */
   @page {
+    size: auto;
     margin: 0;
   }
 
@@ -34,23 +35,29 @@ export const INVOICE_PRINT_STYLES = `
     padding: 0 !important;
   }
 
+  /*
+   * Proportional sizing (% of page width) — matches US Letter “tiny” look on every paper.
+   * Calibrated from Letter @ 216 mm: 14 px ≈ 1.72 vw, 32 px ≈ 3.92 vw, 22 px ≈ 2.7 vw.
+   * On 100×150 mm labels the same ratios produce smaller, cleaner type (not oversized mm).
+   */
   body.invoice-print-active .invoice-page {
     width: 100% !important;
     min-height: 100vh !important;
     height: 100vh !important;
     margin: 0 !important;
-    padding: 12mm !important;
+    padding: 2.3vw !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
+    justify-content: flex-start !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     page-break-after: always !important;
     overflow: hidden !important;
     background: white !important;
     color: #000 !important;
-    font-size: 14px !important;
-    line-height: 1.4 !important;
+    font-size: 1.72vw !important;
+    line-height: 1.35 !important;
   }
 
   body.invoice-print-active .invoice-page:last-child {
@@ -58,106 +65,119 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   body.invoice-print-active .invoice-header {
-    margin-bottom: 16px !important;
-    padding-bottom: 12px !important;
+    margin-bottom: 1.8vw !important;
+    padding-bottom: 1.4vw !important;
   }
 
   body.invoice-print-active .brand-name {
-    font-size: 32px !important;
+    font-size: 3.92vw !important;
+    line-height: 1.1 !important;
   }
 
   body.invoice-print-active .order-date {
-    font-size: 16px !important;
+    font-size: 1.96vw !important;
   }
 
   body.invoice-print-active .barcode-section {
-    max-width: 50% !important;
+    max-width: 46% !important;
   }
 
   body.invoice-print-active .barcode-section svg {
     width: 100% !important;
-    max-width: 320px !important;
+    max-width: 38vw !important;
     height: auto !important;
   }
 
+  body.invoice-print-active .barcode-section svg text {
+    font-size: 2.85vw !important;
+    font-weight: 700 !important;
+    fill: #000 !important;
+  }
+
   body.invoice-print-active .section-title {
-    font-size: 18px !important;
-    margin-bottom: 8px !important;
+    font-size: 2.2vw !important;
+    margin-bottom: 0.9vw !important;
   }
 
   body.invoice-print-active .customer-name {
-    font-size: 16px !important;
+    font-size: 1.96vw !important;
   }
 
   body.invoice-print-active .address-line,
   body.invoice-print-active .phone-line {
-    font-size: 14px !important;
+    font-size: 1.72vw !important;
   }
 
   body.invoice-print-active .shipping-section {
-    margin-bottom: 20px !important;
-    padding-bottom: 12px !important;
+    margin-bottom: 1.8vw !important;
+    padding-bottom: 1.4vw !important;
   }
 
   body.invoice-print-active .items-table {
-    margin-bottom: 20px !important;
-    flex: 1 1 auto !important;
+    margin-bottom: 1.8vw !important;
   }
 
   body.invoice-print-active .items-table thead th {
-    font-size: 14px !important;
-    padding: 10px 6px !important;
+    font-size: 1.72vw !important;
+    padding: 1.1vw 0.7vw !important;
   }
 
   body.invoice-print-active .items-table tbody td {
-    font-size: 14px !important;
-    padding: 12px 6px !important;
+    font-size: 1.72vw !important;
+    padding: 1.3vw 0.7vw !important;
   }
 
   body.invoice-print-active .col-sku {
-    font-size: 13px !important;
+    font-size: 1.58vw !important;
   }
 
   body.invoice-print-active .notes-label {
-    font-size: 14px !important;
+    font-size: 1.72vw !important;
   }
 
   body.invoice-print-active .notes-text {
-    font-size: 13px !important;
+    font-size: 1.58vw !important;
   }
 
   body.invoice-print-active .promo-label {
-    font-size: 13px !important;
+    font-size: 1.58vw !important;
   }
 
   body.invoice-print-active .promo-code {
-    font-size: 18px !important;
+    font-size: 2.2vw !important;
   }
 
   body.invoice-print-active .total-section {
-    margin: 16px 0 !important;
-    padding-top: 12px !important;
+    margin: 1.4vw 0 !important;
+    padding-top: 1.4vw !important;
   }
 
   body.invoice-print-active .subtotal-label,
   body.invoice-print-active .discount-label,
   body.invoice-print-active .subtotal-amount,
   body.invoice-print-active .discount-amount {
-    font-size: 16px !important;
+    font-size: 1.96vw !important;
   }
 
   body.invoice-print-active .total-label,
   body.invoice-print-active .total-amount {
-    font-size: 22px !important;
+    font-size: 2.7vw !important;
+  }
+
+  body.invoice-print-active .invoice-body {
+    flex: 0 1 auto !important;
   }
 
   body.invoice-print-active .footer-section {
     margin-top: auto !important;
-    padding-top: 16px !important;
+    padding-top: 1.4vw !important;
+    flex-shrink: 0 !important;
   }
 
   body.invoice-print-active .thank-you {
-    font-size: 14px !important;
+    font-size: 2.05vw !important;
+    font-weight: 600 !important;
+    color: #333 !important;
   }
 
   body.invoice-print-active .items-table thead {
