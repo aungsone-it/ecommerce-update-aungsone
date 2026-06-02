@@ -45,7 +45,7 @@ export const INVOICE_PRINT_STYLES = `
     min-height: 100vh !important;
     height: 100vh !important;
     margin: 0 !important;
-    padding: 2.3vw !important;
+    padding: 3.2vw !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
@@ -56,8 +56,8 @@ export const INVOICE_PRINT_STYLES = `
     overflow: hidden !important;
     background: white !important;
     color: #000 !important;
-    font-size: 1.72vw !important;
-    line-height: 1.35 !important;
+    font-size: 2.05vw !important;
+    line-height: 1.5 !important;
   }
 
   body.invoice-print-active .invoice-page:last-child {
@@ -65,103 +65,136 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   body.invoice-print-active .invoice-header {
-    margin-bottom: 1.8vw !important;
-    padding-bottom: 1.4vw !important;
+    margin-bottom: 2.6vw !important;
+    padding-bottom: 2vw !important;
   }
 
   body.invoice-print-active .brand-name {
     font-size: 3.92vw !important;
-    line-height: 1.1 !important;
+    line-height: 1.15 !important;
+    margin-bottom: 0.6vw !important;
   }
 
   body.invoice-print-active .order-date {
-    font-size: 1.96vw !important;
+    font-size: 2.2vw !important;
+    margin-top: 0.4vw !important;
   }
 
   body.invoice-print-active .barcode-section {
     max-width: 46% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 1.2vw !important;
   }
 
   body.invoice-print-active .barcode-section svg {
     width: 100% !important;
     max-width: 38vw !important;
     height: auto !important;
+    margin-bottom: 0.4vw !important;
   }
 
   body.invoice-print-active .barcode-section svg text {
-    font-size: 2.85vw !important;
+    font-size: 3.5vw !important;
     font-weight: 700 !important;
     fill: #000 !important;
   }
 
   body.invoice-print-active .section-title {
-    font-size: 2.2vw !important;
-    margin-bottom: 0.9vw !important;
+    font-size: 2.65vw !important;
+    margin-bottom: 1.2vw !important;
+    font-weight: 700 !important;
   }
 
   body.invoice-print-active .customer-name {
-    font-size: 1.96vw !important;
+    font-size: 2.55vw !important;
+    font-weight: 600 !important;
+    margin-bottom: 0.8vw !important;
   }
 
-  body.invoice-print-active .address-line,
+  body.invoice-print-active .address-line {
+    font-size: 2.3vw !important;
+    margin-bottom: 0.55vw !important;
+  }
+
   body.invoice-print-active .phone-line {
-    font-size: 1.72vw !important;
+    font-size: 2.3vw !important;
+    margin-top: 0.8vw !important;
   }
 
   body.invoice-print-active .shipping-section {
-    margin-bottom: 1.8vw !important;
-    padding-bottom: 1.4vw !important;
+    margin-bottom: 2.6vw !important;
+    padding-bottom: 2vw !important;
   }
 
   body.invoice-print-active .items-table {
-    margin-bottom: 1.8vw !important;
+    margin-bottom: 2.4vw !important;
   }
 
   body.invoice-print-active .items-table thead th {
-    font-size: 1.72vw !important;
-    padding: 1.1vw 0.7vw !important;
+    font-size: 2.05vw !important;
+    font-weight: 700 !important;
+    padding: 1.6vw 0.9vw !important;
   }
 
   body.invoice-print-active .items-table tbody td {
-    font-size: 1.72vw !important;
-    padding: 1.3vw 0.7vw !important;
+    font-size: 2.35vw !important;
+    padding: 1.8vw 0.9vw !important;
   }
 
   body.invoice-print-active .col-sku {
-    font-size: 1.58vw !important;
+    font-size: 1.9vw !important;
+  }
+
+  body.invoice-print-active .notes-section {
+    margin: 2vw 0 !important;
+    padding: 1.6vw 0 !important;
   }
 
   body.invoice-print-active .notes-label {
-    font-size: 1.72vw !important;
+    font-size: 2.05vw !important;
+    font-weight: 700 !important;
+    margin-bottom: 0.7vw !important;
   }
 
   body.invoice-print-active .notes-text {
-    font-size: 1.58vw !important;
+    font-size: 1.9vw !important;
+    line-height: 1.45 !important;
   }
 
   body.invoice-print-active .promo-label {
-    font-size: 1.58vw !important;
+    font-size: 1.9vw !important;
   }
 
   body.invoice-print-active .promo-code {
-    font-size: 2.2vw !important;
+    font-size: 2.65vw !important;
   }
 
   body.invoice-print-active .total-section {
-    margin: 1.4vw 0 !important;
-    padding-top: 1.4vw !important;
+    margin: 2.2vw 0 !important;
+    padding-top: 2vw !important;
+  }
+
+  body.invoice-print-active .subtotal-row,
+  body.invoice-print-active .discount-row {
+    margin-bottom: 0.8vw !important;
+  }
+
+  body.invoice-print-active .total-row {
+    margin-top: 0.6vw !important;
   }
 
   body.invoice-print-active .subtotal-label,
   body.invoice-print-active .discount-label,
   body.invoice-print-active .subtotal-amount,
   body.invoice-print-active .discount-amount {
-    font-size: 1.96vw !important;
+    font-size: 2.35vw !important;
   }
 
   body.invoice-print-active .total-label,
   body.invoice-print-active .total-amount {
-    font-size: 2.7vw !important;
+    font-size: 3.1vw !important;
   }
 
   body.invoice-print-active .invoice-body {
@@ -170,18 +203,38 @@ export const INVOICE_PRINT_STYLES = `
 
   body.invoice-print-active .footer-section {
     margin-top: auto !important;
-    padding-top: 1.4vw !important;
+    padding-top: 2.5vw !important;
+    padding-bottom: 1.2vw !important;
     flex-shrink: 0 !important;
   }
 
   body.invoice-print-active .thank-you {
-    font-size: 2.05vw !important;
-    font-weight: 600 !important;
-    color: #333 !important;
+    font-size: 2.55vw !important;
+    font-weight: 700 !important;
+    color: #222 !important;
+    margin: 1vw 0 0 !important;
+    line-height: 1.4 !important;
   }
 
   body.invoice-print-active .items-table thead {
     display: table-header-group !important;
+  }
+
+  body.invoice-print-active .invoice-header,
+  body.invoice-print-active .shipping-section,
+  body.invoice-print-active .items-table tbody td,
+  body.invoice-print-active .notes-section,
+  body.invoice-print-active .footer-section {
+    border: none !important;
+  }
+
+  body.invoice-print-active .items-table thead th {
+    border-bottom: 1px dotted #bbb !important;
+  }
+
+  body.invoice-print-active .total-section {
+    border-top: 1px dotted #bbb !important;
+    border-bottom: none !important;
   }
 }
 
@@ -240,7 +293,6 @@ export const INVOICE_PRINT_STYLES = `
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  border-bottom: 1px solid #ddd;
 }
 
 .brand { flex: 1; }
@@ -267,10 +319,6 @@ export const INVOICE_PRINT_STYLES = `
 .barcode-section svg {
   max-width: 100%;
   height: auto;
-}
-
-.shipping-section {
-  border-bottom: 1px solid #ddd;
 }
 
 .section-title {
@@ -304,14 +352,14 @@ export const INVOICE_PRINT_STYLES = `
 .items-table thead th {
   font-weight: 700;
   text-align: left;
-  border-bottom: 1px solid #000;
+  border-bottom: 1px dotted #bbb;
   color: #000;
 }
 
 .items-table tbody td {
   vertical-align: top;
   color: #000;
-  border-bottom: 1px solid #eee;
+  border-bottom: none;
 }
 
 .col-qty { width: 10%; text-align: center; }
@@ -327,7 +375,7 @@ export const INVOICE_PRINT_STYLES = `
 
 .notes-section {
   padding: 4px 0;
-  border-top: 1px dashed #ccc;
+  border-top: none;
 }
 
 .notes-label {
@@ -346,7 +394,7 @@ export const INVOICE_PRINT_STYLES = `
   margin: 8px 0;
   padding: 6px;
   background: #f0fdf4;
-  border: 1px dashed #22c55e;
+  border: none;
   border-radius: 4px;
   text-align: center;
 }
@@ -365,7 +413,7 @@ export const INVOICE_PRINT_STYLES = `
 }
 
 .total-section {
-  border-top: 2px solid #000;
+  border-top: 1px dotted #bbb;
 }
 
 .subtotal-row,
@@ -407,7 +455,6 @@ export const INVOICE_PRINT_STYLES = `
 
 .footer-section {
   text-align: center;
-  border-top: 1px solid #ddd;
 }
 
 .thank-you {

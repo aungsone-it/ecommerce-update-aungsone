@@ -82,7 +82,7 @@ export function InvoiceSheet({ order }: { order: InvoiceSheetOrder }) {
   const vendorName =
     String(order.vendor || "").trim() || BRANDING.APP_NAME || "our store";
 
-  const barcodeProps = { width: 1, height: 35, fontSize: 14 };
+  const barcodeProps = { width: 1, height: 35, fontSize: 17, margin: 6 };
 
   return (
     <div className="invoice-page">
@@ -98,7 +98,7 @@ export function InvoiceSheet({ order }: { order: InvoiceSheetOrder }) {
             width={barcodeProps.width}
             height={barcodeProps.height}
             fontSize={barcodeProps.fontSize}
-            margin={0}
+            margin={barcodeProps.margin}
             displayValue={true}
           />
         </div>
