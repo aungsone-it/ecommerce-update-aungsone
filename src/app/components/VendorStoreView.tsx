@@ -23,6 +23,12 @@ import {
   lsVendorSavedWishlistPageKey,
   lsWishlistProductIdsKey,
 } from "../utils/persistedLocalCache";
+import {
+  readSessionCatalogList,
+  removeSessionCatalogList,
+  ssVendorCatalogListKey,
+  writeSessionCatalogList,
+} from "../utils/persistedSessionCache";
 import { normalizeVendorStorefrontProducts } from "../utils/vendorStorefrontProductStats";
 import {
   getCustomerOrderStatusColor,
@@ -551,6 +557,82 @@ const VENDOR_SEARCH_MIN_SERVER_CHARS = 3;
 /** Ms after last keystroke before server catalog fetch (with `q`); category changes refetch immediately. */
 const VENDOR_SEARCH_DEBOUNCE_MS = 450;
 
+type VendorCatalogSlice = {
+  products: Product[];
+  total: number;
+  page: number;
+  hasMore: boolean;
+};
+
+function vendorCatalogSliceSessionKey(vendorId: string, category: string): string {
+  return `${String(vendorId).trim()}|${String(category || "all").trim().toLowerCase() || "all"}`;
+}
+
+function saveVendorCatalogSliceSession(sliceKey: string, slice: VendorCatalogSlice) {
+  const ssKey = ssVendorCatalogListKey(sliceKey);
+  if (slice.page > 1 || slice.products.length > VENDOR_BROWSE_PAGE_SIZE) {
+    writeSessionCatalogList(ssKey, slice);
+  } else {
+    removeSessionCatalogList(ssKey);
+  }
+}
+
+function readVendorCatalogSliceSession(sliceKey: string): VendorCatalogSlice | null {
+  const fromSession = readSessionCatalogList(ssVendorCatalogListKey(sliceKey));
+  if (!fromSession?.products.length) return null;
+  return {
+    products: fromSession.products as Product[],
+    total: fromSession.total,
+    page: fromSession.page,
+    hasMore: fromSession.hasMore,
+  };
+}
+
+function mergeVendorHomeStateWithSessionSlice(
+  base: ReturnType<typeof vendorHomeStateFromCatalogPayload>,
+  fromSession: VendorCatalogSlice
+): ReturnType<typeof vendorHomeStateFromCatalogPayload> {
+  return {
+    ...base,
+    products: normalizeVendorStorefrontProducts(fromSession.products),
+    vendorCatalogTotal: fromSession.total,
+    vendorCatalogPage: fromSession.page,
+    vendorCatalogHasMore: fromSession.hasMore,
+  };
+}
+
+function applyLoadedMoreSessionToHomeState(
+  vendorId: string,
+  catKey: string,
+  vendorCategories: any[],
+  basePayload?: Record<string, unknown> | null
+): ReturnType<typeof vendorHomeStateFromCatalogPayload> | null {
+  const sliceKey = vendorCatalogSliceSessionKey(vendorId, catKey);
+  const fromSession = readVendorCatalogSliceSession(sliceKey);
+  if (
+    !fromSession ||
+    (fromSession.page <= 1 && fromSession.products.length <= VENDOR_BROWSE_PAGE_SIZE)
+  ) {
+    return null;
+  }
+  const base =
+    basePayload && typeof basePayload === "object"
+      ? vendorHomeStateFromCatalogPayload(basePayload, vendorId, vendorCategories)
+      : {
+          products: [],
+          vendorCategories,
+          serverStatus: "healthy" as const,
+          vendorCatalogTotal: 0,
+          vendorCatalogPage: 1,
+          vendorCatalogHasMore: false,
+          storeName: "Vendor Store",
+          storeLogo: "",
+          storePhone: VENDOR_DEFAULT_STORE_PHONE,
+          canonicalVendorId: vendorId,
+        };
+  return mergeVendorHomeStateWithSessionSlice(base, fromSession);
+}
+
 function isVendorCheckoutOrSummaryPath(pathname: string, storeBase: string): boolean {
   if (
     pathname === "/checkout" ||
@@ -708,7 +790,31 @@ function getVendorHomepageInitialState(
     const lsKey = lsVendorCatalogPage1Key(vendorId, "", catKey, VENDOR_BROWSE_PAGE_SIZE);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
     if (fromLs && typeof fromLs === "object") {
+      const withSession = applyLoadedMoreSessionToHomeState(
+        vendorId,
+        catKey,
+        vendorCategories,
+        fromLs
+      );
+      if (withSession) return withSession;
       return vendorHomeStateFromCatalogPayload(fromLs, vendorId, vendorCategories);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    const withSessionOnly = applyLoadedMoreSessionToHomeState(
+      vendorId,
+      catKey,
+      vendorCategories,
+      null
+    );
+    if (withSessionOnly) {
+      return {
+        ...withSessionOnly,
+        serverStatus: initialProductSlug ? "healthy" : "checking",
+      };
     }
   } catch {
     /* ignore */
@@ -721,6 +827,13 @@ function getVendorHomepageInitialState(
       const products = Array.isArray(fromMem.products) ? (fromMem.products as Product[]) : [];
       const total = typeof fromMem.total === "number" ? fromMem.total : 0;
       if (products.length > 0 || total > 0) {
+        const withSession = applyLoadedMoreSessionToHomeState(
+          vendorId,
+          catKey,
+          vendorCategories,
+          fromMem
+        );
+        if (withSession) return withSession;
         return vendorHomeStateFromCatalogPayload(fromMem, vendorId, vendorCategories);
       }
     }
@@ -965,6 +1078,19 @@ export function VendorStoreView({
   const vendorCatalogRefetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Refetch when vendor, search query, or category tab changes. */
   const vendorCatalogFetchKeyRef = useRef("");
+  const prevCatalogCategoryRef = useRef<string | null>(null);
+  const vendorCatalogStateRef = useRef({
+    page: vendorHomeSnapshot.vendorCatalogPage,
+    hasMore: vendorHomeSnapshot.vendorCatalogHasMore,
+    total: vendorHomeSnapshot.vendorCatalogTotal,
+  });
+  useEffect(() => {
+    vendorCatalogStateRef.current = {
+      page: vendorCatalogPage,
+      hasMore: vendorCatalogHasMore,
+      total: vendorCatalogTotal,
+    };
+  }, [vendorCatalogPage, vendorCatalogHasMore, vendorCatalogTotal]);
 
   const catalogSliceMemoryKey = useCallback(
     (category: string) =>
@@ -1019,9 +1145,32 @@ export function VendorStoreView({
       category: string,
       slice: { products: Product[]; total: number; page: number; hasMore: boolean }
     ) => {
-      catalogSliceByCategoryRef.current.set(catalogSliceMemoryKey(category), slice);
+      const sliceKey = catalogSliceMemoryKey(category);
+      catalogSliceByCategoryRef.current.set(sliceKey, slice);
+      saveVendorCatalogSliceSession(sliceKey, slice);
     },
     [catalogSliceMemoryKey]
+  );
+
+  const readCatalogSliceForKey = useCallback((sliceKey: string) => {
+    const mem = catalogSliceByCategoryRef.current.get(sliceKey);
+    if (mem) return mem;
+    const fromSession = readVendorCatalogSliceSession(sliceKey);
+    if (!fromSession) return undefined;
+    catalogSliceByCategoryRef.current.set(sliceKey, fromSession);
+    return fromSession;
+  }, []);
+
+  const vendorCatalogSliceHasMoreLoaded = useCallback(
+    (category: string) => {
+      const memSlice = readCatalogSliceForKey(catalogSliceMemoryKey(category));
+      if (!memSlice) return false;
+      return (
+        memSlice.page > 1 ||
+        memSlice.products.length > VENDOR_BROWSE_PAGE_SIZE
+      );
+    },
+    [catalogSliceMemoryKey, readCatalogSliceForKey]
   );
 
   /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
@@ -3301,6 +3450,46 @@ export function VendorStoreView({
       const lsKey = lsVendorCatalogPage1Key(vendorId, qk, cat, pageSize);
 
       if (!forceRefresh && persistEligible) {
+        const sliceKey = vendorCatalogSliceSessionKey(vendorId, cat);
+        const loadedMore =
+          catalogSliceByCategoryRef.current.get(sliceKey) ??
+          readVendorCatalogSliceSession(sliceKey);
+        if (
+          loadedMore &&
+          (loadedMore.page > 1 ||
+            loadedMore.products.length > VENDOR_BROWSE_PAGE_SIZE)
+        ) {
+          if (!isLatest()) return false;
+          catalogSliceByCategoryRef.current.set(sliceKey, loadedMore);
+          applyVendorCatalogSlice(loadedMore);
+          const fromLsBranding = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
+          if (fromLsBranding && typeof fromLsBranding === "object") {
+            setStoreName(fromLsBranding.storeName || "Vendor Store");
+            setStoreLogo(fromLsBranding.logo || "");
+            if (
+              typeof fromLsBranding.storePhone === "string" &&
+              fromLsBranding.storePhone.trim()
+            ) {
+              setStorePhone(fromLsBranding.storePhone.trim());
+            }
+            const rid =
+              typeof fromLsBranding.resolvedVendorId === "string" &&
+              fromLsBranding.resolvedVendorId.trim()
+                ? fromLsBranding.resolvedVendorId.trim()
+                : undefined;
+            setCanonicalVendorId(rid ?? vendorId);
+            if (
+              typeof fromLsBranding.storeSlug === "string" &&
+              fromLsBranding.storeSlug.trim()
+            ) {
+              setCanonicalStoreSlug(fromLsBranding.storeSlug.trim());
+            }
+          }
+          return true;
+        }
+      }
+
+      if (!forceRefresh && persistEligible) {
         const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
         if (fromLs && typeof fromLs === "object") {
           // Old persisted catalog omitted `storePhone` — bypass LS once so we pick up `contactPhone` from the API.
@@ -3605,7 +3794,20 @@ export function VendorStoreView({
       setProducts((prev) => {
         const seen = new Set(prev.map((p) => p.id));
         const add = (data.products || []).filter((p: Product) => !seen.has(p.id));
-        return [...prev, ...add];
+        const merged = [...prev, ...add];
+        const nextPage = data.page;
+        const hasMore = data.hasMore;
+        const total =
+          typeof data.total === "number"
+            ? data.total
+            : vendorCatalogStateRef.current.total;
+        rememberVendorCatalogSlice(cat, {
+          products: merged,
+          total,
+          page: nextPage,
+          hasMore,
+        });
+        return merged;
       });
       setVendorCatalogPage(data.page);
       setVendorCatalogHasMore(data.hasMore);
@@ -3622,6 +3824,7 @@ export function VendorStoreView({
     vendorId,
     debouncedVendorServerQ,
     vendorCatalogServerCategory,
+    rememberVendorCatalogSlice,
   ]);
 
   // 🚀 Categories + server-paginated product grid (module cache per page / filters).
@@ -3680,9 +3883,20 @@ export function VendorStoreView({
       // Keep category fetch off the critical rendering path.
       void categoriesPromise;
 
-      // Stale-while-revalidate: LS paints instantly; always reconcile with server so deleted products vanish.
+      // Stale-while-revalidate: LS paints instantly; reconcile in background unless load-more state is active.
       if (!savedPage && !forceRefresh && hadCatalogSnapshot) {
-        void refetchVendorCatalogPage1(true);
+        const sliceKey = vendorCatalogSliceSessionKey(
+          vendorId,
+          vendorCatalogServerCategory
+        );
+        const loadedMore = readVendorCatalogSliceSession(sliceKey);
+        const hasLoadedMore =
+          loadedMore &&
+          (loadedMore.page > 1 ||
+            loadedMore.products.length > VENDOR_BROWSE_PAGE_SIZE);
+        if (!hasLoadedMore) {
+          void refetchVendorCatalogPage1(true);
+        }
       }
     } catch (error) {
       console.error("❌ [VENDOR STORE] Error loading vendor data:", error);
@@ -3771,10 +3985,21 @@ export function VendorStoreView({
     const qk = qRaw.toLowerCase();
     const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
     const cat = vendorCatalogServerCategory;
+    const prevCat = prevCatalogCategoryRef.current;
+    if (prevCat !== null && prevCat !== cat && !qRaw && productsRef.current.length > 0) {
+      const st = vendorCatalogStateRef.current;
+      rememberVendorCatalogSlice(prevCat, {
+        products: productsRef.current,
+        total: st.total,
+        page: st.page,
+        hasMore: st.hasMore,
+      });
+    }
+    prevCatalogCategoryRef.current = cat;
     const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
 
     if (!qRaw) {
-      const memSlice = catalogSliceByCategoryRef.current.get(catalogSliceMemoryKey(cat));
+      const memSlice = readCatalogSliceForKey(catalogSliceMemoryKey(cat));
       if (memSlice && Array.isArray(memSlice.products)) {
         if (shouldApplyCachedCatalogSlice(memSlice, cat)) {
           applyVendorCatalogSlice(memSlice);
@@ -3840,6 +4065,7 @@ export function VendorStoreView({
     applyVendorCatalogSlice,
     rememberVendorCatalogSlice,
     shouldApplyCachedCatalogSlice,
+    readCatalogSliceForKey,
   ]);
 
   /** Refetch browse/search catalog when vendor, search query, or category tab changes. */
@@ -3868,6 +4094,10 @@ export function VendorStoreView({
           const qk = qRaw.toLowerCase();
           const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
           const serverCat = catalogCategoryForFetch;
+          if (!qRaw && vendorCatalogSliceHasMoreLoaded(serverCat)) {
+            setServerStatus("healthy");
+            return;
+          }
           const page1Key = CACHE_KEYS.vendorProductsPage(
             vendorId,
             1,
@@ -3928,6 +4158,7 @@ export function VendorStoreView({
     catalogCategoryForFetch,
     savedPage,
     refetchVendorCatalogPage1,
+    vendorCatalogSliceHasMoreLoaded,
   ]);
 
   // Sync product detail from URL + catalog before paint — avoids grid/skeleton flash when opening a card.

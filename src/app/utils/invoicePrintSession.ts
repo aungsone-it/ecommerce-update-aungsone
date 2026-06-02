@@ -36,16 +36,15 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   /*
-   * Proportional sizing (% of page width) — matches US Letter “tiny” look on every paper.
-   * Calibrated from Letter @ 216 mm: 14 px ≈ 1.72 vw, 32 px ≈ 3.92 vw, 22 px ≈ 2.7 vw.
-   * On 100×150 mm labels the same ratios produce smaller, cleaner type (not oversized mm).
+   * vw scales with paper width; max(mm, vw) sets a readable floor on 100×150 mm labels
+   * while keeping the US Letter proportions on larger paper.
    */
   body.invoice-print-active .invoice-page {
     width: 100% !important;
     min-height: 100vh !important;
     height: 100vh !important;
     margin: 0 !important;
-    padding: 3.2vw !important;
+    padding: max(3mm, 3.2vw) !important;
     box-sizing: border-box !important;
     display: flex !important;
     flex-direction: column !important;
@@ -56,7 +55,7 @@ export const INVOICE_PRINT_STYLES = `
     overflow: hidden !important;
     background: white !important;
     color: #000 !important;
-    font-size: 2.05vw !important;
+    font-size: max(3mm, 2.05vw) !important;
     line-height: 1.5 !important;
   }
 
@@ -70,13 +69,13 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   body.invoice-print-active .brand-name {
-    font-size: 3.92vw !important;
+    font-size: max(4.2mm, 3.92vw) !important;
     line-height: 1.15 !important;
     margin-bottom: 0.6vw !important;
   }
 
   body.invoice-print-active .order-date {
-    font-size: 2.2vw !important;
+    font-size: max(2.9mm, 2.2vw) !important;
     margin-top: 0.4vw !important;
   }
 
@@ -96,30 +95,30 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   body.invoice-print-active .barcode-section svg text {
-    font-size: 3.5vw !important;
+    font-size: max(3.6mm, 3.5vw) !important;
     font-weight: 700 !important;
     fill: #000 !important;
   }
 
   body.invoice-print-active .section-title {
-    font-size: 2.65vw !important;
+    font-size: max(3.4mm, 2.65vw) !important;
     margin-bottom: 1.2vw !important;
     font-weight: 700 !important;
   }
 
   body.invoice-print-active .customer-name {
-    font-size: 2.55vw !important;
+    font-size: max(3.3mm, 2.55vw) !important;
     font-weight: 600 !important;
     margin-bottom: 0.8vw !important;
   }
 
   body.invoice-print-active .address-line {
-    font-size: 2.3vw !important;
+    font-size: max(3.1mm, 2.3vw) !important;
     margin-bottom: 0.55vw !important;
   }
 
   body.invoice-print-active .phone-line {
-    font-size: 2.3vw !important;
+    font-size: max(3.1mm, 2.3vw) !important;
     margin-top: 0.8vw !important;
   }
 
@@ -133,18 +132,18 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   body.invoice-print-active .items-table thead th {
-    font-size: 2.05vw !important;
+    font-size: max(3mm, 2.05vw) !important;
     font-weight: 700 !important;
     padding: 1.6vw 0.9vw !important;
   }
 
   body.invoice-print-active .items-table tbody td {
-    font-size: 2.35vw !important;
+    font-size: max(3.2mm, 2.35vw) !important;
     padding: 1.8vw 0.9vw !important;
   }
 
   body.invoice-print-active .col-sku {
-    font-size: 1.9vw !important;
+    font-size: max(2.9mm, 1.9vw) !important;
   }
 
   body.invoice-print-active .notes-section {
@@ -153,22 +152,22 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   body.invoice-print-active .notes-label {
-    font-size: 2.05vw !important;
+    font-size: max(3mm, 2.05vw) !important;
     font-weight: 700 !important;
     margin-bottom: 0.7vw !important;
   }
 
   body.invoice-print-active .notes-text {
-    font-size: 1.9vw !important;
+    font-size: max(2.9mm, 1.9vw) !important;
     line-height: 1.45 !important;
   }
 
   body.invoice-print-active .promo-label {
-    font-size: 1.9vw !important;
+    font-size: max(2.9mm, 1.9vw) !important;
   }
 
   body.invoice-print-active .promo-code {
-    font-size: 2.65vw !important;
+    font-size: max(3.4mm, 2.65vw) !important;
   }
 
   body.invoice-print-active .total-section {
@@ -189,12 +188,12 @@ export const INVOICE_PRINT_STYLES = `
   body.invoice-print-active .discount-label,
   body.invoice-print-active .subtotal-amount,
   body.invoice-print-active .discount-amount {
-    font-size: 2.35vw !important;
+    font-size: max(3.3mm, 2.35vw) !important;
   }
 
   body.invoice-print-active .total-label,
   body.invoice-print-active .total-amount {
-    font-size: 3.1vw !important;
+    font-size: max(4mm, 3.1vw) !important;
   }
 
   body.invoice-print-active .invoice-body {
@@ -209,7 +208,7 @@ export const INVOICE_PRINT_STYLES = `
   }
 
   body.invoice-print-active .thank-you {
-    font-size: 2.55vw !important;
+    font-size: max(3.1mm, 2.55vw) !important;
     font-weight: 700 !important;
     color: #222 !important;
     margin: 1vw 0 0 !important;

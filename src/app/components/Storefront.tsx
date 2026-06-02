@@ -107,12 +107,61 @@ import {
   isOutOfStockDisplay,
   showLowStockBadge,
 } from "../utils/productInventory";
+import {
+  readSessionCatalogList,
+  ssStorefrontCatalogListKey,
+  writeSessionCatalogList,
+  removeSessionCatalogList,
+} from "../utils/persistedSessionCache";
 
 // 🚀 MODULE-LEVEL CACHE - These persist across all navigations and component remounts
 // This is critical for reducing Supabase API calls from 20k → ~100-500
 let cachedProducts: Product[] = [];
 let cachedCategories: any[] = [];
 let cachedSiteSettings: any = null;
+
+/** Default page size for storefront catalog API (matches bootstrap). */
+const CATALOG_PAGE_SIZE = 24;
+
+/** Remember "load more" progress per catalog filter key for the browser session. */
+type CatalogListState = {
+  products: Product[];
+  page: number;
+  hasMore: boolean;
+  total: number;
+};
+const catalogListStateByKey = new Map<string, CatalogListState>();
+
+function saveCatalogListState(key: string, state: CatalogListState) {
+  if (!key || state.products.length === 0) return;
+  catalogListStateByKey.set(key, {
+    products: state.products,
+    page: state.page,
+    hasMore: state.hasMore,
+    total: state.total,
+  });
+  const ssKey = ssStorefrontCatalogListKey(key);
+  if (state.page > 1 || state.products.length > CATALOG_PAGE_SIZE) {
+    writeSessionCatalogList(ssKey, state);
+  } else {
+    removeSessionCatalogList(ssKey);
+  }
+}
+
+function readCatalogListState(key: string): CatalogListState | undefined {
+  const saved = catalogListStateByKey.get(key);
+  if (saved?.products.length) return saved;
+  const fromSession = readSessionCatalogList(ssStorefrontCatalogListKey(key));
+  if (!fromSession?.products.length) return undefined;
+  const hydrated: CatalogListState = {
+    products: fromSession.products as Product[],
+    page: fromSession.page,
+    hasMore: fromSession.hasMore,
+    total: fromSession.total,
+  };
+  catalogListStateByKey.set(key, hydrated);
+  return hydrated;
+}
 
 /** One in-flight GET cart per user (avoids duplicate edge calls from Strict Mode / double effects). */
 const userCartFetchPromises = new Map<string, Promise<void>>();
@@ -138,8 +187,6 @@ function markCatalogBackgroundRefreshed() {
   }
 }
 
-/** Default page size for storefront catalog API (matches bootstrap). */
-const CATALOG_PAGE_SIZE = 24;
 /** Live typing uses client filter only until this many chars; then debounced server `q` (fewer edge/DB hits). */
 const STORE_SEARCH_MIN_SERVER_CHARS = 3;
 /** Wait after last keystroke before calling catalog API with `q` (tune 250–600ms for balance). */
@@ -891,6 +938,20 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const [homeDealProducts, setHomeDealProducts] = useState<Product[]>([]);
   const [homeNewArrivals, setHomeNewArrivals] = useState<Product[]>([]);
   const lastCatalogKeyRef = useRef("");
+  const catalogStateRef = useRef<CatalogListState>({
+    products: [],
+    page: 1,
+    hasMore: false,
+    total: 0,
+  });
+  useEffect(() => {
+    catalogStateRef.current = {
+      products,
+      page: catalogPage,
+      hasMore: catalogHasMore,
+      total: catalogTotal,
+    };
+  }, [products, catalogPage, catalogHasMore, catalogTotal]);
   useEffect(() => {
     const t = setTimeout(() => {
       const raw = storeSearchQuery.trim();
@@ -1838,13 +1899,26 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const activeProducts = data.products;
       cachedProducts = activeProducts;
       if (!isBackgroundRefresh) {
-        setProducts(activeProducts);
-        setCatalogTotal(data.total);
-        setCatalogPage(1);
-        setCatalogHasMore(!!data.hasMore);
+        const key = catalogSortKey();
+        const saved = readCatalogListState(key);
+        if (
+          saved &&
+          (saved.page > 1 || saved.products.length > CATALOG_PAGE_SIZE)
+        ) {
+          cachedProducts = saved.products;
+          setProducts(saved.products);
+          setCatalogTotal(saved.total);
+          setCatalogPage(saved.page);
+          setCatalogHasMore(saved.hasMore);
+        } else {
+          setProducts(activeProducts);
+          setCatalogTotal(data.total);
+          setCatalogPage(1);
+          setCatalogHasMore(!!data.hasMore);
+        }
         setHomeDealProducts(data.dealProducts as Product[]);
         setHomeNewArrivals(data.newArrivals as Product[]);
-        lastCatalogKeyRef.current = catalogSortKey();
+        lastCatalogKeyRef.current = key;
       }
     } catch (error) {
       console.error("Failed to load products (backend not ready):", error);
@@ -1859,6 +1933,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   }, [catalogSortKey]);
 
   const fetchCatalogRefetch = useCallback(async () => {
+    const key = catalogSortKey();
+    const saved = readCatalogListState(key);
+    if (saved) {
+      cachedProducts = saved.products;
+      setProducts(saved.products);
+      setCatalogTotal(saved.total);
+      setCatalogPage(saved.page);
+      setCatalogHasMore(saved.hasMore);
+      lastCatalogKeyRef.current = key;
+      return;
+    }
     try {
       const data = await fetchCatalogPage({
         page: 1,
@@ -1875,10 +1960,18 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       });
       cachedProducts = list;
       setProducts(list);
-      setCatalogTotal(data.total ?? 0);
+      const total = data.total ?? 0;
+      const hasMore = !!data.hasMore;
+      setCatalogTotal(total);
       setCatalogPage(1);
-      setCatalogHasMore(!!data.hasMore);
-      lastCatalogKeyRef.current = catalogSortKey();
+      setCatalogHasMore(hasMore);
+      lastCatalogKeyRef.current = key;
+      saveCatalogListState(key, {
+        products: list,
+        page: 1,
+        hasMore,
+        total,
+      });
     } catch (e) {
       console.error("Catalog refetch failed:", e);
     }
@@ -1902,13 +1995,22 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
         const status = String(p.status || "").toLowerCase();
         return !status || status === "active";
       });
+      const key = catalogSortKey();
+      const hasMore = !!data.hasMore;
+      const total = data.total ?? catalogStateRef.current.total;
       setProducts((prev) => {
         const merged = [...prev, ...list];
         cachedProducts = merged;
+        saveCatalogListState(key, {
+          products: merged,
+          page: nextPage,
+          hasMore,
+          total,
+        });
         return merged;
       });
       setCatalogPage(nextPage);
-      setCatalogHasMore(!!data.hasMore);
+      setCatalogHasMore(hasMore);
     } catch (e) {
       console.error("Load more catalog failed:", e);
     } finally {
@@ -1923,6 +2025,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     userAppliedFilters,
     priceRange,
     debouncedStoreSearch,
+    catalogSortKey,
   ]);
 
   const catalogFilterMountedRef = useRef(false);
@@ -1937,6 +2040,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       return;
     }
     if (lastCatalogKeyRef.current === key) return;
+    const prevKey = lastCatalogKeyRef.current;
+    if (prevKey) {
+      saveCatalogListState(prevKey, catalogStateRef.current);
+    }
     lastCatalogKeyRef.current = key;
     fetchCatalogRefetch();
   }, [catalogSortKey, initialCatalogFetchDone, serverStatus, fetchCatalogRefetch]);
