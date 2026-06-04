@@ -210,17 +210,14 @@ export function resolveKpayReturnStoreSlug(params: {
   return null;
 }
 
+/** True when guest checkout may view unified `/summary` without signing in. */
 export function hasKpaySummaryReturnContext(params: {
   pathname: string;
   search: string;
 }): boolean {
-  if (!isUnifiedKpaySummaryPath(params.pathname)) return false;
-  if (readKpayReturnQueryOrderId(params.search)) return true;
-  if (resolveKpayReturnStoreSlug(params)) return true;
-  if (parsePwaCallbackInfo(new URLSearchParams(params.search).get("callback_info"))) {
-    return true;
-  }
-  return Boolean(readKpayPendingStoreContext());
+  // Post–KBZPay/QR summary is a public receipt page; guests must not be blocked when
+  // the bank app returns to bare `/summary` (no query) or pending PWA keys were cleared.
+  return isUnifiedKpaySummaryPath(params.pathname);
 }
 
 /** Where "Continue Shopping" should go after unified `/summary` (vendor host, not branding apex). */
