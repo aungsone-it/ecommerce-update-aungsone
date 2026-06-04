@@ -4210,7 +4210,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 onSearch={handleSearch}
                 onQueryChange={handleStoreSearchQueryChange}
                 className="w-full"
-                inputClassName="h-11 pl-11 pr-11 rounded-full border-0 bg-slate-100/60 hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-amber-500/20 transition-all text-sm text-slate-700 placeholder:text-slate-400 shadow-sm backdrop-blur-sm w-full"
+                inputClassName="h-11 pl-11 pr-11 rounded-full border-0 bg-slate-100/60 hover:bg-slate-100 focus:bg-white focus:ring-2 focus:ring-amber-500/20 transition-all text-sm text-slate-700 placeholder:text-sm placeholder:text-slate-400 shadow-sm backdrop-blur-sm w-full"
                 variant="desktop"
                 value={storeSearchQuery}
               />

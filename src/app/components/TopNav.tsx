@@ -316,7 +316,7 @@ export function TopNav({
           {showAdminGlobalSearch ? (
             <AdminClearableSearchInput
               placeholder={t("topnav.searchPlaceholder")}
-              className="bg-slate-50 border-slate-200 focus:bg-white w-full"
+              className="bg-slate-50 border-slate-200 focus:bg-white w-full text-sm placeholder:text-sm"
               value={adminGlobalSearch ?? ""}
               onValueChange={(v) => onAdminGlobalSearchChange?.(v)}
               onKeyDown={(e) => {

@@ -50,7 +50,7 @@ export function AdminClearableSearchInput({
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         className={cn(
-          "pl-10",
+          "pl-10 text-sm placeholder:text-sm",
           showSubmit && showClear && "pr-[5.75rem]",
           showSubmit && !showClear && "pr-20",
           showClear && !showSubmit && "pr-10",

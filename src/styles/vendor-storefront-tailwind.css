@@ -10,5 +10,6 @@
 @source '../app/components/UnifiedKpaySummarySignInGate.tsx';
 @source '../app/components/SkeletonLoaders.tsx';
 @source '../app/components/Checkout.tsx';
+@source '../app/components/ui/input.tsx';
 @source '../app/components/ui/select.tsx';
 @source '../app/utils/myanmarRegions.ts';

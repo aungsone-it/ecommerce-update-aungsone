@@ -51,7 +51,7 @@ export const SearchInput = React.memo(({
       <input
         type="text"
         placeholder={placeholder}
-        className={inputClassName}
+        className={`text-sm placeholder:text-sm placeholder:text-slate-400 ${inputClassName}`}
         value={localValue}
         onChange={(e) => {
           const v = e.target.value;
