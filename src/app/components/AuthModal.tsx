@@ -205,40 +205,64 @@ export function AuthModal({
                 {/* Phone Number Field */}
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="text-slate-700 font-medium text-xs sm:text-sm">
-                    Phone Number
+                    Phone Number *
                   </Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                     <Input
                       id="phone"
-                      type="number"
-                      placeholder="+95 9 XXX XXX XXX"
+                      type="tel"
+                      placeholder="+959XXXXXXXXX or 09XXXXXXXXX"
                       className="pl-10 h-10 sm:h-11 text-sm"
                       value={formData.phone}
                       onChange={(e) => onFormChange('phone', e.target.value)}
+                      required={mode === 'register'}
+                      autoComplete="tel"
+                      inputMode="tel"
+                    />
+                  </div>
+                </div>
+
+                {/* Email (optional on register) */}
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-slate-700 font-medium text-xs sm:text-sm">
+                    Email Address <span className="text-slate-400 font-normal">(Optional)</span>
+                  </Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="your@email.com"
+                      className="pl-10 h-10 sm:h-11 text-sm"
+                      value={formData.email}
+                      onChange={(e) => onFormChange('email', e.target.value)}
                     />
                   </div>
                 </div>
               </>
             )}
 
+            {mode === 'login' && (
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-medium text-xs sm:text-sm">
-                Email Address *
+                Email or Phone Number *
               </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                 <Input
                   id="email"
-                  type="email"
-                  placeholder="your@email.com"
+                  type="text"
+                  placeholder="your@email.com or 09XXXXXXXXX"
                   className="pl-10 h-10 sm:h-11 text-sm"
                   value={formData.email}
                   onChange={(e) => onFormChange('email', e.target.value)}
                   required
+                  autoComplete="username"
                 />
               </div>
             </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="password" className="text-slate-700 font-medium text-xs sm:text-sm">

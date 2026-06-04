@@ -694,14 +694,14 @@ export const authApi = {
    * Register a new user
    */
   register: async (
-    email: string,
+    email: string | undefined,
     password: string,
     name?: string,
     phone?: string,
     profileImage?: string
   ): Promise<AuthResponse> => {
     return apiClient.post<AuthResponse>('/auth/register', {
-      email,
+      email: email?.trim() || "",
       password,
       name,
       phone,

@@ -46,12 +46,11 @@ import {
   getCachedProductById,
   invalidateProductByIdCache,
   getCachedAdminProductsPage,
-  invalidateAdminAllProductsCache,
-  notifyAdminProductsListChanged,
   ADMIN_PRODUCTS_BROADCAST_CHANNEL,
   ADMIN_PRODUCTS_LIST_CHANGED_EVENT,
   getCachedAdminVendorsForProductList,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
+  insertAdminProductIntoCaches,
   removeAdminProductsFromCaches,
   removeProductsFromVendorAdminCaches,
   notifyVendorStorefrontProductsRemoved,
@@ -231,6 +230,34 @@ function statusCountDeltaForProduct(product: Product): { active: number; offShel
   };
 }
 
+/** Map create API payload to a row shape the admin products table expects. */
+function normalizeCreatedProductForAdminList(raw: Record<string, unknown>): Product {
+  const id = String(raw.id ?? "");
+  const status = normalizeAdminProductStatus(raw.status) || "active";
+  return {
+    ...(raw as Product),
+    id,
+    name: String(raw.name ?? raw.title ?? "Product"),
+    sku: String(raw.sku ?? ""),
+    description: String(raw.description ?? ""),
+    price: raw.price != null ? String(raw.price) : "0",
+    inventory: Number(raw.inventory ?? raw.stock ?? 0) || 0,
+    category: String(raw.category ?? ""),
+    status: status as Product["status"],
+    vendor: String(raw.vendor ?? ""),
+    collaborator: String(raw.collaborator ?? ""),
+    image: String(
+      raw.image ??
+        (Array.isArray(raw.images) && raw.images[0]) ??
+        "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop"
+    ),
+    commissionRate: Number(raw.commissionRate ?? 0) || 0,
+    selectedVendors: Array.isArray(raw.selectedVendors) ? raw.selectedVendors : [],
+    createdAt: String(raw.createdAt ?? new Date().toISOString()),
+    updatedAt: String(raw.updatedAt ?? new Date().toISOString()),
+  };
+}
+
 /** Bust vendor shop cache + broadcast so open storefronts refetch after assign/unassign on product edit. */
 function invalidateVendorStorefrontsForProductVendorSelectionChange(
   previousSelectedVendors: unknown,
@@ -263,6 +290,7 @@ export function ProductList({
   const [committedSearchQuery, setCommittedSearchQuery] = useState("");
   const lastHeaderCommitTick = useRef(0);
   const skipCacheSoftReloadRef = useRef(false);
+  const skipProductsRealtimeReloadRef = useRef(false);
   const initialLoadDoneRef = useRef(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const prevAdminPageSizeRef = useRef<number | null>(null);
@@ -445,7 +473,7 @@ export function ProductList({
       void loadProductPage(false, { silent: true });
     };
     const hardReload = () => void loadProductPage(true, { silent: true });
-    const onListChanged = () => void loadProductPage(true);
+    const onListChanged = () => void loadProductPage(true, { silent: true });
     const onStorage = (e: StorageEvent) => {
       if (e.key !== adminOrdersUpdatedStorageKey()) return;
       hardReload();
@@ -545,6 +573,7 @@ export function ProductList({
     let debounceProducts: ReturnType<typeof setTimeout> | undefined;
     let debounceVendors: ReturnType<typeof setTimeout> | undefined;
     const scheduleProducts = () => {
+      if (skipProductsRealtimeReloadRef.current) return;
       window.clearTimeout(debounceProducts);
       debounceProducts = window.setTimeout(() => {
         void loadProductPage(true, { silent: true });
@@ -640,9 +669,48 @@ export function ProductList({
     [commitSearchFromInput]
   );
 
+  const applyOptimisticProductAdd = useCallback(
+    (created: Product) => {
+      const delta = statusCountDeltaForProduct(created);
+      const matchesServerSearch =
+        !committedSearchQuery.trim() ||
+        productMatchesAdminLiveSearch(created, committedSearchQuery);
+
+      setAdminPage(1);
+      setAdminTotal((prev) => {
+        const nextTotal = prev + 1;
+        setAdminHasMore(adminPage * adminPageSize < nextTotal);
+        return nextTotal;
+      });
+      setStatusCounts((prev) => ({
+        all: prev.all + 1,
+        active: prev.active + delta.active,
+        offShelf: prev.offShelf + delta.offShelf,
+      }));
+
+      if (adminPage === 1 && matchesServerSearch) {
+        setProducts((prev) => {
+          if (prev.some((p) => p.id === created.id)) return prev;
+          const next = [created, ...prev];
+          const trimmed =
+            next.length > adminPageSize ? next.slice(0, adminPageSize) : next;
+          SmartCache.set(CACHE_KEYS.PRODUCTS, trimmed);
+          return trimmed;
+        });
+      }
+
+      skipCacheSoftReloadRef.current = true;
+      skipProductsRealtimeReloadRef.current = true;
+      window.setTimeout(() => {
+        skipProductsRealtimeReloadRef.current = false;
+      }, 2500);
+      insertAdminProductIntoCaches(created);
+    },
+    [adminPage, adminPageSize, committedSearchQuery]
+  );
+
   const handleSaveProduct = async (data: any) => {
     setCurrentView("list");
-    setLoading(true);
     try {
       const response = await productsApi.create({
         ...data,
@@ -651,53 +719,28 @@ export function ProductList({
       if (!response.success && !response.product) {
         throw new Error(response.error || "Failed to create product - no product returned");
       }
+      const created = normalizeCreatedProductForAdminList(
+        response.product as Record<string, unknown>
+      );
       let vendorsList =
         (moduleCache.peek<unknown[]>(MODULE_CACHE_KEYS.ADMIN_VENDORS) as any[]) || [];
       if (!Array.isArray(vendorsList) || vendorsList.length === 0) {
         vendorsList = (await getCachedAdminVendorsForProductList(false)) as any[];
       }
       invalidateVendorStorefrontsForProductVendorSelectionChange([], data?.selectedVendors, vendorsList);
-      invalidateAdminAllProductsCache();
+      invalidateProductByIdCache(created.id);
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-      setAdminPage(1);
-      const payload = await getCachedAdminProductsPage(
-        {
-          page: 1,
-          pageSize: adminPageSize,
-          q: committedSearchQuery,
-          status: "all",
-          tab: "all",
-          vendor: "all",
-          collaborator: "all",
-          sort: sortBy,
-        },
-        true
-      );
-      setProducts((payload.products || []) as Product[]);
-      setAdminTotal(payload.total);
-      setAdminHasMore(!!payload.hasMore);
-      if (payload.counts) {
-        setStatusCounts({
-          all: payload.counts.all,
-          active: payload.counts.active,
-          offShelf: payload.counts.offShelf,
-        });
-      }
-      SmartCache.set(CACHE_KEYS.PRODUCTS, (payload.products || []) as Product[]);
-      notifyAdminProductsListChanged();
+      applyOptimisticProductAdd(created);
       toast.success("✅ Product added!", { duration: 2000 });
       onProductsChanged?.();
     } catch (error) {
       console.error("❌ Failed to create product:", error);
-      await loadProductPage(true);
       if (error instanceof Error && error.message.includes("SKU already exists")) {
         toast.error(`❌ SKU Validation Error: ${error.message}`, { duration: 5000 });
       } else {
         const errorMsg = error instanceof Error ? error.message : "Failed to save product to server";
         toast.error(`❌ Error: ${errorMsg}. Check console for details.`, { duration: 5000 });
       }
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -718,9 +761,19 @@ export function ProductList({
       invalidateProductByIdCache(id);
       toast.success("Product updated successfully!");
       SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-      invalidateAdminAllProductsCache();
-      await loadProductPage(true);
-      notifyAdminProductsListChanged();
+      skipCacheSoftReloadRef.current = true;
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === id
+            ? {
+                ...p,
+                ...data,
+                name: data.name ?? data.title ?? p.name,
+                status: (data.status ?? p.status) as Product["status"],
+              }
+            : p
+        )
+      );
       onProductsChanged?.();
       setCurrentView("list");
     } catch (error) {
@@ -743,7 +796,6 @@ export function ProductList({
     try {
       await productsApi.delete(id, sessionUser?.id);
       invalidateProductByIdCache(id);
-      notifyAdminProductsListChanged();
       onProductsChanged?.();
     } catch (error) {
       console.error("Failed to delete product:", error);
@@ -825,7 +877,6 @@ export function ProductList({
         }
 
         if (successCount > 0) {
-          notifyAdminProductsListChanged();
           toast.success(`${successCount} product(s) deleted successfully!`);
         }
         if (alreadyDeletedCount > 0) {
@@ -841,7 +892,6 @@ export function ProductList({
         try {
           await productsApi.delete(productToDelete, sessionUser?.id);
           invalidateProductByIdCache(productToDelete);
-          notifyAdminProductsListChanged();
           toast.success("Product deleted successfully!");
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : "";

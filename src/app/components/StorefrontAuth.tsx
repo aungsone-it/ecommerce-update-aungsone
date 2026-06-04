@@ -103,26 +103,27 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
     
     // 🔥 SYNCHRONOUS CLIENT-SIDE VALIDATION (before async API checks)
     if (authMode === 'register') {
-      // Validate email format CLIENT-SIDE first
-      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      if (!emailRegex.test(email.trim())) {
-        setError('Please enter a valid email address with domain (e.g., name@example.com)');
+      if (!phone.trim()) {
+        setError('Please enter your phone number');
         return;
       }
-      
-      // Validate phone format CLIENT-SIDE if provided
-      if (phone && phone.trim()) {
-        const normalizedPhone = phone.replace(/[\s\-]/g, '');
-        const myanmarPhoneRegex = /^(\+959|09)\d{9}$/; // Exactly 11 digits for 09XXXXXXXXX or 12 for +959XXXXXXXXX
-        
-        if (!myanmarPhoneRegex.test(normalizedPhone)) {
-          setError('Phone must be Myanmar format: +959XXXXXXXXX (12 digits) or 09XXXXXXXXX (11 digits)');
+
+      const normalizedPhone = phone.replace(/[\s\-]/g, '');
+      const myanmarPhoneRegex = /^(\+959|09)\d{9}$/;
+      if (!myanmarPhoneRegex.test(normalizedPhone)) {
+        setError('Phone must be Myanmar format: +959XXXXXXXXX (12 digits) or 09XXXXXXXXX (11 digits)');
+        return;
+      }
+
+      if (email.trim()) {
+        const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (!emailRegex.test(email.trim())) {
+          setError('Please enter a valid email address with domain (e.g., name@example.com)');
           return;
         }
       }
-      
-      // Wait if validation is still checking
-      if (emailValidation.checking) {
+
+      if (email.trim() && emailValidation.checking) {
         setError('Please wait while we verify your email...');
         return;
       }
@@ -130,9 +131,8 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
         setError('Please wait while we verify your phone number...');
         return;
       }
-      
-      // Check for validation errors
-      if (emailValidation.error) {
+
+      if (email.trim() && emailValidation.error) {
         setError(emailValidation.error);
         return;
       }
@@ -140,14 +140,13 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
         setError(phoneValidation.error);
         return;
       }
-      
-      // Require validation to have completed successfully
-      if (email && !emailValidation.valid) {
-        setError('Please use a valid and available email address');
+
+      if (!phoneValidation.valid) {
+        setError('Please use a valid and available phone number');
         return;
       }
-      if (phone && !phoneValidation.valid) {
-        setError('Please use a valid and available phone number');
+      if (email.trim() && !emailValidation.valid) {
+        setError('Please use a valid and available email address');
         return;
       }
     }
@@ -363,7 +362,7 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
                 {authMode === 'register' && (
                   <div>
                     <Label htmlFor="phone" className="text-sm font-medium text-slate-700 mb-1.5 block">
-                      Phone Number
+                      Phone Number *
                     </Label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -373,7 +372,8 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         placeholder="+959XXXXXXXXX or 09XXXXXXXXX"
-                        autoComplete="off"
+                        required
+                        autoComplete="tel"
                         inputMode="tel"
                         className={`pl-10 pr-10 h-12 bg-slate-50 border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 ${
                           phoneValidation.error ? 'border-red-300' : phoneValidation.valid ? 'border-green-300' : ''
@@ -401,10 +401,11 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
                   </div>
                 )}
 
-                {/* Email */}
+                {/* Email — optional on register; login uses field below */}
+                {authMode === 'register' && (
                 <div>
                   <Label htmlFor="email" className="text-sm font-medium text-slate-700 mb-1.5 block">
-                    Email Address *
+                    Email Address <span className="text-slate-400 font-normal">(Optional)</span>
                   </Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -414,7 +415,6 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="your@email.com"
-                      required
                       className={`pl-10 pr-10 h-12 bg-slate-50 border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 ${
                         emailValidation.error ? 'border-red-300' : emailValidation.valid ? 'border-green-300' : ''
                       }`}
@@ -439,6 +439,28 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
                     <p className="text-xs text-green-600 mt-1">✓ Email is available</p>
                   )}
                 </div>
+                )}
+
+                {authMode === 'login' && (
+                <div>
+                  <Label htmlFor="loginIdentifier" className="text-sm font-medium text-slate-700 mb-1.5 block">
+                    Email or Phone Number *
+                  </Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <Input
+                      id="loginIdentifier"
+                      type="text"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="your@email.com or 09XXXXXXXXX"
+                      required
+                      autoComplete="username"
+                      className="pl-10 h-12 bg-slate-50 border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400"
+                    />
+                  </div>
+                </div>
+                )}
 
                 {/* Password */}
                 <div>
@@ -528,17 +550,16 @@ export function StorefrontAuth({ onBack, onLogin, onRegister }: StorefrontAuthPr
                   disabled={
                     loading || 
                     (authMode === 'register' && (
-                      emailValidation.checking || 
                       phoneValidation.checking ||
-                      !emailValidation.valid ||
-                      (phone && !phoneValidation.valid)
+                      !phoneValidation.valid ||
+                      (email.trim() !== '' && (emailValidation.checking || !emailValidation.valid))
                     ))
                   }
                   className="w-full h-12 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-lg transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading 
                     ? (authMode === 'login' ? 'Signing in...' : 'Creating account...') 
-                    : emailValidation.checking || phoneValidation.checking
+                    : (authMode === 'register' && (phoneValidation.checking || (email.trim() && emailValidation.checking)))
                     ? 'Validating...'
                     : (authMode === 'login' ? 'Sign In' : 'Sign Up')}
                 </Button>

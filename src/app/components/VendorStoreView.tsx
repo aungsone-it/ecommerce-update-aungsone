@@ -40,6 +40,7 @@ import {
   isOutOfStockDisplay,
   showLowStockBadge,
 } from "../utils/productInventory";
+import { notifyStorefrontCustomerRegistered } from "../utils/customersRealtime";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
@@ -1571,7 +1572,7 @@ export function VendorStoreView({
 
   const trackVendorAudience = useCallback(
     async (userData: any, event: "login" | "register") => {
-      if (!vendorId || !userData?.email) return;
+      if (!vendorId || !userData?.id) return;
       try {
         let avatar: string | undefined;
         for (const c of [
@@ -1585,7 +1586,7 @@ export function VendorStoreView({
             break;
           }
         }
-        await fetch(
+        const res = await fetch(
           `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/audience/${vendorId}/track`,
           {
             method: "POST",
@@ -1594,7 +1595,7 @@ export function VendorStoreView({
               Authorization: `Bearer ${publicAnonKey}`,
             },
             body: JSON.stringify({
-              email: userData.email,
+              email: String(userData.email || "").trim(),
               userId: userData.id,
               name: userData.name || userData.fullName,
               phone: userData.phone,
@@ -1603,17 +1604,31 @@ export function VendorStoreView({
             }),
           }
         );
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const vendorIds = [
+            vendorId,
+            canonicalVendorId,
+            data?.vendorId,
+            data?.storeSlug,
+          ].filter((v): v is string => typeof v === "string" && !!v.trim());
+          notifyStorefrontCustomerRegistered({
+            userId: String(userData.id),
+            vendorIds: [...new Set(vendorIds)],
+            event,
+          });
+        }
       } catch (e) {
         console.warn("[VendorStore] audience track failed:", e);
       }
     },
-    [vendorId]
+    [vendorId, canonicalVendorId]
   );
 
   // Register this global account with this vendor when the user session is available (login/register or return visit).
   useEffect(() => {
-    if (!user?.email || !vendorId) return;
-    const key = `${vendorId}::${user.email}`;
+    if (!user?.id || !vendorId) return;
+    const key = `${vendorId}::${user.id}`;
     if (audienceTrackedKeyRef.current === key) return;
     audienceTrackedKeyRef.current = key;
     const ev = lastAuthEventRef.current;
@@ -1957,18 +1972,18 @@ export function VendorStoreView({
   };
 
   const handleRegister = async (profileImage?: string) => {
-    if (!authForm.email || !authForm.password || !authForm.name) {
-      toast.error("Please fill in all required fields");
+    if (!authForm.password || !authForm.name || !authForm.phone.trim()) {
+      toast.error("Please enter your name, phone number, and password");
       return;
     }
 
     setIsAuthLoading(true);
     try {
       const response = await authApi.register(
-        authForm.email,
+        authForm.email.trim() || undefined,
         authForm.password,
         authForm.name,
-        authForm.phone,
+        authForm.phone.trim(),
         profileImage
       );
       const userData = response.user;

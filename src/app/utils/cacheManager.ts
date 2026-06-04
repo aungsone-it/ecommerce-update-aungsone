@@ -73,6 +73,22 @@ class CacheManager {
   }
 
   /**
+   * Clear all cache + timed entries whose keys start with prefix.
+   */
+  invalidatePrefix(prefix: string) {
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
+    }
+    for (const key of [...this.timedCache.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.timedCache.delete(key);
+      }
+    }
+  }
+
+  /**
    * Invalidate all caches for a specific key
    */
   invalidate(key: string) {

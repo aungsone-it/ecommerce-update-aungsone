@@ -94,17 +94,17 @@ export function UnifiedKpaySummarySignInGate({ children }: { children: ReactNode
   };
 
   const handleRegister = async (profileImage?: string) => {
-    if (!authForm.email || !authForm.password || !authForm.name) {
-      toast.error("Please fill in all required fields");
+    if (!authForm.password || !authForm.name || !authForm.phone.trim()) {
+      toast.error("Please enter your name, phone number, and password");
       return;
     }
     setIsAuthLoading(true);
     try {
       const response = await authApi.register(
-        authForm.email,
+        authForm.email.trim() || undefined,
         authForm.password,
         authForm.name,
-        authForm.phone,
+        authForm.phone.trim(),
         profileImage,
       );
       localStorage.setItem("migoo-user", JSON.stringify(response.user));

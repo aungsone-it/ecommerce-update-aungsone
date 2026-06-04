@@ -86,6 +86,7 @@ import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import { toast } from "sonner";
 import { MIGOO_USER_SESSION_CHANGED_EVENT } from "../../constants";
 import { useLanguage } from "../contexts/LanguageContext";
+import { subscribeCustomerRealtime } from "../utils/customersRealtime";
 
 interface Customer {
   id: string;
@@ -190,6 +191,15 @@ export function CustomersEnhanced({
     });
   };
 
+  const customerContactSubtitle = (customer: Customer) =>
+    customer.phone?.trim() || customer.email?.trim() || "";
+
+  const isGhostCustomer = (c: Customer) =>
+    !c.name?.trim() || (!c.email?.trim() && !c.phone?.trim());
+
+  const isPersistedCustomerRecord = (id: string) =>
+    !id.startsWith("email:") && !id.startsWith("phone:");
+
   const fetchCustomers = useCallback(
     async (forceRefresh = false, opts?: { silent?: boolean }) => {
       let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -213,7 +223,7 @@ export function CustomersEnhanced({
         setCustomersTotal(data.total);
         setCustomersHasMore(!!data.hasMore);
         setServerListStats(data.stats);
-        const ghostCustomers = validCustomers.filter((c: any) => !c.name || !c.email);
+        const ghostCustomers = validCustomers.filter((c) => isGhostCustomer(c));
         if (ghostCustomers.length > 0) {
           console.warn(`👻 Found ${ghostCustomers.length} ghost customers with missing data`);
         }
@@ -267,6 +277,23 @@ export function CustomersEnhanced({
       window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, refreshCustomers);
       window.removeEventListener("customersDataUpdated", refreshCustomers as EventListener);
       window.removeEventListener("storage", onStorage);
+    };
+  }, [fetchCustomers]);
+
+  // Supabase broadcast + cross-tab: new storefront registrations appear without manual refresh.
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        invalidateAdminCustomersCache();
+        void fetchCustomers(true, { silent: true });
+      }, 280);
+    };
+    const unsub = subscribeCustomerRealtime(schedule);
+    return () => {
+      window.clearTimeout(debounce);
+      unsub();
     };
   }, [fetchCustomers]);
 
@@ -326,7 +353,8 @@ export function CustomersEnhanced({
     return customersList.filter(
       (c) =>
         (c.name?.toLowerCase() || "").includes(q) ||
-        (c.email?.toLowerCase() || "").includes(q)
+        (c.email?.toLowerCase() || "").includes(q) ||
+        (c.phone?.toLowerCase() || "").includes(q)
     );
   }, [customersList, searchQuery]);
 
@@ -763,7 +791,9 @@ export function CustomersEnhanced({
   // 🐛 CLEAN UP GHOST CUSTOMERS (customers with missing name/email)
   const handleCleanupGhostCustomers = async () => {
     try {
-      const ghostCustomers = customersList.filter((c) => !c.name || !c.email);
+      const ghostCustomers = customersList.filter(
+        (c) => isGhostCustomer(c) && isPersistedCustomerRecord(c.id)
+      );
 
       if (ghostCustomers.length === 0) {
         showAlert("No Ghost Customers Found", "All customers have valid data", "info");
@@ -1094,10 +1124,9 @@ export function CustomersEnhanced({
                               {getTierBadge(customer.tier)}
                             </div>
                             <p className="text-xs text-slate-500 mt-0.5">
-                              {customer.email || "(No Email)"}
+                              {customerContactSubtitle(customer) || "(No contact)"}
                             </p>
-                            {/* Debug button for ghost customers */}
-                            {(!customer.name || !customer.email) && (
+                            {isGhostCustomer(customer) && (
                               <button
                                 onClick={() => {
                                   console.log("👻 Ghost Customer Data:", customer);

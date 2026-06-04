@@ -1368,29 +1368,28 @@ app.post("/make-server-16010b6f/auth/validate", async (c) => {
     
     // Check phone if provided
     if (phone && phone.trim()) {
-      // Normalize phone: remove all spaces and hyphens for validation
       const normalizedPhone = phone.replace(/[\s\-]/g, '');
-      
-      // Validate Myanmar phone format: +959XXXXXXXXX or 09XXXXXXXXX
-      // International: +959 followed by 9 digits (12 total)
-      // Local: 09 followed by 9 digits (11 total)
       const myanmarPhoneRegex = /^(\+959|09)\d{9}$/;
-      
+
       if (!myanmarPhoneRegex.test(normalizedPhone)) {
         errors.phone = "Phone must be Myanmar format: +959XXXXXXXXX (12 digits) or 09XXXXXXXXX (11 digits)";
       } else {
-        const allUsersWithPrefix = await withTimeout(kv.getByPrefix('user:'), 5000);
-        
-        // Check if any user has this phone number
-        const existingPhoneUser = allUsersWithPrefix.find((userData: any) => {
-          if (userData && userData.phone) {
-            const existingNormalizedPhone = userData.phone.replace(/[\s\-]/g, '');
-            return existingNormalizedPhone === normalizedPhone;
-          }
-          return false;
-        });
-        
-        if (existingPhoneUser) {
+        const canon =
+          normalizedPhone.startsWith("09")
+            ? `+959${normalizedPhone.slice(1)}`
+            : normalizedPhone;
+        const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 5000);
+        const existingPhoneCustomer = Array.isArray(allCustomers)
+          ? allCustomers.find((c: any) => {
+              if (!c?.phone) return false;
+              const p = String(c.phone).replace(/[\s\-]/g, "");
+              const existing =
+                p.startsWith("09") ? `+959${p.slice(1)}` : p;
+              return existing === canon;
+            })
+          : null;
+
+        if (existingPhoneCustomer) {
           errors.phone = "An account with this phone number already exists";
         }
       }
@@ -5925,44 +5924,8 @@ app.delete("/make-server-16010b6f/categories/all", async (c) => {
 });
 
 // ============================================
-// CUSTOMERS ENDPOINTS
+// CUSTOMERS ENDPOINTS (list/detail/create in customer_routes.tsx)
 // ============================================
-
-app.get("/make-server-16010b6f/customers", async (c) => {
-  try {
-    const customers = await withTimeout(kv.getByPrefix("customer:"), 8000);
-    const validCustomers = Array.isArray(customers) ? customers.filter(c => c != null) : [];
-    
-    // 🔥 Generate signed URLs for customer avatars
-    const customersWithSignedUrls = await Promise.all(
-      validCustomers.map(async (customer) => {
-        if (customer.avatar && customer.avatar.trim() !== "") {
-          try {
-            const signedUrl = await getSignedImageUrl(customer.avatar);
-            if (signedUrl) {
-              return { ...customer, avatar: signedUrl };
-            }
-          } catch (error) {
-            console.error(`⚠️ Error generating signed URL for customer ${customer.id}:`, error);
-          }
-        }
-        return customer;
-      })
-    );
-    
-    return c.json({ 
-      customers: customersWithSignedUrls,
-      total: customersWithSignedUrls.length
-    });
-  } catch (error) {
-    console.error("❌ Error fetching customers:", error);
-    return c.json({ 
-      error: "Failed to fetch customers",
-      customers: [],
-      total: 0
-    }, 500);
-  }
-});
 
 app.get("/make-server-16010b6f/customers/:id", async (c) => {
   try {
@@ -11614,35 +11577,75 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
  * Track a global customer account as belonging to this vendor's audience (login/register on vendor storefront).
  * KV: vendor:audience:{vendorId} → array of { email, userId, name, phone, avatar, firstSeenAt, lastSeenAt, lastEvent }
  */
+function normalizeAudiencePhone(raw: string | undefined): string {
+  const normalized = String(raw || "").replace(/[\s\-]/g, "");
+  if (!normalized) return "";
+  if (/^09\d{9}$/.test(normalized)) return `+959${normalized.slice(1)}`;
+  if (/^\+959\d{9}$/.test(normalized)) return normalized;
+  return normalized;
+}
+
+function findAudienceIndex(
+  list: any[],
+  opts: { userId?: string; phone?: string; email?: string }
+): number {
+  const uid = String(opts.userId || "").trim();
+  if (uid) {
+    const byUid = list.findIndex((r: any) => String(r?.userId || "").trim() === uid);
+    if (byUid >= 0) return byUid;
+  }
+  const phone = normalizeAudiencePhone(opts.phone);
+  if (phone) {
+    const byPhone = list.findIndex(
+      (r: any) => normalizeAudiencePhone(r?.phone) === phone
+    );
+    if (byPhone >= 0) return byPhone;
+  }
+  const em = String(opts.email || "").trim().toLowerCase();
+  if (em) {
+    return list.findIndex((r: any) => (r?.email || "").toLowerCase() === em);
+  }
+  return -1;
+}
+
 app.post("/make-server-16010b6f/vendor/audience/:vendorId/track", async (c) => {
   try {
-    const vendorId = c.req.param("vendorId");
+    const vendorIdParam = c.req.param("vendorId");
     const body = await c.req.json();
     const { email, userId, name, phone, avatar, event } = body as Record<string, string | undefined>;
 
-    if (!email || typeof email !== "string" || !email.trim()) {
-      return c.json({ error: "email is required" }, 400);
+    const normEmail = String(email || "").trim().toLowerCase();
+    const normPhone = normalizeAudiencePhone(phone);
+    const uid = String(userId || "").trim();
+
+    if (!uid) {
+      return c.json({ error: "userId is required (registered account only)" }, 400);
     }
 
-    const vendor = await withTimeout(kv.get(`vendor:${vendorId}`), 5000).catch(() => null);
+    const resolvedVendorId = await resolveVendorIdFromSlugOrId(vendorIdParam);
+    const vendor = await withTimeout(kv.get(`vendor:${resolvedVendorId}`), 5000).catch(() => null);
     if (!vendor) {
       return c.json({ error: "Vendor not found" }, 404);
     }
 
-    const normEmail = email.trim().toLowerCase();
-    const storageKey = `vendor:audience:${vendorId}`;
+    const vid = String(vendor.id || resolvedVendorId);
+    const storageKey = `vendor:audience:${vid}`;
     let list: any[] = (await withTimeout(kv.get(storageKey), 5000).catch(() => [])) || [];
     if (!Array.isArray(list)) list = [];
 
     const now = new Date().toISOString();
-    const idx = list.findIndex((r: any) => (r?.email || "").toLowerCase() === normEmail);
+    const idx = findAudienceIndex(list, {
+      userId: uid,
+      phone: normPhone,
+      email: normEmail,
+    });
     const lastEvent = event === "register" ? "register" : "login";
 
     const nextRecord = {
       email: normEmail,
-      userId: userId || (idx >= 0 ? list[idx].userId : undefined),
+      userId: uid || (idx >= 0 ? list[idx].userId : undefined),
       name: name || (idx >= 0 ? list[idx].name : undefined),
-      phone: phone || (idx >= 0 ? list[idx].phone : undefined),
+      phone: normPhone || phone || (idx >= 0 ? list[idx].phone : undefined),
       avatar: avatar || (idx >= 0 ? list[idx].avatar : undefined),
       firstSeenAt: idx >= 0 ? list[idx].firstSeenAt || now : now,
       lastSeenAt: now,
@@ -11653,15 +11656,94 @@ app.post("/make-server-16010b6f/vendor/audience/:vendorId/track", async (c) => {
     else list.push(nextRecord);
 
     await withTimeout(kv.set(storageKey, list), 5000);
-    return c.json({ success: true });
+    const settings = await withTimeout(kv.get(`vendor_settings:${vid}`), 5000).catch(() => null);
+    const storeSlug =
+      settings?.storeSlug != null && String(settings.storeSlug).trim() !== ""
+        ? String(settings.storeSlug).trim()
+        : "";
+    return c.json({
+      success: true,
+      vendorId: vid,
+      storeSlug: storeSlug || undefined,
+      record: nextRecord,
+    });
   } catch (error: any) {
     console.error("❌ vendor audience track:", error);
     return c.json({ error: error.message || "Failed to track" }, 500);
   }
 });
 
+/** Remove one registered customer from this vendor's storefront audience (vendor-scoped delete). */
+app.delete("/make-server-16010b6f/vendor/audience/:vendorId/member/:memberId", async (c) => {
+  try {
+    const vendorIdParam = c.req.param("vendorId");
+    const memberId = decodeURIComponent(String(c.req.param("memberId") || "").trim());
+    if (!memberId) {
+      return c.json({ error: "memberId is required" }, 400);
+    }
+
+    const resolvedVendorId = await resolveVendorIdFromSlugOrId(vendorIdParam);
+    const vendor = await withTimeout(kv.get(`vendor:${resolvedVendorId}`), 5000).catch(() => null);
+    if (!vendor) {
+      return c.json({ error: "Vendor not found" }, 404);
+    }
+
+    const vid = String(vendor.id || resolvedVendorId);
+    const memberLower = memberId.toLowerCase();
+    const memberNormPhone = normalizeAudiencePhone(memberId.replace(/^phone:/i, ""));
+
+    const removeFromList = (list: any[]): { next: any[]; removed: number } => {
+      if (!Array.isArray(list)) return { next: [], removed: 0 };
+      const next = list.filter((r: any) => {
+        const uid = String(r?.userId || "").trim();
+        const em = String(r?.email || "").trim().toLowerCase();
+        const ph = normalizeAudiencePhone(r?.phone);
+        if (uid && (memberId === uid || memberLower === uid.toLowerCase())) return false;
+        if (em && (memberId === `email:${em}` || memberLower === em)) return false;
+        if (ph && (memberNormPhone === ph || memberId === `phone:${ph}`)) return false;
+        return true;
+      });
+      return { next, removed: list.length - next.length };
+    };
+
+    let totalRemoved = 0;
+    const storageKey = `vendor:audience:${vid}`;
+    const list = (await withTimeout(kv.get(storageKey), 5000).catch(() => [])) || [];
+    const { next, removed } = removeFromList(list);
+    if (removed > 0) {
+      await withTimeout(kv.set(storageKey, next), 5000);
+      totalRemoved += removed;
+    }
+
+    const settings = await withTimeout(kv.get(`vendor_settings:${vid}`), 5000).catch(() => null);
+    const storeSlug =
+      settings?.storeSlug != null && String(settings.storeSlug).trim() !== ""
+        ? String(settings.storeSlug).trim()
+        : "";
+    if (storeSlug && storeSlug !== vid) {
+      const altKey = `vendor:audience:${storeSlug}`;
+      const altList = (await withTimeout(kv.get(altKey), 5000).catch(() => [])) || [];
+      const altResult = removeFromList(altList);
+      if (altResult.removed > 0) {
+        await withTimeout(kv.set(altKey, altResult.next), 5000);
+        totalRemoved += altResult.removed;
+      }
+    }
+
+    if (totalRemoved === 0) {
+      return c.json({ error: "Customer not found in vendor audience" }, 404);
+    }
+
+    return c.json({ success: true, removed: totalRemoved });
+  } catch (error: any) {
+    console.error("❌ vendor audience member delete:", error);
+    return c.json({ error: error.message || "Failed to remove customer" }, 500);
+  }
+});
+
 /**
- * Vendor admin: customers who registered/logged in on this storefront OR placed an order with this vendor.
+ * Vendor admin: customers who registered/logged in on this storefront only.
+ * Guest checkout data stays on orders — not listed here.
  */
 app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
   try {
@@ -11699,13 +11781,21 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
       const altKey = `vendor:audience:${storeSlug}`;
       const extra = (await withTimeout(kv.get(altKey), 5000).catch(() => [])) || [];
       if (Array.isArray(extra) && extra.length) {
-        const seen = new Set(audience.map((r: any) => String(r?.email || "").toLowerCase()));
+        const seen = new Set(
+          audience.map((r: any) =>
+            String(r?.userId || r?.email || normalizeAudiencePhone(r?.phone) || "")
+              .trim()
+              .toLowerCase()
+          )
+        );
         for (const row of extra) {
-          const em = String(row?.email || "")
+          const dedupeKey = String(
+            row?.userId || row?.email || normalizeAudiencePhone(row?.phone) || ""
+          )
             .trim()
             .toLowerCase();
-          if (em && !seen.has(em)) {
-            seen.add(em);
+          if (dedupeKey && !seen.has(dedupeKey)) {
+            seen.add(dedupeKey);
             audience.push(row);
           }
         }
@@ -11730,6 +11820,23 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
       totalSpent: number;
     };
     const byEmail = new Map<string, Agg>();
+    const byUserId = new Map<string, Agg>();
+
+    const addOrderAgg = (key: string, map: Map<string, Agg>, em: string, custName: string, vendorTotal: number) => {
+      const prev = map.get(key);
+      if (prev) {
+        prev.orderCount += 1;
+        prev.totalSpent += vendorTotal;
+        if (!prev.name && custName) prev.name = String(custName);
+      } else {
+        map.set(key, {
+          email: em,
+          name: String(custName || em.split("@")[0] || "Customer"),
+          orderCount: 1,
+          totalSpent: vendorTotal,
+        });
+      }
+    };
 
     for (const order of vendorOrders) {
       const raw =
@@ -11738,13 +11845,13 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
         (typeof order.customer === "object" && order.customer?.email) ||
         "";
       const em = String(raw).trim().toLowerCase();
-      if (!em) continue;
+      const uid = String(order.userId || "").trim();
 
       const custName =
         order.customerName ||
         order.customer ||
         (typeof order.customer === "object" ? order.customer?.name || order.customer?.fullName : "") ||
-        em.split("@")[0];
+        (em ? em.split("@")[0] : "Customer");
 
       const vendorItems = order.items.filter((item: any) =>
         orderLineItemMatchesVendor(item, vendorIdentifiers)
@@ -11757,36 +11864,43 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
         return sum + itemPrice * (item.quantity || 1);
       }, 0);
 
-      const prev = byEmail.get(em);
-      if (prev) {
-        prev.orderCount += 1;
-        prev.totalSpent += vendorTotal;
-        if (!prev.name && custName) prev.name = String(custName);
-      } else {
-        byEmail.set(em, {
-          email: em,
-          name: String(custName || em.split("@")[0]),
-          orderCount: 1,
-          totalSpent: vendorTotal,
-        });
-      }
+      if (uid) addOrderAgg(uid, byUserId, em, String(custName), vendorTotal);
+      if (em) addOrderAgg(em, byEmail, em, String(custName), vendorTotal);
     }
 
-    const audienceByEmail = new Map<string, any>();
-    for (const row of audience) {
-      if (!row?.email) continue;
-      audienceByEmail.set(String(row.email).toLowerCase().trim(), row);
-    }
+    type CustomerRow = {
+      id: string;
+      name: string;
+      email: string;
+      phone: string;
+      role: "customer";
+      status: "active";
+      avatar?: string;
+      joinedDate: string;
+      totalOrders: number;
+      totalSpent: number;
+      avgOrder: number;
+      segment: string;
+      tags: string[];
+      isNew: boolean;
+    };
 
-    const allEmails = new Set<string>([...byEmail.keys(), ...audienceByEmail.keys()]);
+    const customers: CustomerRow[] = [];
+    const seenIds = new Set<string>();
 
-    const customers = [...allEmails].map((em) => {
-      const ord = byEmail.get(em);
-      const aud = audienceByEmail.get(em);
+    const pushCustomer = (row: {
+      id: string;
+      aud?: any;
+      ord?: Agg;
+      em: string;
+    }) => {
+      if (seenIds.has(row.id)) return;
+      seenIds.add(row.id);
+      const { aud, ord, em } = row;
       const name =
         aud?.name ||
         ord?.name ||
-        em.split("@")[0];
+        (em ? em.split("@")[0] : "Customer");
       const totalOrders = ord?.orderCount || 0;
       const totalSpent = ord?.totalSpent || 0;
       const avgOrder = totalOrders > 0 ? totalSpent / totalOrders : 0;
@@ -11799,15 +11913,13 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
       if (aud) tags.push("Storefront");
       if (totalOrders > 0) tags.push("Purchased");
 
-      const id = aud?.userId || `email:${em}`;
-
-      return {
-        id,
+      customers.push({
+        id: row.id,
         name,
         email: em,
-        phone: aud?.phone || "",
-        role: "customer" as const,
-        status: "active" as const,
+        phone: aud?.phone ? String(aud.phone) : "",
+        role: "customer",
+        status: "active",
         avatar: aud?.avatar || undefined,
         joinedDate: aud?.firstSeenAt || new Date().toISOString(),
         totalOrders,
@@ -11816,8 +11928,16 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
         segment,
         tags,
         isNew: totalOrders === 0 && !!aud,
-      };
-    });
+      });
+    };
+
+    for (const aud of audience) {
+      const uid = String(aud?.userId || "").trim();
+      if (!uid) continue;
+      const em = String(aud?.email || "").trim().toLowerCase();
+      const ord = byUserId.get(uid) || (em ? byEmail.get(em) : undefined);
+      pushCustomer({ id: uid, aud, ord, em });
+    }
 
     const tierOf = (u: any): "new" | "regular" | "vip" => {
       if (u?.isNew || Number(u?.totalOrders || 0) === 0) return "new";
@@ -11829,6 +11949,7 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
         !q ||
         String(u.name || "").toLowerCase().includes(q) ||
         String(u.email || "").toLowerCase().includes(q) ||
+        String(u.phone || "").toLowerCase().includes(q) ||
         (Array.isArray(u.tags) ? u.tags.join(" ").toLowerCase().includes(q) : false);
       const matchesStatus = statusQ === "all" || String(u.status || "").toLowerCase() === statusQ;
       const matchesTier = tierQ === "all" || tierOf(u) === tierQ;

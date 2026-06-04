@@ -10,12 +10,11 @@ import {
   Activity,
   Package,
   MoreVertical,
-  Mail,
-  FileText,
-  Tag,
   Ban,
   Trash2,
   Eye,
+  MessageSquare,
+  CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
@@ -50,6 +49,10 @@ import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import { CustomerProfile } from "../CustomerProfile";
 import { cacheManager } from "../../utils/cacheManager";
 import { useLanguage } from "../../contexts/LanguageContext";
+import {
+  subscribeCustomerRealtime,
+  invalidateVendorAudienceListCache,
+} from "../../utils/customersRealtime";
 
 interface User {
   id: string;
@@ -57,7 +60,7 @@ interface User {
   email: string;
   phone: string;
   role: "customer" | "admin" | "staff";
-  status: "active" | "inactive";
+  status: "active" | "inactive" | "blocked";
   location?: string;
   avatar?: string;
   joinedDate: string;
@@ -144,7 +147,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      fetchUsers();
+      void fetchUsers();
     }, 180);
     return () => window.clearTimeout(timer);
   }, [vendorId, listPage, listPageSize, searchQuery, filterStatus, filterTier, filterSegment]);
@@ -153,11 +156,33 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
     setListPage(1);
   }, [searchQuery, filterStatus, filterTier, filterSegment]);
 
-  const fetchUsers = async () => {
+  // Live updates when a customer registers/logs in on this vendor storefront (any open admin tab/device).
+  useEffect(() => {
+    let debounce: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => {
+        void fetchUsers({ force: true });
+      }, 280);
+    };
+    const unsub = subscribeCustomerRealtime(scheduleRefresh, { vendorId });
+    return () => {
+      window.clearTimeout(debounce);
+      unsub();
+    };
+  }, [vendorId]);
+
+  const fetchUsers = async (opts?: { force?: boolean }) => {
     const hasWarmUsers = users.length > 0;
     if (!hasWarmUsers) setLoading(true);
+    if (opts?.force) {
+      invalidateVendorAudienceListCache(vendorId);
+    }
     try {
       const queryKey = `vendor-admin-audience:${vendorId}:p${listPage}:ps${listPageSize}:q${searchQuery.trim().toLowerCase()}:st${filterStatus}:tr${filterTier}:sg${filterSegment}`;
+      if (opts?.force) {
+        cacheManager.invalidatePrefix(`vendor-admin-audience:${vendorId}:`);
+      }
       const rows = await cacheManager.fetch(
         queryKey,
         async () => {
@@ -184,7 +209,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
           const list = Array.isArray(data.customers) ? data.customers : [];
           const mapped = list.map((c: any) => ({
             id: c.id,
-            name: c.name || c.email?.split("@")[0] || "Customer",
+            name: c.name || c.phone || c.email?.split("@")[0] || "Customer",
             email: c.email,
             phone: c.phone || "",
             role: "customer" as const,
@@ -251,7 +276,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
               const list = Array.isArray(data.customers) ? data.customers : [];
               const mapped = list.map((c: any) => ({
                 id: c.id,
-                name: c.name || c.email?.split("@")[0] || "Customer",
+                name: c.name || c.phone || c.email?.split("@")[0] || "Customer",
                 email: c.email,
                 phone: c.phone || "",
                 role: "customer" as const,
@@ -303,6 +328,39 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
     }
   };
 
+  const getStatusBadge = (status: string) => {
+    const normalized = String(status || "active").toLowerCase();
+    switch (normalized) {
+      case "active":
+        return (
+          <Badge className="bg-green-100 text-green-700 border-green-200">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            {t("customerIntel.active")}
+          </Badge>
+        );
+      case "inactive":
+        return (
+          <Badge className="bg-slate-100 text-slate-700 border-slate-200">
+            {t("customerIntel.inactive")}
+          </Badge>
+        );
+      case "blocked":
+        return (
+          <Badge className="bg-red-100 text-red-700 border-red-200">
+            <Ban className="w-3 h-3 mr-1" />
+            {t("customerIntel.blocked")}
+          </Badge>
+        );
+      default:
+        return (
+          <Badge className="bg-green-100 text-green-700 border-green-200">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            {t("customerIntel.active")}
+          </Badge>
+        );
+    }
+  };
+
   const totalCustomers = summary.totalCustomers;
   const activeCustomers = summary.activeCustomers;
   const championsCount = summary.champions;
@@ -312,7 +370,12 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const activePercentage = totalCustomers > 0 ? Math.round((activeCustomers / totalCustomers) * 100) : 0;
 
   if (viewingCustomer) {
-    return <CustomerProfile customer={viewingCustomer} onClose={() => setViewingCustomer(null)} />;
+    return (
+      <CustomerProfile
+        customer={viewingCustomer}
+        onClose={() => setViewingCustomer(null)}
+      />
+    );
   }
 
   return (
@@ -536,7 +599,11 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                                   </span>
                                 )}
                               </div>
-                              <div className="text-xs text-slate-500 mt-0.5">{user.email}</div>
+                              {(user.phone?.trim() || user.email?.trim()) && (
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                  {user.phone?.trim() || user.email?.trim()}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -572,26 +639,15 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                             )}
                           </div>
                         </TableCell>
-                        <TableCell>
-                          <span
-                            className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
-                              user.status === "active"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-slate-100 text-slate-800"
-                            }`}
-                          >
-                            {user.status === "active" && <CheckCircle2 className="w-3 h-3" />}
-                            {user.status === "active" ? t("vendorAdmin.users.active") : t("customerIntel.inactive")}
-                          </span>
-                        </TableCell>
+                        <TableCell>{getStatusBadge(user.status || "active")}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600">
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
                                 <MoreVertical className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 onClick={() =>
                                   setViewingCustomer({
@@ -615,47 +671,32 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                                 }
                               >
                                 <Eye className="w-4 h-4 mr-2" />
-                                {t("topnav.viewProfile")}
+                                {t("customerIntel.viewProfile")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                onClick={() =>
-                                  window.open(`mailto:${encodeURIComponent(user.email)}`, "_blank")
-                                }
+                                disabled
+                                className="opacity-50 cursor-not-allowed focus:bg-transparent"
+                                onSelect={(e) => e.preventDefault()}
                               >
-                                <Mail className="w-4 h-4 mr-2" />
-                                {t("vendorAdmin.users.sendEmail")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => toast.info("Notes", { description: "Coming soon." })}
-                              >
-                                <FileText className="w-4 h-4 mr-2" />
-                                {t("vendorAdmin.users.addNote")}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => toast.info("Tags", { description: "Coming soon." })}
-                              >
-                                <Tag className="w-4 h-4 mr-2" />
-                                {t("vendorAdmin.users.manageTags")}
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                {t("customerIntel.sendMessage")}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onClick={() =>
-                                  toast.warning("Block customer", { description: "Coming soon." })
-                                }
+                                disabled
+                                className="opacity-50 cursor-not-allowed focus:bg-transparent"
+                                onSelect={(e) => e.preventDefault()}
                               >
                                 <Ban className="w-4 h-4 mr-2" />
-                                {t("vendorAdmin.users.blockCustomer")}
+                                {t("customerIntel.blockCustomer")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
-                                className="text-red-600 focus:text-red-600"
-                                onClick={() =>
-                                  toast.error("Delete", {
-                                    description: "Customer removal from vendor list is not available yet.",
-                                  })
-                                }
+                                disabled
+                                className="opacity-50 cursor-not-allowed text-red-400 focus:text-red-400 focus:bg-transparent"
+                                onSelect={(e) => e.preventDefault()}
                               >
                                 <Trash2 className="w-4 h-4 mr-2" />
-                                {t("common.delete")}
+                                {t("customerIntel.delete")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -696,6 +737,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
           <p className="text-sm text-slate-500">{t("vendorAdmin.users.comingSoon")}</p>
         </div>
       )}
+
     </div>
   );
 }

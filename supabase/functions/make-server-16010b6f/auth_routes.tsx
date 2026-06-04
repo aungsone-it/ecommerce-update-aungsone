@@ -43,6 +43,54 @@ const supabaseAuth = createClient(
 // Storage bucket for profile images (lazy `ensureBucket` on upload — no listBuckets on every cold start)
 const PROFILE_IMAGES_BUCKET = "make-16010b6f-profile-images";
 
+const MYANMAR_PHONE_RE = /^(\+959|09)\d{9}$/;
+const PHONE_AUTH_EMAIL_DOMAIN = "phone.migoo.store";
+
+function normalizeMyanmarPhone(raw: string): string | null {
+  const normalized = String(raw || "").replace(/[\s\-]/g, "");
+  if (!MYANMAR_PHONE_RE.test(normalized)) return null;
+  if (normalized.startsWith("09")) return `+959${normalized.slice(1)}`;
+  return normalized;
+}
+
+function phoneToAuthEmail(normalizedPhone: string): string {
+  const digits = normalizedPhone.replace(/\D/g, "");
+  return `${digits}@${PHONE_AUTH_EMAIL_DOMAIN}`;
+}
+
+function isSyntheticAuthEmail(email: string): boolean {
+  return String(email || "").toLowerCase().endsWith(`@${PHONE_AUTH_EMAIL_DOMAIN}`);
+}
+
+async function findCustomerByPhone(normalizedPhone: string): Promise<any | null> {
+  const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
+  if (!Array.isArray(allCustomers)) return null;
+  return (
+    allCustomers.find((c: any) => {
+      if (!c?.phone) return false;
+      return normalizeMyanmarPhone(c.phone) === normalizedPhone;
+    }) ?? null
+  );
+}
+
+async function resolveCustomerLoginEmail(
+  identifier: string
+): Promise<{ email: string; error?: string }> {
+  const trimmed = String(identifier || "").trim();
+  if (!trimmed) {
+    return { email: "", error: "Email or phone number is required" };
+  }
+  const asPhone = normalizeMyanmarPhone(trimmed);
+  if (asPhone) {
+    const customer = await findCustomerByPhone(asPhone);
+    if (customer?.email?.trim()) {
+      return { email: customer.email.trim() };
+    }
+    return { email: phoneToAuthEmail(asPhone) };
+  }
+  return { email: trimmed };
+}
+
 // Helper function to upload profile image to Supabase Storage
 async function uploadProfileImage(userId: string, imageDataUrl: string): Promise<string | null> {
   try {
@@ -1076,14 +1124,20 @@ authApp.post("/login", async (c) => {
     const { email, password } = await c.req.json();
 
     if (!email || !password) {
-      return c.json({ error: "Email and password are required" }, 400);
+      return c.json({ error: "Email or phone and password are required" }, 400);
     }
 
-    console.log(`🔐 Customer login attempt: ${email}`);
+    const resolved = await resolveCustomerLoginEmail(email);
+    if (resolved.error || !resolved.email) {
+      return c.json({ error: resolved.error || "Invalid login" }, 400);
+    }
+    const loginEmail = resolved.email;
+
+    console.log(`🔐 Customer login attempt: ${email} → ${loginEmail}`);
 
     // Sign in with Supabase Auth
     const { data, error } = await supabaseAuth.auth.signInWithPassword({
-      email,
+      email: loginEmail,
       password,
     });
 
@@ -1112,17 +1166,18 @@ authApp.post("/login", async (c) => {
       console.log(`📝 Creating new customer record for user: ${data.user.id}`);
       
       const customerId = `cust_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const userName = data.user.user_metadata?.name || email.split('@')[0];
+      const userName = data.user.user_metadata?.name || loginEmail.split('@')[0];
       const userPhone = data.user.user_metadata?.phone || "";
       const profileImage = data.user.user_metadata?.profileImage || null;
+      const displayEmail = isSyntheticAuthEmail(loginEmail) ? "" : loginEmail;
       
       // 🔥 CHECK FOR DUPLICATE EMAIL (should never happen since auth succeeded, but double-check)
-      const duplicateEmail = Array.isArray(allCustomers)
-        ? allCustomers.find((c: any) => c != null && c.email && c.email.toLowerCase() === email.toLowerCase() && c.userId !== data.user!.id)
+      const duplicateEmail = displayEmail && Array.isArray(allCustomers)
+        ? allCustomers.find((c: any) => c != null && c.email && c.email.toLowerCase() === displayEmail.toLowerCase() && c.userId !== data.user!.id)
         : null;
       
       if (duplicateEmail) {
-        console.error(`❌ CRITICAL: Customer with email ${email} already exists but has different userId!`);
+        console.error(`❌ CRITICAL: Customer with email ${displayEmail} already exists but has different userId!`);
         console.error(`   Existing customer: ${duplicateEmail.id} (userId: ${duplicateEmail.userId})`);
         console.error(`   Current auth user: ${data.user.id}`);
         return c.json({ 
@@ -1155,7 +1210,7 @@ authApp.post("/login", async (c) => {
         id: customerId,
         userId: data.user.id, // Link to Supabase Auth user
         name: userName,
-        email: email,
+        email: displayEmail,
         phone: userPhone,
         location: "", // Can be updated later
         address: "",
@@ -1222,60 +1277,92 @@ authApp.post("/register", async (c) => {
   try {
     const { email, password, name, phone, profileImage } = await c.req.json();
 
-    if (!email || !password || !name) {
-      return c.json({ error: "Email, password, and name are required" }, 400);
+    if (!password || !name || !phone?.trim()) {
+      return c.json({ error: "Phone number, password, and name are required" }, 400);
     }
 
-    console.log(`📝 Customer registration attempt: ${email}`);
-
-    // 🔥 CHECK FOR DUPLICATE EMAIL in Supabase Auth
-    const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
-    const existingUser = authUsers?.users.find(u => u.email?.toLowerCase() === email.toLowerCase());
-    
-    if (existingUser) {
-      console.log(`❌ Email already registered: ${email}`);
-      return c.json({ error: "This email is already registered. Please use a different email or login instead." }, 409);
+    const normalizedPhone = normalizeMyanmarPhone(phone);
+    if (!normalizedPhone) {
+      return c.json({
+        error: "Phone must be Myanmar format: +959XXXXXXXXX (12 digits) or 09XXXXXXXXX (11 digits)",
+      }, 400);
     }
 
-    // 🔥 CHECK FOR DUPLICATE EMAIL in customer records (double-check)
+    const emailTrimmed = String(email || "").trim();
+    let authEmail = emailTrimmed;
+    let displayEmail = emailTrimmed;
+
+    if (emailTrimmed) {
+      const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+      if (!emailRegex.test(emailTrimmed)) {
+        return c.json({ error: "Please enter a valid email address (e.g., name@example.com)" }, 400);
+      }
+    } else {
+      authEmail = phoneToAuthEmail(normalizedPhone);
+      displayEmail = "";
+    }
+
+    console.log(`📝 Customer registration attempt: phone=${normalizedPhone} authEmail=${authEmail}`);
+
     const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
-    const duplicateEmail = Array.isArray(allCustomers)
-      ? allCustomers.find((c: any) => c != null && c.email && c.email.toLowerCase() === email.toLowerCase())
-      : null;
-    
-    if (duplicateEmail) {
-      console.log(`❌ Email already exists in customer records: ${email}`);
-      return c.json({ error: "This email is already registered. Please use a different email or login instead." }, 409);
+
+    const duplicatePhone = await findCustomerByPhone(normalizedPhone);
+    if (duplicatePhone) {
+      console.log(`❌ Phone number already registered: ${normalizedPhone}`);
+      return c.json({
+        error: "This phone number is already registered. Please sign in or use a different number.",
+      }, 409);
     }
 
-    // 🔥 CHECK FOR DUPLICATE PHONE (if phone is provided)
-    if (phone && phone.trim() !== "") {
-      const normalizedPhone = phone.replace(/\s+/g, ''); // Remove spaces for comparison
-      const duplicatePhone = Array.isArray(allCustomers)
-        ? allCustomers.find((c: any) => {
-            if (!c || !c.phone) return false;
-            const existingPhone = c.phone.replace(/\s+/g, '');
-            return existingPhone === normalizedPhone;
-          })
+    if (displayEmail) {
+      const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
+      const existingUser = authUsers?.users.find(
+        (u) => u.email?.toLowerCase() === displayEmail.toLowerCase()
+      );
+
+      if (existingUser) {
+        console.log(`❌ Email already registered: ${displayEmail}`);
+        return c.json({
+          error: "This email is already registered. Please use a different email or sign in instead.",
+        }, 409);
+      }
+
+      const duplicateEmail = Array.isArray(allCustomers)
+        ? allCustomers.find(
+            (cust: any) =>
+              cust != null &&
+              cust.email &&
+              !isSyntheticAuthEmail(cust.email) &&
+              cust.email.toLowerCase() === displayEmail.toLowerCase()
+          )
         : null;
-      
-      if (duplicatePhone) {
-        console.log(`❌ Phone number already registered: ${phone}`);
-        return c.json({ 
-          error: "This phone number is already registered to another account. Please use a different phone number or login instead.",
-          details: `Phone ${phone} is already in use.`
+
+      if (duplicateEmail) {
+        console.log(`❌ Email already exists in customer records: ${displayEmail}`);
+        return c.json({
+          error: "This email is already registered. Please use a different email or sign in instead.",
+        }, 409);
+      }
+    } else {
+      const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
+      const existingSynthetic = authUsers?.users.find(
+        (u) => u.email?.toLowerCase() === authEmail.toLowerCase()
+      );
+      if (existingSynthetic) {
+        return c.json({
+          error: "This phone number is already registered. Please sign in instead.",
         }, 409);
       }
     }
 
     // Create user in Supabase Auth
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
+      email: authEmail,
       password,
       email_confirm: true, // Auto-confirm since email server not configured
       user_metadata: {
         name,
-        phone: phone || "",
+        phone: normalizedPhone,
         role: "customer",
       },
     });
@@ -1300,8 +1387,8 @@ authApp.post("/register", async (c) => {
       id: customerId,
       userId: data.user.id, // Link to Supabase Auth user
       name: name,
-      email: email,
-      phone: phone || "",
+      email: displayEmail,
+      phone: normalizedPhone,
       location: "",
       address: "",
       city: "",

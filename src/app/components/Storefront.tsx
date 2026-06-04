@@ -107,6 +107,7 @@ import {
   isOutOfStockDisplay,
   showLowStockBadge,
 } from "../utils/productInventory";
+import { notifyStorefrontCustomerRegistered } from "../utils/customersRealtime";
 import {
   readSessionCatalogList,
   ssStorefrontCatalogListKey,
@@ -3060,18 +3061,18 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
 
   // Handle user registration
   const handleRegister = async (profileImage?: string) => {
-    if (!authForm.email || !authForm.password || !authForm.name) {
-      toast.error("Please fill in all required fields");
+    if (!authForm.password || !authForm.name || !authForm.phone.trim()) {
+      toast.error("Please enter your name, phone number, and password");
       return;
     }
 
     setIsAuthLoading(true);
     try {
       const response = await authApi.register(
-        authForm.email,
+        authForm.email.trim() || undefined,
         authForm.password,
         authForm.name,
-        authForm.phone,
+        authForm.phone.trim(),
         profileImage
       );
       const userData = response.user;
@@ -3096,6 +3097,10 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       
       setShowAuthModal(false);
       setAuthForm({ email: '', password: '', name: '', phone: '' });
+      notifyStorefrontCustomerRegistered({
+        userId: String(userData.id),
+        event: "register",
+      });
     } catch (error) {
       console.error("Registration failed:", error);
       toast.error(error instanceof Error ? error.message : "Registration failed");

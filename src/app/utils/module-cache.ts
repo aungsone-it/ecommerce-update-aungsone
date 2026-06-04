@@ -284,6 +284,60 @@ class ModuleCache {
     }
   }
 
+  /**
+   * Prepend a new product to page-1 admin paginated caches; bump totals/counts on other pages.
+   */
+  insertProductIntoPaginatedAdminCaches(pageKeyPrefix: string, product: any): void {
+    const id = String(product?.id ?? "").trim();
+    if (!id) return;
+    const status = String(product?.status ?? "active").trim().toLowerCase().replace(/\s+/g, "-");
+    const isActive = status === "active" || status === "published";
+    const isOffShelf = status === "off-shelf" || status === "offshelf";
+
+    for (const key of [...this.cache.keys()]) {
+      if (!key.startsWith(pageKeyPrefix)) continue;
+      const entry = this.cache.get(key);
+      const raw = entry?.data as {
+        products?: any[];
+        total?: number;
+        counts?: { all: number; active: number; offShelf: number };
+        page?: number;
+        pageSize?: number;
+        hasMore?: boolean;
+        [k: string]: unknown;
+      } | undefined;
+      if (!raw || !Array.isArray(raw.products)) continue;
+
+      const page = Math.max(1, Number(raw.page ?? 1));
+      const pageSize = Math.max(1, Number(raw.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
+      const total = Number(raw.total ?? 0) + 1;
+      let counts = raw.counts
+        ? {
+            all: raw.counts.all + 1,
+            active: raw.counts.active + (isActive ? 1 : 0),
+            offShelf: raw.counts.offShelf + (isOffShelf ? 1 : 0),
+          }
+        : undefined;
+
+      let products = raw.products;
+      if (page === 1) {
+        if (products.some((row) => String(row?.id) === id)) continue;
+        products = [product, ...products].slice(0, pageSize);
+      }
+
+      this.cache.set(key, {
+        data: {
+          ...raw,
+          products,
+          total,
+          counts,
+          hasMore: page * pageSize < total,
+        },
+        timestamp: Date.now(),
+      });
+    }
+  }
+
   /** Drop deleted rows from each cached admin customers page and adjust totals/stats in place. */
   removeCustomersFromPaginatedAdminCaches(
     pageKeyPrefix: string,
@@ -1831,6 +1885,29 @@ export function removeAdminProductsFromCaches(productIds: string[]): void {
     idSet,
     deletedSnapshots
   );
+
+  if (typeof window !== "undefined") {
+    removePersistedKeysPrefix("migoo-ls-admin-p1-");
+  }
+
+  dispatchAdminProductsCachePatched();
+}
+
+/** Super Admin create — prepend row to session + paginated caches without forcing a grid refetch. */
+export function insertAdminProductIntoCaches(product: any): void {
+  const id = String(product?.id ?? "").trim();
+  if (!id) return;
+
+  const full = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+  if (full && Array.isArray(full)) {
+    if (!full.some((p) => String(p?.id) === id)) {
+      moduleCache.prime(CACHE_KEYS.ADMIN_PRODUCTS, [product, ...full]);
+    }
+  } else {
+    moduleCache.prime(CACHE_KEYS.ADMIN_PRODUCTS, [product]);
+  }
+
+  moduleCache.insertProductIntoPaginatedAdminCaches(ADMIN_PRODUCTS_PAGE_CACHE_PREFIX, product);
 
   if (typeof window !== "undefined") {
     removePersistedKeysPrefix("migoo-ls-admin-p1-");

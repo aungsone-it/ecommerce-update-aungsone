@@ -60,6 +60,108 @@ async function findCustomerByUserId(userId: string): Promise<any> {
   }
 }
 
+/** Legacy rows may use auth UUID as id without userId — link audience + deletes correctly. */
+function enrichCustomerIdentity(c: any): any {
+  const uid = String(c?.userId || "").trim();
+  const id = String(c?.id || "").trim();
+  if (!uid && /^[0-9a-f-]{36}$/i.test(id)) {
+    return { ...c, userId: id };
+  }
+  return c;
+}
+
+/** Resolve KV customer by cust_* id, auth userId, or legacy id field. */
+async function resolveCustomerForDelete(
+  idParam: string
+): Promise<{ customer: any; storageKey: string } | null> {
+  const param = String(idParam || "").trim();
+  if (!param) return null;
+
+  const direct = await withTimeout(kv.get(`customer:${param}`), 5000);
+  if (direct && typeof direct === "object" && !Array.isArray(direct)) {
+    const enriched = enrichCustomerIdentity(direct);
+    return { customer: enriched, storageKey: String(enriched.id || param) };
+  }
+
+  const byUser = await findCustomerByUserId(param);
+  if (byUser) {
+    const enriched = enrichCustomerIdentity(byUser);
+    return { customer: enriched, storageKey: String(enriched.id || param) };
+  }
+
+  const all = await withTimeout(kv.getByPrefix("customer:"), 30000).catch(() => []);
+  if (Array.isArray(all)) {
+    const found = all.find(
+      (c: any) => c && typeof c === "object" && String(c.id || "") === param
+    );
+    if (found) {
+      const enriched = enrichCustomerIdentity(found);
+      return { customer: enriched, storageKey: String(enriched.id || param) };
+    }
+  }
+
+  return null;
+}
+
+function audienceRowMatches(
+  row: any,
+  match: { userId?: string; email?: string; phone?: string }
+): boolean {
+  const uid = String(match.userId || "").trim();
+  if (uid && String(row?.userId || "").trim() === uid) return true;
+  const em = String(match.email || "").trim().toLowerCase();
+  if (em && String(row?.email || "").trim().toLowerCase() === em) return true;
+  const phone = normalizeAudiencePhone(match.phone);
+  if (phone && normalizeAudiencePhone(row?.phone) === phone) return true;
+  return false;
+}
+
+async function removeFromAllVendorAudiences(match: {
+  userId?: string;
+  email?: string;
+  phone?: string;
+}): Promise<number> {
+  if (!match.userId && !match.email && !match.phone) return 0;
+  const rows = await withTimeout(kv.getByPrefixWithKeys("vendor:audience:"), 30000).catch(
+    () => [] as { key: string; value: unknown }[]
+  );
+  let removed = 0;
+  for (const { key, value } of rows) {
+    if (!Array.isArray(value)) continue;
+    const next = value.filter((r: any) => !audienceRowMatches(r, match));
+    if (next.length !== value.length) {
+      removed += value.length - next.length;
+      await withTimeout(kv.set(key, next), 5000);
+    }
+  }
+  return removed;
+}
+
+async function purgeAuthAndUserKv(userId: string): Promise<void> {
+  const uid = String(userId || "").trim();
+  if (!uid) return;
+  try {
+    const { error: authDeleteError } = await supabase.auth.admin.deleteUser(uid);
+    if (authDeleteError) {
+      console.error(`❌ Failed to delete auth user ${uid}:`, authDeleteError);
+    } else {
+      console.log(`✅ Supabase Auth user deleted: ${uid}`);
+    }
+  } catch (authError) {
+    console.error(`❌ Error deleting auth user ${uid}:`, authError);
+  }
+  try {
+    const userLookup = await withTimeout(kv.get(`userId:${uid}`), 5000);
+    if (userLookup?.email) {
+      await withTimeout(kv.del(`user:${userLookup.email}`), 5000);
+    }
+    await withTimeout(kv.del(`userId:${uid}`), 5000);
+    await withTimeout(kv.del(`auth:user:${uid}`), 5000).catch(() => undefined);
+  } catch (userDeleteError) {
+    console.warn(`⚠️ Could not delete user KV for ${uid}:`, userDeleteError);
+  }
+}
+
 // Bucket created lazily via ensureBucket on upload routes (avoids listBuckets on every Edge cold start)
 
 // ============================================
@@ -192,6 +294,121 @@ function customerSegmentFromRfm(cust: any): string {
   return "need-attention";
 }
 
+function normalizeAudiencePhone(raw: string | undefined): string {
+  const normalized = String(raw || "").replace(/[\s\-]/g, "");
+  if (!normalized) return "";
+  if (/^09\d{9}$/.test(normalized)) return `+959${normalized.slice(1)}`;
+  if (/^\+959\d{9}$/.test(normalized)) return normalized;
+  return normalized;
+}
+
+function dedupeKeysForContact(opts: { userId?: string; email?: string; phone?: string }): string[] {
+  const keys: string[] = [];
+  const uid = String(opts.userId || "").trim();
+  if (uid) keys.push(`uid:${uid}`);
+  const phone = normalizeAudiencePhone(opts.phone);
+  if (phone) keys.push(`phone:${phone}`);
+  const em = String(opts.email || "").trim().toLowerCase();
+  if (em) keys.push(`email:${em}`);
+  return keys;
+}
+
+/** Super admin: KV customers + registered storefront audience (userId only). No guest order-only rows. */
+function mergeSystemCustomerSources(
+  kvCustomers: any[],
+  spendByEmail: Map<string, number>,
+  countByEmail: Map<string, number>,
+  spendByUserId: Map<string, number>,
+  countByUserId: Map<string, number>,
+  audienceEntries: { aud: any }[]
+): any[] {
+  const rows: any[] = kvCustomers.map((c) => ({ ...c }));
+  const aliasToIdx = new Map<string, number>();
+
+  const linkRow = (idx: number) => {
+    const c = rows[idx];
+    for (const k of dedupeKeysForContact({
+      userId: c.userId,
+      email: c.email,
+      phone: c.phone,
+    })) {
+      aliasToIdx.set(k, idx);
+    }
+  };
+
+  rows.forEach((_, i) => linkRow(i));
+
+  const resolveIdx = (opts: { userId?: string; email?: string; phone?: string }): number | undefined => {
+    for (const k of dedupeKeysForContact(opts)) {
+      const idx = aliasToIdx.get(k);
+      if (idx !== undefined) return idx;
+    }
+    return undefined;
+  };
+
+  const mergeInto = (idx: number, patch: Record<string, unknown>) => {
+    rows[idx] = { ...rows[idx], ...patch };
+    linkRow(idx);
+  };
+
+  for (const { aud } of audienceEntries) {
+    const uid = String(aud?.userId || "").trim();
+    if (!uid) continue;
+    const em = String(aud?.email || "").trim().toLowerCase();
+    const phone = normalizeAudiencePhone(aud?.phone);
+
+    const idx = resolveIdx({ userId: uid, email: em, phone });
+    if (idx !== undefined) {
+      const cur = rows[idx];
+      const tags = new Set<string>([...(Array.isArray(cur.tags) ? cur.tags : []), "storefront"]);
+      mergeInto(idx, {
+        name:
+          cur.name ||
+          String(aud?.name || "").trim() ||
+          (em ? em.split("@")[0] : "Customer"),
+        email: cur.email || em,
+        phone: cur.phone || phone,
+        userId: cur.userId || uid,
+        avatar: cur.avatar || aud?.avatar,
+        tags: [...tags],
+      });
+      continue;
+    }
+
+    const id = uid || (em ? `email:${em}` : `phone:${phone}`);
+    rows.push({
+      id,
+      userId: uid || undefined,
+      name: String(aud?.name || "").trim() || (em ? em.split("@")[0] : "Customer"),
+      email: em,
+      phone,
+      status: "active",
+      tier: "new",
+      joinDate: aud?.firstSeenAt || new Date().toISOString(),
+      tags: ["storefront"],
+    });
+    linkRow(rows.length - 1);
+  }
+
+  return rows.map((cust) =>
+    mergeOrderMetricsIntoCustomer(cust, spendByEmail, countByEmail, spendByUserId, countByUserId)
+  );
+}
+
+function customerMatchesSearchQuery(cust: any, qRaw: string): boolean {
+  if (!qRaw) return true;
+  const name = String(cust.name || "").toLowerCase();
+  const email = String(cust.email || "").toLowerCase();
+  const phone = String(cust.phone || "").toLowerCase();
+  const normPhone = normalizeAudiencePhone(cust.phone).toLowerCase();
+  return (
+    name.includes(qRaw) ||
+    email.includes(qRaw) ||
+    phone.includes(qRaw) ||
+    (normPhone !== "" && normPhone.toLowerCase().includes(qRaw))
+  );
+}
+
 // Get all customers
 customerApp.get("/customers", async (c) => {
   try {
@@ -221,9 +438,33 @@ customerApp.get("/customers", async (c) => {
     
     console.log(`✅ Found ${validCustomers.length} valid customers (filtered from ${customers?.length || 0} total)`);
 
-    const allOrdersRaw = await withTimeout(kv.getByPrefix("order:"), 45000).catch(() => []);
+    const [allOrdersRaw, audienceKv] = await Promise.all([
+      withTimeout(kv.getByPrefix("order:"), 45000).catch(() => []),
+      withTimeout(kv.getByPrefixWithKeys("vendor:audience:"), 45000).catch(() => []),
+    ]);
     const { spendByEmail, countByEmail, spendByUserId, countByUserId } = aggregateCustomerSpendFromOrders(
       Array.isArray(allOrdersRaw) ? allOrdersRaw : []
+    );
+
+    const audienceEntries: { aud: any }[] = [];
+    for (const { value } of Array.isArray(audienceKv) ? audienceKv : []) {
+      const list = Array.isArray(value) ? value : [];
+      for (const aud of list) {
+        if (aud && typeof aud === "object") audienceEntries.push({ aud });
+      }
+    }
+
+    const unifiedCustomers = mergeSystemCustomerSources(
+      validCustomers.map((c: any) => enrichCustomerIdentity(c)),
+      spendByEmail,
+      countByEmail,
+      spendByUserId,
+      countByUserId,
+      audienceEntries
+    );
+
+    console.log(
+      `✅ Unified ${unifiedCustomers.length} customers (KV ${validCustomers.length}, audience rows ${audienceEntries.length})`
     );
 
     const pageQ = c.req.query("page");
@@ -240,24 +481,16 @@ customerApp.get("/customers", async (c) => {
       const tierF = String(c.req.query("tier") || "all").toLowerCase();
       const segmentF = String(c.req.query("segment") || "all").toLowerCase();
 
-      let rows = validCustomers.filter((cust: any) => {
+      let rows = unifiedCustomers.filter((cust: any) => {
         if (statusF !== "all" && String(cust.status || "").toLowerCase() !== statusF) return false;
         if (tierF !== "all" && String(cust.tier || "").toLowerCase() !== tierF) return false;
         if (segmentF !== "all" && customerSegmentFromRfm(cust) !== segmentF) return false;
-        if (qRaw) {
-          const name = String(cust.name || "").toLowerCase();
-          const email = String(cust.email || "").toLowerCase();
-          if (!name.includes(qRaw) && !email.includes(qRaw)) return false;
-        }
+        if (!customerMatchesSearchQuery(cust, qRaw)) return false;
         return true;
       });
 
       rows.sort((a: any, b: any) =>
-        String(a.name || a.email || "").localeCompare(String(b.name || b.email || ""))
-      );
-
-      rows = rows.map((cust: any) =>
-        mergeOrderMetricsIntoCustomer(cust, spendByEmail, countByEmail, spendByUserId, countByUserId)
+        String(a.name || a.email || a.phone || "").localeCompare(String(b.name || b.email || b.phone || ""))
       );
 
       const now = new Date();
@@ -306,10 +539,7 @@ customerApp.get("/customers", async (c) => {
       });
     }
     
-    const enrichedAll = validCustomers.map((cust: any) =>
-      mergeOrderMetricsIntoCustomer(cust, spendByEmail, countByEmail, spendByUserId, countByUserId)
-    );
-    const freshAll = await Promise.all(enrichedAll.map((cust: any) => attachFreshCustomerAvatar(cust)));
+    const freshAll = await Promise.all(unifiedCustomers.map((cust: any) => attachFreshCustomerAvatar(cust)));
 
     return c.json({
       success: true,
@@ -515,80 +745,67 @@ customerApp.put("/customers/:customerId", async (c) => {
 // Delete customer
 customerApp.delete("/customers/:customerId", async (c) => {
   try {
-    const customerId = c.req.param("customerId");
-    
-    console.log(`🗑️ Deleting customer: ${customerId}`);
-    
-    // Check if customer exists
-    const customer = await withTimeout(kv.get(`customer:${customerId}`), 5000);
-    
-    if (!customer) {
+    const idParam = c.req.param("customerId");
+    console.log(`🗑️ Deleting customer: ${idParam}`);
+
+    const resolved = await resolveCustomerForDelete(idParam);
+
+    if (!resolved) {
+      const param = String(idParam || "").trim();
+      if (/^[0-9a-f-]{36}$/i.test(param)) {
+        const removedAudience = await removeFromAllVendorAudiences({ userId: param });
+        await purgeAuthAndUserKv(param);
+        if (removedAudience > 0) {
+          console.log(`✅ Removed audience-only customer ${param} (${removedAudience} row(s))`);
+          return c.json({
+            success: true,
+            message: "Customer removed from storefront audience",
+          });
+        }
+      }
       return c.json({ error: "Customer not found" }, 404);
     }
-    
-    // 🔥 STEP 1: DELETE FROM SUPABASE AUTH (CRITICAL FOR SECURITY!)
-    if (customer.userId) {
-      console.log(`🔐 Deleting Supabase Auth user: ${customer.userId}`);
-      try {
-        const { error: authDeleteError } = await supabase.auth.admin.deleteUser(
-          customer.userId
-        );
-        
-        if (authDeleteError) {
-          console.error(`❌ Failed to delete auth user ${customer.userId}:`, authDeleteError);
-          // Don't fail the whole operation, but log it prominently
-        } else {
-          console.log(`✅ Supabase Auth user deleted: ${customer.userId}`);
-        }
-      } catch (authError) {
-        console.error(`❌ Error deleting auth user ${customer.userId}:`, authError);
-        // Continue with customer deletion even if auth deletion fails
-      }
+
+    const { customer, storageKey } = resolved;
+    const userId = String(customer.userId || "").trim();
+
+    if (userId) {
+      await purgeAuthAndUserKv(userId);
     }
-    
-    // 🔥 STEP 2: DELETE USER FROM KV STORE (if exists) to prevent re-sync
-    if (customer.userId) {
-      console.log(`🗑️ Also deleting user from KV store: ${customer.userId}`);
-      try {
-        // Delete by userId lookup first to get email
-        const userLookup = await withTimeout(kv.get(`userId:${customer.userId}`), 5000);
-        if (userLookup && userLookup.email) {
-          // Delete user by email (main record)
-          await withTimeout(kv.del(`user:${userLookup.email}`), 5000);
-          console.log(`✅ User deleted by email: ${userLookup.email}`);
-        }
-        // Delete userId lookup
-        await withTimeout(kv.del(`userId:${customer.userId}`), 5000);
-        console.log(`✅ User lookup deleted: ${customer.userId}`);
-      } catch (userDeleteError) {
-        console.warn(`⚠️ Could not delete user ${customer.userId}:`, userDeleteError);
-        // Continue anyway - customer deletion is more important
-      }
+
+    await removeFromAllVendorAudiences({
+      userId: userId || idParam,
+      email: customer.email,
+      phone: customer.phone,
+    });
+
+    await withTimeout(kv.del(`customer:${storageKey}`), 5000);
+    if (storageKey !== idParam) {
+      await withTimeout(kv.del(`customer:${idParam}`), 5000).catch(() => undefined);
     }
-    
-    // 🔥 STEP 3: DELETE CUSTOMER FROM KV STORE
-    await withTimeout(kv.del(`customer:${customerId}`), 5000);
+    if (userId && userId !== storageKey && userId !== idParam) {
+      await withTimeout(kv.del(`customer:${userId}`), 5000).catch(() => undefined);
+    }
 
     const custImg =
-      customer &&
       typeof (customer as { profileImage?: string }).profileImage === "string"
         ? (customer as { profileImage: string }).profileImage.trim()
         : "";
     if (custImg) {
       await deleteOwnedStorageRefs(supabase, [custImg]);
     }
-    
-    console.log(`✅ Customer deleted completely: ${customerId}`);
-    
+
+    console.log(`✅ Customer deleted completely: ${storageKey} (requested: ${idParam})`);
+
     return c.json({
       success: true,
       message: "Customer and associated auth account deleted successfully",
     });
   } catch (error: any) {
     console.error("❌ Error deleting customer:", error);
-    return c.json({ 
-      error: "Failed to delete customer", 
-      details: String(error) 
+    return c.json({
+      error: "Failed to delete customer",
+      details: String(error),
     }, 500);
   }
 });
@@ -606,69 +823,55 @@ customerApp.post("/customers/bulk-delete", async (c) => {
     }
     
     console.log(`🗑️ Bulk deleting ${customerIds.length} customers...`);
-    
-    // 🔥 FIRST, GET ALL CUSTOMERS TO FIND THEIR USER IDs
-    const customerPromises = customerIds.map(id => 
-      withTimeout(kv.get(`customer:${id}`), 5000).catch(() => null)
-    );
-    const customers = await Promise.all(customerPromises);
 
     const bulkImageRefs: unknown[] = [];
-    for (const c of customers) {
-      if (
-        c &&
-        typeof (c as { profileImage?: string }).profileImage === "string" &&
-        (c as { profileImage: string }).profileImage.trim()
-      ) {
-        bulkImageRefs.push((c as { profileImage: string }).profileImage);
+    const storageKeys = new Set<string>();
+    const purgedUserIds = new Set<string>();
+
+    for (const idParam of customerIds) {
+      const resolved = await resolveCustomerForDelete(String(idParam));
+      if (resolved) {
+        const { customer, storageKey } = resolved;
+        storageKeys.add(storageKey);
+        const userId = String(customer.userId || "").trim();
+        if (userId && !purgedUserIds.has(userId)) {
+          purgedUserIds.add(userId);
+          await purgeAuthAndUserKv(userId);
+        }
+        await removeFromAllVendorAudiences({
+          userId: userId || String(idParam),
+          email: customer.email,
+          phone: customer.phone,
+        });
+        const img =
+          typeof (customer as { profileImage?: string }).profileImage === "string"
+            ? (customer as { profileImage: string }).profileImage.trim()
+            : "";
+        if (img) bulkImageRefs.push(img);
+        continue;
+      }
+
+      const param = String(idParam || "").trim();
+      if (/^[0-9a-f-]{36}$/i.test(param)) {
+        if (!purgedUserIds.has(param)) {
+          purgedUserIds.add(param);
+          await purgeAuthAndUserKv(param);
+        }
+        await removeFromAllVendorAudiences({ userId: param });
       }
     }
-    
-    // 🔥 DELETE ASSOCIATED AUTH USERS AND KV USERS (if they exist)
-    const userIds = customers
-      .filter(c => c != null && c.userId)
-      .map(c => c.userId);
-    
-    if (userIds.length > 0) {
-      console.log(`🗑️ Deleting ${userIds.length} associated Supabase Auth users and KV users...`);
-      const authAndKVDeletePromises = userIds.map(async (userId) => {
-        try {
-          // 🔥 STEP 1: Delete from Supabase Auth
-          const { error: authDeleteError } = await supabase.auth.admin.deleteUser(userId);
-          if (authDeleteError) {
-            console.error(`❌ Failed to delete auth user ${userId}:`, authDeleteError);
-          } else {
-            console.log(`✅ Supabase Auth user deleted: ${userId}`);
-          }
-          
-          // 🔥 STEP 2: Delete from KV store
-          // Get email from userId lookup
-          const userLookup = await withTimeout(kv.get(`userId:${userId}`), 5000);
-          if (userLookup && userLookup.email) {
-            // Delete user by email (main record)
-            await withTimeout(kv.del(`user:${userLookup.email}`), 5000);
-          }
-          // Delete userId lookup
-          await withTimeout(kv.del(`userId:${userId}`), 5000);
-        } catch (err) {
-          console.warn(`⚠️ Could not delete user ${userId}:`, err);
-        }
-      });
-      await Promise.all(authAndKVDeletePromises);
-      console.log(`✅ Associated auth users and KV users deleted`);
+
+    for (const key of storageKeys) {
+      await withTimeout(kv.del(`customer:${key}`), 5000);
     }
-    
-    // Delete all customers
-    const deletePromises = customerIds.map(id => 
-      withTimeout(kv.del(`customer:${id}`), 5000)
-    );
-    
-    await Promise.all(deletePromises);
+    for (const idParam of customerIds) {
+      await withTimeout(kv.del(`customer:${idParam}`), 5000).catch(() => undefined);
+    }
 
     await deleteOwnedStorageRefs(supabase, bulkImageRefs);
-    
+
     console.log(`✅ Bulk deleted ${customerIds.length} customers`);
-    
+
     return c.json({
       success: true,
       deleted: customerIds.length,

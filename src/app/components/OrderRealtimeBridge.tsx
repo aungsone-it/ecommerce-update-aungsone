@@ -172,6 +172,20 @@ export function OrderRealtimeBridge() {
           if (key.startsWith("order:")) return schedule("orders");
           if (key.startsWith("product:")) return schedule("products");
           if (key.startsWith("category:")) return schedule("categories");
+          if (key.startsWith("vendor:audience:")) {
+            const audienceVendorId = key.slice("vendor:audience:".length).trim();
+            if (typeof window !== "undefined" && audienceVendorId) {
+              window.dispatchEvent(
+                new CustomEvent("vendorAudienceUpdated", {
+                  detail: {
+                    event: "audience",
+                    vendorIds: [audienceVendorId],
+                  },
+                })
+              );
+            }
+            return schedule("customers");
+          }
           if (
             key.startsWith("customer:") ||
             key.startsWith("user:") ||
