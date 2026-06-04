@@ -194,12 +194,6 @@ export function CustomersEnhanced({
   const customerContactSubtitle = (customer: Customer) =>
     customer.phone?.trim() || customer.email?.trim() || "";
 
-  const isGhostCustomer = (c: Customer) =>
-    !c.name?.trim() || (!c.email?.trim() && !c.phone?.trim());
-
-  const isPersistedCustomerRecord = (id: string) =>
-    !id.startsWith("email:") && !id.startsWith("phone:");
-
   const fetchCustomers = useCallback(
     async (forceRefresh = false, opts?: { silent?: boolean }) => {
       let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
@@ -223,10 +217,6 @@ export function CustomersEnhanced({
         setCustomersTotal(data.total);
         setCustomersHasMore(!!data.hasMore);
         setServerListStats(data.stats);
-        const ghostCustomers = validCustomers.filter((c) => isGhostCustomer(c));
-        if (ghostCustomers.length > 0) {
-          console.warn(`👻 Found ${ghostCustomers.length} ghost customers with missing data`);
-        }
       } catch (error: any) {
         const isWarmupError = error instanceof TypeError && error.message === "Failed to fetch";
         if (!isWarmupError) {
@@ -788,50 +778,6 @@ export function CustomersEnhanced({
     }
   };
 
-  // 🐛 CLEAN UP GHOST CUSTOMERS (customers with missing name/email)
-  const handleCleanupGhostCustomers = async () => {
-    try {
-      const ghostCustomers = customersList.filter(
-        (c) => isGhostCustomer(c) && isPersistedCustomerRecord(c.id)
-      );
-
-      if (ghostCustomers.length === 0) {
-        showAlert("No Ghost Customers Found", "All customers have valid data", "info");
-        return;
-      }
-
-      const ghostIds = ghostCustomers.map((c) => c.id);
-      const previous = customersList;
-      const previousTotal = customersTotal;
-      const previousStats = serverListStats;
-
-      skipCustomersRealtimeReloadRef.current = true;
-      setCustomersList((prev) => prev.filter((c) => !ghostIds.includes(c.id)));
-      setCustomersTotal((prev) => Math.max(0, prev - ghostIds.length));
-
-      const results = await Promise.allSettled(ghostIds.map((id) => deleteCustomerOnServer(id)));
-      const failedIds = ghostIds.filter((_, index) => results[index].status === "rejected");
-
-      if (failedIds.length > 0) {
-        skipCustomersRealtimeReloadRef.current = false;
-        setCustomersList(previous);
-        setCustomersTotal(previousTotal);
-        setServerListStats(previousStats);
-        throw new Error(`Failed to remove ${failedIds.length} ghost customer(s)`);
-      }
-
-      removeAdminCustomersFromCaches(ghostIds, ghostCustomers);
-      toast.success(`${ghostIds.length} invalid customer record(s) removed`);
-    } catch (error: any) {
-      console.error("❌ Error cleaning up ghost customers:", error);
-      showAlert(
-        "Failed to Clean Up Ghost Customers",
-        error.message || "An unexpected error occurred",
-        "error"
-      );
-    }
-  };
-
   // Show customer profile if viewing
   if (viewingCustomer) {
     return (
@@ -878,21 +824,6 @@ export function CustomersEnhanced({
                 <Download className="w-4 h-4" />
                 {t("customerIntel.export")}
               </Button>
-              {/* 🐛 Clean up ghost customers button */}
-              {customersList.some((c) => !c.name || !c.email) && (
-                <Button 
-                  variant="outline"
-                  onClick={() => {
-                    if (confirm(t("customerIntel.cleanupConfirm"))) {
-                      handleCleanupGhostCustomers();
-                    }
-                  }}
-                  className="gap-2 border-red-300 text-red-600 hover:bg-red-50"
-                >
-                  <AlertCircle className="w-4 h-4" />
-                  {t("customerIntel.cleanGhostData")}
-                </Button>
-              )}
             </div>
           </div>
 
@@ -1126,17 +1057,6 @@ export function CustomersEnhanced({
                             <p className="text-xs text-slate-500 mt-0.5">
                               {customerContactSubtitle(customer) || "(No contact)"}
                             </p>
-                            {isGhostCustomer(customer) && (
-                              <button
-                                onClick={() => {
-                                  console.log("👻 Ghost Customer Data:", customer);
-                                  alert(`Ghost Customer ID: ${customer.id}\n\nThis customer has missing data. Click OK to see details in console.`);
-                                }}
-                                className="text-xs text-red-500 hover:underline mt-1"
-                              >
-                                🐛 Debug Ghost Data
-                              </button>
-                            )}
                           </div>
                         </div>
                       </TableCell>
