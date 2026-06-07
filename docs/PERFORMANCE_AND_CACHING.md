@@ -55,10 +55,23 @@ This document summarizes active performance and cache behavior that should be ma
 ## Engineering guardrails
 
 When changing data-fetching behavior:
-1. Avoid introducing aggressive polling loops.
+1. Avoid introducing aggressive polling loops (checkout KPay poll is a known exception — keep Realtime primary).
 2. Prefer event-driven invalidation over periodic hard refetch.
 3. Keep cache invalidation scoped to affected entities.
 4. Confirm behavior with immediate refresh and multi-tab checks.
+
+## Realtime and scale (current system)
+
+Every browser tab mounts `OrderRealtimeBridge` with a **global** subscription to all changes on `kv_store_16010b6f`. Vendor storefront tabs add another product-change listener in `VendorStoreView`.
+
+| Supabase Pro limit | Included | Impact on this app |
+|--------------------|----------|-------------------|
+| Realtime peak connections | 500 | ~500 open tabs across all users before throttling |
+| Realtime messages / month | 5M | Global KV fanout — can exceed quota well before 100k MAU |
+| Edge Function invocations | 2M/mo | Client cache reduces repeat catalog fetches |
+| Auth MAU | 100k | Guest browsers **do not** count; only signed-in accounts |
+
+Before high-traffic events, read [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) §9. Planned improvements (narrow Realtime for guests, CDN public reads) are documented there — not yet implemented.
 
 ## Verification checklist
 

@@ -2,13 +2,17 @@
 
 This is the canonical payment reference for this repo.
 
-## Active payment flows
+## Active payment flows (production)
 
-- KBZPay QR checkout flow (vendor storefront checkout)
-- KBZPay mobile browser (PWA) flow
+- **KBZPay QR** checkout on vendor storefront (`Checkout.tsx`)
+- **KBZPay PWA** (mobile browser / app return)
 - KBZPay return-page handling (`/kpay/return`)
-- **Unified post-payment summary** on platform apex: `https://walwal.online/summary` (PWA app return)
-- KBZPay webhook processing and status syncing
+- **Unified post-payment summary** on platform apex: `https://walwal.online/summary`
+- KBZPay webhook (`kpay-webhook` Edge Function) + Realtime on `kpay_txn:{merchantOrderId}`
+
+## Not active in vendor checkout
+
+- **Stripe** — `stripe_routes.tsx`, `StripePayment.tsx`, and admin `PaymentSettings.tsx` exist but Stripe is **not integrated** into `Checkout.tsx`. Do not enable Stripe in customer-facing docs until wired end-to-end.
 
 ## Return URL model
 

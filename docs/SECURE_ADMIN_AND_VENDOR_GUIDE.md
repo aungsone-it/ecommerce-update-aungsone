@@ -104,7 +104,9 @@ Before release windows, confirm:
 
 ## 6) Related docs
 
+- Backend / scaling: `docs/ARCHITECTURE_AND_BACKEND.md`
 - Routing/architecture: `docs/CODE_REVIEW_AND_ROUTING.md`
 - Deployment: `docs/DEPLOYMENT.md`
 - Payments: `docs/PAYMENTS.md`
 - Simplified non-technical instructions: `docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md`
+- Outdated root markdown: `docs/LEGACY_DOCS.md`

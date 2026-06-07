@@ -1,0 +1,43 @@
+# Legacy Documentation Index
+
+The following markdown files live in the **repository root** and are **historical** — written during development sprints (caching experiments, animation work, Stripe setup, verification passes). They may contradict the running app.
+
+## Source of truth (keep these updated)
+
+| Document | Purpose |
+|----------|---------|
+| [README.md](../README.md) | Platform overview, routes, quick start |
+| [docs/ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) | Backend, KV model, Realtime, scaling, Supabase binding |
+| [docs/CODE_REVIEW_AND_ROUTING.md](./CODE_REVIEW_AND_ROUTING.md) | Routes, hosts, component map |
+| [docs/DEPLOYMENT.md](./DEPLOYMENT.md) | Deploy checklist |
+| [docs/PAYMENTS.md](./PAYMENTS.md) | KBZPay (production payment path) |
+| [docs/PERFORMANCE_AND_CACHING.md](./PERFORMANCE_AND_CACHING.md) | LCP, caching |
+| [docs/SECURE_ADMIN_AND_VENDOR_GUIDE.md](./SECURE_ADMIN_AND_VENDOR_GUIDE.md) | Operator workflows |
+| [docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md](./SECURE_SIMPLE_UI_INSTRUCTIONS.md) | Non-technical guide |
+| [.env.example](../.env.example) | Environment variable reference |
+
+## Outdated root files (do not trust without verifying code)
+
+These files are kept for history but **should not** be used for deployment or architecture decisions:
+
+| File | Why outdated |
+|------|----------------|
+| `ANIMATION_*.md`, `ANIMATIONS_README.md` | Animation sprint notes; see `docs/UI_ANIMATIONS.md` |
+| `CACHE_*.md`, `CACHING_*.md`, `HOW_TO_SEE_CACHE_SAVINGS.md` | Cache debug sprints; see `docs/PERFORMANCE_AND_CACHING.md` |
+| `DEPLOYMENT_CHECKLIST.md`, `DEPLOYMENT_READY_SUMMARY.md` | Pre-vendor-first routing era; see `docs/DEPLOYMENT.md` |
+| `FINAL_VERIFICATION.md`, `VERIFICATION_*.md`, `TESTING_CHECKLIST.md` | Point-in-time QA snapshots |
+| `PAYMENT_FLOW_EXPLAINED.md`, `PAYMENT_QUICK_REFERENCE.md`, `README_PAYMENT_INTEGRATION.md` | Superseded by `docs/PAYMENTS.md` |
+| `QUICK_START_STRIPE.md`, `STRIPE_SETUP_GUIDE.md`, `STRIPE_INTEGRATION_EXAMPLE.tsx` | Stripe not wired to vendor `Checkout.tsx` |
+| `README_CACHE_PROOF.md`, `REQUEST_ANALYZER_GUIDE.md`, `COST_IMPACT_GUIDE.md` | Internal tooling notes |
+| `SUPER_ADMIN_ISSUES_REPORT.md`, `VENDOR_STATUS_TESTING_CHECKLIST.md` | Issue snapshots |
+| `LOADING_STATE_FIX.md`, `OPTIMIZATION_COMPLETE.md` | Fixed and merged; not maintained |
+
+## Legacy code (not routed / not production path)
+
+| Path | Status |
+|------|--------|
+| `src/app/components/Storefront.tsx` | Former marketplace UI — **not mounted** in `routes.tsx` |
+| `src/app/pages/StorefrontPage.tsx` | Legacy wrapper — not used by router |
+| `src/app/components/StripePayment.tsx` | Exists; **not used** in vendor checkout |
+
+When in doubt, verify against `src/app/routes.tsx` and `docs/ARCHITECTURE_AND_BACKEND.md`.

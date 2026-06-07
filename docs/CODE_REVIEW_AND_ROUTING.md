@@ -6,7 +6,9 @@ This file is the evergreen technical reference for the **current** app structure
 
 - React + TypeScript + Vite frontend
 - React Router route trees for public / admin / vendor paths
-- Supabase Auth + Edge Functions + Storage + database tables
+- Supabase Auth + Edge Functions + Storage
+- **Primary datastore:** Postgres KV table `kv_store_16010b6f` (key + JSONB value) — see [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md)
+- Supabase project binding: `utils/supabase/info.tsx` (`projectId`, `publicAnonKey`)
 - Shared API client in `src/utils/api-client.ts`
 
 ## 2) Runtime layout
@@ -108,19 +110,29 @@ Guarded by `VendorHostOrMarketplaceRoutes.tsx` — routes return **404** on the 
 
 ## 8) Data/API model
 
-- Frontend calls Supabase Edge endpoints through the shared API client.
+- Frontend calls Supabase Edge endpoints through the shared API client (`api-client.ts` → `utils/supabase/info.tsx`).
 - Primary server function namespace: `make-server-16010b6f`.
 - Payment webhook: `kpay-webhook`.
-- Public vendor catalog: `GET .../vendor/products/:vendorId?page=&pageSize=&category=&q=`.
+- Public vendor catalog: `GET .../vendor/products/:vendorId?page=&pageSize=&category=&q=` (SQL RPC when migrations applied).
+- Most entities live in KV keys (`product:`, `order:`, `customer:`, etc.); admin list endpoints often use prefix scans.
 
-## 9) Reliability / performance behaviors
+## 9) Realtime (summary)
+
+- Global bridge: `OrderRealtimeBridge` → `sec-kv-global-realtime-v1` on entire `kv_store_16010b6f` table.
+- Vendor storefront: `VendorStoreView` also subscribes to KV product changes per tab.
+- Checkout: filtered `kpay-txn-{orderId}` channel + polling fallback.
+- Pulse tables: `app_order_pulse`, `app_vendor_application_pulse` for debounced admin refresh.
+
+Details and scale limits: [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) §6–§9.
+
+## 10) Reliability / performance behaviors
 
 - Request caching and coalescing in client data helpers (`module-cache.ts`).
 - Cart/wishlist immediate persistence + server sync.
 - Throttled badge/profile refresh.
 - Typed timeout/network errors from API client.
 
-## 10) Routing pitfalls to watch
+## 11) Routing pitfalls to watch
 
 - Keep specific routes above generic dynamic segments (`:categorySlug` is last among public siblings).
 - Do not re-introduce apex `/products` or a shared marketplace cart without revisiting host guards.
@@ -128,7 +140,7 @@ Guarded by `VendorHostOrMarketplaceRoutes.tsx` — routes return **404** on the 
 - Vendor slug changes: keep redirect/normalization consistent (`LegacyStoreRedirect`, subdomain slug map).
 - KPay: vendor-host `/summary` with return query params should redirect to apex before painting vendor chrome.
 
-## 11) Maintainer checklist for route/API changes
+## 12) Maintainer checklist for route/API changes
 
 1. Update route declarations and guard wrappers together.
 2. Verify deep-link behavior with hard refresh on **vendor subdomain** and **path-based** URLs.

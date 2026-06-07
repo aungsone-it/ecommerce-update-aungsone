@@ -54,19 +54,21 @@ Current active function paths include:
 
 ## 4) Environment variables
 
-Use `.env.example` as base and set environment values per target.
+Use `.env.example` for optional `VITE_*` overrides.
 
-### Frontend envs (`VITE_*`)
+### Supabase project binding (required)
 
-Common required:
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+Most of the app reads Supabase URL and anon key from **`utils/supabase/info.tsx`**, not from `VITE_SUPABASE_URL`. When deploying to a new Supabase project, update `projectId` and `publicAnonKey` in that file (or refactor to env-based config).
 
-Common optional:
+### Frontend envs (`VITE_*`, optional)
+
 - `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN`
 - `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`
-- `VITE_ADMIN_OPERATION_SECRET`
-- payment-specific publishable keys if enabled
+- `VITE_ADMIN_OPERATION_SECRET` (must match server secret for destructive admin routes)
+- `VITE_SUPABASE_THUMB_MAX` (image transform width)
+- `VITE_STRIPE_PUBLISHABLE_KEY` (Stripe UI only — not used in vendor checkout)
+
+Vercel Edge middleware uses **server** env (no `VITE_` prefix): `VENDOR_SUBDOMAIN_BASE_DOMAIN`, `VENDOR_SUBDOMAIN_SLUG_MAP` — see `middleware.ts`.
 
 ### Supabase function secrets (server side)
 
