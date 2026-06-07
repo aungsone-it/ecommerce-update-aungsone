@@ -7,6 +7,7 @@ import { Badge } from "./ui/badge";
 import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { useLanguage } from "../contexts/LanguageContext";
 import { useState, useEffect, useMemo, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 import {
   ComposedChart,
   Area,
@@ -43,6 +44,7 @@ const defaultStats = {
 
 export function Dashboard() {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   
   const [stats, setStats] = useState(defaultStats);
   const allTimeFilters: AdminDashboardFilters = {
@@ -433,7 +435,13 @@ export function Dashboard() {
             <h3 className="text-lg font-semibold text-slate-900">{t('dashboard.recentOrders')}</h3>
             <p className="text-sm text-slate-500">{t('dashboard.latestOrders')}</p>
           </div>
-          <Button variant="outline" size="sm">{t('dashboard.viewAll')}</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate("/admin/orders")}
+          >
+            {t('dashboard.viewAll')}
+          </Button>
         </div>
         {loading || stats.recentOrders.length === 0 ? (
           <div className="text-center py-8 text-slate-400">
