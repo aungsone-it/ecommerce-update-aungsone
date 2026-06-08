@@ -985,40 +985,50 @@ authApp.post("/send-email-otp", async (c) => {
               <head>
                 <meta charset="utf-8">
                 <style>
-                  body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                  .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                  .header { background: linear-gradient(135deg, #ea580c 0%, #f97316 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
-                  .content { background: #f8fafc; padding: 30px; border-radius: 0 0 10px 10px; }
-                  .otp-box { background: white; border: 2px solid #ea580c; border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0; }
-                  .otp-code { font-size: 36px; font-weight: bold; color: #ea580c; letter-spacing: 8px; margin: 10px 0; }
-                  .footer { text-align: center; margin-top: 20px; font-size: 12px; color: #64748b; }
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; line-height: 1.6; color: #0f172a; background: #f1f5f9; margin: 0; padding: 24px; }
+                  .container { max-width: 600px; margin: 0 auto; }
+                  .card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 40px rgba(15, 23, 42, 0.08); }
+                  .header { background: linear-gradient(135deg, #1a1d29 0%, #0f172a 55%, #1e3a8a 100%); color: #ffffff; padding: 28px 30px; text-align: center; }
+                  .header h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: 0.02em; }
+                  .content { padding: 32px 30px; color: #334155; }
+                  .content p { margin: 0 0 16px; }
+                  .otp-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px 20px; text-align: center; margin: 24px 0; }
+                  .otp-label { margin: 0; color: #64748b; font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+                  .otp-code { font-size: 36px; font-weight: 700; color: #0f172a; letter-spacing: 8px; margin: 12px 0; font-variant-numeric: tabular-nums; }
+                  .otp-expiry { margin: 0; color: #64748b; font-size: 13px; }
+                  .content ul { margin: 0 0 16px; padding-left: 20px; color: #475569; }
+                  .content li { margin-bottom: 6px; }
+                  .footer { text-align: center; margin-top: 28px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #64748b; }
+                  .footer p { margin: 0 0 6px; }
                 </style>
               </head>
               <body>
                 <div class="container">
-                  <div class="header">
-                    <h1 style="margin: 0; font-size: 28px;">🔐 Password Reset</h1>
-                  </div>
-                  <div class="content">
-                    <p>Hello,</p>
-                    <p>You requested to reset your password for your Migoo account. Use the verification code below:</p>
-                    
-                    <div class="otp-box">
-                      <p style="margin: 0; color: #64748b; font-size: 14px;">Your verification code</p>
-                      <div class="otp-code">${otp}</div>
-                      <p style="margin: 0; color: #64748b; font-size: 14px;">Valid for 10 minutes</p>
+                  <div class="card">
+                    <div class="header">
+                      <h1>Password Reset</h1>
                     </div>
-                    
-                    <p><strong>Important:</strong></p>
-                    <ul>
-                      <li>This code expires in <strong>10 minutes</strong></li>
-                      <li>Do not share this code with anyone</li>
-                      <li>If you didn't request this, please ignore this email</li>
-                    </ul>
-                    
-                    <div class="footer">
-                      <p>© 2026 Migoo Marketplace - Myanmar's Premier E-Commerce Platform</p>
-                      <p>This is an automated email, please do not reply.</p>
+                    <div class="content">
+                      <p>Hello,</p>
+                      <p>You requested to reset your password for your Migoo account. Use the verification code below:</p>
+                      
+                      <div class="otp-box">
+                        <p class="otp-label">Your verification code</p>
+                        <div class="otp-code">${otp}</div>
+                        <p class="otp-expiry">Valid for 10 minutes</p>
+                      </div>
+                      
+                      <p><strong>Important:</strong></p>
+                      <ul>
+                        <li>This code expires in <strong>10 minutes</strong></li>
+                        <li>Do not share this code with anyone</li>
+                        <li>If you didn't request this, please ignore this email</li>
+                      </ul>
+                      
+                      <div class="footer">
+                        <p>© 2026 Migoo Marketplace — Myanmar's Premier E-Commerce Platform</p>
+                        <p>This is an automated email, please do not reply.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
