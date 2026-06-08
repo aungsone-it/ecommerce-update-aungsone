@@ -229,6 +229,46 @@ function dedupeAuthProfilesByEmail(profiles: any[]): any[] {
   return out;
 }
 
+/** All Supabase Auth user ids (source of truth for who can log in / reset password). */
+async function listSupabaseAuthUserIds(): Promise<Set<string>> {
+  const ids = new Set<string>();
+  let page = 1;
+  const perPage = 200;
+  while (true) {
+    const { data, error } = await withTimeout(
+      supabaseAdmin.auth.admin.listUsers({ page, perPage }),
+      30000
+    );
+    if (error) throw error;
+    for (const u of data.users) {
+      if (u.id) ids.add(u.id);
+    }
+    if (data.users.length < perPage) break;
+    page += 1;
+  }
+  return ids;
+}
+
+/** Drop KV staff rows whose id no longer exists in Supabase Auth. */
+async function pruneOrphanedStaffProfiles(validAuthIds: Set<string>): Promise<number> {
+  const raw = await kv.get("auth:users-list");
+  const userIds = Array.isArray(raw) ? raw.map((id) => String(id)) : [];
+  if (userIds.length === 0) return 0;
+
+  const orphans = userIds.filter((id) => !validAuthIds.has(id));
+  if (orphans.length === 0) return 0;
+
+  const nextList = userIds.filter((id) => validAuthIds.has(id));
+  await kv.set("auth:users-list", nextList);
+  for (const id of orphans) {
+    await kv.del(`auth:user:${id}`).catch(() => undefined);
+  }
+  console.warn(
+    `🧹 Pruned ${orphans.length} orphaned staff profile(s) from KV (missing in Supabase Auth): ${orphans.join(", ")}`
+  );
+  return orphans.length;
+}
+
 // Generate random password
 function generatePassword(): string {
   const length = 12;
@@ -565,11 +605,17 @@ authApp.post("/create-user", async (c) => {
 // ============================================
 authApp.get("/users", async (c) => {
   try {
+    const validAuthIds = await listSupabaseAuthUserIds();
+    await pruneOrphanedStaffProfiles(validAuthIds);
+
     const userIds = (await withTimeout(kv.get("auth:users-list"), 30000)) || [];
     const users = [];
 
     for (const userId of userIds) {
-      const profile = await withTimeout(kv.get(`auth:user:${userId}`), 30000);
+      const id = String(userId);
+      if (!validAuthIds.has(id)) continue;
+
+      const profile = await withTimeout(kv.get(`auth:user:${id}`), 30000);
       if (profile && typeof profile === "object") {
         const safe = { ...(profile as Record<string, unknown>) };
         delete (safe as { tempPassword?: unknown }).tempPassword;

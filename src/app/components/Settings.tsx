@@ -588,7 +588,8 @@ export function Settings() {
 
   useEffect(() => {
     if (activeTab === "users" && isOwnerRole(user?.role)) {
-      loadUsers(false);
+      invalidateAdminAuthUsersCache();
+      loadUsers(true);
     }
   }, [activeTab, user?.role, loadUsers]);
 
