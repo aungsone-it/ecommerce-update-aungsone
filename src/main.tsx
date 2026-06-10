@@ -11,8 +11,15 @@ import {
   fetchVendorSlugByCustomDomain,
   shouldResolveCustomDomainHost,
 } from "./app/utils/vendorHostResolution";
-import { maybeRedirectKpayReturnToUnifiedSummary } from "./app/utils/kpayUnifiedSummaryRedirect";
+import {
+  clearKpayRedirectShell,
+  maybeRedirectKpayReturnToUnifiedSummary,
+} from "./app/utils/kpayUnifiedSummaryRedirect";
 import { KPAY_PWA_PENDING_STORAGE_KEY } from "./app/utils/kpayClient";
+import {
+  isUnifiedKpayReturnHost,
+  UNIFIED_KPAY_SUMMARY_PATH,
+} from "./app/utils/vendorCheckoutPaths";
 
 function isKpayReturnTraffic(): boolean {
   if (typeof window === "undefined") return false;
@@ -34,8 +41,20 @@ function isKpayReturnTraffic(): boolean {
 }
 
 // Cache bust: 20260307181500
+function isUnifiedSummaryRoute(): boolean {
+  if (typeof window === "undefined") return false;
+  const path = (window.location.pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
+  return path === UNIFIED_KPAY_SUMMARY_PATH && isUnifiedKpayReturnHost();
+}
+
+if (typeof window !== "undefined" && isUnifiedSummaryRoute()) {
+  clearKpayRedirectShell();
+}
+
 const kpayUnifiedSummaryRedirecting =
-  typeof window !== "undefined" && maybeRedirectKpayReturnToUnifiedSummary();
+  typeof window !== "undefined" &&
+  !isUnifiedSummaryRoute() &&
+  maybeRedirectKpayReturnToUnifiedSummary();
 
 if (typeof window !== "undefined" && !kpayUnifiedSummaryRedirecting) {
   const host = window.location.hostname;

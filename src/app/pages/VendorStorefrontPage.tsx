@@ -22,7 +22,10 @@ import {
   resolveKpayReturnStoreSlug,
   resolveStoreSlugFromPwaCheckoutDraft,
 } from "../utils/vendorCheckoutPaths";
-import { maybeRedirectKpayReturnToUnifiedSummary } from "../utils/kpayUnifiedSummaryRedirect";
+import {
+  clearKpayRedirectShell,
+  maybeRedirectKpayReturnToUnifiedSummary,
+} from "../utils/kpayUnifiedSummaryRedirect";
 import { fetchPwaCheckoutDraft } from "../utils/kpayClient";
 import {
   buildVendorStorefrontDocumentTitle,
@@ -226,6 +229,9 @@ export function VendorStorefrontPage() {
   const location = useLocation();
 
   useLayoutEffect(() => {
+    if (isUnifiedKpaySummaryPath(location.pathname)) {
+      clearKpayRedirectShell();
+    }
     maybeRedirectKpayReturnToUnifiedSummary();
   }, [location.pathname, location.search]);
 

@@ -17,6 +17,16 @@ function markKpayRedirectShell(): void {
   }
 }
 
+/** Remove anti-flash shell so unified `/summary` is never stuck invisible. */
+export function clearKpayRedirectShell(): void {
+  if (typeof document === "undefined") return;
+  try {
+    document.documentElement.classList.remove("kpay-unified-redirect");
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Merge pending PWA ids into the URL bar without navigation (no flash). */
 function enrichUnifiedSummarySearchInPlace(): void {
   if (!isUnifiedKpayReturnHost()) return;
@@ -53,6 +63,7 @@ export function maybeRedirectKpayReturnToUnifiedSummary(): boolean {
 
   const path = normalizePathname(window.location.pathname);
   if (path === UNIFIED_KPAY_SUMMARY_PATH && isUnifiedKpayReturnHost()) {
+    clearKpayRedirectShell();
     return false;
   }
 

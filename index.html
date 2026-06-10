@@ -12,9 +12,17 @@
             host === "localhost" || host === "127.0.0.1" || host === "[::1]";
           var previewApex = /\.(vercel\.app|netlify\.app|railway\.app)$/.test(host);
           var parts = host.split(".").filter(Boolean);
+          var bareHostEarly = host.replace(/^www\./, "");
+          var barePartsEarly = bareHostEarly.split(".").filter(Boolean);
+          var isBareApexEarly =
+            !previewApex &&
+            !isPlainLocal &&
+            barePartsEarly.length === 2 &&
+            (host === bareHostEarly || host === "www." + bareHostEarly);
           var isVendorSubdomain =
             !isPlainLocal &&
             !previewApex &&
+            !isBareApexEarly &&
             parts.length >= 3 &&
             parts[parts.length - 1] !== "localhost";
           var hasKpayQuery =
@@ -49,8 +57,6 @@
       html.kpay-unified-redirect,
       html.kpay-unified-redirect body {
         background: #fff;
-        overflow: hidden;
-        visibility: hidden;
       }
     </style>
     <script>
@@ -80,6 +86,12 @@
           try {
             pendingKpay = Boolean(localStorage.getItem("kpay_pwa_pending_order"));
           } catch (e) {}
+
+          if (isUnifiedApex && (path === "/summary" || path === "/kpay/return")) {
+            try {
+              document.documentElement.classList.remove("kpay-unified-redirect");
+            } catch (e) {}
+          }
 
           if (isUnifiedApex && path === "/kpay/return") {
             if (!hasKpayQuery && pendingKpay) {

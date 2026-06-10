@@ -428,8 +428,8 @@ function normalizeCheckoutPaymentMethod(raw: unknown): "Card" | "KPay" | "KPay-P
 
 async function waitForKPayPaidSession(
   merchantOrderId: string,
-  maxAttempts = 20,
-  intervalMs = 2000
+  maxAttempts = 12,
+  intervalMs = 1500
 ): Promise<KPaySession | null> {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -1109,11 +1109,19 @@ export function Checkout({
         }
 
         if (orderId && !pendingCtx?.draftOrder) {
-          const serverDraft = await fetchPwaCheckoutDraft({
-            projectId,
-            publicAnonKey,
-            merchantOrderId: orderId,
-          });
+          let serverDraft: Awaited<ReturnType<typeof fetchPwaCheckoutDraft>> = null;
+          try {
+            serverDraft = await Promise.race([
+              fetchPwaCheckoutDraft({
+                projectId,
+                publicAnonKey,
+                merchantOrderId: orderId,
+              }),
+              new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 12000)),
+            ]);
+          } catch {
+            serverDraft = null;
+          }
           if (serverDraft?.draftOrder) {
             pendingCtx = {
               merchantOrderId: orderId,
@@ -1186,6 +1194,10 @@ export function Checkout({
               session = null;
             }
             if (session?.status === "pending") {
+              // Show draft receipt while payment status catches up in the background.
+              if (pendingCtx?.draftOrder && !cancelled) {
+                applyDraftPreview(orderId, pendingCtx.draftOrder);
+              }
               session = await waitForKPayPaidSession(orderId);
             }
             if (session?.status === "paid") {
