@@ -1,4 +1,10 @@
 import { resolveVendorPathSlug } from "./vendorStorePaths";
+import {
+  isLocalDevHostname,
+  isMarketplaceApexHost,
+  resolvePrimaryPlatformApexHost,
+  resolveVendorSubdomainApexFromHost,
+} from "./platformApexHost";
 
 export type KPaySession = {
   merchantOrderId: string;
@@ -507,21 +513,22 @@ export function buildKPaySummaryReturnUrl(params: {
 }
 
 function unifiedKpayReturnOrigin(): string {
-  if (typeof window === "undefined") return "https://walwal.online";
+  if (typeof window === "undefined") {
+    const apex = resolvePrimaryPlatformApexHost();
+    return apex ? `https://${apex}` : "https://localhost";
+  }
   const host = window.location.hostname.toLowerCase();
-  const isLocal =
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "[::1]" ||
-    host.endsWith(".localhost");
-  if (host === "walwal.online" || host === "www.walwal.online") {
+  if (isMarketplaceApexHost(host)) {
     return window.location.origin;
   }
-  if (isLocal) {
+  if (isLocalDevHostname(host)) {
     const port = window.location.port ? `:${window.location.port}` : "";
     return `${window.location.protocol}//localhost${port}`;
   }
-  return "https://walwal.online";
+  const apex =
+    resolvePrimaryPlatformApexHost(host) ||
+    resolveVendorSubdomainApexFromHost(host);
+  return apex ? `https://${apex.replace(/^www\./, "")}` : window.location.origin;
 }
 
 /** Full URL for summary after PWA pay — always unified return host (`walwal.online/summary`). */

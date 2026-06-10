@@ -6,36 +6,39 @@ import { useState, useEffect } from "react";
 import { resolveVendorSubdomainStoreSlug } from "./vendorSubdomainHooks";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
+import {
+  isBarePlatformApexHost,
+  isPlatformPreviewHostname,
+  isReservedPlatformApexHost,
+  isLocalDevHostname,
+  normalizeHostname,
+  resolveVendorSubdomainApexFromHost,
+} from "./platformApexHost";
 
 const CACHE_PREFIX = "migoo-vendor-slug:";
 const inflightByDomainRequests = new Map<string, Promise<string | null>>();
 
 function normalizeHostForLookup(host: string): string {
-  return host.split(":")[0].toLowerCase();
+  return normalizeHostname(host);
 }
 
-/** True when we should call by-domain API (not marketplace apex, not platform subdomain, not preview). */
+/** True when we should call by-domain API (claimable apex + verified custom domains). */
 export function shouldResolveCustomDomainHost(host: string): boolean {
   const h = normalizeHostForLookup(host);
-  if (!h || h === "localhost" || h.startsWith("127.")) return false;
-  if (h.endsWith(".vercel.app") || h.endsWith(".netlify.app") || h.endsWith(".railway.app")) {
-    return false;
-  }
+  if (!h || isLocalDevHostname(h) || isPlatformPreviewHostname(h)) return false;
 
-  // Important: only use explicit env-configured platform apex for exclusion.
-  // Using runtime-derived apex here can misclassify a true custom domain
-  // (e.g. "migoo.store") as the platform host and skip by-domain resolution.
-  const envBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
-    .trim()
-    .toLowerCase();
-  const base = envBase;
-  if (base) {
-    if (h === base || h === `www.${base}`) return false;
-    if (h.endsWith(`.${base}`)) {
-      const label = h.slice(0, -(base.length + 1));
-      if (label && !label.includes(".")) return false;
+  // Reserved primary apex is always marketplace — never a vendor custom domain.
+  if (isReservedPlatformApexHost(h)) return false;
+
+  const apex = resolveVendorSubdomainApexFromHost(h);
+  if (apex && h !== apex && h !== `www.${apex}` && h.endsWith(`.${apex}`)) {
+    const label = h.slice(0, -(apex.length + 1));
+    // Single-label subdomains on a platform apex use subdomain slug routing.
+    if (label && !label.includes(".") && (isReservedPlatformApexHost(apex) || isBarePlatformApexHost(apex))) {
+      return false;
     }
   }
+
   return true;
 }
 

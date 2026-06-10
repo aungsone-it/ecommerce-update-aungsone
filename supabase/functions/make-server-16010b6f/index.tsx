@@ -10196,6 +10196,34 @@ function normalizeVendorHostnameInput(input: string): string | null {
   return s;
 }
 
+function stripWwwHostname(host: string): string {
+  const h = host.trim().toLowerCase();
+  return h.startsWith("www.") ? h.slice(4) : h;
+}
+
+/** Primary/reserved marketplace apex domains — cannot be vendor custom domains. */
+function getReservedPlatformApexDomains(): Set<string> {
+  const reserved = new Set<string>();
+  for (const part of String(Deno.env.get("PLATFORM_RESERVED_APEX_DOMAINS") || "")
+    .split(",")
+    .map((s) => stripWwwHostname(s.trim()))
+    .filter(Boolean)) {
+    reserved.add(part);
+  }
+  const primary = stripWwwHostname(
+    String(Deno.env.get("VENDOR_SUBDOMAIN_BASE_DOMAIN") || "").trim()
+  );
+  if (primary) reserved.add(primary);
+  return reserved;
+}
+
+function isReservedPlatformApexHostname(hostname: string): boolean {
+  const normalized = normalizeVendorHostnameInput(hostname);
+  if (!normalized) return false;
+  const bare = stripWwwHostname(normalized);
+  return getReservedPlatformApexDomains().has(bare);
+}
+
 function customDomainCnameTarget(): string {
   const t = String(Deno.env.get("CUSTOM_DOMAIN_CNAME_TARGET") || "").trim();
   return t || "cname.vercel-dns.com";
@@ -10391,7 +10419,10 @@ app.post("/make-server-16010b6f/vendor/custom-domain/prepare", async (c) => {
     if (!vendorId || !normalized) {
       return c.json({ error: "vendorId and a valid hostname are required" }, 400);
     }
-    if (/(^|\.)walwal\.online$/i.test(normalized) || normalized.endsWith(".vercel.app")) {
+    if (
+      isReservedPlatformApexHostname(normalized) ||
+      normalized.endsWith(".vercel.app")
+    ) {
       return c.json({ error: "This hostname cannot be used as a custom domain" }, 400);
     }
     if (await findOtherVendorWithHostname(normalized, vendorId)) {

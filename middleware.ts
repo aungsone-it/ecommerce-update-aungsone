@@ -104,6 +104,29 @@ function shouldEdgeRedirectVendorKpayToUnifiedSummary(path: string, search: stri
   return path === "/summary" || path === "/kpay/return" || path === "/";
 }
 
+function isBarePlatformApexHost(host: string): boolean {
+  const h = normalizeHost(host);
+  if (h === "localhost" || h.startsWith("127.0.0.1")) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false;
+  const bare = h.startsWith("www.") ? h.slice(4) : h;
+  const parts = bare.split(".").filter(Boolean);
+  if (parts.length !== 2) return false;
+  if (MULTI_TENANT_PLATFORM_APEX.has(bare)) return false;
+  if (h.endsWith(".vercel.app") || h.endsWith(".netlify.app") || h.endsWith(".railway.app")) {
+    return false;
+  }
+  return h === bare || h === `www.${bare}`;
+}
+
+function isStorefrontPathBlockedOnMarketplaceApex(pathname: string): boolean {
+  const path = (pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
+  if (path === "/checkout" || path === "/order-confirmation" || path === "/saved") return true;
+  if (path.startsWith("/product/")) return true;
+  if (path === "/profile" || path.startsWith("/profile/")) return true;
+  if (path.startsWith("/checkout/")) return true;
+  return false;
+}
+
 export default function middleware(request: Request): Response {
   const host = normalizeHost(request.headers.get("host") || "");
 
@@ -116,6 +139,18 @@ export default function middleware(request: Request): Response {
     const derived = deriveNaiveVendorApexFromHost(host);
     if (derived) baseDomain = derived;
   }
+  if (!baseDomain && isBarePlatformApexHost(host)) {
+    baseDomain = host.startsWith("www.") ? host.slice(4) : host;
+  }
+
+  const requestUrl = new URL(request.url);
+  const path = requestUrl.pathname.replace(/\/+$/, "") || "/";
+  const search = requestUrl.search || "";
+
+  if (isBarePlatformApexHost(host) && isStorefrontPathBlockedOnMarketplaceApex(path)) {
+    return Response.redirect(new URL(`https://${host}/`), 301);
+  }
+
   if (!baseDomain) {
     return next();
   }
@@ -135,9 +170,6 @@ export default function middleware(request: Request): Response {
     return next();
   }
 
-  const requestUrl = new URL(request.url);
-  const path = (requestUrl.pathname.replace(/\/+$/, "") || "/");
-  const search = requestUrl.search || "";
   if (shouldEdgeRedirectVendorKpayToUnifiedSummary(path, search)) {
     const unified = new URL(`https://${baseDomain}/summary${search}`);
     return Response.redirect(unified.toString(), 302);

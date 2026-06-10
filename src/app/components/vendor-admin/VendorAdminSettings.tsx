@@ -35,6 +35,7 @@ import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
 import { isRenderableImageSrc, pickStoreLogo } from "../../utils/renderableImageSrc";
 import { supabase } from "../../contexts/AuthContext";
 import { getEffectiveVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
+import { resolvePrimaryPlatformApexHost } from "../../utils/platformApexHost";
 import { useLanguage } from "../../contexts/LanguageContext";
 
 interface StoreSettings {
@@ -123,7 +124,7 @@ export function VendorAdminSettings({
     txtValue: string;
     cnameTarget: string;
   } | null>(null);
-  const subdomainBase = getEffectiveVendorSubdomainBase() || "walwal.online";
+  const subdomainBase = getEffectiveVendorSubdomainBase() || resolvePrimaryPlatformApexHost();
 
   useEffect(() => {
     loadSettings();

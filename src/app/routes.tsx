@@ -37,20 +37,7 @@ import {
   VendorHostCategoryRoute,
 } from "./components/VendorHostOrMarketplaceRoutes";
 import { LegacyStoreRedirect } from "./components/LegacyStoreRedirect";
-
-const MARKETPLACE_APEX = "walwal.online";
-
-/** Marketplace apex (`walwal.online/`) must always render branding landing. */
-function isMarketplaceRootHost(): boolean {
-  if (typeof window === "undefined") return false;
-  const host = window.location.hostname.split(":")[0].toLowerCase();
-  const envBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
-    .trim()
-    .toLowerCase();
-  if (host === MARKETPLACE_APEX || host === `www.${MARKETPLACE_APEX}`) return true;
-  if (envBase && (host === envBase || host === `www.${envBase}`)) return true;
-  return false;
-}
+import { isBarePlatformApexHost, isMarketplaceApexHost } from "./utils/platformApexHost";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
@@ -103,19 +90,35 @@ const KPayReturnPage = lazy(() =>
 import { StorefrontPolicyPage } from "./pages/StorefrontPolicyPage";
 
 function VendorSubdomainIndexOrLanding() {
-  if (isMarketplaceRootHost()) {
-    return <LandingPage />;
-  }
   const onVendorSubdomainHost = isOnVendorSubdomainHost();
   const sub = resolveVendorSubdomainStoreSlug();
-  const { slug: customSlug } = useResolvedVendorHostSlug();
-  const customDomainLikeHost =
-    typeof window !== "undefined" &&
-    shouldResolveCustomDomainHost(window.location.hostname);
-  // Mount vendor shell immediately on vendor-like hosts (custom domain shows storefront skeleton while slug resolves).
-  if (onVendorSubdomainHost || sub || customSlug || customDomainLikeHost) {
+  const { slug: customSlug, loading } = useResolvedVendorHostSlug();
+  const host = typeof window !== "undefined" ? window.location.hostname : "";
+  const bareApex = isBarePlatformApexHost(host);
+  const customLookup =
+    typeof window !== "undefined" && shouldResolveCustomDomainHost(host);
+
+  if (isMarketplaceApexHost(host) && !customLookup) {
+    return <LandingPage />;
+  }
+
+  if (onVendorSubdomainHost || sub) {
     return <VendorStorefrontPage />;
   }
+
+  if (customLookup) {
+    if (loading) {
+      return bareApex ? <LandingPage /> : <RouteLoadingFallback />;
+    }
+    if (customSlug) return <VendorStorefrontPage />;
+    if (bareApex || isMarketplaceApexHost(host)) return <LandingPage />;
+    return <LandingPage />;
+  }
+
+  if (bareApex || isMarketplaceApexHost(host)) {
+    return <LandingPage />;
+  }
+
   return <LandingPage />;
 }
 

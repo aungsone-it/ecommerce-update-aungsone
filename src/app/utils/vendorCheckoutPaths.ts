@@ -14,33 +14,23 @@ import { resolveSubdomainHostLabelForStore } from "./subdomainSlugMap";
 import { buildVendorStoreHomePath, resolveVendorPathSlug } from "./vendorStorePaths";
 import { API_BASE_URL } from "../../utils/api-client";
 import { publicAnonKey } from "../../../utils/supabase/info";
+import {
+  isBarePlatformApexHost,
+  isMarketplaceApexHost,
+  isLocalDevHostname as isLocalDevHost,
+  resolvePrimaryPlatformApexHost,
+  resolveVendorSubdomainApexFromHost,
+} from "./platformApexHost";
 
-const MARKETPLACE_APEX = "walwal.online";
+export { isMarketplaceApexHost } from "./platformApexHost";
 
-/** Marketplace apex (`walwal.online/`) — branding home and unified KPay return host. */
-export function isMarketplaceApexHost(hostname?: string): boolean {
-  const host = (hostname ?? (typeof window !== "undefined" ? window.location.hostname : ""))
-    .split(":")[0]
-    .toLowerCase();
-  const envBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
-    .trim()
-    .toLowerCase();
-  const effectiveBase = getEffectiveVendorSubdomainBase() || envBase;
-  if (host === MARKETPLACE_APEX || host === `www.${MARKETPLACE_APEX}`) return true;
-  if (effectiveBase && (host === effectiveBase || host === `www.${effectiveBase}`)) return true;
-  return false;
-}
-
-/**
- * Host for the single KBZ return URL (`walwal.online/summary`, or `localhost:5173/summary` in dev).
- * Vendor subdomains (e.g. gogo.walwal.online) use their own `/summary`.
- */
+/** Host for the single KBZ return URL (platform apex `/summary`, or localhost in dev). */
 export function isUnifiedKpayReturnHost(hostname?: string): boolean {
   const host = (hostname ?? (typeof window !== "undefined" ? window.location.hostname : ""))
     .split(":")[0]
     .toLowerCase();
   if (isMarketplaceApexHost(host)) return true;
-  if (isLocalDevHostname(host)) {
+  if (isLocalDevHost(host)) {
     return !resolveVendorSubdomainHostContext(host).isVendorSubdomainHost;
   }
   return false;
@@ -464,9 +454,12 @@ export function resolveUnifiedKpayPostPaymentSummaryPath(): string {
   return UNIFIED_KPAY_SUMMARY_PATH;
 }
 
-/** Origin for the unified KBZ post-payment summary (`https://walwal.online` in production). */
+/** Origin for the unified KBZ post-payment summary (current platform apex). */
 export function resolveUnifiedKpayReturnBaseUrl(): string {
-  if (typeof window === "undefined") return `https://${MARKETPLACE_APEX}`;
+  if (typeof window === "undefined") {
+    const apex = resolvePrimaryPlatformApexHost();
+    return apex ? `https://${apex}` : "https://localhost";
+  }
   const host = window.location.hostname.toLowerCase();
   if (isLocalDevHostname(host)) {
     if (isUnifiedKpayReturnHost(host)) return window.location.origin;
@@ -474,7 +467,12 @@ export function resolveUnifiedKpayReturnBaseUrl(): string {
     return `${window.location.protocol}//localhost${port}`;
   }
   if (isUnifiedKpayReturnHost(host)) return window.location.origin;
-  return `https://${MARKETPLACE_APEX}`;
+  const apex =
+    resolvePrimaryPlatformApexHost(host) ||
+    resolveVendorSubdomainApexFromHost(host) ||
+    getEffectiveVendorSubdomainBase();
+  if (apex) return `https://${apex.replace(/^www\./, "")}`;
+  return window.location.origin;
 }
 
 /** Summary route for the current host: `/summary` on vendor subdomain, `/vendor/:slug/summary` on localhost/apex. */

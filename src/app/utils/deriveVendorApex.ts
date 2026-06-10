@@ -7,7 +7,7 @@
  * platform apexes here — that would make every deploy URL look like a vendor subdomain and break
  * catalog (wrong store slug from the deploy name).
  */
-const MULTI_TENANT_PLATFORM_APEX = new Set([
+export const MULTI_TENANT_PLATFORM_APEX = new Set([
   "amplifyapp.com",
   "cloudflarepages.dev",
   "firebaseapp.com",

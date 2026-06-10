@@ -1,4 +1,5 @@
 import { deriveNaiveVendorApexFromHost } from "./deriveVendorApex";
+import { isBarePlatformApexHost, stripWwwHost } from "./platformApexHost";
 
 /**
  * Apex host for vendor subdomains (e.g. `gogo.example.com` → `example.com`).
@@ -24,13 +25,6 @@ export function getEffectiveVendorSubdomainBase(): string {
   const base = getVendorSubdomainBase().trim().toLowerCase();
   if (base || typeof window === "undefined") return base;
   const host = window.location.hostname.toLowerCase();
-  const labels = host.split(".").filter(Boolean);
-  if (
-    labels.length === 2 &&
-    host !== "localhost" &&
-    !/^\d{1,3}(\.\d{1,3}){3}$/.test(host)
-  ) {
-    return host;
-  }
+  if (isBarePlatformApexHost(host)) return stripWwwHost(host);
   return "";
 }

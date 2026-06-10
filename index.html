@@ -22,10 +22,19 @@
           var search = location.search || "";
           var path = (location.pathname || "/").replace(/\/+$/, "") || "/";
           var host = location.hostname.toLowerCase();
-          var isWalwal = host === "walwal.online" || host === "www.walwal.online";
           var isPlainLocal =
             host === "localhost" || host === "127.0.0.1" || host === "[::1]";
-          if ((isWalwal || isPlainLocal) && path === "/summary") return;
+          var previewApex =
+            /\.(vercel\.app|netlify\.app|railway\.app)$/.test(host);
+          var bareHost = host.replace(/^www\./, "");
+          var bareParts = bareHost.split(".").filter(Boolean);
+          var isBareApex =
+            !previewApex &&
+            !isPlainLocal &&
+            bareParts.length === 2 &&
+            (host === bareHost || host === "www." + bareHost);
+          var isUnifiedApex = isPlainLocal || isBareApex;
+          if (isUnifiedApex && path === "/summary") return;
 
           var hasKpayQuery =
             /(?:^|[?&])(?:merch_order_id|merchOrderId|prepay_id|prepayId|callback_info)=/i.test(
@@ -66,10 +75,17 @@
           }
 
           var port = location.port ? ":" + location.port : "";
-          var unifiedOrigin =
-            isWalwal || isPlainLocal
-              ? location.protocol + "//" + (isPlainLocal ? "localhost" : host) + port
-              : "https://walwal.online";
+          var unifiedOrigin;
+          if (isPlainLocal) {
+            unifiedOrigin = location.protocol + "//localhost" + port;
+          } else if (isBareApex) {
+            unifiedOrigin = location.protocol + "//" + host.split(":")[0] + port;
+          } else {
+            var parts = host.split(".").filter(Boolean);
+            var derivedApex =
+              parts.length >= 3 ? parts.slice(-2).join(".") : bareHost;
+            unifiedOrigin = "https://" + derivedApex;
+          }
           var target = unifiedOrigin + "/summary" + search;
           if (location.href.split("#")[0] === target) return;
           document.documentElement.className += " kpay-unified-redirect";
