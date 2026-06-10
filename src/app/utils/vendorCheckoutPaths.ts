@@ -529,13 +529,21 @@ export function resolveUnifiedKpayReturnBaseUrl(): string {
   return window.location.origin;
 }
 
-/** Summary route for the current host: `/summary` on vendor subdomain, `/vendor/:slug/summary` on localhost/apex. */
+/** Summary route for the current host: `/summary` on vendor subdomain/custom domain; marketplace paths on apex. */
 export function resolveVendorSummaryPath(params: {
   pathname: string;
   storeName?: string | null;
   onVendorHost?: boolean;
 }): string {
   const path = (params.pathname.split("?")[0] || "").replace(/\/$/, "") || "/";
+  const onVendorHost =
+    params.onVendorHost ?? resolveVendorSubdomainStoreSlug() != null;
+
+  // Vendor subdomain / custom domain — stay on host-root `/summary` (KBZ QR checkout).
+  if (onVendorHost) {
+    return buildCheckoutSummaryPath(path);
+  }
+
   const rawSlug =
     (params.storeName && params.storeName.trim()) ||
     extractStoreSlugFromPathname(path) ||
@@ -549,13 +557,6 @@ export function resolveVendorSummaryPath(params: {
     return path.startsWith("/vendor/") || path.startsWith("/vendor-")
       ? path
       : `/vendor/${encodeURIComponent(slug)}/summary`;
-  }
-
-  const onVendorHost =
-    params.onVendorHost ?? resolveVendorSubdomainStoreSlug() != null;
-
-  if (onVendorHost) {
-    return buildCheckoutSummaryPath(path);
   }
 
   if (slug) {

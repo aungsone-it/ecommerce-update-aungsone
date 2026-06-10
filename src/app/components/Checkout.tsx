@@ -54,6 +54,7 @@ import {
   markStorefrontReturnNavigationShell,
   navigateUnifiedSummaryContinueShopping,
   persistKpaySummaryStorefrontOrigin,
+  readKpayReturnPrepayId,
   readKpaySummaryStorefrontOrigin,
   resolveUnifiedKpayPostPaymentSummaryPath,
   resolveVendorStorefrontHomeUrl,
@@ -777,6 +778,22 @@ export function Checkout({
     () => /\/summary$/.test(location.pathname),
     [location.pathname]
   );
+  /** KBZ PWA return / finalize — not KBZ QR scan (order already placed on checkout). */
+  const isPwaSummarySession = useMemo(() => {
+    if (unifiedSummaryRoute) return true;
+    if (readKpayReturnPrepayId(location.search)) return true;
+    if (pwaPendingContext?.prepayId) return true;
+    if (initialSummarySnapshot?.paymentMethod === "KPay-PWA") return true;
+    if (pwaPendingContext?.draftOrder && pwaPendingContext?.merchantOrderId) return true;
+    return false;
+  }, [
+    unifiedSummaryRoute,
+    location.search,
+    pwaPendingContext?.prepayId,
+    pwaPendingContext?.draftOrder,
+    pwaPendingContext?.merchantOrderId,
+    initialSummarySnapshot?.paymentMethod,
+  ]);
   const displayStoreName =
     storeName || vendorName || summaryOrderVendor || "";
 
@@ -1194,7 +1211,7 @@ export function Checkout({
 
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
-    if (!onSummaryRoute) return;
+    if (!onSummaryRoute || !isPwaSummarySession) return;
     if (pwaOrderPersistedRef.current) return;
 
     let cancelled = false;
@@ -1490,6 +1507,7 @@ export function Checkout({
     vendorId,
     vendorName,
     storeName,
+    isPwaSummarySession,
   ]);
 
   // Apply coupon code
