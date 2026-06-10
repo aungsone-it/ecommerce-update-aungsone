@@ -9,8 +9,8 @@
  *
  * Apex / www (https://walwal.online, https://www.walwal.online) → no redirect (branding + marketplace paths).
  *
- * Set Vercel env: VENDOR_SUBDOMAIN_BASE_DOMAIN=walwal.online (apex only, no protocol)
- * DNS: add *.walwal.online → Vercel (see Vercel Domains)
+ * Set Vercel env: VENDOR_SUBDOMAIN_BASE_DOMAIN=your-primary.com (fallback only — host-derived apex wins)
+ * DNS: for each marketplace apex, add apex + wildcard in Vercel Domains (e.g. bash2.online and *.bash2.online)
  */
 import { next } from "@vercel/edge";
 
@@ -134,13 +134,12 @@ export default function middleware(request: Request): Response {
     return next();
   }
 
-  let baseDomain = (process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase();
-  if (!baseDomain) {
-    const derived = deriveNaiveVendorApexFromHost(host);
-    if (derived) baseDomain = derived;
-  }
+  let baseDomain = deriveNaiveVendorApexFromHost(host) || "";
   if (!baseDomain && isBarePlatformApexHost(host)) {
     baseDomain = host.startsWith("www.") ? host.slice(4) : host;
+  }
+  if (!baseDomain) {
+    baseDomain = (process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase();
   }
 
   const requestUrl = new URL(request.url);

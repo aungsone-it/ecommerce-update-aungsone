@@ -2,6 +2,7 @@ import { resolveVendorPathSlug } from "./vendorStorePaths";
 import {
   isLocalDevHostname,
   isMarketplaceApexHost,
+  resolveActiveVendorSubdomainBase,
   resolvePrimaryPlatformApexHost,
   resolveVendorSubdomainApexFromHost,
 } from "./platformApexHost";
@@ -526,7 +527,7 @@ function unifiedKpayReturnOrigin(): string {
     return `${window.location.protocol}//localhost${port}`;
   }
   const apex =
-    resolvePrimaryPlatformApexHost(host) ||
+    resolveActiveVendorSubdomainBase(host) ||
     resolveVendorSubdomainApexFromHost(host);
   return apex ? `https://${apex.replace(/^www\./, "")}` : window.location.origin;
 }

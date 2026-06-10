@@ -32,8 +32,7 @@ import {
 } from "./ui/tabs";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
-import { getEffectiveVendorSubdomainBase } from "../utils/vendorSubdomainBase";
-import { resolvePrimaryPlatformApexHost } from "../utils/platformApexHost";
+import { getVendorSubdomainBase } from "../utils/vendorSubdomainBase";
 
 interface Vendor {
   id: string;
@@ -185,7 +184,7 @@ export function VendorStorefront({ vendor, onBack, onPreviewStore }: VendorStore
   const configuredSubdomainBase = String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "")
     .trim()
     .toLowerCase();
-  const subdomainBase = configuredSubdomainBase || getEffectiveVendorSubdomainBase() || resolvePrimaryPlatformApexHost();
+  const subdomainBase = getVendorSubdomainBase() || configuredSubdomainBase;
   const subdomainStoreUrl = settings.storeSlug
     ? `https://${settings.storeSlug}.${subdomainBase}`
     : `https://${subdomainBase}`;

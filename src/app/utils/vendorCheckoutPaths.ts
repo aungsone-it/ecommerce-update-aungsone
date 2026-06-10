@@ -15,11 +15,12 @@ import { buildVendorStoreHomePath, resolveVendorPathSlug } from "./vendorStorePa
 import { API_BASE_URL } from "../../utils/api-client";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import {
-  isBarePlatformApexHost,
-  isMarketplaceApexHost,
-  isLocalDevHostname as isLocalDevHost,
+  resolveActiveVendorSubdomainBase,
   resolvePrimaryPlatformApexHost,
   resolveVendorSubdomainApexFromHost,
+  isBarePlatformApexHost,
+  isLocalDevHostname as isLocalDevHost,
+  isMarketplaceApexHost,
 } from "./platformApexHost";
 
 export { isMarketplaceApexHost } from "./platformApexHost";
@@ -468,7 +469,7 @@ export function resolveUnifiedKpayReturnBaseUrl(): string {
   }
   if (isUnifiedKpayReturnHost(host)) return window.location.origin;
   const apex =
-    resolvePrimaryPlatformApexHost(host) ||
+    resolveActiveVendorSubdomainBase(host) ||
     resolveVendorSubdomainApexFromHost(host) ||
     getEffectiveVendorSubdomainBase();
   if (apex) return `https://${apex.replace(/^www\./, "")}`;

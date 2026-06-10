@@ -67,6 +67,32 @@ export function resolveVendorSubdomainApexFromHost(host: string): string | null 
   return null;
 }
 
+/**
+ * Active apex for vendor wildcard subdomains on the current request.
+ * Host-derived apex wins over env so `gogo.bash2.online` works even when env still says `walwal.online`.
+ */
+export function resolveActiveVendorSubdomainBase(hostname?: string): string {
+  const host = normalizeHostname(
+    hostname ?? (typeof window !== "undefined" ? window.location.hostname : "")
+  );
+  const fromHost = resolveVendorSubdomainApexFromHost(host);
+  if (fromHost) return fromHost;
+  return stripWwwHost(
+    String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim()
+  );
+}
+
+/** Build vendor subdomain hostname, e.g. `gogo` + `bash2.online` → `gogo.bash2.online`. */
+export function buildVendorSubdomainHostname(
+  storeLabel: string,
+  hostname?: string
+): string | null {
+  const label = storeLabel.trim().toLowerCase();
+  const apex = resolveActiveVendorSubdomainBase(hostname);
+  if (!label || !apex) return null;
+  return `${label}.${apex}`;
+}
+
 function parseReservedApexList(raw: string): string[] {
   return raw
     .split(",")
@@ -109,18 +135,9 @@ export function isMarketplaceApexHost(hostname?: string): boolean {
   return false;
 }
 
-/** Primary platform apex for KPay unified return and subdomain URLs (env, then current host). */
+/** Primary platform apex for KPay unified return and subdomain URLs (current host, then env). */
 export function resolvePrimaryPlatformApexHost(hostname?: string): string {
-  const fromEnv = stripWwwHost(
-    String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim()
-  );
-  if (fromEnv) return fromEnv;
-  const host = normalizeHostname(
-    hostname ?? (typeof window !== "undefined" ? window.location.hostname : "")
-  );
-  const fromHost = resolveVendorSubdomainApexFromHost(host);
-  if (fromHost) return fromHost;
-  return "";
+  return resolveActiveVendorSubdomainBase(hostname);
 }
 
 /** Storefront-only paths that must not exist on marketplace apex hosts. */

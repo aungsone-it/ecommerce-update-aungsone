@@ -34,8 +34,8 @@ import {
 import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
 import { isRenderableImageSrc, pickStoreLogo } from "../../utils/renderableImageSrc";
 import { supabase } from "../../contexts/AuthContext";
-import { getEffectiveVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
-import { resolvePrimaryPlatformApexHost } from "../../utils/platformApexHost";
+import { getVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
+import { buildVendorSubdomainHostname } from "../../utils/platformApexHost";
 import { useLanguage } from "../../contexts/LanguageContext";
 
 interface StoreSettings {
@@ -124,7 +124,10 @@ export function VendorAdminSettings({
     txtValue: string;
     cnameTarget: string;
   } | null>(null);
-  const subdomainBase = getEffectiveVendorSubdomainBase() || resolvePrimaryPlatformApexHost();
+  const subdomainBase = getVendorSubdomainBase();
+  const vendorSubdomainHost =
+    buildVendorSubdomainHostname(settings?.storeSlug || "", undefined) ||
+    (subdomainBase ? `${settings?.storeSlug || "yourstore"}.${subdomainBase}` : null);
 
   useEffect(() => {
     loadSettings();
@@ -710,7 +713,7 @@ export function VendorAdminSettings({
             />
             <p className="text-xs text-slate-500 mt-1.5">
               {t("vendorAdmin.settings.publicPathHint")} <span className="font-mono">/vendor/{settings.storeSlug || "…"}</span>. {t("vendorAdmin.settings.publicPathHint2")}{" "}
-              <span className="font-mono">{settings.storeSlug || "yourstore"}.{subdomainBase}</span>.
+              <span className="font-mono">{vendorSubdomainHost || `yourstore.${subdomainBase || "example.com"}`}</span>.
             </p>
           </div>
 

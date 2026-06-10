@@ -1,5 +1,8 @@
-import { deriveNaiveVendorApexFromHost } from "./deriveVendorApex";
-import { isBarePlatformApexHost, stripWwwHost } from "./platformApexHost";
+import {
+  isBarePlatformApexHost,
+  resolveActiveVendorSubdomainBase,
+  stripWwwHost,
+} from "./platformApexHost";
 
 /**
  * Apex host for vendor subdomains (e.g. `gogo.example.com` → `example.com`).
@@ -8,13 +11,12 @@ import { isBarePlatformApexHost, stripWwwHost } from "./platformApexHost";
  * set `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN` explicitly (naive derivation is last-two labels only).
  */
 export function getVendorSubdomainBase(): string {
-  const fromEnv = (import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase();
   if (typeof window !== "undefined") {
-    const derived = deriveNaiveVendorApexFromHost(window.location.hostname);
-    if (derived) return derived;
+    return resolveActiveVendorSubdomainBase(window.location.hostname);
   }
-  if (fromEnv) return fromEnv;
-  return "";
+  return stripWwwHost(
+    String(import.meta.env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim()
+  );
 }
 
 /**

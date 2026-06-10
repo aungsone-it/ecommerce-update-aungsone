@@ -3,6 +3,8 @@ import {
   isBarePlatformApexHost,
   isMarketplaceApexHost,
   isReservedPlatformApexHost,
+  buildVendorSubdomainHostname,
+  resolveActiveVendorSubdomainBase,
   resolvePrimaryPlatformApexHost,
   resolveVendorSubdomainApexFromHost,
   stripWwwHost,
@@ -47,8 +49,18 @@ describe("platformApexHost", () => {
     expect(stripWwwHost("www.walwal.online")).toBe("walwal.online");
   });
 
-  it("uses env for primary platform apex", () => {
+  it("uses env for primary platform apex when host has no apex", () => {
     env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN = "buyer.com";
     expect(resolvePrimaryPlatformApexHost()).toBe("buyer.com");
+  });
+
+  it("prefers host-derived apex over env for vendor subdomains", () => {
+    env.VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN = "walwal.online";
+    expect(resolveActiveVendorSubdomainBase("gogo.bash2.online")).toBe("bash2.online");
+    expect(resolvePrimaryPlatformApexHost("gogo.bash2.online")).toBe("bash2.online");
+  });
+
+  it("builds vendor subdomain hostname from current apex", () => {
+    expect(buildVendorSubdomainHostname("gogo", "gogo.bash2.online")).toBe("gogo.bash2.online");
   });
 });
