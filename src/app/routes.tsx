@@ -7,6 +7,7 @@ import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
 import { KPayVendorReturnRedirect } from "./components/KPayVendorReturnRedirect";
 import { RouteLoadingFallback } from "./components/RouteLoadingFallback";
+import { VendorStorefrontFullSkeleton } from "./components/SkeletonLoaders";
 import { NotFound } from "./pages/NotFound";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
@@ -108,7 +109,8 @@ function VendorSubdomainIndexOrLanding() {
 
   if (customLookup) {
     if (loading) {
-      return bareApex ? <LandingPage /> : <RouteLoadingFallback />;
+      // Claimable bare apex (e.g. migoo.store) must not flash marketplace landing while by-domain resolves.
+      return <VendorStorefrontFullSkeleton />;
     }
     if (customSlug) return <VendorStorefrontPage />;
     if (bareApex || isMarketplaceApexHost(host)) return <LandingPage />;

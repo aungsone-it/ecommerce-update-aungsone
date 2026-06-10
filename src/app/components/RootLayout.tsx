@@ -45,6 +45,8 @@ function RootLayoutContent() {
 
   const subdomainStoreSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug } = useResolvedVendorHostSlug();
+  const customDomainHost =
+    typeof window !== "undefined" && shouldResolveCustomDomainHost(window.location.hostname);
   const isPathVendorStorefront =
     location.pathname.startsWith("/vendor/") &&
     !location.pathname.includes("/admin");
@@ -61,7 +63,10 @@ function RootLayoutContent() {
   // Hide chat button and back to top on vendor application page, landing page, and reset password page
   const isVendorApplicationPage = location.pathname === '/vendor/application';
   const isLandingPage =
-    location.pathname === "/" && subdomainStoreSlug == null && customHostSlug == null;
+    location.pathname === "/" &&
+    subdomainStoreSlug == null &&
+    customHostSlug == null &&
+    !customDomainHost;
   const isResetPasswordPage =
     location.pathname === '/reset-password' ||
     /^\/vendor\/[^/]+\/reset-password$/.test(location.pathname) ||

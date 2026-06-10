@@ -1,6 +1,9 @@
 import { useLayoutEffect } from "react";
 import { useLocation } from "react-router";
-import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
+import {
+  shouldResolveCustomDomainHost,
+  useResolvedVendorHostSlug,
+} from "../utils/vendorHostResolution";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import {
   isPlatformBrandedPublicPath,
@@ -19,8 +22,13 @@ export function PlatformBrandingHead() {
   const location = useLocation();
   const subdomainSlug = resolveVendorSubdomainStoreSlug();
   const { slug: customHostSlug } = useResolvedVendorHostSlug();
+  const pendingCustomVendorHost =
+    typeof window !== "undefined" &&
+    shouldResolveCustomDomainHost(window.location.hostname) &&
+    subdomainSlug == null;
 
   const applyPlatform =
+    !pendingCustomVendorHost &&
     isPlatformBrandedPublicPath(location.pathname, {
       vendorSubdomain: subdomainSlug != null,
       customVendorHost: customHostSlug != null && subdomainSlug == null,

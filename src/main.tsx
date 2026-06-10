@@ -51,6 +51,7 @@ if (
   typeof window !== "undefined" &&
   isPlatformBrandedPublicPath(window.location.pathname, {
     vendorSubdomain: isOnVendorSubdomainHost(),
+    customVendorHost: shouldResolveCustomDomainHost(window.location.hostname),
   })
 ) {
   primePlatformBrandingFaviconFromCache();
