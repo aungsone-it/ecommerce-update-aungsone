@@ -28,6 +28,12 @@ function navigateToSummary(url: string, navigate: ReturnType<typeof useNavigate>
   if (/^https?:\/\//i.test(url)) {
     const target = new URL(url);
     const here = new URL(window.location.href);
+    if (target.origin === here.origin && target.pathname === here.pathname) {
+      if (target.search !== here.search) {
+        window.history.replaceState(null, "", target.pathname + target.search);
+      }
+      return;
+    }
     if (target.origin !== here.origin || target.pathname !== here.pathname) {
       window.location.replace(url);
       return;
@@ -89,6 +95,12 @@ export function KPayReturnPage() {
       return;
     }
     redirectDoneRef.current = true;
+
+    const path = (window.location.pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
+    if (path === "/summary") {
+      return;
+    }
+
     navigateToSummary(
       buildPwaSummaryAbsoluteUrl({
         merchantOrderId,

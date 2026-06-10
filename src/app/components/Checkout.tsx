@@ -272,6 +272,108 @@ function readCheckoutSummarySnapshot(key: string): CheckoutSummarySnapshot | nul
   }
 }
 
+function readSummaryOrderIdFromSearch(search: string): string {
+  const qs = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  return (
+    qs.get("merch_order_id") ||
+    qs.get("merchOrderId") ||
+    qs.get("order") ||
+    qs.get("orderNumber") ||
+    ""
+  ).trim();
+}
+
+function readKPayPwaPendingContext(): (KPayPwaPendingContext & { storeName?: string }) | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(KPAY_PWA_PENDING_STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as KPayPwaPendingContext & { storeName?: string };
+  } catch {
+    return null;
+  }
+}
+
+function draftOrderToSummarySnapshot(
+  orderId: string,
+  draft: NonNullable<KPayPwaPendingContext["draftOrder"]>,
+): CheckoutSummarySnapshot {
+  const items = (Array.isArray(draft.items) ? draft.items : []).map((it, idx) => ({
+    id: String(it?.productId ?? idx),
+    sku: String(it?.name ?? it?.sku ?? "Item"),
+    quantity: Number(it?.quantity ?? 1) || 1,
+    price: Number(it?.price ?? 0) || 0,
+    image: typeof it?.image === "string" ? it.image : "",
+  }));
+  const ship = draft.shippingInfo || {};
+  return {
+    orderNumber: orderId,
+    items,
+    total: Number(draft.total || 0) || 0,
+    orderNote: String(draft.notes || ""),
+    coupon:
+      typeof draft.couponCode === "string" && draft.couponCode.trim()
+        ? { campaign: { code: draft.couponCode } }
+        : null,
+    discount: Number(draft.discount || 0) || 0,
+    shippingInfo: {
+      fullName: String(ship.fullName ?? draft.customerName ?? ""),
+      email: String(ship.email ?? draft.email ?? ""),
+      phone: String(ship.phone ?? draft.phone ?? ""),
+      address: String(ship.address ?? ""),
+      city: String(ship.city ?? ""),
+      state: String(ship.state ?? ""),
+      zipCode: String(ship.zipCode ?? ""),
+      country: String(ship.country ?? ""),
+    },
+    paymentMethod: "KPay-PWA",
+    savedAt: new Date().toISOString(),
+  };
+}
+
+/** Pick initial summary data for `/summary` — never reuse a stale order when KBZ returns with a new id. */
+function resolveInitialSummaryForRoute(
+  pathname: string,
+  search: string,
+): {
+  snapshot: CheckoutSummarySnapshot | null;
+  pendingOrderId: string;
+} {
+  const path = (pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
+  if (!/\/summary$/.test(path)) {
+    return { snapshot: null, pendingOrderId: "" };
+  }
+
+  const pending = readKPayPwaPendingContext();
+  const pendingOrderId =
+    readSummaryOrderIdFromSearch(search) || String(pending?.merchantOrderId || "").trim();
+
+  const pathSnapshot = readCheckoutSummarySnapshot(`checkout-summary:${path}`);
+  const latestSnapshot = readCheckoutSummarySnapshot(CHECKOUT_LATEST_SUMMARY_KEY);
+
+  if (pendingOrderId) {
+    const matching =
+      [pathSnapshot, latestSnapshot].find(
+        (s) => s && String(s.orderNumber).trim() === pendingOrderId,
+      ) ?? null;
+    if (matching) {
+      return { snapshot: matching, pendingOrderId };
+    }
+    if (pending?.draftOrder && Array.isArray(pending.draftOrder.items) && pending.draftOrder.items.length > 0) {
+      return {
+        snapshot: draftOrderToSummarySnapshot(pendingOrderId, pending.draftOrder),
+        pendingOrderId,
+      };
+    }
+    return { snapshot: null, pendingOrderId };
+  }
+
+  return {
+    snapshot: pathSnapshot || latestSnapshot,
+    pendingOrderId: "",
+  };
+}
+
 /** Latest order for this vendor storefront when `/summary` has no order id in the URL. */
 function pickLatestOrderForVendor(
   orders: unknown,
@@ -459,22 +561,21 @@ export function Checkout({
     migoo?.phone,
   ]);
 
-  const initialSummarySnapshot = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    const path = window.location.pathname;
-    if (!/\/summary$/.test(path)) return null;
-    return (
-      readCheckoutSummarySnapshot(`checkout-summary:${path}`) ||
-      readCheckoutSummarySnapshot(CHECKOUT_LATEST_SUMMARY_KEY)
-    );
-  }, []);
+  const initialSummaryRoute = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? { snapshot: null as CheckoutSummarySnapshot | null, pendingOrderId: "" }
+        : resolveInitialSummaryForRoute(window.location.pathname, window.location.search),
+    [],
+  );
+  const initialSummarySnapshot = initialSummaryRoute.snapshot;
 
   const [step, setStep] = useState<"checkout" | "success">(
     initialSummarySnapshot ? "success" : "checkout"
   );
   const [loading, setLoading] = useState(false);
   const [summaryResolving, setSummaryResolving] = useState(
-    () => /\/summary$/.test(location.pathname) && !initialSummarySnapshot
+    () => /\/summary$/.test(location.pathname) && !initialSummarySnapshot,
   );
   const pwaFinalizeInFlightRef = useRef<Set<string>>(new Set());
   const pwaOrderPersistedRef = useRef(false);
@@ -509,15 +610,10 @@ export function Checkout({
       ""
     ).trim();
   }, [location.search]);
-  const pwaPendingContext = useMemo(() => {
-    try {
-      const raw = localStorage.getItem(KPAY_PWA_PENDING_STORAGE_KEY);
-      if (!raw) return null;
-      return JSON.parse(raw) as KPayPwaPendingContext;
-    } catch {
-      return null;
-    }
-  }, [location.pathname, location.search]);
+  const pwaPendingContext = useMemo(
+    () => readKPayPwaPendingContext(),
+    [location.pathname, location.search],
+  );
   const [summaryStorefrontOrigin, setSummaryStorefrontOrigin] = useState<string | null>(
     () => pwaPendingContext?.storefrontOrigin?.trim() || null,
   );
@@ -904,18 +1000,17 @@ export function Checkout({
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);
     if (!onSummaryRoute) return;
-    setSummaryResolving(true);
     try {
       const expectedOrderId =
         summaryQueryOrderId ||
         (typeof pwaPendingContext?.merchantOrderId === "string"
           ? pwaPendingContext.merchantOrderId
           : "");
-      const snapshot =
-        readCheckoutSummarySnapshot(summarySnapshotStorageKey) ||
-        readCheckoutSummarySnapshot(CHECKOUT_LATEST_SUMMARY_KEY);
+      const snapshot = expectedOrderId
+        ? readCheckoutSummarySnapshot(summarySnapshotStorageKey)
+        : readCheckoutSummarySnapshot(summarySnapshotStorageKey) ||
+          readCheckoutSummarySnapshot(CHECKOUT_LATEST_SUMMARY_KEY);
       if (!snapshot) return;
-      // When returning from a fresh PWA session, never hydrate an old cached order.
       if (expectedOrderId && String(snapshot.orderNumber || "").trim() !== expectedOrderId) {
         return;
       }
@@ -931,8 +1026,6 @@ export function Checkout({
       setLoading(false);
     } catch {
       // ignore corrupted snapshot and fall back to normal checkout
-    } finally {
-      setSummaryResolving(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, summarySnapshotStorageKey, summaryQueryOrderId, pwaPendingContext]);
@@ -946,7 +1039,6 @@ export function Checkout({
     if (!onSummaryRoute) return;
     if (pwaOrderPersistedRef.current) return;
 
-    setSummaryResolving(true);
     let cancelled = false;
 
     const applyDraftPreview = (orderId: string, d: NonNullable<KPayPwaPendingContext["draftOrder"]>) => {
@@ -982,6 +1074,7 @@ export function Checkout({
       setPaymentMethod("KPay-PWA");
       setStep("success");
       setLoading(false);
+      setSummaryResolving(false);
     };
 
     (async () => {
@@ -995,6 +1088,12 @@ export function Checkout({
         currentOrderId = orderId;
 
         let pendingCtx = pwaPendingContext;
+        if (orderId && pendingCtx?.draftOrder) {
+          applyDraftPreview(orderId, pendingCtx.draftOrder);
+        } else if (orderId) {
+          setSummaryResolving(true);
+        }
+
         if (orderId && !pendingCtx?.draftOrder) {
           const serverDraft = await fetchPwaCheckoutDraft({
             projectId,
@@ -1010,6 +1109,9 @@ export function Checkout({
               storefrontOrigin: serverDraft.storefrontOrigin,
               draftOrder: serverDraft.draftOrder as KPayPwaPendingContext["draftOrder"],
             };
+            if (!cancelled) {
+              applyDraftPreview(orderId, pendingCtx.draftOrder!);
+            }
           } else if (serverDraft?.storefrontOrigin?.trim()) {
             pendingCtx = {
               ...pendingCtx,

@@ -14,6 +14,7 @@
       html.kpay-unified-redirect body {
         background: #fff;
         overflow: hidden;
+        visibility: hidden;
       }
     </style>
     <script>
@@ -34,7 +35,6 @@
             bareParts.length === 2 &&
             (host === bareHost || host === "www." + bareHost);
           var isUnifiedApex = isPlainLocal || isBareApex;
-          if (isUnifiedApex && path === "/summary") return;
 
           var hasKpayQuery =
             /(?:^|[?&])(?:merch_order_id|merchOrderId|prepay_id|prepayId|callback_info)=/i.test(
@@ -44,6 +44,74 @@
           try {
             pendingKpay = Boolean(localStorage.getItem("kpay_pwa_pending_order"));
           } catch (e) {}
+
+          if (isUnifiedApex && path === "/kpay/return") {
+            if (!hasKpayQuery && pendingKpay) {
+              try {
+                var rawReturn = localStorage.getItem("kpay_pwa_pending_order");
+                if (rawReturn) {
+                  var pendingReturn = JSON.parse(rawReturn);
+                  var qsReturn = new URLSearchParams(search.replace(/^\?/, ""));
+                  if (
+                    pendingReturn.merchantOrderId &&
+                    !qsReturn.get("merch_order_id") &&
+                    !qsReturn.get("merchOrderId")
+                  ) {
+                    qsReturn.set("merch_order_id", pendingReturn.merchantOrderId);
+                  }
+                  if (
+                    pendingReturn.prepayId &&
+                    !qsReturn.get("prepay_id") &&
+                    !qsReturn.get("prepayId")
+                  ) {
+                    qsReturn.set("prepay_id", pendingReturn.prepayId);
+                  }
+                  var mergedReturn = qsReturn.toString();
+                  search = mergedReturn ? "?" + mergedReturn : "";
+                }
+              } catch (e) {}
+            }
+            history.replaceState(null, "", "/summary" + search);
+            return;
+          }
+
+          if (isUnifiedApex && path === "/summary") {
+            if (!hasKpayQuery && pendingKpay) {
+              try {
+                var rawSummary = localStorage.getItem("kpay_pwa_pending_order");
+                if (rawSummary) {
+                  var pendingSummary = JSON.parse(rawSummary);
+                  var qsSummary = new URLSearchParams(search.replace(/^\?/, ""));
+                  var changed = false;
+                  if (
+                    pendingSummary.merchantOrderId &&
+                    !qsSummary.get("merch_order_id") &&
+                    !qsSummary.get("merchOrderId")
+                  ) {
+                    qsSummary.set("merch_order_id", pendingSummary.merchantOrderId);
+                    changed = true;
+                  }
+                  if (
+                    pendingSummary.prepayId &&
+                    !qsSummary.get("prepay_id") &&
+                    !qsSummary.get("prepayId")
+                  ) {
+                    qsSummary.set("prepay_id", pendingSummary.prepayId);
+                    changed = true;
+                  }
+                  if (changed) {
+                    var mergedSummary = qsSummary.toString();
+                    history.replaceState(
+                      null,
+                      "",
+                      "/summary" + (mergedSummary ? "?" + mergedSummary : "")
+                    );
+                  }
+                }
+              } catch (e) {}
+            }
+            return;
+          }
 
           var shouldRedirect = false;
           if (hasKpayQuery && (path === "/summary" || path === "/kpay/return" || path === "/")) {
