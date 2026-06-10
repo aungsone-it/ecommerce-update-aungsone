@@ -2316,8 +2316,15 @@ export async function getPwaCheckoutDraftRoute(c: Context) {
 export async function postPwaFinalizeRoute(c: Context) {
   const merchantOrderId = text(c.req.param("merchantOrderId"));
   if (!merchantOrderId) return c.json({ error: "merchantOrderId is required" }, 400);
+
   await syncKPayTxnStatusFromProvider(merchantOrderId);
-  const result = await finalizePwaCheckoutOrder(merchantOrderId);
+  let result = await finalizePwaCheckoutOrder(merchantOrderId);
+  for (let attempt = 0; attempt < 3 && !result.ok && result.error === "payment_not_confirmed"; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await syncKPayTxnStatusFromProvider(merchantOrderId);
+    result = await finalizePwaCheckoutOrder(merchantOrderId);
+  }
+
   if (!result.ok) {
     const status = result.error === "payment_not_confirmed" ? 409 : 400;
     return c.json({ success: false, ...result }, status);

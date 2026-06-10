@@ -502,6 +502,150 @@ function buildPwaFinalizeOrderPayload(
   };
 }
 
+function fetchOrderByMerchantOrderId(orderId: string): Promise<Response> {
+  return fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(orderId)}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } },
+  );
+}
+
+async function createStorefrontOrderFromPwaDraft(params: {
+  orderId: string;
+  d: NonNullable<KPayPwaPendingContext["draftOrder"]>;
+  session: KPaySession;
+  prepayId?: string;
+  storeName: string;
+  vendorId: string | undefined;
+  effectiveUserId: string | null | undefined;
+}): Promise<{ ok: boolean; message?: string }> {
+  const payload = buildPwaFinalizeOrderPayload(
+    params.orderId,
+    params.d,
+    params.session,
+    params.prepayId,
+    params.storeName,
+    params.vendorId,
+    params.effectiveUserId,
+  );
+  const createResponse = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${publicAnonKey}`,
+      },
+      body: JSON.stringify(payload),
+    },
+  );
+  const createResult = (await createResponse.json().catch(() => ({}))) as {
+    error?: string;
+    message?: string;
+    stockIssues?: Array<{ productName?: string; issue?: string }>;
+  };
+  if (!createResponse.ok) {
+    const stockMsg =
+      createResult.stockIssues?.length &&
+      createResult.stockIssues
+        .map((issue) => `${issue.productName}: ${issue.issue}`)
+        .join("; ");
+    return {
+      ok: false,
+      message:
+        stockMsg ||
+        createResult.message ||
+        createResult.error ||
+        `Order could not be created (HTTP ${createResponse.status})`,
+    };
+  }
+  notifyAdminOrdersUpdated("pwa-checkout-order-created");
+  return { ok: true };
+}
+
+/** Ensure KBZ PWA checkout becomes a real storefront order (not just a KV draft). */
+async function persistPwaOrderIfMissing(params: {
+  orderId: string;
+  pendingCtx: (KPayPwaPendingContext & { storeName?: string }) | null;
+  storeName: string;
+  vendorId: string | undefined;
+  effectiveUserId: string | null | undefined;
+  finalizeInFlight: Set<string>;
+}): Promise<Response | null> {
+  const { orderId, pendingCtx, storeName, vendorId, effectiveUserId, finalizeInFlight } = params;
+  if (!orderId || !pendingCtx?.draftOrder) return null;
+
+  let response = await fetchOrderByMerchantOrderId(orderId);
+  if (response.ok) return response;
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await finalizePwaCheckoutOrderApi({ projectId, publicAnonKey, merchantOrderId: orderId });
+    response = await fetchOrderByMerchantOrderId(orderId);
+    if (response.ok) return response;
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+  }
+
+  let session: KPaySession | null = null;
+  try {
+    session = await fetchKPaySessionStatus({ projectId, publicAnonKey, merchantOrderId: orderId });
+  } catch {
+    session = null;
+  }
+  if (session?.status === "pending") {
+    session = await waitForKPayPaidSession(orderId, 12, 1500);
+  }
+
+  if (session?.status === "paid" && !finalizeInFlight.has(orderId)) {
+    finalizeInFlight.add(orderId);
+    try {
+      await createStorefrontOrderFromPwaDraft({
+        orderId,
+        d: pendingCtx.draftOrder,
+        session,
+        prepayId: pendingCtx.prepayId,
+        storeName,
+        vendorId,
+        effectiveUserId,
+      });
+    } finally {
+      finalizeInFlight.delete(orderId);
+    }
+    response = await fetchOrderByMerchantOrderId(orderId);
+    if (response.ok) return response;
+  }
+
+  const prepayId = String(pendingCtx.prepayId || "").trim();
+  if (prepayId && !finalizeInFlight.has(orderId)) {
+    finalizeInFlight.add(orderId);
+    try {
+      const paidSession: KPaySession = {
+        merchantOrderId: orderId,
+        status: "paid",
+        providerStatus: session?.providerStatus || "paid",
+        payUrl: session?.payUrl || "",
+        qrContent: session?.qrContent || "",
+        qrImageUrl: session?.qrImageUrl || "",
+      };
+      await createStorefrontOrderFromPwaDraft({
+        orderId,
+        d: pendingCtx.draftOrder,
+        session: paidSession,
+        prepayId,
+        storeName,
+        vendorId,
+        effectiveUserId,
+      });
+    } finally {
+      finalizeInFlight.delete(orderId);
+    }
+    response = await fetchOrderByMerchantOrderId(orderId);
+    if (response.ok) return response;
+  }
+
+  return response.status === 404 ? null : response;
+}
+
 export function Checkout({
   onBack,
   storeName,
@@ -1094,7 +1238,7 @@ export function Checkout({
     (async () => {
       let currentOrderId = "";
       try {
-        const orderId =
+        let orderId =
           summaryQueryOrderId ||
           (typeof pwaPendingContext?.merchantOrderId === "string"
             ? pwaPendingContext.merchantOrderId
@@ -1102,9 +1246,7 @@ export function Checkout({
         currentOrderId = orderId;
 
         let pendingCtx = pwaPendingContext;
-        if (orderId && pendingCtx?.draftOrder) {
-          applyDraftPreview(orderId, pendingCtx.draftOrder);
-        } else if (orderId) {
+        if (orderId) {
           setSummaryResolving(true);
         }
 
@@ -1131,9 +1273,6 @@ export function Checkout({
               storefrontOrigin: serverDraft.storefrontOrigin,
               draftOrder: serverDraft.draftOrder as KPayPwaPendingContext["draftOrder"],
             };
-            if (!cancelled) {
-              applyDraftPreview(orderId, pendingCtx.draftOrder!);
-            }
           } else if (serverDraft?.storefrontOrigin?.trim()) {
             pendingCtx = {
               ...pendingCtx,
@@ -1144,6 +1283,11 @@ export function Checkout({
             };
           }
         }
+
+        orderId =
+          orderId ||
+          String(pendingCtx?.merchantOrderId || pwaPendingContext?.merchantOrderId || "").trim();
+        currentOrderId = orderId;
 
         const resolvedOrigin =
           pendingCtx?.storefrontOrigin?.trim() ||
@@ -1161,109 +1305,17 @@ export function Checkout({
         }
 
         let response: Response | null = null;
-        if (orderId) {
-          const orderEndpoint = `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders/${encodeURIComponent(orderId)}`;
-          response = await fetch(orderEndpoint, {
-            headers: { Authorization: `Bearer ${publicAnonKey}` },
+        if (orderId && pendingCtx?.draftOrder) {
+          response = await persistPwaOrderIfMissing({
+            orderId,
+            pendingCtx,
+            storeName,
+            vendorId,
+            effectiveUserId: effectiveUser?.id,
+            finalizeInFlight: pwaFinalizeInFlightRef.current,
           });
-
-          if (response.status === 404 && pendingCtx?.draftOrder) {
-            await finalizePwaCheckoutOrderApi({
-              projectId,
-              publicAnonKey,
-              merchantOrderId: orderId,
-            });
-            response = await fetch(orderEndpoint, {
-              headers: { Authorization: `Bearer ${publicAnonKey}` },
-            });
-          }
-
-          if (
-            response.status === 404 &&
-            pendingCtx?.merchantOrderId === orderId &&
-            pendingCtx?.draftOrder
-          ) {
-            let session: KPaySession | null = null;
-            try {
-              session = await fetchKPaySessionStatus({
-                projectId,
-                publicAnonKey,
-                merchantOrderId: orderId,
-              });
-            } catch {
-              session = null;
-            }
-            if (session?.status === "pending") {
-              // Show draft receipt while payment status catches up in the background.
-              if (pendingCtx?.draftOrder && !cancelled) {
-                applyDraftPreview(orderId, pendingCtx.draftOrder);
-              }
-              session = await waitForKPayPaidSession(orderId);
-            }
-            if (session?.status === "paid") {
-              if (pwaFinalizeInFlightRef.current.has(orderId)) {
-                for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
-                  await new Promise((resolve) => setTimeout(resolve, 1000));
-                  const retry = await fetch(orderEndpoint, {
-                    headers: { Authorization: `Bearer ${publicAnonKey}` },
-                  });
-                  if (retry.ok) {
-                    response = retry;
-                    break;
-                  }
-                }
-              } else {
-                pwaFinalizeInFlightRef.current.add(orderId);
-                const d = pendingCtx.draftOrder;
-                const finalizePayload = buildPwaFinalizeOrderPayload(
-                  orderId,
-                  d,
-                  session,
-                  pendingCtx.prepayId,
-                  storeName,
-                  vendorId,
-                  effectiveUser?.id
-                );
-                const createResponse = await fetch(
-                  `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/orders`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${publicAnonKey}`,
-                    },
-                    body: JSON.stringify(finalizePayload),
-                  }
-                );
-                const createResult = (await createResponse.json().catch(() => ({}))) as {
-                  error?: string;
-                  message?: string;
-                  stockIssues?: Array<{ productName?: string; issue?: string }>;
-                };
-                if (!createResponse.ok) {
-                  const stockMsg =
-                    createResult.stockIssues?.length &&
-                    createResult.stockIssues
-                      .map((issue) => `${issue.productName}: ${issue.issue}`)
-                      .join("; ");
-                  toast.error(
-                    stockMsg ||
-                      createResult.message ||
-                      createResult.error ||
-                      `Order could not be created (HTTP ${createResponse.status})`
-                  );
-                } else {
-                  notifyAdminOrdersUpdated("pwa-checkout-order-created");
-                  response = await fetch(orderEndpoint, {
-                    headers: { Authorization: `Bearer ${publicAnonKey}` },
-                  });
-                }
-                pwaFinalizeInFlightRef.current.delete(orderId);
-              }
-            } else if (session?.status === "failed") {
-              toast.error("KBZPay payment was not completed");
-            }
-          }
+        } else if (orderId) {
+          response = await fetchOrderByMerchantOrderId(orderId);
         } else if (effectiveUser?.id) {
           // KBZ app may return to /summary without carrying merch_order_id to SPA.
           // In that case, render the latest order for this signed-in customer.
@@ -1273,25 +1325,42 @@ export function Checkout({
           });
         } else if (
           pendingCtx?.draftOrder &&
-          (orderId || pendingCtx.merchantOrderId)
+          String(pendingCtx.merchantOrderId || "").trim()
         ) {
-          applyDraftPreview(
-            orderId || String(pendingCtx.merchantOrderId),
-            pendingCtx.draftOrder
-          );
-          return;
+          orderId = String(pendingCtx.merchantOrderId).trim();
+          currentOrderId = orderId;
+          response = await persistPwaOrderIfMissing({
+            orderId,
+            pendingCtx,
+            storeName,
+            vendorId,
+            effectiveUserId: effectiveUser?.id,
+            finalizeInFlight: pwaFinalizeInFlightRef.current,
+          });
         } else {
           return;
         }
-        if (!response) return;
+        if (!response) {
+          if (
+            !cancelled &&
+            orderId &&
+            pendingCtx?.draftOrder
+          ) {
+            applyDraftPreview(orderId, pendingCtx.draftOrder);
+            toast.error(
+              "Payment received but the order could not be registered. Please contact support with your order number.",
+            );
+          }
+          return;
+        }
         if (!response.ok) {
           if (
             !cancelled &&
             orderId &&
-            pendingCtx?.merchantOrderId === orderId &&
             pendingCtx?.draftOrder
           ) {
             applyDraftPreview(orderId, pendingCtx.draftOrder);
+            toast.error("Could not load the confirmed order. Showing checkout draft.");
           }
           return;
         }
