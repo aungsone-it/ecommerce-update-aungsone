@@ -10,6 +10,7 @@ import {
   type PwaCheckoutDraftResponse,
 } from "./kpayClient";
 import { getEffectiveVendorSubdomainBase } from "./vendorSubdomainBase";
+import { resolveActiveVendorSubdomainBase } from "./platformApexHost";
 import { resolveSubdomainHostLabelForStore } from "./subdomainSlugMap";
 import { buildVendorStoreHomePath, resolveVendorPathSlug } from "./vendorStorePaths";
 import { API_BASE_URL } from "../../utils/api-client";
@@ -211,12 +212,55 @@ export function hasKpaySummaryReturnContext(params: {
   return isUnifiedKpaySummaryPath(params.pathname);
 }
 
+function normalizeStorefrontOriginUrl(origin: string | null | undefined): string | null {
+  const raw = (origin || "").trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    return `${u.origin}/`;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist vendor storefront origin across pending-storage clear (Continue Shopping on unified `/summary`). */
+export const KPAY_SUMMARY_STOREFRONT_ORIGIN_KEY = "migoo-kpay-summary-storefront-origin";
+
+export function readKpaySummaryStorefrontOrigin(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return normalizeStorefrontOriginUrl(sessionStorage.getItem(KPAY_SUMMARY_STOREFRONT_ORIGIN_KEY));
+  } catch {
+    return null;
+  }
+}
+
+export function persistKpaySummaryStorefrontOrigin(origin: string | null | undefined): void {
+  const normalized = normalizeStorefrontOriginUrl(origin);
+  if (!normalized || typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(KPAY_SUMMARY_STOREFRONT_ORIGIN_KEY, normalized);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function markStorefrontReturnNavigationShell(): void {
+  if (typeof document === "undefined") return;
+  try {
+    document.documentElement.classList.add("kpay-unified-redirect");
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Where "Continue Shopping" should go after unified `/summary` (vendor host, not branding apex). */
 export function buildVendorSubdomainHomeUrl(params: {
   storeSlug: string;
   storeName?: string | null;
 }): string | null {
-  const base = getEffectiveVendorSubdomainBase();
+  const base =
+    resolveActiveVendorSubdomainBase() || getEffectiveVendorSubdomainBase();
   if (!base || typeof window === "undefined") return null;
 
   const slug = resolveVendorPathSlug(params.storeSlug);
@@ -231,24 +275,15 @@ export function buildVendorSubdomainHomeUrl(params: {
   return `${protocol}//${hostLabel}.${base}${port}/`;
 }
 
-function normalizeStorefrontOriginUrl(origin: string | null | undefined): string | null {
-  const raw = (origin || "").trim();
-  if (!raw) return null;
-  try {
-    const u = new URL(raw);
-    return `${u.origin}/`;
-  } catch {
-    return null;
-  }
-}
-
 /** Resolve vendor home URL: checkout origin → verified custom domain → subdomain → /vendor/:slug. */
 export async function resolveVendorStorefrontHomeUrl(params: {
   storeSlug?: string | null;
   storeName?: string | null;
   storefrontOrigin?: string | null;
 }): Promise<string> {
-  const fromOrigin = normalizeStorefrontOriginUrl(params.storefrontOrigin);
+  const fromOrigin =
+    normalizeStorefrontOriginUrl(params.storefrontOrigin) ||
+    readKpaySummaryStorefrontOrigin();
   if (fromOrigin) return fromOrigin;
 
   const slugRaw =
@@ -305,6 +340,7 @@ export function resolveUnifiedSummaryContinueShoppingTarget(params: {
 
   const origin =
     normalizeStorefrontOriginUrl(params.storefrontOrigin) ||
+    readKpaySummaryStorefrontOrigin() ||
     normalizeStorefrontOriginUrl(pending?.storefrontOrigin) ||
     normalizeStorefrontOriginUrl(callback?.storefrontOrigin);
 
@@ -347,17 +383,34 @@ export async function navigateUnifiedSummaryContinueShopping(
     preResolvedHomeUrl?: string | null;
   },
 ): Promise<void> {
+  const storefrontOrigin =
+    params.storefrontOrigin?.trim() || readKpaySummaryStorefrontOrigin() || null;
+
+  const syncTarget = resolveUnifiedSummaryContinueShoppingTarget({
+    search: params.search,
+    storeSlug: params.storeSlug,
+    storefrontOrigin,
+    orderVendor: params.orderVendor,
+  });
+
   const preResolved = normalizeStorefrontOriginUrl(params.preResolvedHomeUrl);
-  const target =
-    preResolved ||
-    (await resolveVendorStorefrontHomeUrl({
+  let target = preResolved || syncTarget;
+
+  if (!preResolved && (target === "/" || !target)) {
+    target = await resolveVendorStorefrontHomeUrl({
       storeSlug: params.storeSlug,
       storeName: params.orderVendor || params.storeSlug,
-      storefrontOrigin: params.storefrontOrigin,
-    }));
+      storefrontOrigin,
+    });
+  }
+
+  if (!target || target === "/") {
+    return;
+  }
 
   if (/^https?:\/\//i.test(target)) {
-    window.location.assign(target);
+    markStorefrontReturnNavigationShell();
+    window.location.replace(target);
     return;
   }
   navigate(target, { replace: true });

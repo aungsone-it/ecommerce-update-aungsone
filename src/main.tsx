@@ -12,6 +12,26 @@ import {
   shouldResolveCustomDomainHost,
 } from "./app/utils/vendorHostResolution";
 import { maybeRedirectKpayReturnToUnifiedSummary } from "./app/utils/kpayUnifiedSummaryRedirect";
+import { KPAY_PWA_PENDING_STORAGE_KEY } from "./app/utils/kpayClient";
+
+function isKpayReturnTraffic(): boolean {
+  if (typeof window === "undefined") return false;
+  const path = (window.location.pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
+  const search = window.location.search || "";
+  const hasQuery = /(?:^|[?&])(?:merch_order_id|merchOrderId|prepay_id|prepayId|callback_info)=/i.test(
+    search,
+  );
+  let pending = false;
+  try {
+    pending = Boolean(localStorage.getItem(KPAY_PWA_PENDING_STORAGE_KEY));
+  } catch {
+    /* ignore */
+  }
+  return (
+    hasQuery ||
+    (pending && (path === "/summary" || path === "/kpay/return" || path === "/"))
+  );
+}
 
 // Cache bust: 20260307181500
 const kpayUnifiedSummaryRedirecting =
@@ -19,7 +39,8 @@ const kpayUnifiedSummaryRedirecting =
 
 if (typeof window !== "undefined" && !kpayUnifiedSummaryRedirecting) {
   const host = window.location.hostname;
-  if (isOnVendorSubdomainHost() || shouldResolveCustomDomainHost(host)) {
+  const skipVendorPrefetch = isOnVendorSubdomainHost() && isKpayReturnTraffic();
+  if (!skipVendorPrefetch && (isOnVendorSubdomainHost() || shouldResolveCustomDomainHost(host))) {
     void import("./app/pages/VendorStorefrontPage");
     if (shouldResolveCustomDomainHost(host)) {
       void fetchVendorSlugByCustomDomain(host);

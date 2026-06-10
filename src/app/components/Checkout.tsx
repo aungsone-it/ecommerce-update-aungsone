@@ -51,7 +51,10 @@ import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import {
   isUnifiedKpaySummaryPath,
+  markStorefrontReturnNavigationShell,
   navigateUnifiedSummaryContinueShopping,
+  persistKpaySummaryStorefrontOrigin,
+  readKpaySummaryStorefrontOrigin,
   resolveUnifiedKpayPostPaymentSummaryPath,
   resolveVendorStorefrontHomeUrl,
   resolveVendorSummaryPath,
@@ -561,13 +564,16 @@ export function Checkout({
     migoo?.phone,
   ]);
 
-  const initialSummaryRoute = useMemo(
-    () =>
-      typeof window === "undefined"
-        ? { snapshot: null as CheckoutSummarySnapshot | null, pendingOrderId: "" }
-        : resolveInitialSummaryForRoute(window.location.pathname, window.location.search),
-    [],
-  );
+  const initialSummaryRoute = useMemo(() => {
+    if (typeof window === "undefined") {
+      return { snapshot: null as CheckoutSummarySnapshot | null, pendingOrderId: "" };
+    }
+    const pending = readKPayPwaPendingContext();
+    if (pending?.storefrontOrigin?.trim()) {
+      persistKpaySummaryStorefrontOrigin(pending.storefrontOrigin);
+    }
+    return resolveInitialSummaryForRoute(window.location.pathname, window.location.search);
+  }, []);
   const initialSummarySnapshot = initialSummaryRoute.snapshot;
 
   const [step, setStep] = useState<"checkout" | "success">(
@@ -615,7 +621,10 @@ export function Checkout({
     [location.pathname, location.search],
   );
   const [summaryStorefrontOrigin, setSummaryStorefrontOrigin] = useState<string | null>(
-    () => pwaPendingContext?.storefrontOrigin?.trim() || null,
+    () =>
+      pwaPendingContext?.storefrontOrigin?.trim() ||
+      readKpaySummaryStorefrontOrigin() ||
+      null,
   );
   const [summaryOrderVendor, setSummaryOrderVendor] = useState<string | null>(null);
   const [summaryStorefrontHomeUrl, setSummaryStorefrontHomeUrl] = useState<string | null>(null);
@@ -672,11 +681,16 @@ export function Checkout({
       const storefrontOrigin =
         summaryStorefrontOrigin?.trim() ||
         pwaPendingContext?.storefrontOrigin?.trim() ||
+        readKpaySummaryStorefrontOrigin() ||
         (vendorSubdomainSlug != null || customHostSlug != null
           ? typeof window !== "undefined"
             ? window.location.origin
             : null
           : null);
+      if (storefrontOrigin) {
+        persistKpaySummaryStorefrontOrigin(storefrontOrigin);
+      }
+      markStorefrontReturnNavigationShell();
       void navigateUnifiedSummaryContinueShopping(navigate, {
         search: location.search,
         storeSlug: storeName || vendorId || vendorName || summaryOrderVendor || null,
@@ -1127,7 +1141,10 @@ export function Checkout({
           pendingCtx?.storefrontOrigin?.trim() ||
           pwaPendingContext?.storefrontOrigin?.trim() ||
           "";
-        if (resolvedOrigin) setSummaryStorefrontOrigin(resolvedOrigin);
+        if (resolvedOrigin) {
+          setSummaryStorefrontOrigin(resolvedOrigin);
+          persistKpaySummaryStorefrontOrigin(resolvedOrigin);
+        }
         const resolvedDraftVendor = (
           pendingCtx?.draftOrder as { vendor?: string } | undefined
         )?.vendor;
@@ -1288,7 +1305,10 @@ export function Checkout({
             merchantOrderId: draftLookupId,
           });
           const draftOrigin = draftForOrigin?.storefrontOrigin?.trim();
-          if (draftOrigin) setSummaryStorefrontOrigin(draftOrigin);
+          if (draftOrigin) {
+            setSummaryStorefrontOrigin(draftOrigin);
+            persistKpaySummaryStorefrontOrigin(draftOrigin);
+          }
         }
 
         const itemsFromOrder = Array.isArray(o.items)
@@ -1358,6 +1378,11 @@ export function Checkout({
           };
           localStorage.setItem(summarySnapshotStorageKey, JSON.stringify(snapshot));
           localStorage.setItem(CHECKOUT_LATEST_SUMMARY_KEY, JSON.stringify(snapshot));
+          persistKpaySummaryStorefrontOrigin(
+            summaryStorefrontOrigin ||
+              pendingCtx?.storefrontOrigin ||
+              pwaPendingContext?.storefrontOrigin,
+          );
           clearKPayPwaPendingStorage();
         } catch {
           /* ignore snapshot write failure */
@@ -1565,6 +1590,7 @@ export function Checkout({
             draftOrder,
           }),
         );
+        persistKpaySummaryStorefrontOrigin(storefrontOrigin);
       } catch {
         // localStorage might be blocked in private mode — non-fatal; the user can
         // still complete the payment, they'll just lose the auto-finalize affordance.

@@ -169,7 +169,7 @@ export default function middleware(request: Request): Response {
     return next();
   }
 
-  if (shouldEdgeRedirectVendorKpayToUnifiedSummary(path, search)) {
+  if (shouldEdgeRedirectVendorKpayToUnifiedSummary(path, search) || path === "/summary" || path === "/kpay/return") {
     const unified = new URL(`https://${baseDomain}/summary${search}`);
     return Response.redirect(unified.toString(), 302);
   }

@@ -3,6 +3,42 @@
   <head>
     <meta charset="UTF-8" />
     <script>
+      (function () {
+        try {
+          var path = (location.pathname || "/").replace(/\/+$/, "") || "/";
+          var search = location.search || "";
+          var host = location.hostname.toLowerCase();
+          var isPlainLocal =
+            host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+          var previewApex = /\.(vercel\.app|netlify\.app|railway\.app)$/.test(host);
+          var parts = host.split(".").filter(Boolean);
+          var isVendorSubdomain =
+            !isPlainLocal &&
+            !previewApex &&
+            parts.length >= 3 &&
+            parts[parts.length - 1] !== "localhost";
+          var hasKpayQuery =
+            /(?:^|[?&])(?:merch_order_id|merchOrderId|prepay_id|prepayId|callback_info)=/i.test(
+              search
+            );
+          var pendingKpay = false;
+          try {
+            pendingKpay = Boolean(localStorage.getItem("kpay_pwa_pending_order"));
+          } catch (e) {}
+          if (
+            isVendorSubdomain &&
+            (hasKpayQuery ||
+              pendingKpay ||
+              path === "/summary" ||
+              path === "/kpay/return" ||
+              (path === "/" && pendingKpay))
+          ) {
+            document.documentElement.className += " kpay-unified-redirect";
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script>
       try {
         document.documentElement.classList.remove("dark");
         document.documentElement.style.colorScheme = "light";
@@ -124,6 +160,8 @@
 
           if (!shouldRedirect) return;
 
+          document.documentElement.className += " kpay-unified-redirect";
+
           if (!hasKpayQuery && pendingKpay) {
             try {
               var raw = localStorage.getItem("kpay_pwa_pending_order");
@@ -156,7 +194,6 @@
           }
           var target = unifiedOrigin + "/summary" + search;
           if (location.href.split("#")[0] === target) return;
-          document.documentElement.className += " kpay-unified-redirect";
           location.replace(target);
         } catch (e) {}
       })();
