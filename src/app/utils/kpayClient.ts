@@ -717,3 +717,41 @@ export async function finalizePwaCheckoutOrderApi(
     message: typeof data.message === "string" ? data.message : undefined,
   };
 }
+
+export type OrphanedPwaDraftRow = {
+  merchantOrderId: string;
+  savedAt: string;
+  prepayId?: string;
+  vendor?: string;
+  vendorId?: string;
+  total?: number;
+  txnStatus?: string;
+  hasOrder: boolean;
+  canRecover: boolean;
+};
+
+export async function fetchOrphanedPwaDrafts(params?: {
+  vendorId?: string;
+  minAgeMinutes?: number;
+  limit?: number;
+  merchantOrderId?: string;
+}): Promise<OrphanedPwaDraftRow[]> {
+  const qs = new URLSearchParams();
+  if (params?.vendorId?.trim()) qs.set("vendorId", params.vendorId.trim());
+  if (params?.minAgeMinutes != null) qs.set("minAgeMinutes", String(params.minAgeMinutes));
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.merchantOrderId?.trim()) qs.set("merchantOrderId", params.merchantOrderId.trim());
+  const query = qs.toString();
+  const response = await fetch(
+    `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/kpay/pwa/orphaned-drafts${query ? `?${query}` : ""}`,
+    { headers: { Authorization: `Bearer ${publicAnonKey}` } },
+  );
+  const data = (await response.json().catch(() => ({}))) as {
+    drafts?: OrphanedPwaDraftRow[];
+    error?: string;
+  };
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to load orphaned KBZPay drafts");
+  }
+  return Array.isArray(data.drafts) ? data.drafts : [];
+}

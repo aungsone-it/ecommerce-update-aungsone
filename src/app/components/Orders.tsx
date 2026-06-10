@@ -55,6 +55,7 @@ import {
 } from "../utils/kpayRefundPolling";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 import { useAdminOrdersResyncOnVisible } from "../hooks/useAdminOrdersResyncOnVisible";
+import { PwaOrphanedOrdersRecovery } from "./PwaOrphanedOrdersRecovery";
 import { supabase } from "../contexts/AuthContext";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import {
@@ -1364,6 +1365,11 @@ export function Orders({
 
         {/* Orders Tab */}
         <TabsContent value="orders">
+          <PwaOrphanedOrdersRecovery
+            searchQuery={debouncedSearch}
+            onRecovered={() => void loadOrders(true)}
+            compact
+          />
           {/* Toolbar */}
           <Card className="mb-4">
             <div className="p-4">

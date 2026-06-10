@@ -7,6 +7,11 @@ import {
   buildPwaSummaryAbsoluteUrl,
   enrichPwaDraftWithCallback,
 } from "./pwa_finalize.ts";
+import {
+  getOrphanedPwaDraftsRoute,
+  getPwaDraftStatusRoute,
+  postPwaReconcileRoute as runPwaReconcileRoute,
+} from "./pwa_reconcile.ts";
 
 type AnyRecord = Record<string, unknown>;
 type PaymentStatus = "pending" | "paid" | "failed";
@@ -2330,6 +2335,12 @@ export async function postPwaFinalizeRoute(c: Context) {
     return c.json({ success: false, ...result }, status);
   }
   return c.json({ success: true, ...result });
+}
+
+export { getOrphanedPwaDraftsRoute, getPwaDraftStatusRoute };
+
+export async function postPwaReconcileRoute(c: Context) {
+  return runPwaReconcileRoute(c, syncKPayTxnStatusFromProvider);
 }
 
 export async function getKPayStatus(c: Context) {

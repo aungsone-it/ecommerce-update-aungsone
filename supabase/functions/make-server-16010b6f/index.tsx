@@ -16,6 +16,9 @@ import {
   handleKPayPwaReturn,
   getPwaCheckoutDraftRoute,
   postPwaFinalizeRoute,
+  getOrphanedPwaDraftsRoute,
+  getPwaDraftStatusRoute,
+  postPwaReconcileRoute,
   enqueueKPayRefundAndPatchOrder,
   syncOrderRefundFromTxn,
   syncOrderRefundForResolved,
@@ -787,6 +790,9 @@ app.post("/make-server-16010b6f/kpay/pwa/start", startKPayPwa);
 app.get("/make-server-16010b6f/kpay/pwa/return", handleKPayPwaReturn);
 app.get("/make-server-16010b6f/kpay/pwa/draft/:merchantOrderId", getPwaCheckoutDraftRoute);
 app.post("/make-server-16010b6f/kpay/pwa/finalize/:merchantOrderId", postPwaFinalizeRoute);
+app.get("/make-server-16010b6f/kpay/pwa/orphaned-drafts", getOrphanedPwaDraftsRoute);
+app.get("/make-server-16010b6f/kpay/pwa/draft-status/:merchantOrderId", getPwaDraftStatusRoute);
+app.post("/make-server-16010b6f/kpay/pwa/reconcile", postPwaReconcileRoute);
 app.get("/make-server-16010b6f/kpay/resolved-urls", getKPayResolvedUrlsRoute);
 
 // Retry wrapper for database operations with exponential backoff

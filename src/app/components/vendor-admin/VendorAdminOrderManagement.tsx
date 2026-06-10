@@ -90,6 +90,7 @@ import {
 import { useAdminOrdersResyncOnVisible } from "../../hooks/useAdminOrdersResyncOnVisible";
 import { broadcastOrderStatusUpdate } from "../../utils/ordersRealtime";
 import { supabase } from "../../contexts/AuthContext";
+import { PwaOrphanedOrdersRecovery } from "../PwaOrphanedOrdersRecovery";
 
 function formatMmk(n: number): string {
   return `${Math.round(n).toLocaleString()} MMK`;
@@ -1442,6 +1443,12 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
 
         {/* Orders Tab */}
         <TabsContent value="orders">
+          <PwaOrphanedOrdersRecovery
+            vendorId={vendorStoreSlug || vendorId}
+            searchQuery={searchQuery}
+            onRecovered={() => void loadOrders(true)}
+            compact
+          />
           {/* Toolbar */}
           <Card className="mb-4 border-slate-200 shadow-sm">
             <div className="p-4">
