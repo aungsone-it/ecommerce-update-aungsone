@@ -3,6 +3,8 @@
  * Cleared when the tab closes, or on a best-effort bypass-cache reload (Shift+reload).
  */
 
+import { devWarn } from "./devLog";
+
 export type SessionCatalogListState = {
   products: unknown[];
   page: number;
@@ -58,7 +60,7 @@ export function writeSessionCatalogList(
       })
     );
   } catch (e) {
-    console.warn("[persistedSessionCache] write failed (quota?)", key, e);
+    devWarn("[persistedSessionCache] write failed (quota?)", key, e);
   }
 }
 

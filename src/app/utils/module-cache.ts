@@ -14,6 +14,7 @@
 import { format } from 'date-fns';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { SmartCache } from '../../utils/cache';
+import { devLog } from './devLog';
 import { vendorApplicationsApi } from '../../utils/api';
 import { withNetworkRetry } from './networkRetry';
 import { notifyAdminOrdersUpdated, isSuperAdminFinancesSessionStale } from "./adminOrdersRealtime";
@@ -68,7 +69,7 @@ class ModuleCache {
     const existingLoad = this.loading.get(key);
     if (existingLoad) {
       if (!forceRefresh) {
-        console.log(`⏳ [MODULE CACHE] Already loading ${key}, waiting...`);
+        devLog(`⏳ [MODULE CACHE] Already loading ${key}, waiting...`);
         this.hits++; // Count as hit since we're reusing the request
         return existingLoad;
       }
@@ -80,13 +81,13 @@ class ModuleCache {
     const cached = this.cache.get(key);
     if (cached && !forceRefresh) {
       this.hits++;
-      console.log(`✅ [MODULE CACHE HIT] ${key} (cached at ${new Date(cached.timestamp).toLocaleTimeString()})`);
+      devLog(`✅ [MODULE CACHE HIT] ${key} (cached at ${new Date(cached.timestamp).toLocaleTimeString()})`);
       return cached.data;
     }
 
     // Cache miss or force refresh
     this.misses++;
-    console.log(`${forceRefresh ? '🔄' : '❌'} [MODULE CACHE ${forceRefresh ? 'REFRESH' : 'MISS'}] ${key} - Fetching...`);
+    devLog(`${forceRefresh ? '🔄' : '❌'} [MODULE CACHE ${forceRefresh ? 'REFRESH' : 'MISS'}] ${key} - Fetching...`);
 
     // Create loading promise — one retry on transient network failure (e.g. flaky Wi‑Fi)
     const loadingPromise = withNetworkRetry(() => fetcher(), { retries: 1, delayMs: 500 })
@@ -96,7 +97,7 @@ class ModuleCache {
           data,
           timestamp: Date.now(),
         });
-        console.log(`💾 [MODULE CACHE] Saved ${key}`);
+        devLog(`💾 [MODULE CACHE] Saved ${key}`);
         return data;
       })
       .finally(() => {
@@ -137,7 +138,7 @@ class ModuleCache {
    * Clear specific key from cache
    */
   invalidate(key: string): void {
-    console.log(`🗑️ [MODULE CACHE] Invalidated ${key}`);
+    devLog(`🗑️ [MODULE CACHE] Invalidated ${key}`);
     this.cache.delete(key);
     this.loading.delete(key);
   }
@@ -159,7 +160,7 @@ class ModuleCache {
    * Clear all cache
    */
   clear(): void {
-    console.log('🗑️ [MODULE CACHE] Cleared all cache');
+    devLog('🗑️ [MODULE CACHE] Cleared all cache');
     this.cache.clear();
     this.loading.clear();
     this.hits = 0;
@@ -2528,7 +2529,7 @@ export async function getCachedImageUrl(
   const cacheKey = CACHE_KEYS.signedUrl(imagePath);
   
   return moduleCache.get(cacheKey, async () => {
-    console.log(`🖼️ [IMAGE CACHE MISS] Fetching signed URL for: ${imagePath}`);
+    devLog(`🖼️ [IMAGE CACHE MISS] Fetching signed URL for: ${imagePath}`);
     return await fetcher();
   });
 }

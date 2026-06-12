@@ -3,6 +3,7 @@
 // ============================================
 
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { devLog, devWarn } from '../app/utils/devLog';
 import {
   API_TIMEOUTS,
   PAYLOAD_LIMITS,
@@ -122,17 +123,17 @@ async function apiRequest<T = any>(
 
   // Log request details (unless silent)
   if (!silent) {
-    console.log(`🔄 API Request: ${fetchOptions.method || 'GET'} ${url}`);
+    devLog(`🔄 API Request: ${fetchOptions.method || 'GET'} ${url}`);
   }
 
   // Log payload size for POST/PUT requests
   if (fetchOptions.body && !silent) {
     const sizeInBytes = new Blob([fetchOptions.body]).size;
     const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
-    console.log(`📦 Payload size: ${sizeInMB} MB`);
+    devLog(`📦 Payload size: ${sizeInMB} MB`);
 
     if (sizeInBytes > PAYLOAD_LIMITS.WARNING_SIZE) {
-      console.warn(
+      devWarn(
         `⚠️ Large payload detected: ${sizeInMB} MB. This may cause timeout issues.`
       );
     }
@@ -175,7 +176,7 @@ async function apiRequest<T = any>(
 
     // Log response status
     if (!silent) {
-      console.log(`✅ API Response: ${response.status} ${response.statusText}`);
+      devLog(`✅ API Response: ${response.status} ${response.statusText}`);
     }
 
     // Handle non-JSON responses

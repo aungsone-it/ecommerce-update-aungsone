@@ -3,6 +3,8 @@
 // Simple in-memory cache for API responses
 // ============================================
 
+import { devLog } from './devLog';
+
 interface CacheEntry<T = any> {
   data: T;
   timestamp: number;
@@ -27,12 +29,12 @@ class ApiCache {
 
     // Check if cache has expired
     if (age > entry.ttl) {
-      console.log(`🗑️ Cache expired for key: ${key}`);
+      devLog(`🗑️ Cache expired for key: ${key}`);
       this.cache.delete(key);
       return null;
     }
 
-    console.log(`✅ Cache hit for key: ${key} (age: ${age}ms)`);
+    devLog(`✅ Cache hit for key: ${key} (age: ${age}ms)`);
     return entry.data as T;
   }
 
@@ -45,7 +47,7 @@ class ApiCache {
       timestamp: Date.now(),
       ttl,
     });
-    console.log(`💾 Cached data for key: ${key} (TTL: ${ttl}ms)`);
+    devLog(`💾 Cached data for key: ${key} (TTL: ${ttl}ms)`);
   }
 
   /**
@@ -54,7 +56,7 @@ class ApiCache {
   delete(key: string): void {
     const deleted = this.cache.delete(key);
     if (deleted) {
-      console.log(`🗑️ Deleted cache for key: ${key}`);
+      devLog(`🗑️ Deleted cache for key: ${key}`);
     }
   }
 
@@ -63,7 +65,7 @@ class ApiCache {
    */
   clear(): void {
     this.cache.clear();
-    console.log('🗑️ Cleared all cache');
+    devLog('🗑️ Cleared all cache');
   }
 
   /**

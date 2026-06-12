@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { AdminDateRangeFilterPopover } from "./AdminDateRangeFilterPopover";
 import { useLanguage } from "../contexts/LanguageContext";
+import { devLog } from "../utils/devLog";
 import { useState, useEffect, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -116,11 +117,11 @@ export function Dashboard() {
   
   const applyDashboardPayload = (data: Record<string, unknown>) => {
     if (data.cached) {
-      console.log(
+      devLog(
         `⚡ Dashboard loaded from SERVER CACHE (age: ${data.cacheAge}s) - ZERO database queries!`
       );
     } else {
-      console.log(`🔄 Dashboard loaded from DATABASE - Fresh data fetched`);
+      devLog(`🔄 Dashboard loaded from DATABASE - Fresh data fetched`);
     }
     setStats({
       totalRevenue: (data.totalRevenue as number) || 0,

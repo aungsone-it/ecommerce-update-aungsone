@@ -6,6 +6,8 @@
 // 2. Fetch fresh data in background
 // 3. Update UI when fresh data arrives
 
+import { devLog, devWarn } from '../app/utils/devLog';
+
 interface CacheEntry<T> {
   data: T;
   timestamp: number;
@@ -14,6 +16,8 @@ interface CacheEntry<T> {
 
 const CACHE_VERSION = '1.0.0';
 const CACHE_PREFIX = 'migoo_cache_';
+/** Skip single localStorage entries above this size to avoid quota errors. */
+const MAX_CACHE_ENTRY_BYTES = 2 * 1024 * 1024;
 
 // Cache TTL (time to live) - how long before cache is considered stale
 const CACHE_TTL = {
@@ -79,32 +83,35 @@ export class SmartCache {
       };
       
       const serialized = JSON.stringify(entry);
-      
-      // 🔥 Check size before caching (skip if > 8MB)
-      const sizeInMB = new Blob([serialized]).size / (1024 * 1024);
-      if (sizeInMB > 8) {
-        console.warn(`⚠️ Skipping cache for ${key} - too large (${sizeInMB.toFixed(2)}MB)`);
+      const sizeInBytes = new Blob([serialized]).size;
+
+      if (sizeInBytes > MAX_CACHE_ENTRY_BYTES) {
+        devWarn(`⚠️ Skipping cache for ${key} - too large (${(sizeInBytes / (1024 * 1024)).toFixed(2)}MB)`);
         return;
       }
-      
+
       localStorage.setItem(CACHE_PREFIX + key, serialized);
-      console.log(`💾 Cached ${key} (${sizeInMB.toFixed(2)}MB)`);
+      devLog(`💾 Cached ${key} (${(sizeInBytes / (1024 * 1024)).toFixed(2)}MB)`);
     } catch (error) {
       // If quota exceeded, clear old cache
       if (error instanceof Error && error.name === 'QuotaExceededError') {
-        console.warn('📦 Storage quota exceeded, clearing old cache...');
-        this.clearOldCache();
-        
-        // Try again
+        devWarn('📦 Storage quota exceeded, clearing old cache...');
+        this.clearAll();
+        this.clearOldCache(0);
+
+        // Try again only if entry is reasonably sized
         try {
           const entry: CacheEntry<T> = {
             data,
             timestamp: Date.now(),
             version: CACHE_VERSION,
           };
-          localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry));
+          const retrySerialized = JSON.stringify(entry);
+          if (new Blob([retrySerialized]).size <= MAX_CACHE_ENTRY_BYTES) {
+            localStorage.setItem(CACHE_PREFIX + key, retrySerialized);
+          }
         } catch {
-          console.warn(`⚠️ Could not cache ${key} - quota exceeded`);
+          devWarn(`⚠️ Could not cache ${key} - quota exceeded`);
         }
       } else {
         console.error('Cache write error:', error);
@@ -134,7 +141,7 @@ export class SmartCache {
   /**
    * Clear old/stale cache entries
    */
-  static clearOldCache(): void {
+  static clearOldCache(maxAgeMs = 60 * 60 * 1000): void {
     const keys = Object.keys(localStorage);
     const now = Date.now();
     
@@ -148,8 +155,7 @@ export class SmartCache {
         const entry: CacheEntry<any> = JSON.parse(cached);
         const age = now - entry.timestamp;
         
-        // Remove if older than 1 hour
-        if (age > 60 * 60 * 1000) {
+        if (age > maxAgeMs) {
           localStorage.removeItem(key);
         }
       } catch {
@@ -188,7 +194,7 @@ export class SmartCache {
     });
     
     if (clearedCount > 0) {
-      console.log(`🧹 Cleared ${clearedCount} non-essential items to free up space`);
+      devLog(`🧹 Cleared ${clearedCount} non-essential items to free up space`);
     }
   }
 

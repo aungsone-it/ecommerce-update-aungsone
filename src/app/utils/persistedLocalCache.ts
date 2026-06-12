@@ -3,7 +3,12 @@
  * after first visit: `/` landing, `/store` marketplace, vendor storefront.
  */
 
+import { devWarn } from "./devLog";
+
 const WRAPPER_VERSION = 1;
+
+/** Skip persisting payloads larger than this — avoids QuotaExceededError on admin product grids. */
+const PERSISTED_MAX_ENTRY_BYTES = 1.5 * 1024 * 1024;
 
 export type PersistedWrapper<T> = {
   v: typeof WRAPPER_VERSION;
@@ -111,6 +116,27 @@ export function isStorageQuotaError(err: unknown): boolean {
   return name === "QuotaExceededError" || /quota/i.test(message);
 }
 
+function evictPersistedCacheEntries(): number {
+  if (typeof localStorage === "undefined") return 0;
+  let removed = 0;
+  try {
+    for (const prefix of CACHE_LS_PREFIXES) {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith(prefix) || k.includes(prefix))) keys.push(k);
+      }
+      for (const k of keys) {
+        localStorage.removeItem(k);
+        removed++;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return removed;
+}
+
 export function writePersistedJson<T>(key: string, payload: T): void {
   if (typeof localStorage === "undefined") return;
   const body: PersistedWrapper<T> = {
@@ -119,19 +145,27 @@ export function writePersistedJson<T>(key: string, payload: T): void {
     payload,
   };
   const serialized = JSON.stringify(body);
+  if (serialized.length > PERSISTED_MAX_ENTRY_BYTES) {
+    devWarn(
+      `[persistedLocalCache] skip write — payload too large (${(serialized.length / (1024 * 1024)).toFixed(2)}MB):`,
+      key,
+    );
+    return;
+  }
   try {
     localStorage.setItem(key, serialized);
   } catch (e) {
     if (isStorageQuotaError(e)) {
       freeLocalStorageForAuth();
+      evictPersistedCacheEntries();
       try {
         localStorage.setItem(key, serialized);
         return;
       } catch {
-        /* still full */
+        /* still full — skip silently in production */
       }
     }
-    console.warn("[persistedLocalCache] write failed (quota?)", key, e);
+    devWarn("[persistedLocalCache] write failed (quota?)", key, e);
   }
 }
 
