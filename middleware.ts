@@ -58,6 +58,22 @@ const RESERVED_SUBDOMAINS = new Set([
   "preview",
 ]);
 
+type EdgeOneMiddlewareContext = {
+  next?: () => Response | Promise<Response>;
+};
+
+/**
+ * Tencent EdgeOne Makers also detects root `middleware.ts`, but its middleware
+ * receives a context object instead of Vercel's Request. This test deployment
+ * should remain a static Vite deployment on EdgeOne, so pass requests through.
+ */
+export function middleware(context: EdgeOneMiddlewareContext): Response | Promise<Response> {
+  if (typeof context?.next === "function") {
+    return context.next();
+  }
+  return new Response(null, { status: 204 });
+}
+
 function normalizeHost(host: string): string {
   return host.split(":")[0].toLowerCase();
 }
@@ -127,7 +143,7 @@ function isStorefrontPathBlockedOnMarketplaceApex(pathname: string): boolean {
   return false;
 }
 
-export default function middleware(request: Request): Response {
+export default function vercelMiddleware(request: Request): Response {
   const host = normalizeHost(request.headers.get("host") || "");
 
   if (host === "localhost" || host.startsWith("127.0.0.1")) {
