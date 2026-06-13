@@ -35,6 +35,10 @@ describe("deriveNaiveVendorApexFromHost", () => {
     expect(deriveNaiveVendorApexFromHost("my-app.vercel.app")).toBeNull();
   });
 
+  it("returns null for Tencent EdgeOne preview hostnames", () => {
+    expect(deriveNaiveVendorApexFromHost("ecommerce-update-aungsone.edgeone.dev")).toBeNull();
+  });
+
   it("returns null for Railway deploy hostnames (*.up.railway.app)", () => {
     expect(
       deriveNaiveVendorApexFromHost("ecommerce-update-aungsone-production-0d2f.up.railway.app")

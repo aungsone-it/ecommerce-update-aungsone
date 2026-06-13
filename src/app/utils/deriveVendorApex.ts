@@ -15,6 +15,7 @@ export const MULTI_TENANT_PLATFORM_APEX = new Set([
   "netlify.app",
   "pages.dev",
   "railway.app",
+  "edgeone.dev",
   "vercel.app",
   "web.app",
 ]);

@@ -28,6 +28,7 @@ describe("platformApexHost", () => {
     expect(isBarePlatformApexHost("www.newbrand.com")).toBe(true);
     expect(isBarePlatformApexHost("gogo.newbrand.com")).toBe(false);
     expect(isBarePlatformApexHost("preview.vercel.app")).toBe(false);
+    expect(isBarePlatformApexHost("ecommerce-update-aungsone.edgeone.dev")).toBe(false);
     expect(isBarePlatformApexHost("localhost")).toBe(false);
   });
 

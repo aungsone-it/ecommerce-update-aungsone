@@ -23,6 +23,7 @@ const MULTI_TENANT_PLATFORM_APEX = new Set([
   "netlify.app",
   "pages.dev",
   "railway.app",
+  "edgeone.dev",
   "vercel.app",
   "web.app",
 ]);
@@ -128,7 +129,12 @@ function isBarePlatformApexHost(host: string): boolean {
   const parts = bare.split(".").filter(Boolean);
   if (parts.length !== 2) return false;
   if (MULTI_TENANT_PLATFORM_APEX.has(bare)) return false;
-  if (h.endsWith(".vercel.app") || h.endsWith(".netlify.app") || h.endsWith(".railway.app")) {
+  if (
+    h.endsWith(".vercel.app") ||
+    h.endsWith(".netlify.app") ||
+    h.endsWith(".railway.app") ||
+    h.endsWith(".edgeone.dev")
+  ) {
     return false;
   }
   return h === bare || h === `www.${bare}`;
