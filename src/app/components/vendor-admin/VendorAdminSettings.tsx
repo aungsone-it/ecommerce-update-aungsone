@@ -37,7 +37,11 @@ import { supabase } from "../../contexts/AuthContext";
 import { getVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
 import { buildVendorSubdomainHostname } from "../../utils/platformApexHost";
 import { useLanguage } from "../../contexts/LanguageContext";
-import { isEdgeOneDeployment, resolveCustomDomainCnameTarget } from "../../utils/deploymentPlatform";
+import {
+  isEdgeOneDeployment,
+  isEdgeOnePlatformValue,
+  resolveCustomDomainCnameTarget,
+} from "../../utils/deploymentPlatform";
 
 interface StoreSettings {
   vendorId: string;
@@ -124,10 +128,19 @@ export function VendorAdminSettings({
     txtName: string;
     txtValue: string;
     cnameTarget: string;
+    deploymentPlatform?: string;
   } | null>(null);
+  const [backendDeploymentPlatform, setBackendDeploymentPlatform] = useState<string>("");
   const subdomainBase = getVendorSubdomainBase();
-  const onEdgeOne = isEdgeOneDeployment();
-  const customDomainCnameTarget = resolveCustomDomainCnameTarget(domainHints?.cnameTarget);
+  const onEdgeOne =
+    isEdgeOnePlatformValue(backendDeploymentPlatform) ||
+    isEdgeOnePlatformValue(domainHints?.deploymentPlatform) ||
+    isEdgeOneDeployment();
+  const customDomainCnameTarget = resolveCustomDomainCnameTarget(
+    domainHints?.cnameTarget,
+    undefined,
+    onEdgeOne
+  );
   const vendorSubdomainHost =
     buildVendorSubdomainHostname(settings?.storeSlug || "", undefined) ||
     (subdomainBase ? `${settings?.storeSlug || "yourstore"}.${subdomainBase}` : null);
@@ -163,6 +176,7 @@ export function VendorAdminSettings({
         { ttl: 60_000, staleWhileRevalidate: true }
       );
       if (data?.settings) {
+        setBackendDeploymentPlatform(String(data.deploymentPlatform || ""));
         const rawLogo =
           typeof data.settings.logo === "string" ? data.settings.logo.trim() : "";
         const nextSettings = {
@@ -183,7 +197,8 @@ export function VendorAdminSettings({
             hostname: String(data.settings.customDomain || "").trim(),
             txtName: dv.txtName,
             txtValue: dv.txtValue,
-            cnameTarget: resolveCustomDomainCnameTarget(dv.cnameTarget),
+            cnameTarget: String(dv.cnameTarget || ""),
+            deploymentPlatform: String(dv.deploymentPlatform || data.deploymentPlatform || ""),
           });
         }
       }
@@ -414,8 +429,10 @@ export function VendorAdminSettings({
         hostname: data.hostname,
         txtName: data.txtName,
         txtValue: data.txtValue,
-        cnameTarget: data.cnameTarget,
+        cnameTarget: String(data.cnameTarget || ""),
+        deploymentPlatform: String(data.deploymentPlatform || ""),
       });
+      setBackendDeploymentPlatform(String(data.deploymentPlatform || ""));
       setSettings((prev) => ({
         ...prev,
         customDomain: data.hostname,

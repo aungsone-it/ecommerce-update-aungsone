@@ -23,6 +23,10 @@ describe("resolveCustomDomainCnameTarget", () => {
     expect(resolveCustomDomainCnameTarget("cname.vercel-dns.com", "x.edgeone.dev")).toBe("");
   });
 
+  it("hides vercel cname when backend marks edgeone", () => {
+    expect(resolveCustomDomainCnameTarget("cname.vercel-dns.com", "shop.example.com", true)).toBe("");
+  });
+
   it("prefers explicit api cname when not the vercel default", () => {
     expect(resolveCustomDomainCnameTarget("cname.edgeone.example", "x.edgeone.dev")).toBe(
       "cname.edgeone.example"

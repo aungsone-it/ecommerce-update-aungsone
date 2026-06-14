@@ -11,17 +11,27 @@ export function isEdgeOneDeployment(hostname?: string): boolean {
   return platform === "edgeone" || platform === "tencent";
 }
 
+export function isEdgeOnePlatformValue(platform?: string): boolean {
+  const normalized = String(platform || "").trim().toLowerCase();
+  return normalized === "edgeone" || normalized === "tencent";
+}
+
 /** CNAME shown in vendor custom-domain instructions (API value wins when explicit). */
-export function resolveCustomDomainCnameTarget(apiValue?: string, hostname?: string): string {
+export function resolveCustomDomainCnameTarget(
+  apiValue?: string,
+  hostname?: string,
+  forceEdgeOne = false
+): string {
+  const edgeOne = forceEdgeOne || isEdgeOneDeployment(hostname);
   const fromApi = String(apiValue || "").trim();
-  if (fromApi && (!isEdgeOneDeployment(hostname) || fromApi !== "cname.vercel-dns.com")) {
+  if (fromApi && (!edgeOne || fromApi !== "cname.vercel-dns.com")) {
     return fromApi;
   }
 
   const envHint = String(import.meta.env.VITE_CUSTOM_DOMAIN_CNAME_TARGET || "").trim();
   if (envHint) return envHint;
 
-  if (isEdgeOneDeployment(hostname)) return "";
+  if (edgeOne) return "";
 
   return "cname.vercel-dns.com";
 }

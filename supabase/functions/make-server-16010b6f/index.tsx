@@ -10156,7 +10156,12 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
 
     const pending = await kv.get(`vendor_domain_pending:${actualVendorId}`);
     let domainVerification:
-      | { txtName: string; txtValue: string; cnameTarget: string }
+      | {
+          txtName: string;
+          txtValue: string;
+          cnameTarget: string;
+          deploymentPlatform: "edgeone" | "vercel";
+        }
       | undefined;
     if (
       pending &&
@@ -10170,6 +10175,7 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
         txtName: `_migoo-verify.${ph.hostname}`,
         txtValue: `migoo-verify=${ph.token}`,
         cnameTarget: ct,
+        deploymentPlatform: deploymentPlatformName(),
       };
     }
 
@@ -10177,6 +10183,7 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
 
     return c.json({
       settings: { ...populatedSettings, domainVerification },
+      deploymentPlatform: deploymentPlatformName(),
     });
 
   } catch (error: any) {
@@ -10231,6 +10238,10 @@ function isReservedPlatformApexHostname(hostname: string): boolean {
 function isEdgeOneDeploymentBackend(): boolean {
   const platform = String(Deno.env.get("DEPLOYMENT_PLATFORM") || "").trim().toLowerCase();
   return platform === "edgeone" || platform === "tencent";
+}
+
+function deploymentPlatformName(): "edgeone" | "vercel" {
+  return isEdgeOneDeploymentBackend() ? "edgeone" : "vercel";
 }
 
 function customDomainCnameTarget(): string {
@@ -10483,6 +10494,7 @@ app.post("/make-server-16010b6f/vendor/custom-domain/prepare", async (c) => {
       txtName,
       txtValue,
       cnameTarget: customDomainCnameTarget(),
+      deploymentPlatform: deploymentPlatformName(),
     });
   } catch (error: any) {
     console.error("❌ custom-domain/prepare:", error);
