@@ -37,6 +37,7 @@ import { supabase } from "../../contexts/AuthContext";
 import { getVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
 import { buildVendorSubdomainHostname } from "../../utils/platformApexHost";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { isEdgeOneDeployment, resolveCustomDomainCnameTarget } from "../../utils/deploymentPlatform";
 
 interface StoreSettings {
   vendorId: string;
@@ -125,6 +126,8 @@ export function VendorAdminSettings({
     cnameTarget: string;
   } | null>(null);
   const subdomainBase = getVendorSubdomainBase();
+  const onEdgeOne = isEdgeOneDeployment();
+  const customDomainCnameTarget = resolveCustomDomainCnameTarget(domainHints?.cnameTarget);
   const vendorSubdomainHost =
     buildVendorSubdomainHostname(settings?.storeSlug || "", undefined) ||
     (subdomainBase ? `${settings?.storeSlug || "yourstore"}.${subdomainBase}` : null);
@@ -180,7 +183,7 @@ export function VendorAdminSettings({
             hostname: String(data.settings.customDomain || "").trim(),
             txtName: dv.txtName,
             txtValue: dv.txtValue,
-            cnameTarget: dv.cnameTarget || "cname.vercel-dns.com",
+            cnameTarget: resolveCustomDomainCnameTarget(dv.cnameTarget),
           });
         }
       }
@@ -763,7 +766,11 @@ export function VendorAdminSettings({
           <div>
             <h2 className="text-lg font-semibold text-slate-900">{t("vendorAdmin.settings.customDomain")}</h2>
             <p className="text-sm text-slate-600 mt-1">
-              {t("vendorAdmin.settings.customDomainDesc")}
+              {t(
+                onEdgeOne
+                  ? "vendorAdmin.settings.customDomainDescEdgeOne"
+                  : "vendorAdmin.settings.customDomainDesc"
+              )}
             </p>
           </div>
         </div>
@@ -781,8 +788,12 @@ export function VendorAdminSettings({
             {settings.domainStatus === "verified" && settings.customDomain && (
               <p className="text-xs text-emerald-700 mt-2">
                 <strong>{t("vendorAdmin.settings.verified")}</strong> — store is served at{" "}
-                <span className="font-mono">https://{settings.customDomain}</span> once DNS and Vercel
-                include this host.
+                <span className="font-mono">https://{settings.customDomain}</span>{" "}
+                {t(
+                  onEdgeOne
+                    ? "vendorAdmin.settings.verifiedHostingEdgeOne"
+                    : "vendorAdmin.settings.verifiedHostingVercel"
+                )}
               </p>
             )}
             {settings.domainStatus === "pending" && (
@@ -856,10 +867,18 @@ export function VendorAdminSettings({
               <p className="font-medium text-slate-800">{t("vendorAdmin.settings.verifyStepsTitle")}</p>
               <ol className="list-decimal list-inside space-y-1 text-slate-700">
                 <li>
-                  {t("vendorAdmin.settings.verifyStep1")}
+                  {t(
+                    onEdgeOne
+                      ? "vendorAdmin.settings.verifyStep1EdgeOne"
+                      : "vendorAdmin.settings.verifyStep1"
+                  )}
                 </li>
                 <li>
-                  {t("vendorAdmin.settings.verifyStep2")}
+                  {t(
+                    onEdgeOne
+                      ? "vendorAdmin.settings.verifyStep2EdgeOne"
+                      : "vendorAdmin.settings.verifyStep2"
+                  )}
                 </li>
                 <li>
                   {t("vendorAdmin.settings.verifyStep3")}
@@ -904,18 +923,24 @@ export function VendorAdminSettings({
                   )}
                 </div>
                 <div>
-                  <span className="text-slate-500">{t("vendorAdmin.settings.cnameTarget")} </span>
-                  <code className="bg-slate-100 px-1 rounded">
-                    {domainHints?.cnameTarget || "cname.vercel-dns.com"}
-                  </code>
-                  {domainHints?.cnameTarget && (
-                    <button
-                      type="button"
-                      className="ml-2 text-blue-600 hover:underline"
-                      onClick={() => copyToClipboard("CNAME target", domainHints.cnameTarget)}
-                    >
-                      {t("vendorAdmin.settings.copy")}
-                    </button>
+                  {onEdgeOne && !customDomainCnameTarget ? (
+                    <p className="text-slate-600">{t("vendorAdmin.settings.cnameTargetEdgeOneHint")}</p>
+                  ) : (
+                    <>
+                      <span className="text-slate-500">{t("vendorAdmin.settings.cnameTarget")} </span>
+                      <code className="bg-slate-100 px-1 rounded">
+                        {customDomainCnameTarget || "cname.vercel-dns.com"}
+                      </code>
+                      {customDomainCnameTarget && (
+                        <button
+                          type="button"
+                          className="ml-2 text-blue-600 hover:underline"
+                          onClick={() => copyToClipboard("CNAME target", customDomainCnameTarget)}
+                        >
+                          {t("vendorAdmin.settings.copy")}
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

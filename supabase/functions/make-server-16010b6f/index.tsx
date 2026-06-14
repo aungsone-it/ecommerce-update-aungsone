@@ -10165,9 +10165,7 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
       (pending as { hostname?: string; token?: string }).token
     ) {
       const ph = pending as { hostname: string; token: string };
-      const ct =
-        String(Deno.env.get("CUSTOM_DOMAIN_CNAME_TARGET") || "").trim() ||
-        "cname.vercel-dns.com";
+      const ct = customDomainCnameTarget();
       domainVerification = {
         txtName: `_migoo-verify.${ph.hostname}`,
         txtValue: `migoo-verify=${ph.token}`,
@@ -10230,9 +10228,16 @@ function isReservedPlatformApexHostname(hostname: string): boolean {
   return getReservedPlatformApexDomains().has(bare);
 }
 
+function isEdgeOneDeploymentBackend(): boolean {
+  const platform = String(Deno.env.get("DEPLOYMENT_PLATFORM") || "").trim().toLowerCase();
+  return platform === "edgeone" || platform === "tencent";
+}
+
 function customDomainCnameTarget(): string {
-  const t = String(Deno.env.get("CUSTOM_DOMAIN_CNAME_TARGET") || "").trim();
-  return t || "cname.vercel-dns.com";
+  const explicit = String(Deno.env.get("CUSTOM_DOMAIN_CNAME_TARGET") || "").trim();
+  if (explicit) return explicit;
+  if (isEdgeOneDeploymentBackend()) return "";
+  return "cname.vercel-dns.com";
 }
 
 /** One TXT RDATA presentation: one or more quoted strings in one field. */
@@ -10563,8 +10568,12 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
 
     if (!verified) {
       const checker = `https://dnschecker.org/#TXT/${encodeURIComponent(fqdn)}`;
+      const hostingLabel = isEdgeOneDeploymentBackend() ? "EdgeOne" : "Vercel";
+      const dnsHint = isEdgeOneDeploymentBackend()
+        ? "the CNAME EdgeOne shows for this hostname"
+        : `the exact A/CNAME values from Vercel → Project → Domains for ${normalized}`;
       const parkingMsg = httpCheck.sawParkingHtml
-        ? ` Right now https://${normalized} still shows your registrar's parking page (e.g. Hostinger), so traffic never reaches this Vercel app. In Hostinger → Domains → DNS, replace parking/default A records with the exact A/CNAME values from Vercel → Project → Domains for ${normalized}, then wait for DNS to update.`
+        ? ` Right now https://${normalized} still shows your registrar's parking page (e.g. Hostinger), so traffic never reaches this ${hostingLabel} app. In your DNS provider, point this hostname to ${dnsHint}, then wait for DNS to update.`
         : "";
       return c.json({
         verified: false,
@@ -10630,8 +10639,9 @@ app.post("/make-server-16010b6f/vendor/verify-domain", async (c) => {
 
     return c.json({
       verified: true,
-      message:
-        "Domain verified. Your storefront can use this hostname once DNS and Vercel are aligned.",
+      message: isEdgeOneDeploymentBackend()
+        ? "Domain verified. Your storefront can use this hostname once DNS and EdgeOne are aligned."
+        : "Domain verified. Your storefront can use this hostname once DNS and Vercel are aligned.",
       domain: normalized,
       storeSlug,
     });

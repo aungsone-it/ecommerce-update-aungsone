@@ -67,6 +67,7 @@ import {
   isTownshipInMyanmarRegion,
 } from "../utils/myanmarRegions";
 import { normalizeCheckoutStoragePath } from "../utils/vendorStorePaths";
+import { useIsMobile } from "./ui/use-mobile";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -114,6 +115,8 @@ interface CheckoutProps {
   /** After a successful order — e.g. invalidate cached order history for instant refresh on profile. */
   onOrderPlacedSuccess?: (ctx: { userId: string }) => void;
 }
+
+type CheckoutPaymentMethod = "Card" | "KPay" | "KPay-PWA" | "BankTransfer" | "None";
 
 type CheckoutSummarySnapshot = {
   orderNumber: string;
@@ -401,9 +404,8 @@ function pickLatestOrderForVendor(
   return (vendorOrders.length > 0 ? vendorOrders : orders)[0] ?? null;
 }
 
-function summaryPaymentMethodLabel(
-  method: "Card" | "KPay" | "KPay-PWA" | "BankTransfer"
-): string {
+function summaryPaymentMethodLabel(method: CheckoutPaymentMethod): string {
+  if (method === "None") return "Not selected";
   if (method === "KPay") return "KBZPay QR Payment";
   if (method === "KPay-PWA") return "KBZPay In App Payment";
   if (method === "BankTransfer") return "Bank Transfer";
@@ -997,8 +999,11 @@ export function Checkout({
   // Order Note
   const [orderNote, setOrderNote] = useState("");
 
-  const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "KPay-PWA" | "BankTransfer">(
-    initialSummarySnapshot?.paymentMethod || "KPay-PWA"
+  const isMobile = useIsMobile();
+  const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod>(
+    initialSummarySnapshot?.paymentMethod
+      ? normalizeCheckoutPaymentMethod(initialSummarySnapshot.paymentMethod)
+      : "None"
   );
   const [kpayPwaLoading, setKpayPwaLoading] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState({
@@ -1021,12 +1026,32 @@ export function Checkout({
     ? kpaySession.qrImageUrl
     : "";
 
-  // Temporary: card checkout is hidden, so migrate stale cached "Card" state.
+  // No payment method selected until the customer chooses one; clear invalid selections.
   useEffect(() => {
-    if (paymentMethod === "Card") {
-      setPaymentMethod("KPay-PWA");
+    if (step !== "checkout") return;
+    if (paymentMethod === "Card" || paymentMethod === "BankTransfer") {
+      setPaymentMethod("None");
+    } else if (isMobile && paymentMethod === "KPay") {
+      setPaymentMethod("None");
+    } else if (!isMobile && paymentMethod === "KPay-PWA") {
+      setPaymentMethod("None");
     }
-  }, [paymentMethod]);
+  }, [isMobile, paymentMethod, step]);
+
+  // Hide QR/PWA selection if required checkout fields are cleared after selection.
+  useEffect(() => {
+    if (step !== "checkout") return;
+    const incomplete =
+      !shippingInfo.fullName.trim() ||
+      !shippingInfo.phone.trim() ||
+      !shippingInfo.address.trim() ||
+      !shippingInfo.state.trim() ||
+      !shippingInfo.city.trim();
+    if ((paymentMethod === "KPay" || paymentMethod === "KPay-PWA") && incomplete) {
+      setPaymentMethod("None");
+      kpayAutoGenerateTriggeredRef.current = false;
+    }
+  }, [shippingInfo, paymentMethod, step]);
 
   // Reset webhook confirmation whenever a new QR is generated (different order id).
   useEffect(() => {
@@ -1583,6 +1608,11 @@ export function Checkout({
     return missingFields;
   };
 
+  const checkoutFieldsComplete = useMemo(
+    () => getMissingRequiredFields().length === 0,
+    [shippingInfo]
+  );
+
   const handleSelectKPayQr = () => {
     const missingFields = getMissingRequiredFields();
     if (missingFields.length > 0) {
@@ -1809,6 +1839,10 @@ export function Checkout({
     const missingFields = getMissingRequiredFields();
     if (missingFields.length > 0) {
       toast.error(`Please fill all required fields first: ${missingFields.join(", ")}`);
+      return;
+    }
+    if (paymentMethod === "None") {
+      toast.error("Please select a payment method");
       return;
     }
     const orderEmail = resolveOrderEmail();
@@ -2503,6 +2537,8 @@ export function Checkout({
                 </div>
 
                 <div className="space-y-3">
+                  {!isMobile && (
+                  <>
                   <button
                     type="button"
                     onClick={handleSelectKPayQr}
@@ -2533,7 +2569,7 @@ export function Checkout({
                       </div>
                     </div>
                   </button>
-                  {paymentMethod === "KPay" && (
+                  {paymentMethod === "KPay" && checkoutFieldsComplete && (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                       {kpayLoading && (
                         <p className="mb-3 text-xs text-slate-500">Generating KBZPay QR automatically...</p>
@@ -2603,6 +2639,9 @@ export function Checkout({
                       </div>
                     </div>
                   )}
+                  </>
+                  )}
+                  {isMobile && (
                   <button
                     type="button"
                     onClick={handleSelectKPayPwa}
@@ -2636,25 +2675,7 @@ export function Checkout({
                       </span>
                     </div>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      toast.info("🚀 Coming Soon! This payment method will be available soon.", {
-                        duration: 4000,
-                      })
-                    }
-                    className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:bg-slate-100"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-4 w-4 items-center justify-center rounded-full border-2 border-slate-200 bg-white" />
-                        <span className="text-sm font-medium text-slate-600">Bank Transfer</span>
-                      </div>
-                      <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                        Coming soon
-                      </span>
-                    </div>
-                  </button>
+                  )}
                 </div>
 
               </div>
@@ -2729,6 +2750,7 @@ export function Checkout({
                 disabled={
                   loading ||
                   kpayPwaLoading ||
+                  paymentMethod === "None" ||
                   (paymentMethod === "KPay" && (!canSubmitKPayOrder || !kpayWebhookConfirmed))
                 }
               >
@@ -2741,6 +2763,8 @@ export function Checkout({
                   kpayWebhookConfirmed ? "Place Order (Payment Confirmed)" : "I've Completed Payment"
                 ) : paymentMethod === "KPay-PWA" ? (
                   `Pay with KBZPay · ${finalTotal.toFixed(0)} MMK`
+                ) : paymentMethod === "None" ? (
+                  "Select a payment method"
                 ) : (
                   `Pay ${finalTotal.toFixed(0)} MMK`
                 )}
