@@ -60,17 +60,82 @@ const RESERVED_SUBDOMAINS = new Set([
 ]);
 
 type EdgeOneMiddlewareContext = {
+  request?: Request;
   next?: () => Response | Promise<Response>;
 };
+
+function readRuntimeEnv(name: string): string {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  return String(env?.[name] || "").trim();
+}
+
+function resolveSupabaseProjectRef(): string {
+  return (
+    readRuntimeEnv("SUPABASE_PROJECT_REF") ||
+    readRuntimeEnv("VITE_SUPABASE_PROJECT_REF") ||
+    "lmkthofnydxxgowryjcz"
+  );
+}
+
+function resolveSupabaseAnonKey(): string {
+  return (
+    readRuntimeEnv("SUPABASE_ANON_KEY") ||
+    readRuntimeEnv("VITE_SUPABASE_ANON_KEY") ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJIUzI1NiIsInJlZiI6Imxta3Rob2ZueWR4eGdvd3J5amN6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAzNTQyMDUsImV4cCI6MjA4NTkzMDIwNX0.MpID6QuedE9KPzMXbWMGYPpbm98tOhUWxE7Kk7iaV_Q"
+  );
+}
+
+function publicHostnameFromRequest(request: Request): string {
+  const forwardedHost = request.headers.get("x-forwarded-host") || "";
+  const host = forwardedHost || request.headers.get("host") || "";
+  return host.split(",")[0].trim().split(":")[0].toLowerCase();
+}
 
 /**
  * Tencent EdgeOne Makers also detects root `middleware.ts`, but its middleware
  * receives a context object instead of Vercel's Request. This test deployment
- * should remain a static Vite deployment on EdgeOne, so pass requests through.
+ * remains a static Vite deployment on EdgeOne, except for the vendor custom
+ * domain verification file that Vercel serves via `api/migoo-challenge.ts`.
  */
-export function middleware(context: EdgeOneMiddlewareContext): Response | Promise<Response> {
+export async function middleware(context: EdgeOneMiddlewareContext): Promise<Response> {
+  const request = context?.request;
+  if (request) {
+    const url = new URL(request.url);
+    if (url.pathname === "/.well-known/migoo-verify.txt") {
+      const hostname = publicHostnameFromRequest(request);
+      if (!hostname) {
+        return new Response("", { status: 400 });
+      }
+
+      const endpoint =
+        `https://${resolveSupabaseProjectRef()}.supabase.co/functions/v1/make-server-16010b6f/vendor/custom-domain/challenge-text?hostname=${
+          encodeURIComponent(hostname)
+        }`;
+      try {
+        const res = await fetch(endpoint, {
+          headers: {
+            Authorization: `Bearer ${resolveSupabaseAnonKey()}`,
+            Accept: "text/plain",
+          },
+        });
+        if (!res.ok) {
+          return new Response("", { status: 404 });
+        }
+        return new Response(await res.text(), {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-store",
+          },
+        });
+      } catch {
+        return new Response("", { status: 502 });
+      }
+    }
+  }
+
   if (typeof context?.next === "function") {
-    return context.next();
+    return await context.next();
   }
   return new Response(null, { status: 204 });
 }
