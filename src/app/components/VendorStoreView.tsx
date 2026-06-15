@@ -698,6 +698,12 @@ function vendorHomeStateFromCatalogPayload(
   };
 }
 
+function hasCatalogRowsOrTotals(payload: Record<string, unknown>): boolean {
+  const products = Array.isArray(payload.products) ? payload.products : [];
+  const total = typeof payload.total === "number" ? payload.total : 0;
+  return products.length > 0 || total > 0;
+}
+
 /**
  * First paint for vendor home: read the same LS keys as `refetchVendorCatalogPage1` + categories
  * so production (slow edge) does not flash a full-page skeleton while waiting for sequential fetches.
@@ -791,6 +797,29 @@ function getVendorHomepageInitialState(
     const lsKey = lsVendorCatalogPage1Key(vendorId, "", catKey, VENDOR_BROWSE_PAGE_SIZE);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
     if (fromLs && typeof fromLs === "object") {
+      if (!hasCatalogRowsOrTotals(fromLs) && !initialProductSlug) {
+        return {
+          products: [],
+          vendorCategories,
+          serverStatus: "checking",
+          vendorCatalogTotal: 0,
+          vendorCatalogPage: 1,
+          vendorCatalogHasMore: false,
+          storeName:
+            typeof fromLs.storeName === "string" && fromLs.storeName.trim()
+              ? fromLs.storeName.trim()
+              : "Vendor Store",
+          storeLogo: typeof fromLs.logo === "string" ? fromLs.logo : "",
+          storePhone:
+            typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()
+              ? fromLs.storePhone.trim()
+              : VENDOR_DEFAULT_STORE_PHONE,
+          canonicalVendorId:
+            typeof fromLs.resolvedVendorId === "string" && fromLs.resolvedVendorId.trim()
+              ? fromLs.resolvedVendorId.trim()
+              : vendorId,
+        };
+      }
       const withSession = applyLoadedMoreSessionToHomeState(
         vendorId,
         catKey,
@@ -3547,7 +3576,12 @@ export function VendorStoreView({
             if (persistEligible) {
               rememberVendorCatalogSlice(cat, slice);
             }
-            return true;
+            if (Array.isArray(slice.products) && slice.products.length > 0) {
+              return true;
+            }
+            if (typeof slice.total === "number" && slice.total > 0) {
+              return true;
+            }
           }
         }
       }
