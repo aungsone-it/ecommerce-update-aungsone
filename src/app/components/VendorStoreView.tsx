@@ -1275,6 +1275,13 @@ export function VendorStoreView({
   const [vendorVariantSelections, setVendorVariantSelections] = useState<Record<string, string>>({});
   const [vendorProductImageIndex, setVendorProductImageIndex] = useState(0);
 
+  const applyStoreNameIfPresent = useCallback((nextValue: unknown) => {
+    if (typeof nextValue !== "string") return;
+    const trimmed = nextValue.trim();
+    if (!trimmed) return;
+    setStoreName(trimmed);
+  }, []);
+
   const isCheckoutRoute = useMemo(
     () => isVendorCheckoutOrSummaryPath(location.pathname, storeBase),
     [location.pathname, storeBase]
@@ -3479,7 +3486,7 @@ export function VendorStoreView({
           applyVendorCatalogSlice(loadedMore);
           const fromLsBranding = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
           if (fromLsBranding && typeof fromLsBranding === "object") {
-            setStoreName(fromLsBranding.storeName || "Vendor Store");
+            applyStoreNameIfPresent(fromLsBranding.storeName);
             setStoreLogo(fromLsBranding.logo || "");
             if (
               typeof fromLsBranding.storePhone === "string" &&
@@ -3522,7 +3529,7 @@ export function VendorStoreView({
               return false;
             }
             applyVendorCatalogSlice(slice);
-            setStoreName(fromLs.storeName || "Vendor Store");
+            applyStoreNameIfPresent(fromLs.storeName);
             setStoreLogo(fromLs.logo || "");
             if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
               setStorePhone(fromLs.storePhone.trim());
@@ -3574,7 +3581,7 @@ export function VendorStoreView({
       setVendorCatalogTotal(slice.total);
       setVendorCatalogPage(slice.page);
       setVendorCatalogHasMore(slice.hasMore);
-      setStoreName(productsData.storeName || "Vendor Store");
+      applyStoreNameIfPresent(productsData.storeName);
       setStoreLogo(productsData.logo || "");
       setStorePhone(productsData.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
       setCanonicalVendorId(productsData.resolvedVendorId ?? vendorId);
@@ -3595,6 +3602,7 @@ export function VendorStoreView({
       debouncedVendorServerQ,
       vendorCatalogServerCategory,
       savedPage,
+      applyStoreNameIfPresent,
       rememberVendorCatalogSlice,
       applyVendorCatalogSlice,
       shouldApplyCachedCatalogSlice,
@@ -3972,7 +3980,7 @@ export function VendorStoreView({
         const data = await fetchVendorProducts(vendorId, { page: 1, pageSize: 1 });
         if (cancelled) return;
         setCanonicalVendorId(data.resolvedVendorId ?? vendorId);
-        setStoreName(data.storeName || "Vendor Store");
+        applyStoreNameIfPresent(data.storeName);
         setStoreLogo(data.logo || "");
         setStorePhone(data.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
       } catch {
@@ -3982,7 +3990,7 @@ export function VendorStoreView({
     return () => {
       cancelled = true;
     };
-  }, [vendorId, savedPage]);
+  }, [vendorId, savedPage, applyStoreNameIfPresent]);
 
   useEffect(() => {
     const t = setTimeout(() => {
