@@ -253,6 +253,50 @@ export async function syncProductReadModel(productId: string, productValue: unkn
   });
 }
 
+export async function findProductIdFromReadModelSkuOrVariant(args: {
+  sku?: unknown;
+  variantId?: unknown;
+}): Promise<string | null> {
+  const variantId = text(args.variantId);
+  const sku = text(args.sku);
+
+  const pickProductId = (rows: unknown): string | null => {
+    if (!Array.isArray(rows)) return null;
+    for (const row of rows) {
+      const id = text(asRecord(row).product_id);
+      if (id) return id;
+    }
+    return null;
+  };
+
+  try {
+    if (variantId) {
+      const { data, error } = await readModelClient
+        .from("app_product_skus")
+        .select("product_id")
+        .eq("variant_id", variantId)
+        .limit(1);
+      if (!error) {
+        const id = pickProductId(data);
+        if (id) return id;
+      }
+    }
+
+    if (sku) {
+      const { data, error } = await readModelClient
+        .from("app_product_skus")
+        .select("product_id")
+        .ilike("sku", sku)
+        .limit(1);
+      if (!error) return pickProductId(data);
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export async function deleteProductReadModel(productId: string): Promise<void> {
   const id = text(productId);
   if (!id) return;

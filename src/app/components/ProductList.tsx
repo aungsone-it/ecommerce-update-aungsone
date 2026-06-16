@@ -58,6 +58,8 @@ import {
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   moduleCache,
   CACHE_KEYS as MODULE_CACHE_KEYS,
+  adminProductsPageCacheKey,
+  type AdminProductsPagePayload,
 } from "../utils/module-cache";
 import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
 import { normalizeProductForAdminDetailView } from "../utils/adminProductDetailNormalize";
@@ -69,7 +71,6 @@ import {
 } from "../utils/vendorDisplay";
 import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../contexts/AuthContext";
-import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 
 interface ProductListProps {
   onProductsChanged?: () => void; // 🔥 NEW: Callback when products change
@@ -282,23 +283,46 @@ export function ProductList({
 }: ProductListProps) {
   const { t } = useLanguage();
   const { user: sessionUser } = useAuth();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialAdminPageSize = useMemo(readPersistedAdminProductsPageSize, []);
+  const initialProductsPayload = useMemo(
+    () =>
+      moduleCache.peek<AdminProductsPagePayload>(
+        adminProductsPageCacheKey({
+          page: 1,
+          pageSize: initialAdminPageSize,
+          q: "",
+          status: "all",
+          tab: "all",
+          vendor: "all",
+          collaborator: "all",
+          sort: "newest",
+        })
+      ),
+    [initialAdminPageSize]
+  );
+  const initialProductsPage = useMemo(
+    () => (initialProductsPayload ? reconcileAdminProductsPagePayload(initialProductsPayload as any, 1) : null),
+    [initialProductsPayload]
+  );
+  const [products, setProducts] = useState<Product[]>(() => initialProductsPage?.rows ?? []);
+  const [loading, setLoading] = useState(() => !initialProductsPage);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  /** Sent to `getCachedAdminProductsPage` as `q` — only updated on Enter (inline or TopNav). */
+  /** Sent to `getCachedAdminProductsPage` as `q` — updated only on Enter/Search. */
   const [committedSearchQuery, setCommittedSearchQuery] = useState("");
   const lastHeaderCommitTick = useRef(0);
   const skipCacheSoftReloadRef = useRef(false);
   const skipProductsRealtimeReloadRef = useRef(false);
-  const initialLoadDoneRef = useRef(false);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const initialLoadDoneRef = useRef(!!initialProductsPage);
+  const [initialLoadDone, setInitialLoadDone] = useState(() => !!initialProductsPage);
   const prevAdminPageSizeRef = useRef<number | null>(null);
   const [adminPage, setAdminPage] = useState(1);
-  const [adminPageSize, setAdminPageSize] = useState(readPersistedAdminProductsPageSize);
-  const [adminTotal, setAdminTotal] = useState(0);
-  const [adminHasMore, setAdminHasMore] = useState(false);
-  const [statusCounts, setStatusCounts] = useState({ all: 0, active: 0, offShelf: 0 });
+  const [adminPageSize, setAdminPageSize] = useState(initialAdminPageSize);
+  const [adminTotal, setAdminTotal] = useState(() => initialProductsPage?.total ?? 0);
+  const [adminHasMore, setAdminHasMore] = useState(() => !!initialProductsPayload?.hasMore);
+  const [statusCounts, setStatusCounts] = useState(
+    () => initialProductsPage?.counts ?? { all: 0, active: 0, offShelf: 0 }
+  );
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("newest");
@@ -351,25 +375,29 @@ export function ProductList({
   const loadProductPage = useCallback(
     async (forceRefresh: boolean, opts?: { silent?: boolean }) => {
       const silent = opts?.silent === true;
+      const pageParams = {
+        page: adminPage,
+        pageSize: adminPageSize,
+        q: committedSearchQuery,
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: sortBy,
+      };
+      const hasCachedPage =
+        !forceRefresh &&
+        !!moduleCache.peek<AdminProductsPagePayload>(adminProductsPageCacheKey(pageParams));
       const tableOnlyRefresh = initialLoadDoneRef.current && !silent;
       if (!silent && !initialLoadDoneRef.current) {
         setLoading(true);
       }
       if (!silent) {
-        setListRefreshing(tableOnlyRefresh || forceRefresh);
+        setListRefreshing(forceRefresh || (tableOnlyRefresh && !hasCachedPage));
       }
       try {
         const payload = await getCachedAdminProductsPage(
-          {
-            page: adminPage,
-            pageSize: adminPageSize,
-            q: committedSearchQuery,
-            status: "all",
-            tab: "all",
-            vendor: "all",
-            collaborator: "all",
-            sort: sortBy,
-          },
+          pageParams,
           forceRefresh
         );
         const reconciled = reconcileAdminProductsPagePayload(payload, adminPage);
@@ -435,6 +463,35 @@ export function ProductList({
     }
   }, [applyVendorsListToState]);
 
+  const applyCachedProductPage = useCallback(() => {
+    const payload = moduleCache.peek<AdminProductsPagePayload>(
+      adminProductsPageCacheKey({
+        page: adminPage,
+        pageSize: adminPageSize,
+        q: committedSearchQuery,
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: sortBy,
+      })
+    );
+    if (!payload) return false;
+    const reconciled = reconcileAdminProductsPagePayload(payload, adminPage);
+    setProducts(reconciled.rows);
+    setAdminTotal(reconciled.total);
+    setAdminHasMore(!!payload.hasMore);
+    if (reconciled.counts) {
+      setStatusCounts({
+        all: reconciled.counts.all,
+        active: reconciled.counts.active,
+        offShelf: reconciled.counts.offShelf,
+      });
+    }
+    SmartCache.set(CACHE_KEYS.PRODUCTS, reconciled.rows);
+    return true;
+  }, [adminPage, adminPageSize, committedSearchQuery, sortBy]);
+
   useEffect(() => {
     const pageSizeChanged =
       prevAdminPageSizeRef.current != null && prevAdminPageSizeRef.current !== adminPageSize;
@@ -464,24 +521,19 @@ export function ProductList({
   }, [loadVendors]);
 
   useEffect(() => {
-    /** Silent = merged session cache; avoids skeleton blink after order-driven stock patches. */
-    const softReload = () => {
+    const applyCachePatch = () => {
       if (skipCacheSoftReloadRef.current) {
         skipCacheSoftReloadRef.current = false;
         return;
       }
-      void loadProductPage(false, { silent: true });
+      if (!applyCachedProductPage()) {
+        void loadProductPage(false, { silent: true });
+      }
     };
     const hardReload = () => void loadProductPage(true, { silent: true });
     const onListChanged = () => void loadProductPage(true, { silent: true });
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== adminOrdersUpdatedStorageKey()) return;
-      hardReload();
-    };
-    window.addEventListener("migoo-admin-products-cache-patched", softReload);
+    window.addEventListener("migoo-admin-products-cache-patched", applyCachePatch);
     window.addEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, onListChanged);
-    window.addEventListener("adminOrdersUpdated", softReload);
-    window.addEventListener("storage", onStorage);
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
@@ -490,36 +542,17 @@ export function ProductList({
           onListChanged();
           return;
         }
-        softReload();
+        applyCachePatch();
       };
     } catch {
       /* BroadcastChannel unsupported */
     }
     return () => {
-      window.removeEventListener("migoo-admin-products-cache-patched", softReload);
+      window.removeEventListener("migoo-admin-products-cache-patched", applyCachePatch);
       window.removeEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, onListChanged);
-      window.removeEventListener("adminOrdersUpdated", softReload);
-      window.removeEventListener("storage", onStorage);
       bc?.close();
     };
-  }, [loadProductPage]);
-
-  /** After mount / tab focus / bfcache restore — revalidate page 1 (localStorage can outlive session cache). */
-  useEffect(() => {
-    void loadProductPage(true, { silent: true });
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
-        void loadProductPage(true, { silent: true });
-      }
-    };
-    const onPageShow = () => void loadProductPage(true, { silent: true });
-    document.addEventListener("visibilitychange", onVisible);
-    window.addEventListener("pageshow", onPageShow);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisible);
-      window.removeEventListener("pageshow", onPageShow);
-    };
-  }, [loadProductPage]);
+  }, [loadProductPage, applyCachedProductPage]);
 
   const applyOptimisticProductRemoval = useCallback(
     (removedIds: Set<string>, sourceProducts: Product[]) => {
@@ -1247,19 +1280,11 @@ export function ProductList({
                         <tr>
                           <td colSpan={9} className="py-10 px-4 text-center text-sm text-slate-500">
                             {searchQuery.trim() ? (
-                              <>
-                                No products match on this page
-                                {hasPendingServerSearch ? (
-                                  <>
-                                    {" "}
-                                    — click <span className="font-medium text-slate-700">Search</span> to
-                                    search the full catalog
-                                  </>
-                                ) : (
-                                  <> for &ldquo;{searchQuery.trim()}&rdquo;</>
-                                )}
-                                .
-                              </>
+                              hasPendingServerSearch ? (
+                                "Hit Enter or click Search to search."
+                              ) : (
+                                <>No products found for &ldquo;{searchQuery.trim()}&rdquo;.</>
+                              )
                             ) : (
                               "No products found."
                             )}

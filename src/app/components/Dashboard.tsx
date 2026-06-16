@@ -43,20 +43,44 @@ const defaultStats = {
   recentOrders: [] as any[],
 };
 
+function normalizeDashboardStatsPayload(data: Record<string, unknown>) {
+  return {
+    totalRevenue: (data.totalRevenue as number) || 0,
+    totalOrders: (data.totalOrders as number) || 0,
+    totalCustomers: (data.totalCustomers as number) || 0,
+    totalProducts: (data.totalProducts as number) || 0,
+    revenueChange: (data.revenueChange as number) || 0,
+    ordersChange: (data.ordersChange as number) || 0,
+    customersChange: (data.customersChange as number) || 0,
+    productsChange: (data.productsChange as number) || 0,
+    salesTrend: Array.isArray(data.salesTrend) ? data.salesTrend : [],
+    topProducts: Array.isArray(data.topProducts) ? data.topProducts : [],
+    recentOrders: Array.isArray(data.recentOrders) ? data.recentOrders : [],
+  };
+}
+
 export function Dashboard() {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  
-  const [stats, setStats] = useState(defaultStats);
-  const allTimeFilters: AdminDashboardFilters = {
-    revenue: "All time",
-    orders: "All time",
-    customers: "All time",
-    products: "All time",
-    globalSection: "All time",
-  };
+  const allTimeFilters = useMemo(
+    (): AdminDashboardFilters => ({
+      revenue: "All time",
+      orders: "All time",
+      customers: "All time",
+      products: "All time",
+      globalSection: "All time",
+    }),
+    []
+  );
+  const initialStatsPayload = useMemo(
+    () => moduleCache.peek<Record<string, unknown>>(adminDashboardStatsCacheKey(allTimeFilters)),
+    [allTimeFilters]
+  );
+  const [stats, setStats] = useState(() =>
+    initialStatsPayload ? normalizeDashboardStatsPayload(initialStatsPayload) : defaultStats
+  );
   const [loading, setLoading] = useState(
-    () => !moduleCache.peek(adminDashboardStatsCacheKey(allTimeFilters))
+    () => !initialStatsPayload
   );
   const [revenueRange, setRevenueRange] = useState<DateRange | undefined>(undefined);
   const [ordersRange, setOrdersRange] = useState<DateRange | undefined>(undefined);
@@ -123,19 +147,7 @@ export function Dashboard() {
     } else {
       devLog(`🔄 Dashboard loaded from DATABASE - Fresh data fetched`);
     }
-    setStats({
-      totalRevenue: (data.totalRevenue as number) || 0,
-      totalOrders: (data.totalOrders as number) || 0,
-      totalCustomers: (data.totalCustomers as number) || 0,
-      totalProducts: (data.totalProducts as number) || 0,
-      revenueChange: (data.revenueChange as number) || 0,
-      ordersChange: (data.ordersChange as number) || 0,
-      customersChange: (data.customersChange as number) || 0,
-      productsChange: (data.productsChange as number) || 0,
-      salesTrend: Array.isArray(data.salesTrend) ? data.salesTrend : [],
-      topProducts: Array.isArray(data.topProducts) ? data.topProducts : [],
-      recentOrders: Array.isArray(data.recentOrders) ? data.recentOrders : [],
-    });
+    setStats(normalizeDashboardStatsPayload(data));
   };
 
   const fetchDashboardStats = async (forceRefresh = false) => {

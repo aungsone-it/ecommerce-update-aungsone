@@ -14,8 +14,10 @@ import {
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   dispatchAdminProductsCachePatched,
   ADMIN_PRODUCTS_BROADCAST_CHANNEL,
+  moduleCache,
+  adminProductsPageCacheKey,
+  type AdminProductsPagePayload,
 } from "../utils/module-cache";
-import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 
 interface InventoryItem {
   id: string;
@@ -96,7 +98,7 @@ export type InventoryProps = {
   /** Draft text in the search box — lifted to AdminPage so it persists across admin navigation. */
   searchQuery: string;
   onSearchQueryChange: (value: string) => void;
-  /** Server `q` for `getCachedAdminProductsPage` — set on Enter only (same pattern as ProductList). */
+  /** Server `q` for `getCachedAdminProductsPage` — updated only on Enter/Search. */
   committedSearchQuery: string;
   onCommittedSearchQueryChange: (value: string) => void;
 };
@@ -108,18 +110,39 @@ export function Inventory({
   onCommittedSearchQueryChange,
 }: InventoryProps) {
   const { t } = useLanguage();
-  const inventoryEverHydratedRef = useRef(false);
-  const [inventoryHydrated, setInventoryHydrated] = useState(false);
+  const initialInventoryPayload = useMemo(
+    () =>
+      moduleCache.peek<AdminProductsPagePayload>(
+        adminProductsPageCacheKey({
+          page: 1,
+          pageSize: ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+          q: committedSearchQuery,
+          status: "all",
+          tab: "all",
+          vendor: "all",
+          collaborator: "all",
+          sort: "newest",
+        })
+      ),
+    [committedSearchQuery]
+  );
+  const initialInventoryRows = useMemo(
+    () => productsToInventoryItems((initialInventoryPayload?.products || []) as any[]),
+    [initialInventoryPayload]
+  );
+  const inventoryEverHydratedRef = useRef(!!initialInventoryPayload);
+  const [inventoryHydrated, setInventoryHydrated] = useState(() => !!initialInventoryPayload);
 
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(() => initialInventoryRows);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
-  const [productTotal, setProductTotal] = useState(0);
-  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const [productTotal, setProductTotal] = useState(() => Number(initialInventoryPayload?.total ?? 0));
+  const [hasMoreProducts, setHasMoreProducts] = useState(() => !!initialInventoryPayload?.hasMore);
+  const hasPendingServerSearch = searchQuery.trim() !== committedSearchQuery.trim();
 
   useEffect(() => {
     setCurrentPage(1);
@@ -143,21 +166,25 @@ export function Inventory({
     async (forceRefresh = false, opts?: { retryCount?: number; silent?: boolean }) => {
       const retryCount = opts?.retryCount ?? 0;
       const silent = opts?.silent === true;
-      if (inventoryEverHydratedRef.current && !silent) {
+      const pageParams = {
+        page: currentPage,
+        pageSize: itemsPerPage,
+        q: committedSearchQuery,
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: "newest",
+      };
+      const hasCachedPage =
+        !forceRefresh &&
+        !!moduleCache.peek<AdminProductsPagePayload>(adminProductsPageCacheKey(pageParams));
+      if (inventoryEverHydratedRef.current && !silent && !hasCachedPage) {
         setListRefreshing(true);
       }
       try {
         const payload = await getCachedAdminProductsPage(
-          {
-            page: currentPage,
-            pageSize: itemsPerPage,
-            q: committedSearchQuery,
-            status: "all",
-            tab: "all",
-            vendor: "all",
-            collaborator: "all",
-            sort: "newest",
-          },
+          pageParams,
           forceRefresh
         );
         const products = (payload.products || []) as any[];
@@ -193,6 +220,29 @@ export function Inventory({
     void loadInventory(false);
   }, [loadInventory]);
 
+  const applyCachedInventoryPage = useCallback(() => {
+    const payload = moduleCache.peek<AdminProductsPagePayload>(
+      adminProductsPageCacheKey({
+        page: currentPage,
+        pageSize: itemsPerPage,
+        q: committedSearchQuery,
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: "newest",
+      })
+    );
+    if (!payload) return false;
+    const products = (payload.products || []) as any[];
+    setInventoryItems(productsToInventoryItems(products));
+    setProductTotal(Number(payload.total ?? 0));
+    setHasMoreProducts(!!payload.hasMore);
+    inventoryEverHydratedRef.current = true;
+    setInventoryHydrated(true);
+    return true;
+  }, [currentPage, itemsPerPage, committedSearchQuery]);
+
   const visibleInventoryItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return inventoryItems;
@@ -213,14 +263,12 @@ export function Inventory({
   const goToNextPage = () => setCurrentPage((prev) => Math.min(totalPages, prev + 1));
 
   useEffect(() => {
-    const softReload = () => void loadInventory(false, { silent: true });
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== adminOrdersUpdatedStorageKey()) return;
-      softReload();
+    const applyCachePatch = () => {
+      if (!applyCachedInventoryPage()) {
+        void loadInventory(false, { silent: true });
+      }
     };
-    window.addEventListener("migoo-admin-products-cache-patched", softReload);
-    window.addEventListener("adminOrdersUpdated", softReload);
-    window.addEventListener("storage", onStorage);
+    window.addEventListener("migoo-admin-products-cache-patched", applyCachePatch);
     const hardReload = () => void loadInventory(true, { silent: true });
     let bc: BroadcastChannel | null = null;
     try {
@@ -230,18 +278,16 @@ export function Inventory({
           hardReload();
           return;
         }
-        softReload();
+        applyCachePatch();
       };
     } catch {
       /* ignore */
     }
     return () => {
-      window.removeEventListener("migoo-admin-products-cache-patched", softReload);
-      window.removeEventListener("adminOrdersUpdated", softReload);
-      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("migoo-admin-products-cache-patched", applyCachePatch);
       bc?.close();
     };
-  }, [loadInventory]);
+  }, [loadInventory, applyCachedInventoryPage]);
 
   // Inline editing - click number to edit
   const startEditing = (item: InventoryItem) => {
@@ -471,11 +517,14 @@ export function Inventory({
       <Card className="mb-4">
         <div className="p-4">
           <AdminClearableSearchInput
-            placeholder="Search by product name or SKU — press Enter to search"
+            placeholder="Search by product name or SKU"
             className="border-slate-300"
             value={searchQuery}
             onValueChange={onSearchQueryChange}
             onKeyDown={onSearchKeyDown}
+            onClear={() => onCommittedSearchQueryChange("")}
+            onSubmit={commitSearchFromInput}
+            submitPending={hasPendingServerSearch}
           />
         </div>
       </Card>
@@ -506,8 +555,9 @@ export function Inventory({
                     colSpan={3}
                     className="py-10 px-4 text-center text-sm text-slate-500"
                   >
-                    No stock rows match your search on this page. Try clearing the
-                    box or wait for the full list to load.
+                    {hasPendingServerSearch
+                      ? "Hit Enter or click Search to search."
+                      : "No stock rows match your search."}
                   </td>
                 </tr>
               ) : (

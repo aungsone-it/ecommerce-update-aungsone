@@ -104,6 +104,24 @@ function mergeVariantsWithInitial(
   });
 }
 
+function findDuplicateVariantSkus(variantRows: Variant[]): Map<string, string> {
+  const seen = new Map<string, string>();
+  const duplicates = new Map<string, string>();
+  for (const variant of variantRows) {
+    const sku = String(variant.sku || "").trim();
+    if (!sku) continue;
+    const key = sku.toLowerCase();
+    const firstVariantId = seen.get(key);
+    if (firstVariantId) {
+      duplicates.set(firstVariantId, `Duplicate SKU "${sku}" in this product`);
+      duplicates.set(variant.id, `Duplicate SKU "${sku}" in this product`);
+      continue;
+    }
+    seen.set(key, variant.id);
+  }
+  return duplicates;
+}
+
 interface ProductFormPageProps {
   mode: "add" | "edit" | "view";
   initialData?: any;
@@ -268,8 +286,13 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
 
     const timeoutId = setTimeout(async () => {
       const errors: { [key: string]: string } = {};
+      const duplicateSkus = findDuplicateVariantSkus(variants);
+      duplicateSkus.forEach((message, variantId) => {
+        errors[variantId] = message;
+      });
       
       for (const variant of variants) {
+        if (errors[variant.id]) continue;
         if (variant.sku && variant.sku.trim()) {
           try {
             const result = await productsApi.checkSku(variant.sku, initialData?.id);
@@ -513,6 +536,18 @@ export function ProductFormPage({ mode, initialData, onSave, onCancel }: Product
       mode === "edit"
         ? mergeVariantsWithInitial(variants, initialData?.variants)
         : variants;
+    if (hasVariants) {
+      const duplicateSkus = findDuplicateVariantSkus(variantsForSave);
+      if (duplicateSkus.size > 0) {
+        const nextErrors: { [key: string]: string } = {};
+        duplicateSkus.forEach((message, variantId) => {
+          nextErrors[variantId] = message;
+        });
+        setVariantSkuErrors((prev) => ({ ...prev, ...nextErrors }));
+        toast.error("Variant SKUs must be unique. Duplicate SKUs are not allowed.");
+        return;
+      }
+    }
 
     // Off-shelf products can be saved without price/SKU checks (hide from storefront only)
     if (!isOffShelf) {

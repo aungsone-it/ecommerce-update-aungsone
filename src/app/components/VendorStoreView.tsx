@@ -24,6 +24,11 @@ import {
   lsWishlistProductIdsKey,
 } from "../utils/persistedLocalCache";
 import {
+  readCachedVendorBrandingBySlug,
+  readCachedVendorProductName,
+  resolveVendorStoreDisplayName,
+} from "../utils/vendorStorefrontBrandingCache";
+import {
   readSessionCatalogList,
   removeSessionCatalogList,
   ssVendorCatalogListKey,
@@ -647,8 +652,8 @@ function applyLoadedMoreSessionToHomeState(
           vendorCatalogTotal: 0,
           vendorCatalogPage: 1,
           vendorCatalogHasMore: false,
-          storeName: "Vendor Store",
-          storeLogo: "",
+          storeName: vendorStoreNameFromCatalog(vendorId, basePayload),
+          storeLogo: vendorStoreLogoFromCatalog(basePayload),
           storePhone: VENDOR_DEFAULT_STORE_PHONE,
           canonicalVendorId: vendorId,
         };
@@ -709,11 +714,8 @@ function vendorHomeStateFromCatalogPayload(
     vendorCatalogTotal: typeof fromLs.total === "number" ? fromLs.total : 0,
     vendorCatalogPage: typeof fromLs.page === "number" ? fromLs.page : 1,
     vendorCatalogHasMore: !!fromLs.hasMore,
-    storeName:
-      typeof fromLs.storeName === "string" && fromLs.storeName.trim()
-        ? fromLs.storeName.trim()
-        : "Vendor Store",
-    storeLogo: typeof fromLs.logo === "string" ? fromLs.logo : "",
+    storeName: vendorStoreNameFromCatalog(vendorId, fromLs),
+    storeLogo: vendorStoreLogoFromCatalog(fromLs),
     storePhone: sp,
     canonicalVendorId: rid ?? vendorId,
   };
@@ -725,8 +727,23 @@ function hasCatalogRowsOrTotals(payload: Record<string, unknown>): boolean {
   return products.length > 0 || total > 0;
 }
 
+function vendorStoreNameFromCatalog(
+  vendorId: string,
+  fromLs?: Record<string, unknown> | null,
+): string {
+  return resolveVendorStoreDisplayName(
+    vendorId,
+    fromLs && typeof fromLs.storeName === "string" ? fromLs.storeName : null,
+  );
+}
+
+function vendorStoreLogoFromCatalog(fromLs?: Record<string, unknown> | null): string {
+  return fromLs && typeof fromLs.logo === "string" && fromLs.logo.trim()
+    ? fromLs.logo.trim()
+    : "";
+}
+
 /**
- * First paint for vendor home: read the same LS keys as `refetchVendorCatalogPage1` + categories
  * so production (slow edge) does not flash a full-page skeleton while waiting for sequential fetches.
  * Primes moduleCache so background refresh does not duplicate network.
  */
@@ -754,14 +771,8 @@ function getVendorHomepageInitialState(
       const lsKey = lsVendorCatalogPage1Key(vendorId, "", "all", VENDOR_BROWSE_PAGE_SIZE);
       const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
       if (fromLs && typeof fromLs === "object") {
-        const cachedStoreName =
-          typeof fromLs.storeName === "string" && fromLs.storeName.trim()
-            ? fromLs.storeName.trim()
-            : "Vendor Store";
-        const cachedStoreLogo =
-          typeof fromLs.logo === "string" && fromLs.logo.trim()
-            ? fromLs.logo.trim()
-            : "";
+        const cachedStoreName = vendorStoreNameFromCatalog(vendorId, fromLs);
+        const cachedStoreLogo = vendorStoreLogoFromCatalog(fromLs);
         const cachedStorePhone =
           typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()
             ? fromLs.storePhone.trim()
@@ -787,6 +798,7 @@ function getVendorHomepageInitialState(
       /* ignore cache read errors and fall back */
     }
 
+    const savedBranding = readCachedVendorBrandingBySlug(vendorId);
     return {
       products: [],
       vendorCategories: [],
@@ -794,8 +806,8 @@ function getVendorHomepageInitialState(
       vendorCatalogTotal: 0,
       vendorCatalogPage: 1,
       vendorCatalogHasMore: false,
-      storeName: "Vendor Store",
-      storeLogo: "",
+      storeName: savedBranding.storeName,
+      storeLogo: savedBranding.storeLogo,
       storePhone: VENDOR_DEFAULT_STORE_PHONE,
       canonicalVendorId: null,
     };
@@ -826,11 +838,8 @@ function getVendorHomepageInitialState(
           vendorCatalogTotal: 0,
           vendorCatalogPage: 1,
           vendorCatalogHasMore: false,
-          storeName:
-            typeof fromLs.storeName === "string" && fromLs.storeName.trim()
-              ? fromLs.storeName.trim()
-              : "Vendor Store",
-          storeLogo: typeof fromLs.logo === "string" ? fromLs.logo : "",
+          storeName: vendorStoreNameFromCatalog(vendorId, fromLs),
+          storeLogo: vendorStoreLogoFromCatalog(fromLs),
           storePhone:
             typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()
               ? fromLs.storePhone.trim()
@@ -892,6 +901,7 @@ function getVendorHomepageInitialState(
     /* ignore */
   }
 
+  const fallbackBranding = readCachedVendorBrandingBySlug(vendorId);
   return {
     products: [],
     vendorCategories,
@@ -899,8 +909,8 @@ function getVendorHomepageInitialState(
     vendorCatalogTotal: 0,
     vendorCatalogPage: 1,
     vendorCatalogHasMore: false,
-    storeName: "Vendor Store",
-    storeLogo: "",
+    storeName: fallbackBranding.storeName,
+    storeLogo: fallbackBranding.storeLogo,
     storePhone: VENDOR_DEFAULT_STORE_PHONE,
     canonicalVendorId: null,
   };
@@ -1306,8 +1316,14 @@ export function VendorStoreView({
 
   const [cartOpen, setCartOpen] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
-  const [storeName, setStoreName] = useState(vendorHomeSnapshot.storeName);
-  const [storeLogo, setStoreLogo] = useState<string>(vendorHomeSnapshot.storeLogo);
+  const [storeName, setStoreName] = useState(() =>
+    resolveVendorStoreDisplayName(vendorId, vendorHomeSnapshot.storeName),
+  );
+  const [storeLogo, setStoreLogo] = useState<string>(() => {
+    const fromSnap = vendorHomeSnapshot.storeLogo;
+    if (fromSnap.trim()) return fromSnap;
+    return readCachedVendorBrandingBySlug(vendorId).storeLogo;
+  });
   const [storePhone, setStorePhone] = useState<string>(vendorHomeSnapshot.storePhone);
   /** Slide-out nav on small screens (account, browse, wishlist — hamburger on the right like /store). */
   const [vendorMobileNavOpen, setVendorMobileNavOpen] = useState(false);
@@ -1317,6 +1333,9 @@ export function VendorStoreView({
   const [vendorNavbarSticky, setVendorNavbarSticky] = useState(false);
   const vendorScrollRootRef = useRef<HTMLDivElement>(null);
   const vendorTabIconSeqRef = useRef(0);
+  const cachedProductNameForTitleRef = useRef(
+    initialProductSlug ? readCachedVendorProductName(vendorId, initialProductSlug) : null,
+  );
   const lastVendorScrollTopRef = useRef(0);
   /** Last `/product/:slug` segment — used to scroll-reset only when entering/changing product, not when leaving to home. */
   const lastVendorProductSlugForScrollRef = useRef<string | undefined>(undefined);
@@ -1327,10 +1346,10 @@ export function VendorStoreView({
 
   const applyStoreNameIfPresent = useCallback((nextValue: unknown) => {
     if (typeof nextValue !== "string") return;
-    const trimmed = nextValue.trim();
+    const trimmed = resolveVendorStoreDisplayName(vendorId, nextValue).trim();
     if (!trimmed) return;
     setStoreName(trimmed);
-  }, []);
+  }, [vendorId]);
 
   const isCheckoutRoute = useMemo(
     () => isVendorCheckoutOrSummaryPath(location.pathname, storeBase),
@@ -1404,7 +1423,7 @@ export function VendorStoreView({
     }
   }, [profileSegment]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.title = buildVendorStorefrontDocumentTitle({
       vendorSlug: vendorId,
       pathname: location.pathname,
@@ -1412,7 +1431,8 @@ export function VendorStoreView({
       savedPage,
       vendorViewMode,
       profileOrderId,
-      selectedProductName: selectedProduct?.name,
+      selectedProductName:
+        selectedProduct?.name ?? cachedProductNameForTitleRef.current,
       categorySegment: normalizedCategorySlugFromRoute || null,
       storeDisplayNameFallback: storeName,
     });
@@ -3537,7 +3557,7 @@ export function VendorStoreView({
           const fromLsBranding = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
           if (fromLsBranding && typeof fromLsBranding === "object") {
             applyStoreNameIfPresent(fromLsBranding.storeName);
-            setStoreLogo(fromLsBranding.logo || "");
+            setStoreLogo((prev) => fromLsBranding.logo || prev);
             if (
               typeof fromLsBranding.storePhone === "string" &&
               fromLsBranding.storePhone.trim()
@@ -3580,7 +3600,7 @@ export function VendorStoreView({
             }
             applyVendorCatalogSlice(slice);
             applyStoreNameIfPresent(fromLs.storeName);
-            setStoreLogo(fromLs.logo || "");
+            setStoreLogo((prev) => fromLs.logo || prev);
             if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
               setStorePhone(fromLs.storePhone.trim());
             } else {
@@ -3637,7 +3657,7 @@ export function VendorStoreView({
       setVendorCatalogPage(slice.page);
       setVendorCatalogHasMore(slice.hasMore);
       applyStoreNameIfPresent(productsData.storeName);
-      setStoreLogo(productsData.logo || "");
+      setStoreLogo((prev) => productsData.logo || prev);
       setStorePhone(productsData.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
       setCanonicalVendorId(productsData.resolvedVendorId ?? vendorId);
       if (productsData.storeSlug) {
@@ -4015,12 +4035,9 @@ export function VendorStoreView({
     const lsKey = lsVendorCatalogPage1Key(vendorId, "", "all", VENDOR_BROWSE_PAGE_SIZE);
     const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
     if (fromLs && typeof fromLs === "object") {
-      if (typeof fromLs.storeName === "string" && fromLs.storeName.trim()) {
-        setStoreName(fromLs.storeName.trim());
-      }
-      if (typeof fromLs.logo === "string" && fromLs.logo.trim()) {
-        setStoreLogo(fromLs.logo.trim());
-      }
+      setStoreName(vendorStoreNameFromCatalog(vendorId, fromLs));
+      const logo = vendorStoreLogoFromCatalog(fromLs);
+      if (logo) setStoreLogo(logo);
       if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
         setStorePhone(fromLs.storePhone.trim());
       }
@@ -4036,7 +4053,7 @@ export function VendorStoreView({
         if (cancelled) return;
         setCanonicalVendorId(data.resolvedVendorId ?? vendorId);
         applyStoreNameIfPresent(data.storeName);
-        setStoreLogo(data.logo || "");
+        setStoreLogo((prev) => data.logo || prev);
         setStorePhone(data.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
       } catch {
         if (!cancelled) setCanonicalVendorId(vendorId);
@@ -4099,10 +4116,10 @@ export function VendorStoreView({
       }
       if (!qRaw) rememberVendorCatalogSlice(cat, slice);
       if (typeof fromMem.storeName === "string" && fromMem.storeName.trim()) {
-        setStoreName(fromMem.storeName.trim());
+        setStoreName(vendorStoreNameFromCatalog(vendorId, fromMem));
       }
       if (typeof fromMem.logo === "string") {
-        setStoreLogo(fromMem.logo);
+        setStoreLogo((prev) => fromMem.logo || prev);
       }
       if (typeof fromMem.storePhone === "string" && fromMem.storePhone.trim()) {
         setStorePhone(fromMem.storePhone.trim());
@@ -4124,10 +4141,10 @@ export function VendorStoreView({
       }
       rememberVendorCatalogSlice(cat, slice);
       if (typeof fromLs.storeName === "string" && fromLs.storeName.trim()) {
-        setStoreName(fromLs.storeName.trim());
+        setStoreName(vendorStoreNameFromCatalog(vendorId, fromLs));
       }
       if (typeof fromLs.logo === "string") {
-        setStoreLogo(fromLs.logo);
+        setStoreLogo((prev) => fromLs.logo || prev);
       }
       if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
         setStorePhone(fromLs.storePhone.trim());

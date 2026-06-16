@@ -7,6 +7,8 @@ import {
   getCachedAdminAllProducts,
   getCachedAdminOrdersPayload,
   getCachedAdminVendorsForProductList,
+  moduleCache,
+  CACHE_KEYS,
 } from "../utils/module-cache";
 import { productMatchesAdminLiveSearch } from "../utils/adminProductSearch";
 import { formatMMK } from "../../utils/formatNumber";
@@ -79,15 +81,26 @@ export function AdminGlobalSearch({
   onGoToOrdersWithPrefill,
   onGoToVendorsWithPrefill,
 }: AdminGlobalSearchProps) {
-  const [loading, setLoading] = useState(true);
-  const [products, setProducts] = useState<AnyProduct[]>([]);
-  const [orders, setOrders] = useState<Record<string, unknown>[]>([]);
-  const [vendors, setVendors] = useState<Record<string, unknown>[]>([]);
+  const initialProducts = moduleCache.peek<AnyProduct[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+  const initialOrdersPayload = moduleCache.peek<{ orders?: Record<string, unknown>[] }>(CACHE_KEYS.ADMIN_ORDERS);
+  const initialVendors = moduleCache.peek<Record<string, unknown>[]>(CACHE_KEYS.ADMIN_VENDORS);
+  const hasWarmSearchCache =
+    Array.isArray(initialProducts) || Array.isArray(initialOrdersPayload?.orders) || Array.isArray(initialVendors);
+  const [loading, setLoading] = useState(() => !hasWarmSearchCache);
+  const [products, setProducts] = useState<AnyProduct[]>(() =>
+    Array.isArray(initialProducts) ? initialProducts : []
+  );
+  const [orders, setOrders] = useState<Record<string, unknown>[]>(() =>
+    Array.isArray(initialOrdersPayload?.orders) ? initialOrdersPayload.orders : []
+  );
+  const [vendors, setVendors] = useState<Record<string, unknown>[]>(() =>
+    Array.isArray(initialVendors) ? initialVendors : []
+  );
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
+      if (!hasWarmSearchCache) setLoading(true);
       try {
         const [p, ord, ven] = await Promise.all([
           getCachedAdminAllProducts(false),

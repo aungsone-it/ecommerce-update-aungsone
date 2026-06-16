@@ -47,6 +47,7 @@ import {
   queueProductReadModelSync,
   queueVendorReadModelDelete,
   queueVendorReadModelSync,
+  findProductIdFromReadModelSkuOrVariant,
 } from "./read_model.ts";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
@@ -3093,6 +3094,64 @@ async function checkSkuUniqueness(sku: string, excludeProductId?: string): Promi
   }
 }
 
+function collectProductSkusForUniqueness(product: any): string[] {
+  const out: string[] = [];
+  const add = (value: unknown) => {
+    const sku = String(value ?? "").trim();
+    if (sku) out.push(sku);
+  };
+
+  // For variant products, `product.sku` is an internal mirror of the first variant SKU.
+  // Treat variant SKUs as the source of truth to avoid falsely rejecting that mirror.
+  if (product?.hasVariants && Array.isArray(product?.variants)) {
+    for (const variant of product.variants) add(variant?.sku);
+    return out;
+  }
+
+  add(product?.sku);
+  if (Array.isArray(product?.variants)) {
+    for (const variant of product.variants) add(variant?.sku);
+  }
+  return out;
+}
+
+async function checkProductSkusUniqueness(
+  product: any,
+  excludeProductId?: string
+): Promise<{ isUnique: boolean; sku?: string; existingProduct?: any; duplicateWithinProduct?: boolean }> {
+  const skus = collectProductSkusForUniqueness(product);
+  const seen = new Set<string>();
+  for (const sku of skus) {
+    const normalized = sku.toLowerCase();
+    if (seen.has(normalized)) {
+      return { isUnique: false, sku, duplicateWithinProduct: true };
+    }
+    seen.add(normalized);
+  }
+
+  if (seen.size === 0) return { isUnique: true };
+
+  try {
+    const allProducts = await withTimeout(kv.getByPrefix("product:"), 25000);
+    if (!Array.isArray(allProducts)) return { isUnique: true };
+
+    for (const existingProduct of allProducts) {
+      if (!existingProduct || typeof existingProduct !== "object") continue;
+      if (excludeProductId && String(existingProduct.id || "") === String(excludeProductId)) continue;
+      for (const existingSku of collectProductSkusForUniqueness(existingProduct)) {
+        if (seen.has(existingSku.toLowerCase())) {
+          return { isUnique: false, sku: existingSku, existingProduct };
+        }
+      }
+    }
+  } catch (error) {
+    console.error("❌ Error checking product SKU uniqueness:", error);
+    return { isUnique: true };
+  }
+
+  return { isUnique: true };
+}
+
 // Check SKU uniqueness endpoint (for real-time validation)
 app.get("/make-server-16010b6f/check-sku/:sku", async (c) => {
   try {
@@ -3845,12 +3904,14 @@ app.post("/make-server-16010b6f/products", async (c) => {
       commissionRate: productData.commissionRate, // 🔥 Log commission
     });
     
-    // Check SKU uniqueness
-    const skuCheck = await checkSkuUniqueness(productData.sku);
+    // Check all submitted SKUs: main products use `sku`; variant products use every variant SKU.
+    const skuCheck = await checkProductSkusUniqueness(productData);
     if (!skuCheck.isUnique) {
       return c.json({ 
         error: "SKU already exists",
-        details: `SKU "${productData.sku}" is already used in product: ${skuCheck.existingProduct?.id}`
+        details: skuCheck.duplicateWithinProduct
+          ? `SKU "${skuCheck.sku}" is duplicated inside this product`
+          : `SKU "${skuCheck.sku}" is already used in product: ${skuCheck.existingProduct?.id}`
       }, 409);
     }
     
@@ -4031,11 +4092,13 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
       patchKeys.every((k) => k === "selectedVendors" || k === "_addToSelectedVendors");
 
     if (!isVendorOnlyUpdate) {
-      const skuCheck = await checkSkuUniqueness(updatedProduct.sku, id);
+      const skuCheck = await checkProductSkusUniqueness(updatedProduct, id);
       if (!skuCheck.isUnique) {
         return c.json({ 
           error: "SKU already exists",
-          details: `SKU "${updatedProduct.sku}" is already used in product: ${skuCheck.existingProduct?.id}`
+          details: skuCheck.duplicateWithinProduct
+            ? `SKU "${skuCheck.sku}" is duplicated inside this product`
+            : `SKU "${skuCheck.sku}" is already used in product: ${skuCheck.existingProduct?.id}`
         }, 409);
       }
     }
@@ -5074,6 +5137,58 @@ async function loadAllProductsForStock(): Promise<any[]> {
   return Array.isArray(all) ? all : [];
 }
 
+function collectStockProductIdCandidates(item: any): string[] {
+  const out: string[] = [];
+  const add = (value: unknown) => {
+    const s = String(value ?? "").trim();
+    if (s && !out.includes(s)) out.push(s);
+  };
+  const effective = lineItemWithNormalizedProductRef(item);
+  add(effective.productId);
+  add(effective.product_id);
+  add(effective.parentId);
+  add(effective.parentProductId);
+  add(effective.product?.id);
+  return out;
+}
+
+async function loadProductsForStockLineItems(items: any[]): Promise<any[]> {
+  const productsById = new Map<string, any>();
+  const addProduct = (product: any) => {
+    const id = String(product?.id ?? "").trim();
+    if (id) productsById.set(id, product);
+  };
+
+  for (const item of items) {
+    const effective = lineItemWithNormalizedProductRef(item);
+    let resolved = false;
+
+    for (const candidate of collectStockProductIdCandidates(effective)) {
+      const product = await withTimeout(kv.get(`product:${candidate}`), 5000).catch(() => null);
+      if (product && typeof product === "object") {
+        addProduct(product);
+        resolved = true;
+        break;
+      }
+    }
+
+    if (resolved) continue;
+
+    const mappedProductId = await findProductIdFromReadModelSkuOrVariant({
+      variantId: effective.productId,
+      sku: effective.sku,
+    });
+    if (!mappedProductId || productsById.has(mappedProductId)) continue;
+
+    const product = await withTimeout(kv.get(`product:${mappedProductId}`), 5000).catch(() => null);
+    if (product && typeof product === "object") {
+      addProduct(product);
+    }
+  }
+
+  return [...productsById.values()];
+}
+
 function findVariantIndexBySku(product: any, sku: string | undefined): number {
   if (!sku || !Array.isArray(product?.variants)) return -1;
   const skuNorm = String(sku).trim().toLowerCase();
@@ -5159,12 +5274,12 @@ async function validateStockForOrderLineItems(
   const stockIssues: any[] = [];
   let allProducts: any[] = [];
   try {
-    allProducts = await loadAllProductsForStock();
+    allProducts = await loadProductsForStockLineItems(items);
   } catch {
     stockIssues.push({
       productId: "",
       productName: "Unknown Product",
-      issue: "Error loading products",
+      issue: "Error loading products for stock check",
     });
     return { ok: false, stockIssues };
   }
@@ -5217,7 +5332,7 @@ async function validateStockForOrderLineItems(
 async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "restore") {
   let allProducts: any[] = [];
   try {
-    allProducts = await loadAllProductsForStock();
+    allProducts = await loadProductsForStockLineItems(items);
   } catch (e) {
     console.error("❌ Stock delta: failed to load products", e);
     return;
@@ -13680,21 +13795,20 @@ app.post("/make-server-16010b6f/inventory/adjust", async (c) => {
     let isVariant = false;
     let variantId = null;
     
-    // If not found, search all products for this variant ID
+    // If not found, resolve variant ID/SKU through the SQL read model instead of scanning every product.
     if (!product) {
-      console.log(`🔍 Item not found as product, searching variants...`);
-      const allProducts = await kv.getByPrefix("product:");
-      
-      for (const p of allProducts) {
-        if (p && p.variants && Array.isArray(p.variants)) {
-          const variant = p.variants.find((v: any) => v.id === itemId);
-          if (variant) {
-            product = p;
-            isVariant = true;
-            variantId = itemId;
-            console.log(`✅ Found as variant in product: ${p.id}`);
-            break;
-          }
+      console.log(`🔍 Item not found as product, resolving variant via read model...`);
+      const mappedProductId = await findProductIdFromReadModelSkuOrVariant({
+        variantId: itemId,
+        sku: newSku,
+      });
+      if (mappedProductId) {
+        const mappedProduct = await kv.get(`product:${mappedProductId}`);
+        if (mappedProduct && typeof mappedProduct === "object") {
+          product = mappedProduct;
+          isVariant = true;
+          variantId = itemId;
+          console.log(`✅ Found as variant in product: ${mappedProductId}`);
         }
       }
     }

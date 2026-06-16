@@ -20,6 +20,7 @@ import {
   isUnifiedKpayReturnHost,
   UNIFIED_KPAY_SUMMARY_PATH,
 } from "./app/utils/vendorCheckoutPaths";
+import { primeVendorStorefrontHeadFromCache } from "./app/utils/vendorStorefrontBrandingCache";
 
 function isKpayReturnTraffic(): boolean {
   if (typeof window === "undefined") return false;
@@ -74,6 +75,10 @@ if (
   })
 ) {
   primePlatformBrandingFaviconFromCache();
+}
+
+if (typeof window !== "undefined" && !kpayUnifiedSummaryRedirecting) {
+  primeVendorStorefrontHeadFromCache();
 }
 
 if (!kpayUnifiedSummaryRedirecting) {

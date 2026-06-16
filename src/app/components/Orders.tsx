@@ -47,6 +47,8 @@ import {
   invalidateAdminOrdersCache,
   patchAdminOrdersCacheStatuses,
   ADMIN_ORDERS_PAGE_DEFAULT,
+  moduleCache,
+  adminOrdersPageCacheKey,
   type AdminOrdersPagePayload,
 } from "../utils/module-cache";
 import {
@@ -596,14 +598,35 @@ export function Orders({
   const [bulkStatus, setBulkStatus] = useState<OrderStatus>("processing");
   const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const initialOrdersPayload = useMemo(
+    () =>
+      moduleCache.peek<AdminOrdersPagePayload>(
+        adminOrdersPageCacheKey({
+          page: 1,
+          pageSize: ADMIN_ORDERS_PAGE_DEFAULT,
+          q: "",
+          status: "all",
+          payment: "all",
+          vendor: "all",
+          dateFrom: "",
+          dateTo: "",
+          sort: "newest",
+        })
+      ),
+    []
+  );
+  const [orders, setOrders] = useState<OrderItem[]>(() =>
+    applyPendingStatusDrafts(mapApiOrdersToOrderItems(initialOrdersPayload?.orders || []))
+  );
   const debouncedSearch = useAdminPortalDebouncedSearch(searchQuery);
   const [ordersPage, setOrdersPage] = useState(1);
   const [ordersPageSize, setOrdersPageSize] = useState(ADMIN_ORDERS_PAGE_DEFAULT);
-  const [ordersTotal, setOrdersTotal] = useState(0);
-  const [ordersHasMore, setOrdersHasMore] = useState(false);
-  const [ordersAggregates, setOrdersAggregates] = useState<AdminOrdersPagePayload["aggregates"]>(undefined);
-  const [isLoading, setIsLoading] = useState(true);
+  const [ordersTotal, setOrdersTotal] = useState(() => Number(initialOrdersPayload?.total ?? 0));
+  const [ordersHasMore, setOrdersHasMore] = useState(() => !!initialOrdersPayload?.hasMore);
+  const [ordersAggregates, setOrdersAggregates] = useState<AdminOrdersPagePayload["aggregates"]>(
+    () => initialOrdersPayload?.aggregates
+  );
+  const [isLoading, setIsLoading] = useState(() => !initialOrdersPayload);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [showBulkInvoices, setShowBulkInvoices] = useState(false); // For printing multiple invoices

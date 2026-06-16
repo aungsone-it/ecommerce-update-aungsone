@@ -31,6 +31,10 @@ import {
   buildVendorStorefrontDocumentTitle,
   vendorProfileSegmentToDocTitleMode,
 } from "../utils/vendorStorefrontDocumentTitle";
+import {
+  readCachedVendorBrandingBySlug,
+  readCachedVendorProductName,
+} from "../utils/vendorStorefrontBrandingCache";
 import { AuthProvider } from "../contexts/AuthContext";
 import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
@@ -174,34 +178,7 @@ function writeVendorSlugVerified(slug: string): void {
 }
 
 function readCachedVendorLogoBySlug(slug: string | undefined): string {
-  if (typeof window === "undefined") return "";
-  const keySlug = String(slug || "").trim().toLowerCase();
-  if (!keySlug) return "";
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key) continue;
-      const raw = localStorage.getItem(key);
-      if (!raw || (raw[0] !== "{" && raw[0] !== "[")) continue;
-      let parsed: any;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        continue;
-      }
-      const candidates = Array.isArray(parsed) ? parsed : [parsed];
-      for (const c of candidates) {
-        if (!c || typeof c !== "object") continue;
-        const cSlug = String(c.storeSlug || c.slug || "").trim().toLowerCase();
-        if (cSlug !== keySlug) continue;
-        const logo = typeof c.logo === "string" ? c.logo : typeof c.storeLogo === "string" ? c.storeLogo : "";
-        if (logo.trim()) return logo.trim();
-      }
-    }
-  } catch {
-    return "";
-  }
-  return "";
+  return readCachedVendorBrandingBySlug(slug).storeLogo;
 }
 
 function VendorStoreNotFoundPanel({ onBackHome }: { onBackHome: () => void }) {
@@ -441,10 +418,12 @@ export function VendorStorefrontPage() {
 
   useLayoutEffect(() => {
     if (!resolvedStoreName) {
-      document.title = "Vendor Store";
+      document.title = "Store";
       resetDocumentFavicon();
       return;
     }
+    const branding = readCachedVendorBrandingBySlug(resolvedStoreName);
+    const cachedProductName = readCachedVendorProductName(resolvedStoreName, productSlug);
     document.title = buildVendorStorefrontDocumentTitle({
       vendorSlug: resolvedStoreName,
       pathname: location.pathname,
@@ -452,7 +431,9 @@ export function VendorStorefrontPage() {
       savedPage,
       vendorViewMode: vendorDocTitleMode,
       profileOrderId,
+      selectedProductName: cachedProductName,
       categorySegment: categorySlug ?? null,
+      storeDisplayNameFallback: branding.storeName,
     });
 
     if (instantFavicon) {
@@ -470,6 +451,7 @@ export function VendorStorefrontPage() {
     profileOrderId,
     categorySlug,
     instantFavicon,
+    productSlug,
   ]);
 
   useEffect(() => {

@@ -99,11 +99,50 @@ export function Settings() {
     (tab) => tab.id !== "users" || isOwnerRole(user?.role)
   );
 
+  const applyAuthUsersTransform = useCallback(
+    (data: any[]) => {
+      const transformedUsers = data.map((u: any) => {
+        const fallback = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(u.email || "user")}`;
+        return {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          phone: u.phone || "",
+          role: u.role,
+          storeId: u.storeId || "",
+          status: u.status || "active",
+          profileImageUrl: u.profileImageUrl,
+          avatar: u.profileImageUrl || fallback,
+          lastActive: u.createdAt
+            ? new Date(u.createdAt).toLocaleDateString()
+            : new Date().toLocaleDateString(),
+        };
+      });
+      if (user?.role === "store-owner") {
+        const userStoreId = user.storeId || "";
+        return transformedUsers.filter((u: any) => (u.storeId || "") === userStoreId);
+      }
+      return isOwnerRole(user?.role) ? transformedUsers : [];
+    },
+    [user?.role, user?.storeId]
+  );
+
+  const initialAuthUsersRaw = (() => {
+    const peeked = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_AUTH_USERS);
+    if (Array.isArray(peeked)) return peeked;
+    const fromLs = readPersistedJson<any[]>(LS_ADMIN_AUTH_USERS, PERSISTED_CATALOG_TTL_MS);
+    if (fromLs && Array.isArray(fromLs) && fromLs.length > 0) {
+      moduleCache.prime(CACHE_KEYS.ADMIN_AUTH_USERS, fromLs);
+      return fromLs;
+    }
+    return [];
+  })();
+
   const [showUserDialog, setShowUserDialog] = useState(false);
   const [viewingUserProfile, setViewingUserProfile] = useState<any>(null);
   const [userProfileInitialEdit, setUserProfileInitialEdit] = useState(false);
   const [usersLoading, setUsersLoading] = useState(
-    () => !moduleCache.peek(CACHE_KEYS.ADMIN_AUTH_USERS)
+    () => initialAuthUsersRaw.length === 0
   );
   const [usersListRefreshing, setUsersListRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -165,8 +204,7 @@ export function Settings() {
     toast.success('Banner deleted');
   };
 
-  // User State - Start with empty array, load from backend
-  const [users, setUsers] = useState<any[]>([]);
+  const [users, setUsers] = useState<any[]>(() => applyAuthUsersTransform(initialAuthUsersRaw));
 
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
@@ -458,39 +496,6 @@ export function Settings() {
     async (forceRefresh = false) => {
       if (!isOwnerRole(user?.role)) return;
 
-      const applyAuthUsersTransform = (data: any[]) => {
-        const transformedUsers = data.map((u: any) => {
-          const fallback = `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(u.email || "user")}`;
-          return {
-            id: u.id,
-            name: u.name,
-            email: u.email,
-            phone: u.phone || "",
-            role: u.role,
-            storeId: u.storeId || "",
-            status: u.status || "active",
-            profileImageUrl: u.profileImageUrl,
-            avatar: u.profileImageUrl || fallback,
-            lastActive: u.createdAt
-              ? new Date(u.createdAt).toLocaleDateString()
-              : new Date().toLocaleDateString(),
-          };
-        });
-        let filteredUsers = transformedUsers;
-        if (user?.role === "store-owner") {
-          const userStoreId = user.storeId || "";
-          filteredUsers = transformedUsers.filter(
-            (u: any) => (u.storeId || "") === userStoreId
-          );
-          console.log(
-            `🔒 Store owner filter: Showing ${filteredUsers.length} users from store "${user.storeId || "(empty)"}"`
-          );
-        } else if (isOwnerRole(user?.role)) {
-          console.log(`👑 Store owner (${user?.role}): Showing all ${filteredUsers.length} users`);
-        }
-        return filteredUsers;
-      };
-
       const handleFetchError = (err: any) => {
         console.error("Error fetching users:", err);
         if (err.name === "AbortError") {
@@ -517,7 +522,6 @@ export function Settings() {
           setUsers(applyAuthUsersTransform(peeked));
           setUsersLoading(false);
           setError("");
-          setUsersListRefreshing(true);
           try {
             const raw = await getCachedAdminAuthUsers(true);
             if (!raw || raw.length === 0) {
@@ -588,8 +592,7 @@ export function Settings() {
 
   useEffect(() => {
     if (activeTab === "users" && isOwnerRole(user?.role)) {
-      invalidateAdminAuthUsersCache();
-      loadUsers(true);
+      loadUsers(false);
     }
   }, [activeTab, user?.role, loadUsers]);
 

@@ -80,6 +80,8 @@ import {
   invalidateAdminCustomersCache,
   removeAdminCustomersFromCaches,
   ADMIN_CUSTOMERS_PAGE_DEFAULT,
+  moduleCache,
+  adminCustomersPageCacheKey,
   type AdminCustomersPagePayload,
 } from "../utils/module-cache";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
@@ -114,6 +116,14 @@ interface Customer {
   };
 }
 
+const normalizeAdminCustomers = (raw: any[]): Customer[] => {
+  return (raw || []).filter((c: any) => {
+    if (!c || typeof c !== "object" || Array.isArray(c)) return false;
+    if (!c.id || typeof c.id !== "string") return false;
+    return true;
+  });
+};
+
 type ChatHandoffCustomer = { name: string; email: string; avatar?: string };
 
 function MmkInline({ value, className }: { value: number; className?: string }) {
@@ -146,14 +156,32 @@ export function CustomersEnhanced({
   const [activeTab, setActiveTab] = useState("list");
   const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
 
-  const [customersList, setCustomersList] = useState<Customer[]>([]);
+  const initialCustomersPayload = useMemo(
+    () =>
+      moduleCache.peek<AdminCustomersPagePayload>(
+        adminCustomersPageCacheKey({
+          page: 1,
+          pageSize: ADMIN_CUSTOMERS_PAGE_DEFAULT,
+          q: "",
+          status: "all",
+          tier: "all",
+          segment: "all",
+        })
+      ),
+    []
+  );
+  const [customersList, setCustomersList] = useState<Customer[]>(() =>
+    normalizeAdminCustomers((initialCustomersPayload?.customers || []) as any[])
+  );
   const searchDebounced = useAdminPortalDebouncedSearch(searchQuery);
   const [customersPage, setCustomersPage] = useState(1);
   const [customersPageSize, setCustomersPageSize] = useState(ADMIN_CUSTOMERS_PAGE_DEFAULT);
-  const [customersTotal, setCustomersTotal] = useState(0);
-  const [customersHasMore, setCustomersHasMore] = useState(false);
-  const [serverListStats, setServerListStats] = useState<AdminCustomersPagePayload["stats"]>(undefined);
-  const [isLoading, setIsLoading] = useState(true);
+  const [customersTotal, setCustomersTotal] = useState(() => Number(initialCustomersPayload?.total ?? 0));
+  const [customersHasMore, setCustomersHasMore] = useState(() => !!initialCustomersPayload?.hasMore);
+  const [serverListStats, setServerListStats] = useState<AdminCustomersPagePayload["stats"]>(
+    () => initialCustomersPayload?.stats
+  );
+  const [isLoading, setIsLoading] = useState(() => !initialCustomersPayload);
   const skipCustomersRealtimeReloadRef = useRef(false);
 
   // 🎯 Alert Modal State
@@ -183,36 +211,32 @@ export function CustomersEnhanced({
     setCustomersPage(1);
   }, [searchDebounced, filterStatus, filterTier, filterSegment, customersPageSize]);
 
-  const normalizeCustomers = (raw: any[]): Customer[] => {
-    return (raw || []).filter((c: any) => {
-      if (!c || typeof c !== "object" || Array.isArray(c)) return false;
-      if (!c.id || typeof c.id !== "string") return false;
-      return true;
-    });
-  };
-
   const customerContactSubtitle = (customer: Customer) =>
     customer.phone?.trim() || customer.email?.trim() || "";
 
   const fetchCustomers = useCallback(
     async (forceRefresh = false, opts?: { silent?: boolean }) => {
       let showLoadingTimer: ReturnType<typeof setTimeout> | null = null;
-      if (!opts?.silent) {
+      const pageParams = {
+        page: customersPage,
+        pageSize: customersPageSize,
+        q: searchDebounced,
+        status: filterStatus,
+        tier: filterTier,
+        segment: filterSegment,
+      };
+      const hasCachedPage =
+        !forceRefresh &&
+        !!moduleCache.peek<AdminCustomersPagePayload>(adminCustomersPageCacheKey(pageParams));
+      if (!opts?.silent && !hasCachedPage) {
         showLoadingTimer = setTimeout(() => setIsLoading(true), 300);
       }
       try {
         const data = await getCachedAdminCustomersPage(
-          {
-            page: customersPage,
-            pageSize: customersPageSize,
-            q: searchDebounced,
-            status: filterStatus,
-            tier: filterTier,
-            segment: filterSegment,
-          },
+          pageParams,
           forceRefresh
         );
-        const validCustomers = normalizeCustomers(data.customers || []) as Customer[];
+        const validCustomers = normalizeAdminCustomers(data.customers || []) as Customer[];
         setCustomersList(validCustomers);
         setCustomersTotal(data.total);
         setCustomersHasMore(!!data.hasMore);
