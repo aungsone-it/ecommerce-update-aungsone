@@ -44,7 +44,6 @@ import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 import { useLanguage } from "../contexts/LanguageContext";
 import {
   getCachedAdminOrdersPage,
-  invalidateAdminOrdersCache,
   patchAdminOrdersCacheStatuses,
   ADMIN_ORDERS_PAGE_DEFAULT,
   moduleCache,
@@ -993,7 +992,6 @@ export function Orders({
       void reconcileInventoryAfterBulkOrderStatusSave(bulkSnapshots).catch((e) =>
         console.warn("[inventory] Bulk reconcile failed:", e)
       );
-      invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error
       console.error("❌ Failed to bulk update orders:", error);
@@ -1162,7 +1160,6 @@ export function Orders({
           )
         );
       }
-      invalidateAdminOrdersCache();
     } catch (error) {
       // Roll back on error
       console.error("❌ Failed to update order status:", error);

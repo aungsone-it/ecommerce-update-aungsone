@@ -149,6 +149,8 @@ export function AdminPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   /** TopNav product search draft — synced with ProductList input; server `q` commits on Enter only. */
   const [adminHeaderProductSearch, setAdminHeaderProductSearch] = useState("");
+  /** Product list server `q` that persists across admin navigation/remounts until explicit clear. */
+  const [adminHeaderProductCommittedSearch, setAdminHeaderProductCommittedSearch] = useState("");
   /** Bumped when user presses Enter in TopNav on Products — ProductList applies `q` then. */
   const [headerProductSearchCommitTick, setHeaderProductSearchCommitTick] = useState(0);
   /** Product list total for breadcrumb «n» (All Products page only) */
@@ -174,6 +176,11 @@ export function AdminPage() {
       setInventoryCommittedSearchQuery("");
     }
   }, []);
+
+  const activeTopNavSearch =
+    currentPage === ADMIN_PAGES.INVENTORY
+      ? inventorySearchQuery
+      : adminHeaderProductSearch;
 
   const { badgeCounts, loadBadgeCounts, incrementOrdersBadge } = useBadgeCounts();
 
@@ -604,6 +611,8 @@ export function AdminPage() {
             onProductsChanged={handleProductsChanged}
             headerSearchQuery={adminHeaderProductSearch}
             onHeaderSearchQueryChange={setAdminHeaderProductSearch}
+            headerCommittedSearchQuery={adminHeaderProductCommittedSearch}
+            onHeaderCommittedSearchQueryChange={setAdminHeaderProductCommittedSearch}
             headerSearchCommitTick={headerProductSearchCommitTick}
             onListingCountChange={setProductListingBreadcrumbCount}
           />
@@ -811,11 +820,21 @@ export function AdminPage() {
                 setUserProfileInitialEdit(true);
                 setViewingUserProfile(currentUser);
               }}
-              adminGlobalSearch={adminHeaderProductSearch}
-              onAdminGlobalSearchChange={setAdminHeaderProductSearch}
+              adminGlobalSearch={activeTopNavSearch}
+              onAdminGlobalSearchChange={(value) => {
+                if (currentPage === ADMIN_PAGES.INVENTORY) {
+                  handleInventorySearchQueryChange(value);
+                  return;
+                }
+                setAdminHeaderProductSearch(value);
+              }}
               onAdminGlobalSearchSubmit={() => {
                 if (currentPage === ADMIN_PAGES.PRODUCT) {
                   setHeaderProductSearchCommitTick((n) => n + 1);
+                  return;
+                }
+                if (currentPage === ADMIN_PAGES.INVENTORY) {
+                  setInventoryCommittedSearchQuery(inventorySearchQuery.trim());
                   return;
                 }
                 const q = adminHeaderProductSearch.trim();

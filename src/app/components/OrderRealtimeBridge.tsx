@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { supabase } from "../contexts/AuthContext";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
 import {
-  notifyAdminProductsListChanged,
+  dispatchAdminProductsCachePatched,
   notifyAdminVendorApplicationsUpdated,
 } from "../utils/module-cache";
 import { notifyCustomerRealtimeLocal, type CustomerRealtimePayload } from "../utils/customersRealtime";
@@ -130,7 +130,8 @@ export function OrderRealtimeBridge() {
       domains.clear();
       if (list.length === 0) return;
       if (list.includes("products")) {
-        notifyAdminProductsListChanged();
+        // Order-driven stock changes should patch visible rows without forcing list refetch/reset.
+        dispatchAdminProductsCachePatched();
       }
       if (typeof window !== "undefined") {
         if (list.includes("categories")) {

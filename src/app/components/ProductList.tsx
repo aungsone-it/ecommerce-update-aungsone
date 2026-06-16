@@ -77,6 +77,9 @@ interface ProductListProps {
   /** Synced with super-admin TopNav search */
   headerSearchQuery?: string;
   onHeaderSearchQueryChange?: (q: string) => void;
+  /** Persisted server search query (`q`) across ProductList remounts. */
+  headerCommittedSearchQuery?: string;
+  onHeaderCommittedSearchQueryChange?: (q: string) => void;
   /** Parent increments when user presses Enter in TopNav on Products — applies server `q`. */
   headerSearchCommitTick?: number;
   /** Super-admin breadcrumb «total» on list view; null when not listing or still loading first page */
@@ -278,6 +281,8 @@ export function ProductList({
   onProductsChanged,
   headerSearchQuery,
   onHeaderSearchQueryChange,
+  headerCommittedSearchQuery,
+  onHeaderCommittedSearchQueryChange,
   headerSearchCommitTick,
   onListingCountChange,
 }: ProductListProps) {
@@ -319,7 +324,9 @@ export function ProductList({
   const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   /** Sent to `getCachedAdminProductsPage` as `q` — updated only on Enter/Search. */
-  const [committedSearchQuery, setCommittedSearchQuery] = useState("");
+  const [committedSearchQuery, setCommittedSearchQuery] = useState(
+    () => headerCommittedSearchQuery ?? ""
+  );
   const lastHeaderCommitTick = useRef(0);
   const skipCacheSoftReloadRef = useRef(false);
   const skipProductsRealtimeReloadRef = useRef(false);
@@ -368,6 +375,11 @@ export function ProductList({
   }, [headerSearchQuery]);
 
   useEffect(() => {
+    if (headerCommittedSearchQuery === undefined) return;
+    setCommittedSearchQuery(headerCommittedSearchQuery);
+  }, [headerCommittedSearchQuery]);
+
+  useEffect(() => {
     if (headerSearchCommitTick === undefined) return;
     if (headerSearchCommitTick <= lastHeaderCommitTick.current) return;
     lastHeaderCommitTick.current = headerSearchCommitTick;
@@ -376,7 +388,8 @@ export function ProductList({
         ? String(headerSearchQuery).trim()
         : searchQuery.trim();
     setCommittedSearchQuery(q);
-  }, [headerSearchCommitTick, headerSearchQuery, searchQuery]);
+    onHeaderCommittedSearchQueryChange?.(q);
+  }, [headerSearchCommitTick, headerSearchQuery, searchQuery, onHeaderCommittedSearchQueryChange]);
 
   useEffect(() => {
     setAdminPage(1);
@@ -514,6 +527,57 @@ export function ProductList({
     return true;
   }, [adminPage, adminPageSize, committedSearchQuery, sortBy]);
 
+  const applyVisibleStockPatchFromFullCache = useCallback(() => {
+    const full = moduleCache.peek<any[]>(MODULE_CACHE_KEYS.ADMIN_PRODUCTS);
+    if (!Array.isArray(full) || full.length === 0 || products.length === 0) return false;
+    const byId = new Map<string, any>();
+    for (const row of full) {
+      if (row?.id != null) byId.set(String(row.id), row);
+    }
+
+    let changed = false;
+    const nextProducts = products.map((row: any) => {
+      const fullRow = byId.get(String(row?.id ?? ""));
+      if (!fullRow) return row;
+      let nextRow = row;
+
+      const rowInventory = Number(row?.inventory ?? 0);
+      const fullInventory = Number(fullRow?.inventory ?? 0);
+      if (rowInventory !== fullInventory) {
+        nextRow = { ...nextRow, inventory: fullInventory };
+        changed = true;
+      }
+
+      if (Array.isArray(row?.variants) && Array.isArray(fullRow?.variants)) {
+        const variantsById = new Map<string, any>();
+        for (const v of fullRow.variants) {
+          if (v?.id != null) variantsById.set(String(v.id), v);
+        }
+        let variantsChanged = false;
+        const nextVariants = row.variants.map((variant: any) => {
+          const fullVariant = variantsById.get(String(variant?.id ?? ""));
+          if (!fullVariant) return variant;
+          const currentQty = Number(variant?.inventory ?? 0);
+          const nextQty = Number(fullVariant?.inventory ?? 0);
+          if (currentQty === nextQty) return variant;
+          variantsChanged = true;
+          return { ...variant, inventory: nextQty };
+        });
+        if (variantsChanged) {
+          nextRow = { ...nextRow, variants: nextVariants };
+          changed = true;
+        }
+      }
+
+      return nextRow;
+    });
+
+    if (!changed) return false;
+    setProducts(nextProducts);
+    SmartCache.set(CACHE_KEYS.PRODUCTS, nextProducts);
+    return true;
+  }, [products]);
+
   useEffect(() => {
     const pageSizeChanged =
       prevAdminPageSizeRef.current != null && prevAdminPageSizeRef.current !== adminPageSize;
@@ -549,11 +613,20 @@ export function ProductList({
         return;
       }
       if (!applyCachedProductPage()) {
-        void loadProductPage(false, { silent: true });
+        if (!applyVisibleStockPatchFromFullCache()) {
+          void loadProductPage(false, { silent: true });
+        }
       }
     };
-    const hardReload = () => void loadProductPage(true, { silent: true });
-    const onListChanged = () => void loadProductPage(true, { silent: true });
+    const onListChanged = () => {
+      if (skipCacheSoftReloadRef.current) {
+        skipCacheSoftReloadRef.current = false;
+        return;
+      }
+      if (applyCachedProductPage()) return;
+      if (applyVisibleStockPatchFromFullCache()) return;
+      void loadProductPage(true, { silent: true });
+    };
     window.addEventListener("migoo-admin-products-cache-patched", applyCachePatch);
     window.addEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, onListChanged);
     let bc: BroadcastChannel | null = null;
@@ -574,7 +647,7 @@ export function ProductList({
       window.removeEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, onListChanged);
       bc?.close();
     };
-  }, [loadProductPage, applyCachedProductPage]);
+  }, [loadProductPage, applyCachedProductPage, applyVisibleStockPatchFromFullCache]);
 
   const applyOptimisticProductRemoval = useCallback(
     (removedIds: Set<string>, sourceProducts: Product[]) => {
@@ -638,7 +711,8 @@ export function ProductList({
       return;
     }
     setCommittedSearchQuery(q);
-  }, [searchQuery, committedSearchQuery, loadProductPage]);
+    onHeaderCommittedSearchQueryChange?.(q);
+  }, [searchQuery, committedSearchQuery, loadProductPage, onHeaderCommittedSearchQueryChange]);
 
   const onSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -1132,7 +1206,11 @@ export function ProductList({
                           value={searchQuery}
                           onValueChange={handleSearchInputChange}
                           onKeyDown={onSearchKeyDown}
-                          onClear={() => setCommittedSearchQuery("")}
+                          onClear={() => {
+                            handleSearchInputChange("");
+                            setCommittedSearchQuery("");
+                            onHeaderCommittedSearchQueryChange?.("");
+                          }}
                           onSubmit={commitSearchFromInput}
                           submitDisabled={listRefreshing || !searchQuery.trim()}
                           submitPending={hasPendingServerSearch}

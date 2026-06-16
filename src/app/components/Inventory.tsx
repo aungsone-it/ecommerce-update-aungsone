@@ -14,6 +14,7 @@ import {
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   dispatchAdminProductsCachePatched,
   ADMIN_PRODUCTS_BROADCAST_CHANNEL,
+  CACHE_KEYS,
   moduleCache,
   adminProductsPageCacheKey,
   primeAdminProductsPageFromFullCache,
@@ -266,6 +267,47 @@ export function Inventory({
     return true;
   }, [currentPage, itemsPerPage, committedSearchQuery]);
 
+  const applyVisibleInventoryStockPatchFromFullCache = useCallback(() => {
+    const full = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+    if (!Array.isArray(full) || full.length === 0 || inventoryItems.length === 0) return false;
+    const byProductId = new Map<string, any>();
+    for (const row of full) {
+      if (row?.id != null) byProductId.set(String(row.id), row);
+    }
+
+    let changed = false;
+    const nextRows = inventoryItems.map((row) => {
+      const parentKey = String((row.parentId || row.id) ?? "");
+      const sourceProduct = byProductId.get(parentKey);
+      if (!sourceProduct) return row;
+
+      let nextOnHand = Number(row.onHand ?? 0);
+      if (row.isVariant) {
+        const sourceVariant = Array.isArray(sourceProduct.variants)
+          ? sourceProduct.variants.find((v: any) => String(v?.id ?? "") === String(row.id))
+          : null;
+        if (!sourceVariant) return row;
+        nextOnHand = Number(sourceVariant.inventory ?? 0);
+      } else {
+        nextOnHand = Number(sourceProduct.inventory ?? 0);
+      }
+
+      if (nextOnHand === Number(row.onHand ?? 0)) return row;
+      changed = true;
+      const committed = Math.floor(nextOnHand * 0.05);
+      return {
+        ...row,
+        onHand: nextOnHand,
+        committed,
+        available: Math.max(0, nextOnHand - committed),
+      };
+    });
+
+    if (!changed) return false;
+    setInventoryItems(nextRows);
+    return true;
+  }, [inventoryItems]);
+
   const visibleInventoryItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return inventoryItems;
@@ -279,6 +321,29 @@ export function Inventory({
   const totalPages = Math.max(1, Math.ceil(productTotal / itemsPerPage) || 1);
   const startIndex = productTotal === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
   const endIndex = productTotal === 0 ? 0 : Math.min(currentPage * itemsPerPage, productTotal);
+  const inventoryTableSkeletonRows = Array.from({ length: 8 }).map((_, index) => (
+    <tr key={`inventory-skeleton-${index}`} className="border-b border-slate-100 animate-pulse">
+      <td className="py-3 px-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-slate-200 rounded-lg" />
+          <div className="space-y-2">
+            <div className="h-4 bg-slate-200 rounded w-32" />
+            <div className="h-3 bg-slate-200 rounded w-20" />
+          </div>
+        </div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="h-4 bg-slate-200 rounded w-24" />
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex items-center justify-center gap-2">
+          <div className="h-9 w-9 bg-slate-200 rounded" />
+          <div className="h-9 w-20 bg-slate-200 rounded" />
+          <div className="h-9 w-9 bg-slate-200 rounded" />
+        </div>
+      </td>
+    </tr>
+  ));
 
   const goToFirstPage = () => setCurrentPage(1);
   const goToLastPage = () => setCurrentPage(totalPages);
@@ -288,17 +353,23 @@ export function Inventory({
   useEffect(() => {
     const applyCachePatch = () => {
       if (!applyCachedInventoryPage()) {
-        void loadInventory(false, { silent: true });
+        if (!applyVisibleInventoryStockPatchFromFullCache()) {
+          void loadInventory(false, { silent: true });
+        }
       }
     };
+    const onListChanged = () => {
+      if (applyCachedInventoryPage()) return;
+      if (applyVisibleInventoryStockPatchFromFullCache()) return;
+      void loadInventory(true, { silent: true });
+    };
     window.addEventListener("migoo-admin-products-cache-patched", applyCachePatch);
-    const hardReload = () => void loadInventory(true, { silent: true });
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(ADMIN_PRODUCTS_BROADCAST_CHANNEL);
       bc.onmessage = (ev: MessageEvent) => {
         if (ev.data?.type === "list-changed") {
-          hardReload();
+          onListChanged();
           return;
         }
         applyCachePatch();
@@ -310,7 +381,7 @@ export function Inventory({
       window.removeEventListener("migoo-admin-products-cache-patched", applyCachePatch);
       bc?.close();
     };
-  }, [loadInventory, applyCachedInventoryPage]);
+  }, [loadInventory, applyCachedInventoryPage, applyVisibleInventoryStockPatchFromFullCache]);
 
   // Inline editing - click number to edit
   const startEditing = (item: InventoryItem) => {
@@ -545,7 +616,10 @@ export function Inventory({
             value={searchQuery}
             onValueChange={onSearchQueryChange}
             onKeyDown={onSearchKeyDown}
-            onClear={() => onCommittedSearchQueryChange("")}
+            onClear={() => {
+              onSearchQueryChange("");
+              onCommittedSearchQueryChange("");
+            }}
             onSubmit={commitSearchFromInput}
             submitPending={hasPendingServerSearch}
           />
@@ -570,9 +644,9 @@ export function Inventory({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {inventoryItems.length > 0 &&
-              visibleInventoryItems.length === 0 &&
-              !listRefreshing ? (
+              {listRefreshing ? (
+                inventoryTableSkeletonRows
+              ) : inventoryItems.length > 0 && visibleInventoryItems.length === 0 ? (
                 <tr>
                   <td
                     colSpan={3}
