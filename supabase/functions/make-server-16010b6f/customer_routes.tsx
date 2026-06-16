@@ -1677,22 +1677,39 @@ customerApp.get("/customers/:customerId/cart", async (c) => {
     }
     
     if (!customer) {
-      console.log(`❌ Customer not found: ${customerId}`);
-      return c.json({ 
+      // Compatibility: accounts can exist without a linked `customer:*` profile row.
+      // Persist/read cart by auth user id key so cross-device cart still works.
+      const fallbackCart = await kv.get(`customer:${customerId}:cart`);
+      const safeFallback = Array.isArray(fallbackCart) ? fallbackCart : [];
+      if (safeFallback.length > 0) {
+        console.log(
+          `✅ Loaded ${safeFallback.length} fallback cart item(s) for user key ${customerId}`
+        );
+      } else {
+        console.log(`⚠️ Customer profile not found; no fallback cart for ${customerId}`);
+      }
+      return c.json({
         success: true,
-        cart: [],
-        total: 0,
+        cart: safeFallback,
+        total: safeFallback.length,
       });
     }
     
-    // Use the actual customer ID for cart lookup
-    const actualCustomerId = customer.id;
+    // Use canonical customer id; also support user-id compat key for realtime sync consumers.
+    const actualCustomerId = String(customer.id || customerId);
     console.log(`🛒 Looking up cart for customer ID: ${actualCustomerId}`);
     
-    // Get cart for this customer - kv.get already has 15s timeout
-    const cart = await kv.get(`customer:${actualCustomerId}:cart`);
+    const [primaryCart, compatCart] = await Promise.all([
+      kv.get(`customer:${actualCustomerId}:cart`),
+      actualCustomerId !== customerId ? kv.get(`customer:${customerId}:cart`) : Promise.resolve(null),
+    ]);
+    const cart = Array.isArray(primaryCart)
+      ? primaryCart
+      : Array.isArray(compatCart)
+        ? compatCart
+        : [];
     
-    if (!cart || !Array.isArray(cart)) {
+    if (!Array.isArray(cart)) {
       console.log(`⚠️ No cart found for customer ${customer.name || customer.email}`);
       return c.json({
         success: true,
@@ -1742,25 +1759,34 @@ customerApp.post("/customers/:customerId/cart", async (c) => {
       }
     }
     
-    if (!customer) {
-      console.log(`❌ Customer not found: ${customerId}`);
-      return c.json({ 
-        success: true,
-        cart: [],
-        total: 0,
-      });
-    }
-    
     if (!Array.isArray(cart)) {
       return c.json({ error: "Cart must be an array" }, 400);
     }
+
+    if (!customer) {
+      // Compatibility: no customer profile row yet; keep cart by auth user id key.
+      await kv.set(`customer:${customerId}:cart`, cart);
+      console.log(
+        `✅ Saved ${cart.length} cart item(s) to fallback user key customer:${customerId}:cart`
+      );
+      return c.json({
+        success: true,
+        cart,
+        total: cart.length,
+        message: "Cart saved successfully",
+      });
+    }
     
-    // Use the actual customer ID for cart storage
-    const actualCustomerId = customer.id;
+    // Canonical storage key + compat user-id key for realtime subscribers.
+    const actualCustomerId = String(customer.id || customerId);
     console.log(`🛒 Saving cart for customer ID: ${actualCustomerId}`);
     
-    // Save cart to database - kv.set already has 15s timeout
-    await kv.set(`customer:${actualCustomerId}:cart`, cart);
+    await Promise.all([
+      kv.set(`customer:${actualCustomerId}:cart`, cart),
+      actualCustomerId !== customerId
+        ? kv.set(`customer:${customerId}:cart`, cart)
+        : Promise.resolve(),
+    ]);
     
     console.log(`✅ Saved ${cart.length} items in cart for customer ${customer.name || customer.email}`);
     
