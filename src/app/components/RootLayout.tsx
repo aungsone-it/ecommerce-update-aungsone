@@ -7,9 +7,8 @@ import {
   isAdminPortalRoute,
 } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
-import { FloatingChat } from "./FloatingChat";
+import { lazy, Suspense, useEffect } from "react";
 import { BackToTop } from "./BackToTop";
-import { useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCartVisibility } from "../contexts/CartVisibilityContext";
 import { CartVisibilityProvider } from "../contexts/CartVisibilityContext";
@@ -21,6 +20,8 @@ import { parseStorefrontPolicyRoute } from "../utils/storefrontPolicyPaths";
 import { prefetchStorefrontPolicyData } from "../hooks/useStorefrontPolicyData";
 import { StorefrontPolicyLiveBridge } from "./StorefrontPolicyLiveBridge";
 import { isVendorStorefrontProductDetailPath } from "../utils/vendorStorefrontLayout";
+
+const FloatingChat = lazy(() => import("./FloatingChat").then((m) => ({ default: m.FloatingChat })));
 
 // Public layout without authentication
 export function RootLayout() {
@@ -115,16 +116,18 @@ function RootLayoutContent() {
         !isResetPasswordPage &&
         !isVendorLoginPage &&
         !isAdminPortal && (
-        <FloatingChat 
-          customerName={user?.fullName || user?.firstName || "Guest"}
-          customerEmail={user?.email || ""}
-          onUnreadCountChange={setChatUnreadCount}
-          forceOpen={forceOpenFloatingChat}
-          onOpen={resetForceOpenFloatingChat}
-          vendorId={vendorId}
-          isAuthenticated={!!user}
-          aboveStickyPurchaseBar={isVendorProductDetailPage}
-        />
+        <Suspense fallback={null}>
+          <FloatingChat
+            customerName={user?.fullName || user?.firstName || "Guest"}
+            customerEmail={user?.email || ""}
+            onUnreadCountChange={setChatUnreadCount}
+            forceOpen={forceOpenFloatingChat}
+            onOpen={resetForceOpenFloatingChat}
+            vendorId={vendorId}
+            isAuthenticated={!!user}
+            aboveStickyPurchaseBar={isVendorProductDetailPage}
+          />
+        </Suspense>
       )}
       {/* Global Back to Top - Hidden when cart is open OR when app is loading OR on vendor application page OR on landing page */}
       {/* Vendor storefront scrolls an inner div — BackToTop is rendered inside VendorStoreView */}

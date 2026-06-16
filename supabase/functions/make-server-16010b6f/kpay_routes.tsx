@@ -12,6 +12,7 @@ import {
   getPwaDraftStatusRoute,
   postPwaReconcileRoute as runPwaReconcileRoute,
 } from "./pwa_reconcile.ts";
+import { queueOrderReadModelSync } from "./read_model.ts";
 
 type AnyRecord = Record<string, unknown>;
 type PaymentStatus = "pending" | "paid" | "failed";
@@ -488,6 +489,7 @@ async function upsertOrderPaymentStatus(
     },
   };
   await kv.set(found.key, nextOrder);
+  queueOrderReadModelSync(String(nextOrder.id || found.key.replace(/^order:/, "") || merchantOrderId), nextOrder);
 }
 
 function kpayConfig() {
@@ -1341,6 +1343,7 @@ async function patchOrderKvAtKey(
     },
   };
   await kv.set(storageKey, nextOrder);
+  queueOrderReadModelSync(String(nextOrder.id || storageKey.replace(/^order:/, "") || result.merchantOrderId), nextOrder);
   return true;
 }
 

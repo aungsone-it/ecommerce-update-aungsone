@@ -4,6 +4,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
 import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
+import {
+  queueCustomerReadModelDelete,
+  queueCustomerReadModelSync,
+} from "./read_model.ts";
 
 const customerApp = new Hono();
 
@@ -409,10 +413,58 @@ function customerMatchesSearchQuery(cust: any, qRaw: string): boolean {
   );
 }
 
+async function jsonAdminCustomersPageFromReadModel(c: any): Promise<Record<string, unknown> | null> {
+  const pageQ = c.req.query("page");
+  if (pageQ === undefined || pageQ === "") return null;
+  const page = Math.max(1, parseInt(String(pageQ), 10) || 1);
+  const pageSize = Math.min(
+    100,
+    Math.max(1, parseInt(String(c.req.query("pageSize") || "20"), 10) || 20)
+  );
+  try {
+    const { data, error } = await supabase.rpc("rpc_admin_customers_page", {
+      p_page: page,
+      p_page_size: pageSize,
+      p_q: String(c.req.query("q") || "").trim() || null,
+      p_status: String(c.req.query("status") || "all").toLowerCase(),
+      p_tier: String(c.req.query("tier") || "all").toLowerCase(),
+      p_segment: String(c.req.query("segment") || "all").toLowerCase(),
+    });
+    if (error) {
+      console.warn("[customers] read-model page unavailable:", error.message);
+      return null;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const readModelRows = Number(body.readModelRows ?? 0);
+    if (readModelRows <= 0) return null;
+    const rows = Array.isArray(body.customers) ? body.customers : [];
+    const freshRows = await Promise.all(rows.map((cust: any) => attachFreshCustomerAvatar(cust)));
+    return {
+      success: true,
+      customers: freshRows,
+      total: Number(body.total ?? 0),
+      page: Number(body.page ?? page),
+      pageSize: Number(body.pageSize ?? pageSize),
+      hasMore: Boolean(body.hasMore),
+      stats: body.stats && typeof body.stats === "object" ? body.stats : undefined,
+      readModel: true,
+    };
+  } catch (error) {
+    console.warn("[customers] read-model page failed:", error);
+    return null;
+  }
+}
+
 // Get all customers
 customerApp.get("/customers", async (c) => {
   try {
     console.log("📊 Fetching all customers...");
+
+    const readModelBody = await jsonAdminCustomersPageFromReadModel(c);
+    if (readModelBody) {
+      return c.json(readModelBody);
+    }
     
     const customers = await withTimeout(kv.getByPrefix("customer:"), 45000);
     
@@ -655,6 +707,7 @@ customerApp.post("/customers", async (c) => {
     
     // Save to database
     await withTimeout(kv.set(`customer:${customerId}`, newCustomer), 5000);
+    queueCustomerReadModelSync(customerId, newCustomer);
     
     console.log(`✅ Customer created successfully: ${customerId}`);
     console.log(`✅ Customer data:`, JSON.stringify(newCustomer, null, 2));
@@ -725,6 +778,7 @@ customerApp.put("/customers/:customerId", async (c) => {
     
     // Save updated customer
     await withTimeout(kv.set(`customer:${customerId}`, updatedCustomer), 5000);
+    queueCustomerReadModelSync(customerId, updatedCustomer);
     
     console.log(`✅ Customer updated: ${customerId}`);
     
@@ -780,11 +834,14 @@ customerApp.delete("/customers/:customerId", async (c) => {
     });
 
     await withTimeout(kv.del(`customer:${storageKey}`), 5000);
+    queueCustomerReadModelDelete(storageKey);
     if (storageKey !== idParam) {
       await withTimeout(kv.del(`customer:${idParam}`), 5000).catch(() => undefined);
+      queueCustomerReadModelDelete(idParam);
     }
     if (userId && userId !== storageKey && userId !== idParam) {
       await withTimeout(kv.del(`customer:${userId}`), 5000).catch(() => undefined);
+      queueCustomerReadModelDelete(userId);
     }
 
     const custImg =
@@ -863,9 +920,11 @@ customerApp.post("/customers/bulk-delete", async (c) => {
 
     for (const key of storageKeys) {
       await withTimeout(kv.del(`customer:${key}`), 5000);
+      queueCustomerReadModelDelete(key);
     }
     for (const idParam of customerIds) {
       await withTimeout(kv.del(`customer:${idParam}`), 5000).catch(() => undefined);
+      queueCustomerReadModelDelete(String(idParam));
     }
 
     await deleteOwnedStorageRefs(supabase, bulkImageRefs);
@@ -1456,6 +1515,7 @@ customerApp.post("/customers/deduplicate", async (c) => {
       if (updated) {
         keepCustomer.updatedAt = new Date().toISOString();
         await withTimeout(kv.set(`customer:${keepCustomer.id}`, keepCustomer), 5000);
+        queueCustomerReadModelSync(String(keepCustomer.id), keepCustomer);
         console.log(`🔄 Updated kept customer with merged data`);
       }
       
@@ -1463,6 +1523,7 @@ customerApp.post("/customers/deduplicate", async (c) => {
       for (const dupCustomer of deleteCustomers) {
         console.log(`🗑️ Deleting duplicate customer ${dupCustomer.id}`);
         await withTimeout(kv.del(`customer:${dupCustomer.id}`), 5000);
+        queueCustomerReadModelDelete(String(dupCustomer.id));
         deletedCount++;
       }
       

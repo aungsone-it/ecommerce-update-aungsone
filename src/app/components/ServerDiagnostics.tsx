@@ -18,6 +18,8 @@ export function ServerDiagnostics() {
     { name: '/vendor-applications', url: `/make-server-16010b6f/vendor-applications` },
     { name: '/categories', url: `/make-server-16010b6f/categories` },
     { name: '/finances', url: `/make-server-16010b6f/finances` },
+    { name: '/monitoring/summary', url: `/make-server-16010b6f/monitoring/summary` },
+    { name: '/read-model/validate', url: `/make-server-16010b6f/read-model/validate` },
   ];
 
   const testEndpoint = async (endpoint: { name: string; url: string }): Promise<DiagnosticResult> => {

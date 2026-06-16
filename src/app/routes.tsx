@@ -2,13 +2,11 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, type RouteObject } from "react-router";
 import { RootLayout } from "./components/RootLayout";
-import { VendorProtectedLayout } from "./components/VendorProtectedLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
 import { KPayVendorReturnRedirect } from "./components/KPayVendorReturnRedirect";
 import { RouteLoadingFallback } from "./components/RouteLoadingFallback";
 import { VendorStorefrontFullSkeleton } from "./components/SkeletonLoaders";
-import { NotFound } from "./pages/NotFound";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
@@ -21,10 +19,6 @@ import {
   shouldResolveCustomDomainHost,
   useResolvedVendorHostSlug,
 } from "./utils/vendorHostResolution";
-import {
-  AdminEntryLayout,
-  AdminSubdomainLeaf,
-} from "./components/AdminSubdomainOrSuper";
 const OrderRealtimeBridge = lazy(() =>
   import("./components/OrderRealtimeBridge").then((m) => ({
     default: m.OrderRealtimeBridge,
@@ -88,7 +82,21 @@ const VendorAuthPage = lazy(() =>
 const KPayReturnPage = lazy(() =>
   import("./pages/KPayReturnPage").then((m) => ({ default: m.KPayReturnPage })),
 );
-import { StorefrontPolicyPage } from "./pages/StorefrontPolicyPage";
+const StorefrontPolicyPage = lazy(() =>
+  import("./pages/StorefrontPolicyPage").then((m) => ({ default: m.StorefrontPolicyPage })),
+);
+const NotFound = lazy(() =>
+  import("./pages/NotFound").then((m) => ({ default: m.NotFound })),
+);
+const AdminEntryLayout = lazy(() =>
+  import("./components/AdminSubdomainOrSuper").then((m) => ({ default: m.AdminEntryLayout })),
+);
+const AdminSubdomainLeaf = lazy(() =>
+  import("./components/AdminSubdomainOrSuper").then((m) => ({ default: m.AdminSubdomainLeaf })),
+);
+const VendorProtectedLayout = lazy(() =>
+  import("./components/VendorProtectedLayout").then((m) => ({ default: m.VendorProtectedLayout })),
+);
 
 function VendorSubdomainIndexOrLanding() {
   const onVendorSubdomainHost = isOnVendorSubdomainHost();
@@ -128,6 +136,14 @@ function LazyBoundary({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
 }
 
+function NotFoundBoundary() {
+  return (
+    <LazyBoundary>
+      <NotFound />
+    </LazyBoundary>
+  );
+}
+
 // Wrapper component for all providers
 function ProvidersWrapper({ children }: { children: ReactNode }) {
   return (
@@ -156,7 +172,7 @@ export const appRouteObjects: RouteObject[] = [
         <RootLayout />
       </ProvidersWrapper>
     ),
-    errorElement: <NotFound />,
+    errorElement: <NotFoundBoundary />,
     children: [
       {
         element: (
@@ -343,42 +359,42 @@ export const appRouteObjects: RouteObject[] = [
           {
             path: "vendor/:storeName/profile/orders/:orderId",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/profile/:profileSection",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/profile",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/product/:productSlug",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/saved",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/checkout",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/checkout/success",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/summary",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName/kpay/return",
@@ -403,21 +419,21 @@ export const appRouteObjects: RouteObject[] = [
           {
             path: "vendor/:storeName/:categorySlug",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "vendor/:storeName",
             element: <VendorStorefrontPage />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: ":categorySlug",
             element: <VendorHostCategoryRoute />,
-            errorElement: <NotFound />,
+            errorElement: <NotFoundBoundary />,
           },
           {
             path: "*",
-            element: <NotFound />,
+            element: <NotFoundBoundary />,
           },
         ],
       },

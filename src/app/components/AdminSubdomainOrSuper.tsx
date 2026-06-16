@@ -3,7 +3,6 @@ import { Suspense, lazy } from "react";
 import { ProtectedLayout } from "./ProtectedLayout";
 import { VendorProtectedLayout } from "./VendorProtectedLayout";
 import { RouteLoadingFallback } from "./RouteLoadingFallback";
-import { NotFound } from "../pages/NotFound";
 import {
   resolveVendorSubdomainStoreSlug,
   parseVendorSubdomainAdminPath,
@@ -30,6 +29,9 @@ const VendorAdminProductViewPage = lazy(() =>
   import("../pages/VendorAdminProductViewPage").then((m) => ({
     default: m.VendorAdminProductViewPage,
   }))
+);
+const NotFound = lazy(() =>
+  import("../pages/NotFound").then((m) => ({ default: m.NotFound }))
 );
 
 /**
@@ -85,7 +87,11 @@ export function AdminSubdomainLeaf() {
 
   const parsed = parseVendorSubdomainAdminPath(location.pathname, slug);
   if (parsed === null) {
-    return <NotFound />;
+    return (
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <NotFound />
+      </Suspense>
+    );
   }
 
   if (parsed.productId) {

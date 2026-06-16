@@ -4,6 +4,7 @@ import * as kv from "./kv_store.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
 import { isValidStaffActorId } from "./staff_activity_helpers.tsx";
+import { queueCustomerReadModelSync } from "./read_model.ts";
 
 const authApp = new Hono();
 
@@ -1295,12 +1296,14 @@ authApp.post("/login", async (c) => {
       };
 
       await withTimeout(kv.set(`customer:${customerId}`, customer), 5000);
+      queueCustomerReadModelSync(customerId, customer);
       console.log(`✅ Customer record created: ${customerId}`);
     } else {
       // Update last visit
       customer.lastVisit = new Date().toISOString().split('T')[0];
       customer.updatedAt = new Date().toISOString();
       await withTimeout(kv.set(`customer:${customer.id}`, customer), 5000);
+      queueCustomerReadModelSync(String(customer.id), customer);
       console.log(`✅ Customer record updated: ${customer.id}`);
     }
 
@@ -1472,6 +1475,7 @@ authApp.post("/register", async (c) => {
     };
 
     await withTimeout(kv.set(`customer:${customerId}`, customer), 5000);
+    queueCustomerReadModelSync(customerId, customer);
     console.log(`✅ Customer record created: ${customerId}`);
 
     // Prepare user object for frontend - IMPORTANT: Ensure id is the Supabase userId (UUID)

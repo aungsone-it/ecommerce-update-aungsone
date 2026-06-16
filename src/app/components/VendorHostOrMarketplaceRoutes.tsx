@@ -10,10 +10,12 @@ import {
   toMarketplaceVendorCheckoutPath,
 } from "../utils/vendorCheckoutPaths";
 import { RouteLoadingFallback } from "./RouteLoadingFallback";
-import { NotFound } from "../pages/NotFound";
 
 const VendorStorefrontPage = lazy(() =>
   import("../pages/VendorStorefrontPage").then((m) => ({ default: m.VendorStorefrontPage }))
+);
+const NotFound = lazy(() =>
+  import("../pages/NotFound").then((m) => ({ default: m.NotFound }))
 );
 
 function useVendorHost(): { vendorHost: boolean; loading: boolean } {
@@ -75,7 +77,13 @@ export function VendorHostOnlyStorefront() {
     (pendingSlug && isHostRootCheckoutPath(location.pathname)) ||
     unifiedKpaySummary;
 
-  if (!canRender) return <NotFound />;
+  if (!canRender) {
+    return (
+      <Suspense fallback={<RouteLoadingFallback />}>
+        <NotFound />
+      </Suspense>
+    );
+  }
 
   return (
     <Suspense fallback={<RouteLoadingFallback />}>

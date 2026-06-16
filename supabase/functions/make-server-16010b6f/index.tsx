@@ -35,6 +35,16 @@ import { appendStaffActivity } from "./staff_activity_helpers.tsx";
 import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
 import { hashPasswordPlain, verifyPasswordPlain, isPasswordHashFormat } from "./password_crypto.tsx";
 import { applyNormalizedShippingToOrderBody } from "./order_shipping.ts";
+import {
+  queueCustomerReadModelDelete,
+  queueCustomerReadModelSync,
+  queueOrderReadModelDelete,
+  queueOrderReadModelSync,
+  queueProductReadModelDelete,
+  queueProductReadModelSync,
+  queueVendorReadModelDelete,
+  queueVendorReadModelSync,
+} from "./read_model.ts";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
 const originalConsoleError = console.error;
@@ -136,6 +146,75 @@ const supabaseAuth = createClient(
 async function withTimeout<T>(promise: Promise<T>, timeoutMs = 60000): Promise<T> {
   // Just return the promise directly - KV operations handle their own timeouts now
   return promise;
+}
+
+type RouteMetric = {
+  count: number;
+  errors: number;
+  timeouts: number;
+  totalMs: number;
+  maxMs: number;
+  lastStatus: number;
+  lastMs: number;
+  lastAt: string;
+};
+
+const edgeStartedAt = new Date().toISOString();
+const routeMetrics = new Map<string, RouteMetric>();
+const edgeMetrics = {
+  totalRequests: 0,
+  totalErrors: 0,
+  totalTimeouts: 0,
+  slowRequests: 0,
+};
+
+function routeMetricKey(method: string, pathname: string): string {
+  const normalized = pathname
+    .replace(/\/make-server-16010b6f/, "")
+    .replace(/\/[0-9a-f]{8,}(?:-[0-9a-f]{4,}){2,}/gi, "/:uuid")
+    .replace(/\/(?:prod|product|order|ord|cust|vendor|cat|campaign|coupon|notification|vendor_app)_[^/]+/gi, "/:id")
+    .replace(/\/\d{10,}[^/]*/g, "/:id");
+  return `${method.toUpperCase()} ${normalized || "/"}`;
+}
+
+function recordRouteMetric(method: string, pathname: string, status: number, ms: number, error?: unknown): void {
+  const key = routeMetricKey(method, pathname);
+  const row = routeMetrics.get(key) || {
+    count: 0,
+    errors: 0,
+    timeouts: 0,
+    totalMs: 0,
+    maxMs: 0,
+    lastStatus: 0,
+    lastMs: 0,
+    lastAt: "",
+  };
+  row.count += 1;
+  row.totalMs += ms;
+  row.maxMs = Math.max(row.maxMs, ms);
+  row.lastStatus = status;
+  row.lastMs = ms;
+  row.lastAt = new Date().toISOString();
+  if (status >= 500) row.errors += 1;
+  const errorMessage = String((error as { message?: unknown })?.message || "").toLowerCase();
+  if (status === 504 || errorMessage.includes("timeout")) row.timeouts += 1;
+  routeMetrics.set(key, row);
+
+  edgeMetrics.totalRequests += 1;
+  if (status >= 500) edgeMetrics.totalErrors += 1;
+  if (status === 504 || errorMessage.includes("timeout")) edgeMetrics.totalTimeouts += 1;
+  if (ms > 5000) edgeMetrics.slowRequests += 1;
+}
+
+function routeMetricsSnapshot(limit = 30): Array<RouteMetric & { route: string; avgMs: number }> {
+  return [...routeMetrics.entries()]
+    .map(([route, row]) => ({
+      route,
+      ...row,
+      avgMs: row.count > 0 ? Math.round(row.totalMs / row.count) : 0,
+    }))
+    .sort((a, b) => b.lastAt.localeCompare(a.lastAt))
+    .slice(0, limit);
 }
 
 /**
@@ -263,6 +342,7 @@ app.use("*", async (c, next) => {
     
     if (error?.message === "Request timeout") {
       console.error("⏱️ Request timeout:", c.req.url);
+      recordRouteMetric(method, pathname, 504, budgetMs, error);
       try {
         return c.json({ error: "Request timeout" }, 504);
       } catch (e) {
@@ -284,6 +364,7 @@ app.use("*", async (c, next) => {
     await next();
     const ms = Date.now() - start;
     const status = c.res.status;
+    recordRouteMetric(method, path, status, ms);
     
     // Log slow requests as warnings
     if (ms > 5000) {
@@ -294,6 +375,8 @@ app.use("*", async (c, next) => {
     // Skip logging fast requests to reduce noise
   } catch (error: any) {
     const ms = Date.now() - start;
+    const status = String(error?.message || "").toLowerCase().includes("timeout") ? 504 : 500;
+    recordRouteMetric(method, path, status, ms, error);
     const errorMsg = String(error?.message || "").toLowerCase();
     const errorName = String(error?.name || "").toLowerCase();
     
@@ -362,6 +445,176 @@ app.get("/make-server-16010b6f/health", async (c) => {
   } catch (error) {
     console.error("❌ Health check error:", error);
     return c.json({ status: "error", message: String(error) }, 500);
+  }
+});
+
+async function countKvRows(prefix: string, opts?: { topLevelOnly?: boolean; excludeLike?: string }): Promise<number | null> {
+  try {
+    let query = supabase
+      .from("kv_store_16010b6f")
+      .select("key", { count: "exact", head: true })
+      .like("key", `${prefix}%`);
+    if (opts?.topLevelOnly) {
+      query = query.not("key", "like", `${prefix}%:%`);
+    }
+    if (opts?.excludeLike) {
+      query = query.not("key", "like", opts.excludeLike);
+    }
+    const { count, error } = await query;
+    if (error) {
+      console.warn(`[monitoring] countKvRows ${prefix} failed:`, error.message);
+      return null;
+    }
+    return count ?? 0;
+  } catch (error) {
+    console.warn(`[monitoring] countKvRows ${prefix} exception:`, error);
+    return null;
+  }
+}
+
+async function countTableRows(table: string): Promise<number | null> {
+  try {
+    const { count, error } = await supabase
+      .from(table)
+      .select("id", { count: "exact", head: true });
+    if (error) {
+      console.warn(`[monitoring] countTableRows ${table} failed:`, error.message);
+      return null;
+    }
+    return count ?? 0;
+  } catch (error) {
+    console.warn(`[monitoring] countTableRows ${table} exception:`, error);
+    return null;
+  }
+}
+
+function parityStatus(kvCount: number | null, sqlCount: number | null): "ok" | "warning" | "unavailable" {
+  if (kvCount == null || sqlCount == null) return "unavailable";
+  if (kvCount === 0 && sqlCount === 0) return "ok";
+  if (kvCount === 0) return "warning";
+  const delta = Math.abs(kvCount - sqlCount);
+  return delta <= Math.max(2, Math.ceil(kvCount * 0.02)) ? "ok" : "warning";
+}
+
+async function readModelParitySummary(): Promise<Record<string, unknown>> {
+  const [
+    kvProducts,
+    kvOrders,
+    kvCustomers,
+    kvVendors,
+    sqlProducts,
+    sqlOrders,
+    sqlCustomers,
+    sqlVendors,
+  ] = await Promise.all([
+    countKvRows("product:"),
+    countKvRows("order:"),
+    countKvRows("customer:", { topLevelOnly: true }),
+    countKvRows("vendor:", { excludeLike: "vendor:audience:%" }),
+    countTableRows("app_products"),
+    countTableRows("app_orders"),
+    countTableRows("app_customers"),
+    countTableRows("app_vendors"),
+  ]);
+
+  const rows = [
+    { entity: "products", kvCount: kvProducts, sqlCount: sqlProducts },
+    { entity: "orders", kvCount: kvOrders, sqlCount: sqlOrders },
+    { entity: "customers", kvCount: kvCustomers, sqlCount: sqlCustomers },
+    { entity: "vendors", kvCount: kvVendors, sqlCount: sqlVendors },
+  ].map((row) => ({
+    ...row,
+    delta:
+      row.kvCount == null || row.sqlCount == null
+        ? null
+        : row.sqlCount - row.kvCount,
+    status: parityStatus(row.kvCount, row.sqlCount),
+  }));
+
+  return {
+    status: rows.some((row) => row.status === "unavailable")
+      ? "unavailable"
+      : rows.some((row) => row.status === "warning")
+        ? "warning"
+        : "ok",
+    rows,
+  };
+}
+
+async function realtimePulseSummary(): Promise<Record<string, unknown>> {
+  const summary: Record<string, unknown> = {};
+  try {
+    const { data, error } = await supabase
+      .from("app_order_pulse")
+      .select("id,bump,updated_at")
+      .eq("id", 1)
+      .maybeSingle();
+    summary.orderPulse = error ? { available: false, error: error.message } : { available: true, ...data };
+  } catch (error) {
+    summary.orderPulse = { available: false, error: String(error) };
+  }
+  try {
+    const { data, error } = await supabase
+      .from("app_vendor_application_pulse")
+      .select("id,bump,updated_at")
+      .eq("id", 1)
+      .maybeSingle();
+    summary.vendorApplicationPulse = error ? { available: false, error: error.message } : { available: true, ...data };
+  } catch (error) {
+    summary.vendorApplicationPulse = { available: false, error: String(error) };
+  }
+  try {
+    const { data, error } = await supabase
+      .from("app_kv_domain_pulse")
+      .select("domain,bump,updated_at")
+      .order("domain", { ascending: true });
+    summary.kvDomainPulse = error ? { available: false, error: error.message } : { available: true, rows: data || [] };
+  } catch (error) {
+    summary.kvDomainPulse = { available: false, error: String(error) };
+  }
+  return summary;
+}
+
+app.get("/make-server-16010b6f/monitoring/summary", async (c) => {
+  try {
+    const [readModels, realtime] = await Promise.all([
+      readModelParitySummary(),
+      realtimePulseSummary(),
+    ]);
+    return c.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      edgeInstance: {
+        startedAt: edgeStartedAt,
+        uptimeSeconds: Math.round((Date.now() - Date.parse(edgeStartedAt)) / 1000),
+      },
+      requests: {
+        ...edgeMetrics,
+        routes: routeMetricsSnapshot(40),
+      },
+      readModels,
+      realtime,
+      notes: [
+        "Request metrics are per Edge Function instance and reset on cold start.",
+        "Realtime connection/message totals should still be monitored in the Supabase dashboard; pulse bumps verify app-level event flow.",
+      ],
+    });
+  } catch (error) {
+    console.error("❌ Monitoring summary error:", error);
+    return c.json({ status: "error", error: String(error) }, 500);
+  }
+});
+
+app.get("/make-server-16010b6f/read-model/validate", async (c) => {
+  try {
+    const readModels = await readModelParitySummary();
+    return c.json({
+      timestamp: new Date().toISOString(),
+      ...readModels,
+    });
+  } catch (error) {
+    console.error("❌ Read-model validation error:", error);
+    return c.json({ status: "error", error: String(error) }, 500);
   }
 });
 
@@ -1183,6 +1436,7 @@ app.post("/make-server-16010b6f/auth/register", async (c) => {
     };
     
     await withTimeout(kv.set(`customer:${customerId}`, customerData), 5000);
+    queueCustomerReadModelSync(customerId, customerData);
     console.log(`✅ Customer record created: ${customerId}`);
     
     console.log(`✅ User registered: ${email}`);
@@ -1894,6 +2148,7 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
         }
 
         await withTimeout(kv.set(`customer:${customer.id}`, customer), 5000);
+        queueCustomerReadModelSync(String(customer.id), customer);
 
         const metadataUpdates: Record<string, unknown> = {
           name: customer.name,
@@ -2084,7 +2339,10 @@ app.delete("/make-server-16010b6f/auth/user/:userId", async (c) => {
         console.log(`🗑️ Deleting customer:${customer.id}`);
         deletionPromises.push(
           withTimeout(kv.del(`customer:${customer.id}`), 5000)
-            .then(() => console.log(`✅ Deleted customer:${customer.id}`))
+            .then(() => {
+              queueCustomerReadModelDelete(String(customer.id));
+              console.log(`✅ Deleted customer:${customer.id}`);
+            })
             .catch(err => console.error(`❌ Failed to delete customer:${customer.id}:`, err))
         );
         
@@ -2336,14 +2594,16 @@ app.post("/make-server-16010b6f/vendor-auth/login", async (c) => {
     ) {
       try {
         const migratedHash = await hashPasswordPlain(password);
+        const migratedVendor = {
+          ...fullLoginVendor,
+          password: migratedHash,
+          updatedAt: new Date().toISOString(),
+        };
         await withTimeout(
-          kv.set(`vendor:${vendor.id}`, {
-            ...fullLoginVendor,
-            password: migratedHash,
-            updatedAt: new Date().toISOString(),
-          }),
+          kv.set(`vendor:${vendor.id}`, migratedVendor),
           5000
         );
+        queueVendorReadModelSync(String(vendor.id), migratedVendor);
       } catch (migrateErr) {
         console.warn("[VendorAuth] Password migrate-to-hash skipped:", migrateErr);
       }
@@ -2360,14 +2620,16 @@ app.post("/make-server-16010b6f/vendor-auth/login", async (c) => {
     try {
       const fullVendor = await withTimeout(kv.get(`vendor:${vendor.id}`), 5000);
       if (fullVendor && typeof fullVendor === "object") {
+        const loginVendor = {
+          ...(fullVendor as object),
+          lastLoginAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
         await withTimeout(
-          kv.set(`vendor:${vendor.id}`, {
-            ...(fullVendor as object),
-            lastLoginAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }),
+          kv.set(`vendor:${vendor.id}`, loginVendor),
           5000
         );
+        queueVendorReadModelSync(String(vendor.id), loginVendor);
       }
     } catch (e) {
       console.warn("[VendorAuth] Could not persist lastLoginAt:", e);
@@ -2514,6 +2776,7 @@ app.post("/make-server-16010b6f/vendor-auth/setup-credentials", async (c) => {
       kv.set(`vendor:${vendor.id}`, updatedVendor),
       5000
     );
+    queueVendorReadModelSync(String(vendor.id), updatedVendor);
     
     // 🔥 AUTO-CREATE SLUG MAPPING if it doesn't exist
     const storeName = vendor.businessName || vendor.name || "Vendor Store";
@@ -2713,6 +2976,7 @@ app.put("/make-server-16010b6f/vendor-auth/profile/:vendorId", async (c) => {
     }
 
     await withTimeout(kv.set(`vendor:${vendorId}`, next), 5000);
+    queueVendorReadModelSync(vendorId, next);
 
     const user = await buildVendorAuthProfileUser(next);
     return c.json({ success: true, user });
@@ -3433,6 +3697,7 @@ app.post("/make-server-16010b6f/products/bulk-assign-vendor", async (c) => {
           updatedAt: new Date().toISOString(),
         };
         await withTimeout(kv.set(`product:${pid}`, updated), 8000);
+        queueProductReadModelSync(pid, updated);
         removeResults.push({ productId: pid, ok: true });
       } catch (e: any) {
         removeResults.push({ productId: pid, ok: false, error: String(e?.message || e) });
@@ -3459,6 +3724,7 @@ app.post("/make-server-16010b6f/products/bulk-assign-vendor", async (c) => {
           updatedAt: new Date().toISOString(),
         };
         await withTimeout(kv.set(`product:${pid}`, updated), 8000);
+        queueProductReadModelSync(pid, updated);
         addResults.push({ productId: pid, ok: true });
       } catch (e: any) {
         addResults.push({ productId: pid, ok: false, error: String(e?.message || e) });
@@ -3618,6 +3884,7 @@ app.post("/make-server-16010b6f/products", async (c) => {
     
     try {
       await withTimeout(kv.set(`product:${id}`, productData), timeoutMs);
+      queueProductReadModelSync(id, productData);
       console.log(`✅ Product saved successfully: ${id}`);
 
       const pname = String(productData.name || productData.title || "Product").slice(0, 160);
@@ -3785,6 +4052,7 @@ app.put("/make-server-16010b6f/products/:id", async (c) => {
     
     try {
       await withTimeout(kv.set(`product:${id}`, updatedProduct), timeoutMs);
+      queueProductReadModelSync(id, updatedProduct);
       console.log(`✅ Product updated successfully: ${id}`);
 
       const removedImageRefs = refsRemovedSinceUpdate(
@@ -3843,6 +4111,7 @@ app.delete("/make-server-16010b6f/products/:id", async (c) => {
     }
     
     await withTimeout(kv.del(`product:${id}`), 5000);
+    queueProductReadModelDelete(id);
     console.log(`✅ Product deleted: ${id}`);
 
     const dname = String(existingProduct.name || existingProduct.title || id).slice(0, 160);
@@ -4011,6 +4280,7 @@ app.post("/make-server-16010b6f/seed-products", async (c) => {
     for (const product of sampleProducts) {
       try {
         await withTimeout(kv.set(`product:${product.id}`, product), 8000);
+        queueProductReadModelSync(product.id, product);
         console.log(`✅ Created: ${product.sku} - ${product.name}`);
       } catch (error) {
         console.error(`❌ Failed to create ${product.sku}:`, error);
@@ -4318,6 +4588,47 @@ function jsonAdminOrdersPage(
   };
 }
 
+async function jsonAdminOrdersPageFromReadModel(
+  opts: NonNullable<ReturnType<typeof parseAdminOrdersPageQuery>>
+): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.rpc("rpc_admin_orders_page", {
+      p_page: opts.page,
+      p_page_size: opts.pageSize,
+      p_q: opts.q || null,
+      p_status: opts.status || "all",
+      p_payment: opts.payment || "all",
+      p_vendor: opts.vendor || "all",
+      p_date_from: opts.dateFrom || null,
+      p_date_to: opts.dateTo || null,
+      p_sort: opts.sort || "newest",
+    });
+    if (error) {
+      console.warn("[orders] read-model page unavailable:", error.message);
+      return null;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const readModelRows = Number(body.readModelRows ?? 0);
+    if (readModelRows <= 0) {
+      // Migration may be applied before backfill. Do not show a false-empty admin list.
+      return null;
+    }
+    return {
+      orders: Array.isArray(body.orders) ? body.orders : [],
+      total: Number(body.total ?? 0),
+      page: Number(body.page ?? opts.page),
+      pageSize: Number(body.pageSize ?? opts.pageSize),
+      hasMore: Boolean(body.hasMore),
+      aggregates: body.aggregates && typeof body.aggregates === "object" ? body.aggregates : undefined,
+      readModel: true,
+    };
+  } catch (error) {
+    console.warn("[orders] read-model page failed:", error);
+    return null;
+  }
+}
+
 function orderCanonicalKey(order: any): string {
   const byNumber = String(order?.orderNumber || "").trim();
   if (byNumber) return `num:${byNumber.toLowerCase()}`;
@@ -4357,6 +4668,13 @@ app.get("/make-server-16010b6f/orders", async (c) => {
     console.log("📋 Fetching orders...");
     
     const pageOpts = parseAdminOrdersPageQuery(c);
+
+    if (pageOpts) {
+      const readModelBody = await jsonAdminOrdersPageFromReadModel(pageOpts);
+      if (readModelBody) {
+        return c.json(readModelBody);
+      }
+    }
 
     // Check server-side cache first (30 second TTL)
     const cached = getCached('orders_minimal', 30000);
@@ -4969,6 +5287,7 @@ async function applyOrderItemsStockDelta(items: any[], direction: "deduct" | "re
     const product = allProducts.find((p: any) => p.id === id);
     if (product) {
       await withTimeout(kv.set(`product:${id}`, product), 5000);
+      queueProductReadModelSync(id, product);
     }
   }
   serverCache.delete("all_products");
@@ -5130,6 +5449,7 @@ app.post("/make-server-16010b6f/orders", async (c) => {
     console.log(`💾 Saving order ${orderData.orderNumber} with total: ${orderData.total}, discount: ${orderData.discount}, couponCode: ${orderData.couponCode || 'NONE'} (inventory unchanged until ready-to-ship/fulfilled)`);
     
     await withTimeout(kv.set(`order:${id}`, orderData), 5000);
+    queueOrderReadModelSync(id, orderData);
     if (requestedOrderNumber) {
       await withTimeout(kv.set(`order_num:${requestedOrderNumber}`, id), 5000).catch(() => {});
     }
@@ -5389,6 +5709,7 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     };
     
     await withTimeout(kv.set(storageKey, updatedOrder), 5000);
+    queueOrderReadModelSync(orderKvId, updatedOrder);
     
     // Clear cache when order is updated
     serverCache.delete('orders_minimal');
@@ -5452,6 +5773,9 @@ app.delete("/make-server-16010b6f/orders/:id", async (c) => {
       // Fallback to deleting only resolved key if scan fails.
     }
     await withTimeout(kv.mdel([...deleteKeys]), 10000);
+    if (canonicalId) {
+      queueOrderReadModelDelete(canonicalId);
+    }
     if (canonicalOrderNumber) {
       await withTimeout(kv.del(`order_num:${canonicalOrderNumber}`), 5000).catch(() => {});
     }
@@ -5481,6 +5805,7 @@ app.delete("/make-server-16010b6f/orders", async (c) => {
     
     if (orderIds.length > 0) {
       await withTimeout(kv.mdel(orderIds.map(id => `order:${id}`)), 10000);
+      orderIds.forEach((id: string) => queueOrderReadModelDelete(id));
       console.log(`✅ Deleted ${orderIds.length} orders`);
     }
     
@@ -5688,14 +6013,13 @@ async function syncPlatformCategoryProducts(opts: {
     try {
       const raw = await withTimeout(kv.get(`product:${id}`), 5000);
       if (!raw || typeof raw !== "object") continue;
-      await withTimeout(
-        kv.set(`product:${id}`, {
-          ...(raw as object),
-          category: name,
-          updatedAt: new Date().toISOString(),
-        }),
-        8000
-      );
+      const nextProduct = {
+        ...(raw as object),
+        category: name,
+        updatedAt: new Date().toISOString(),
+      };
+      await withTimeout(kv.set(`product:${id}`, nextProduct), 8000);
+      queueProductReadModelSync(id, nextProduct);
     } catch (e) {
       console.warn(`syncPlatformCategoryProducts assign ${id}:`, e);
     }
@@ -5733,14 +6057,13 @@ async function syncPlatformCategoryProducts(opts: {
         (nameKey && catKey === nameKey) ||
         (prevNameKey && catKey === prevNameKey);
       if (!shouldClear) continue;
-      await withTimeout(
-        kv.set(`product:${id}`, {
-          ...(raw as object),
-          category: "",
-          updatedAt: new Date().toISOString(),
-        }),
-        8000
-      );
+      const nextProduct = {
+        ...(raw as object),
+        category: "",
+        updatedAt: new Date().toISOString(),
+      };
+      await withTimeout(kv.set(`product:${id}`, nextProduct), 8000);
+      queueProductReadModelSync(id, nextProduct);
     } catch (e) {
       console.warn(`syncPlatformCategoryProducts clear ${id}:`, e);
     }
@@ -5974,6 +6297,7 @@ app.post("/make-server-16010b6f/customers", async (c) => {
     };
     
     await withTimeout(kv.set(`customer:${id}`, customerData), 5000);
+    queueCustomerReadModelSync(id, customerData);
     
     return c.json({ 
       success: true,
@@ -6004,6 +6328,7 @@ app.put("/make-server-16010b6f/customers/:id", async (c) => {
     };
     
     await withTimeout(kv.set(`customer:${id}`, updatedCustomer), 5000);
+    queueCustomerReadModelSync(id, updatedCustomer);
     
     return c.json({ 
       success: true,
@@ -6068,6 +6393,7 @@ app.post("/make-server-16010b6f/customers/sync-users", async (c) => {
           existingCustomer.avatar = avatarUrl;
           existingCustomer.updatedAt = new Date().toISOString();
           await withTimeout(kv.set(`customer:${existingCustomer.id}`, existingCustomer), 5000);
+          queueCustomerReadModelSync(String(existingCustomer.id), existingCustomer);
           syncedCount++;
         } else {
           console.log(`⏭️ Skipping ${user.email} - customer already up to date`);
@@ -6114,6 +6440,7 @@ app.post("/make-server-16010b6f/customers/sync-users", async (c) => {
       };
       
       await withTimeout(kv.set(`customer:${customerId}`, customerData), 5000);
+      queueCustomerReadModelSync(customerId, customerData);
       console.log(`✅ Created customer record for: ${user.email}`);
       syncedCount++;
     }
@@ -6645,6 +6972,12 @@ app.post("/make-server-16010b6f/vendors", async (c) => {
       updatedAt: new Date().toISOString(),
     };
     await withTimeout(kv.set(`vendor_settings:${id}`, defaultSettings), 5000);
+    queueVendorReadModelSync(id, {
+      ...vendorData,
+      storeSlug: baseSlug,
+      storeName,
+      updatedAt: defaultSettings.updatedAt,
+    });
     
     // 🔥 AUTO-CREATE SLUG MAPPING for easy storefront lookup
     const slugMapping = {
@@ -6985,6 +7318,7 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
         nextProduct.status = "off_shelf";
       }
       await withTimeout(kv.set(`product:${productId}`, nextProduct), 5000);
+      queueProductReadModelSync(String(productId), nextProduct);
       detachedCount += 1;
     }
     if (detachedCount > 0) {
@@ -6995,6 +7329,7 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
     
     // Delete vendor data
     await withTimeout(kv.del(`vendor:${vendorId}`), 5000);
+    queueVendorReadModelDelete(vendorId);
     console.log(`✅ Deleted vendor: ${vendorId}`);
     
     // Clear vendor cache
@@ -7315,6 +7650,12 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
     };
 
     await withTimeout(kv.set(`vendor_settings:${vendorId}`, vendorSettings), 5000);
+    queueVendorReadModelSync(vendorId, {
+      ...newVendor,
+      storeName,
+      storeSlug: baseSlug,
+      updatedAt: vendorSettings.updatedAt,
+    });
 
     const slugMappingApproved = {
       slug: baseSlug,
@@ -7446,6 +7787,7 @@ app.put("/make-server-16010b6f/vendors/:id", async (c) => {
     const logoTouched = logoFieldTouched || avatarFieldTouched;
 
     await withTimeout(kv.set(`vendor:${id}`, updatedVendor), 5000);
+    queueVendorReadModelSync(id, updatedVendor);
 
     const nextLifecycleStatus = String(updatedVendor.status || (existingVendor as any).status || "active")
       .trim()
@@ -7553,6 +7895,7 @@ app.delete("/make-server-16010b6f/vendors/all/clear", async (c) => {
     for (const vendor of validVendors) {
       if (vendor.id) {
         await withTimeout(kv.del(`vendor:${vendor.id}`), 5000);
+        queueVendorReadModelDelete(String(vendor.id));
       }
     }
     
@@ -8687,9 +9030,40 @@ app.get("/make-server-16010b6f/finances", async (c) => {
   });
 });
 
+async function jsonFinancesAnalyticsFromReadModel(): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.rpc("rpc_finances_analytics");
+    if (error) {
+      console.warn("[finances] read-model analytics unavailable:", error.message);
+      return null;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const readModelRows = Number(body.readModelRows ?? 0);
+    if (readModelRows <= 0) return null;
+    return {
+      summary: body.summary,
+      transactions: Array.isArray(body.transactions) ? body.transactions : [],
+      paymentMethods: Array.isArray(body.paymentMethods) ? body.paymentMethods : [],
+      revenueChartData: Array.isArray(body.revenueChartData) ? body.revenueChartData : [],
+      vendorPayouts: Array.isArray(body.vendorPayouts) ? body.vendorPayouts : [],
+      timestamp: body.timestamp || new Date().toISOString(),
+      readModel: true,
+    };
+  } catch (error) {
+    console.warn("[finances] read-model analytics failed:", error);
+    return null;
+  }
+}
+
 app.get("/make-server-16010b6f/finances/analytics", async (c) => {
   try {
     console.log("💰 Fetching financial analytics...");
+
+    const readModelBody = await jsonFinancesAnalyticsFromReadModel();
+    if (readModelBody) {
+      return c.json(readModelBody);
+    }
     
     // Fetch orders, vendors, and products in parallel
     const [orders, vendors, products] = await Promise.all([
@@ -9910,6 +10284,12 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
         updatedAt: new Date().toISOString()
       };
       await kv.set(`vendor:${settings.vendorId}`, updatedVendor);
+      queueVendorReadModelSync(String(settings.vendorId), {
+        ...updatedVendor,
+        storeName: mergedSettings.storeName,
+        storeSlug: mergedSettings.storeSlug,
+        customDomain: mergedSettings.customDomain,
+      });
       const nextVendorAvatar =
         typeof updatedVendor.avatar === "string" ? String(updatedVendor.avatar).trim() : "";
       if (prevVendorAvatar && prevVendorAvatar !== nextVendorAvatar) {
@@ -11339,6 +11719,57 @@ async function resolveVendorOrderIdentifierSet(param: string): Promise<Set<strin
   return ids;
 }
 
+async function jsonVendorOrdersPageFromReadModel(opts: {
+  vendorIdentifiers: Set<string>;
+  page: number;
+  pageSize: number;
+  q: string;
+  status: string;
+  payment: string;
+  from: string;
+  to: string;
+  sort: "newest" | "oldest";
+}): Promise<Record<string, unknown> | null> {
+  try {
+    const vendorIds = [...opts.vendorIdentifiers].map((x) => String(x).trim()).filter(Boolean);
+    if (vendorIds.length === 0) return null;
+    const { data, error } = await supabase.rpc("rpc_vendor_orders_page", {
+      p_vendor_ids: vendorIds,
+      p_page: opts.page,
+      p_page_size: opts.pageSize,
+      p_q: opts.q || null,
+      p_status: opts.status || "all",
+      p_payment: opts.payment || "all",
+      p_from: opts.from || null,
+      p_to: opts.to || null,
+      p_sort: opts.sort || "newest",
+    });
+    if (error) {
+      console.warn("[vendor-orders] read-model page unavailable:", error.message);
+      return null;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const readModelRows = Number(body.readModelRows ?? 0);
+    if (readModelRows <= 0) {
+      // Migration may be applied before backfill. Do not show a false-empty vendor order list.
+      return null;
+    }
+    return {
+      orders: Array.isArray(body.orders) ? body.orders : [],
+      total: Number(body.total ?? 0),
+      page: Number(body.page ?? opts.page),
+      pageSize: Number(body.pageSize ?? opts.pageSize),
+      hasMore: Boolean(body.hasMore),
+      summary: body.summary && typeof body.summary === "object" ? body.summary : undefined,
+      readModel: true,
+    };
+  } catch (error) {
+    console.warn("[vendor-orders] read-model page failed:", error);
+    return null;
+  }
+}
+
 /** KV sometimes stores items as JSON string or legacy object map — normalize to an array. */
 function normalizeOrderItems(raw: unknown): any[] {
   if (raw == null) return [];
@@ -11454,6 +11885,21 @@ app.get("/make-server-16010b6f/vendor/orders/:vendorId", async (c) => {
 
     const vendorIdentifiers = await resolveVendorOrderIdentifierSet(vendorId);
     console.log(`📦 Resolved vendor id aliases for orders filter (${vendorIdentifiers.size}):`, [...vendorIdentifiers]);
+
+    const readModelBody = await jsonVendorOrdersPageFromReadModel({
+      vendorIdentifiers,
+      page,
+      pageSize,
+      q,
+      status: statusQ,
+      payment: paymentQ,
+      from: fromQ,
+      to: toQ,
+      sort: sortQ,
+    });
+    if (readModelBody) {
+      return c.json(readModelBody);
+    }
     
     // Get all orders - kv.getByPrefix already has 30s timeout, no need to wrap
     const allOrders = await withRetry(
@@ -13150,6 +13596,7 @@ app.post("/make-server-16010b6f/inventory/adjust", async (c) => {
       
       // Save the updated product (with updated variant)
       await kv.set(`product:${product.id}`, product);
+      queueProductReadModelSync(String(product.id), product);
       
       console.log(`✅ Variant inventory adjusted: ${variant.name || variant.sku} (${currentInventory} → ${newInventory})`);
       return c.json({ success: true, product, variant: product.variants[variantIndex] });
@@ -13177,6 +13624,7 @@ app.post("/make-server-16010b6f/inventory/adjust", async (c) => {
       };
       
       await kv.set(`product:${product.id}`, updatedProduct);
+      queueProductReadModelSync(String(product.id), updatedProduct);
       
       console.log(`✅ Product inventory adjusted: ${product.name} (${currentInventory} → ${newInventory})`);
       return c.json({ success: true, product: updatedProduct });
@@ -13218,6 +13666,10 @@ app.post("/make-server-16010b6f/inventory/bulk-adjust", async (c) => {
           };
           
           await kv.set(itemId, updatedProduct);
+          if (String(itemId).startsWith("product:")) {
+            const productId = String(updatedProduct.id || "").trim() || String(itemId).slice("product:".length);
+            queueProductReadModelSync(productId, updatedProduct);
+          }
           updatedProducts.push(updatedProduct);
         }
       }

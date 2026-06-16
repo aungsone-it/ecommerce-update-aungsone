@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useRef, useCallback, useMemo } from "react";
 import "../utils/adminStyles";
 import { useSearchParams, useParams, useNavigate, useLocation } from "react-router";
 import { toast } from "sonner";
@@ -11,27 +11,6 @@ import {
   canAccessSuperAdminPage,
   getDefaultSuperAdminLandingPage,
 } from "../utils/superAdminRolePermissions";
-import { Dashboard } from "../components/Dashboard";
-import { ProductList } from "../components/ProductList";
-import { Categories } from "../components/Categories";
-import { Inventory } from "../components/Inventory";
-import { Orders } from "../components/Orders";
-import { CustomersEnhanced } from "../components/CustomersEnhanced";
-import { Chat } from "../components/Chat";
-import { Marketing } from "../components/Marketing";
-import { LiveStreamMulti } from "../components/LiveStreamMulti";
-import { BlogPost } from "../components/BlogPost";
-import { Vendor } from "../components/Vendor";
-import { VendorProfile } from "../components/VendorProfile";
-import { VendorApplications } from "../components/VendorApplications";
-import { VendorPromotions } from "../components/VendorPromotions";
-import { Collaborator } from "../components/Collaborator";
-import { CollaboratorProfile } from "../components/CollaboratorProfile";
-import { CollaboratorApplications } from "../components/CollaboratorApplications";
-import { Finances } from "../components/Finances";
-import { Logistics } from "../components/Logistics";
-import { Settings } from "../components/Settings";
-import { AdminGlobalSearch } from "../components/AdminGlobalSearch";
 import { SideNav } from "../components/SideNav";
 import { TopNav } from "../components/TopNav";
 import { UserProfile } from "../components/UserProfile";
@@ -50,6 +29,46 @@ import {
 import {
   adminOrdersUpdatedStorageKey,
 } from "../utils/adminOrdersRealtime";
+
+const Dashboard = lazy(() => import("../components/Dashboard").then((m) => ({ default: m.Dashboard })));
+const ProductList = lazy(() => import("../components/ProductList").then((m) => ({ default: m.ProductList })));
+const Categories = lazy(() => import("../components/Categories").then((m) => ({ default: m.Categories })));
+const Inventory = lazy(() => import("../components/Inventory").then((m) => ({ default: m.Inventory })));
+const Orders = lazy(() => import("../components/Orders").then((m) => ({ default: m.Orders })));
+const CustomersEnhanced = lazy(() =>
+  import("../components/CustomersEnhanced").then((m) => ({ default: m.CustomersEnhanced }))
+);
+const Chat = lazy(() => import("../components/Chat").then((m) => ({ default: m.Chat })));
+const Marketing = lazy(() => import("../components/Marketing").then((m) => ({ default: m.Marketing })));
+const LiveStreamMulti = lazy(() =>
+  import("../components/LiveStreamMulti").then((m) => ({ default: m.LiveStreamMulti }))
+);
+const BlogPost = lazy(() => import("../components/BlogPost").then((m) => ({ default: m.BlogPost })));
+const Vendor = lazy(() => import("../components/Vendor").then((m) => ({ default: m.Vendor })));
+const VendorProfile = lazy(() =>
+  import("../components/VendorProfile").then((m) => ({ default: m.VendorProfile }))
+);
+const VendorApplications = lazy(() =>
+  import("../components/VendorApplications").then((m) => ({ default: m.VendorApplications }))
+);
+const VendorPromotions = lazy(() =>
+  import("../components/VendorPromotions").then((m) => ({ default: m.VendorPromotions }))
+);
+const Collaborator = lazy(() =>
+  import("../components/Collaborator").then((m) => ({ default: m.Collaborator }))
+);
+const CollaboratorProfile = lazy(() =>
+  import("../components/CollaboratorProfile").then((m) => ({ default: m.CollaboratorProfile }))
+);
+const CollaboratorApplications = lazy(() =>
+  import("../components/CollaboratorApplications").then((m) => ({ default: m.CollaboratorApplications }))
+);
+const Finances = lazy(() => import("../components/Finances").then((m) => ({ default: m.Finances })));
+const Logistics = lazy(() => import("../components/Logistics").then((m) => ({ default: m.Logistics })));
+const Settings = lazy(() => import("../components/Settings").then((m) => ({ default: m.Settings })));
+const AdminGlobalSearch = lazy(() =>
+  import("../components/AdminGlobalSearch").then((m) => ({ default: m.AdminGlobalSearch }))
+);
 
 const ADMIN_PAGES = {
   HOME: 'Home',
@@ -77,6 +96,22 @@ const ADMIN_PAGES = {
 } as const;
 
 type AdminPage = typeof ADMIN_PAGES[keyof typeof ADMIN_PAGES];
+
+function AdminSectionFallback() {
+  return (
+    <div className="p-4 sm:p-8">
+      <div className="space-y-4">
+        <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-28 animate-pulse rounded-2xl bg-white shadow-sm ring-1 ring-slate-200" />
+          ))}
+        </div>
+        <div className="h-96 animate-pulse rounded-2xl bg-white shadow-sm ring-1 ring-slate-200" />
+      </div>
+    </div>
+  );
+}
 
 export function AdminPage() {
   const [searchParams] = useSearchParams();
@@ -806,7 +841,9 @@ export function AdminPage() {
                   />
                 </div>
               )}
-              {renderContent()}
+              <Suspense fallback={<AdminSectionFallback />}>
+                {renderContent()}
+              </Suspense>
             </main>
           </div>
           
