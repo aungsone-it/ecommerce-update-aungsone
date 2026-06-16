@@ -1397,7 +1397,7 @@ export async function fetchVendorProducts(
       isVendorUncategorizedFilter(cat) ? VENDOR_STORE_UNCATEGORIZED_SLUG : cat
     );
   }
-  if (opts?.resolveSlug) sp.set("resolveSlug", encodeURIComponent(opts.resolveSlug));
+  if (opts?.resolveSlug) sp.set("resolveSlug", opts.resolveSlug);
   const candidates = vendorIdentifierCandidates(vendorId);
   let response: Response | null = null;
   for (const candidate of candidates) {

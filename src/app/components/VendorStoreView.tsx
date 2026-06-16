@@ -365,21 +365,39 @@ function mergeSavedWishlistPageWithCatalog(
   });
 }
 
-/**
- * Path segment for `/store/:store/product/:slug`.
- * NOTE: Use `\w` and `\s` (single backslash) in regex literals — `\\w` breaks slugify and yields empty URLs like `/product/`.
- */
-function buildVendorProductUrlSegment(product: { name?: string; sku?: string; id: string }): string {
-  const name = (product.name || "").trim();
-  const fromName = name
+function cleanAsciiUrlSegment(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .trim();
+}
+
+function legacyNameUrlSegment(product: { name?: string }): string {
+  return String(product.name || "")
+    .trim()
     .toLowerCase()
     .replace(/[^\w\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "")
     .trim();
-  const sku = (product.sku || "").trim();
-  if (fromName.length > 0) return fromName;
+}
+
+/**
+ * Path segment for `/store/:store/product/:slug`.
+ * Keep product URLs ASCII and stable. Burmese names still render in the UI, but
+ * new links prefer SKU/id so browsers do not produce encoded Burmese paths.
+ */
+function buildVendorProductUrlSegment(product: { name?: string; sku?: string; id: string }): string {
+  const sku = cleanAsciiUrlSegment(product.sku);
   if (sku.length > 0) return sku;
+  const id = cleanAsciiUrlSegment(product.id);
+  if (id.length > 0) return id;
+  const fromName = legacyNameUrlSegment(product);
+  if (fromName.length > 0) return fromName;
   return product.id;
 }
 
@@ -534,16 +552,19 @@ function applyServerProfileMerge(localUser: any, serverUser: any): any {
 }
 
 function resolveVendorProductFromSlug(products: Product[], decoded: string): Product | undefined {
+  const dec = decoded.trim();
+  const norm = cleanAsciiUrlSegment(dec);
   const direct =
-    products.find((p) => buildVendorProductUrlSegment(p) === decoded) ||
-    products.find((p) => p.sku === decoded) ||
-    products.find((p) => p.id === decoded);
+    products.find((p) => buildVendorProductUrlSegment(p) === norm) ||
+    products.find((p) => legacyNameUrlSegment(p) === norm) ||
+    products.find((p) => String(p.sku || "").trim().toLowerCase() === dec.toLowerCase()) ||
+    products.find((p) => String(p.id || "").trim().toLowerCase() === dec.toLowerCase());
   if (direct) return direct;
   return products.find(
     (p) =>
       p.hasVariants &&
       Array.isArray(p.variants) &&
-      p.variants.some((v: any) => v?.sku === decoded)
+      p.variants.some((v: any) => String(v?.sku || "").trim().toLowerCase() === dec.toLowerCase())
   );
 }
 
@@ -5480,7 +5501,8 @@ export function VendorStoreView({
                                 setVendorVariantSelections(next);
                                 const v = findMatchingVariant(selectedProduct, next);
                                 if (v?.sku && typeof v.sku === "string" && v.sku.trim()) {
-                                  navigate(`${storeBase}/product/${encodeURIComponent(v.sku.trim())}`, {
+                                  const segment = cleanAsciiUrlSegment(v.sku) || v.sku.trim();
+                                  navigate(`${storeBase}/product/${encodeURIComponent(segment)}`, {
                                     replace: true,
                                     state: {
                                       vendorProduct: selectedProduct,
