@@ -551,6 +551,95 @@ export function adminProductsPageCacheKey(p: AdminProductsPageParams): string {
   return `${ADMIN_PRODUCTS_PAGE_CACHE_PREFIX}p${p.page}-ps${pageSize}-t-${p.tab || "all"}-st-${p.status || "all"}-s-${p.sort || "newest"}-v-${encodeURIComponent(p.vendor || "all")}-c-${encodeURIComponent(p.collaborator || "all")}-q-${encodeURIComponent(qn)}-ev-${encodeURIComponent(ev || "_")}`;
 }
 
+function normalizeAdminProductStatusForCache(status: unknown): string {
+  return String(status ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+function adminProductCacheSearchBlob(product: any): string {
+  const parts = [
+    product?.name,
+    product?.title,
+    product?.sku,
+    product?.id,
+    product?.category,
+  ];
+  if (Array.isArray(product?.variants)) {
+    for (const variant of product.variants) {
+      parts.push(variant?.sku, variant?.id, variant?.name);
+    }
+  }
+  return parts.map((x) => String(x ?? "").toLowerCase()).join(" ");
+}
+
+function adminProductCacheTimestamp(product: any): number {
+  for (const value of [product?.createdAt, product?.createDate, product?.updatedAt]) {
+    const ms = Date.parse(String(value ?? ""));
+    if (Number.isFinite(ms)) return ms;
+  }
+  return 0;
+}
+
+function adminProductMatchesDerivedPage(product: any, params: AdminProductsPageParams): boolean {
+  const q = normAdminQ(params.q || "").toLowerCase();
+  if (q && !adminProductCacheSearchBlob(product).includes(q)) return false;
+
+  const status = normalizeAdminProductStatusForCache(product?.status);
+  const filterStatus = normalizeAdminProductStatusForCache(params.status || "all");
+  if (filterStatus === "active" && status !== "active" && status !== "published") return false;
+  if (filterStatus === "off-shelf" && status !== "off-shelf" && status !== "offshelf") return false;
+
+  return true;
+}
+
+function countDerivedAdminProductsByStatus(rows: any[]): { all: number; active: number; offShelf: number } {
+  let active = 0;
+  let offShelf = 0;
+  for (const product of rows) {
+    const status = normalizeAdminProductStatusForCache(product?.status);
+    if (status === "active" || status === "published") active++;
+    if (status === "off-shelf" || status === "offshelf") offShelf++;
+  }
+  return { all: rows.length, active, offShelf };
+}
+
+export function primeAdminProductsPageFromFullCache(
+  params: AdminProductsPageParams
+): AdminProductsPagePayload | null {
+  if ((params.vendor || "all") !== "all") return null;
+  if ((params.collaborator || "all") !== "all") return null;
+  if (normAdminExcludeVendorId(params.excludeVendorId)) return null;
+  if ((params.tab || "all") !== "all") return null;
+
+  const full = moduleCache.peek<any[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+  if (!Array.isArray(full) || full.length === 0) return null;
+
+  const pageSize = Math.min(100, Math.max(1, params.pageSize ?? ADMIN_PRODUCTS_INITIAL_PAGE_SIZE));
+  const page = Math.max(1, params.page);
+  const sort = params.tab === "sales" ? "popular" : params.sort && params.sort !== "" ? params.sort : "newest";
+  const effectiveParams = { ...params, page, pageSize, sort };
+  const filtered = full
+    .filter((product) => adminProductMatchesDerivedPage(product, effectiveParams))
+    .sort((a, b) => {
+      if (sort === "oldest") return adminProductCacheTimestamp(a) - adminProductCacheTimestamp(b);
+      return adminProductCacheTimestamp(b) - adminProductCacheTimestamp(a);
+    });
+  const start = (page - 1) * pageSize;
+  const payload: AdminProductsPagePayload = {
+    adminList: true,
+    products: filtered.slice(start, start + pageSize),
+    total: filtered.length,
+    page,
+    pageSize,
+    hasMore: start + pageSize < filtered.length,
+    counts: countDerivedAdminProductsByStatus(filtered),
+  };
+  moduleCache.prime(adminProductsPageCacheKey(effectiveParams), payload);
+  return payload;
+}
+
 export async function fetchAdminProductsPage(
   params: AdminProductsPageParams,
   opts?: { bustCache?: boolean }
@@ -626,6 +715,26 @@ export async function getCachedAdminProductsPage(
     collaborator,
     excludeVendorId: excludeVendorIdNorm || undefined,
   });
+
+  if (!forceRefresh) {
+    const fromSession = moduleCache.peek<AdminProductsPagePayload>(key);
+    if (fromSession && Array.isArray(fromSession.products)) {
+      return fromSession;
+    }
+    const fromFull = primeAdminProductsPageFromFullCache({
+      ...params,
+      page,
+      pageSize,
+      q: qNorm,
+      tab,
+      status,
+      sort,
+      vendor,
+      collaborator,
+      excludeVendorId: excludeVendorIdNorm || undefined,
+    });
+    if (fromFull) return fromFull;
+  }
 
   if (!forceRefresh && page === 1) {
     const fromLs = readPersistedJson<AdminProductsPagePayload>(

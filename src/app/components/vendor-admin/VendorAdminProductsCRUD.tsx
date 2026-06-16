@@ -31,16 +31,15 @@ import { toast } from "sonner";
 import {
   getCachedVendorProductsAdmin,
   invalidateVendorProductsAdminCache,
-  removeProductsFromVendorAdminCaches,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
   moduleCache,
   CACHE_KEYS,
   getCachedAdminProductsPage,
   ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
   invalidateAdminAllProductsCache,
+  ADMIN_PRODUCTS_LIST_CHANGED_EVENT,
 } from "../../utils/module-cache";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
-import { supabase } from "../../contexts/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -179,7 +178,7 @@ export function VendorAdminProductsCRUD({
     loadProducts(false);
   }, [vendorId]);
 
-  // Realtime bridge: keep vendor product pool in sync across devices/admin sessions.
+  // Realtime bridge: central product pulse invalidates vendor product pools without a broad KV subscription here.
   useEffect(() => {
     let debounce: ReturnType<typeof setTimeout> | undefined;
     const schedule = () => {
@@ -189,29 +188,10 @@ export function VendorAdminProductsCRUD({
         void loadProducts(true);
       }, 320);
     };
-    const applyDeletedProduct = (productId: string) => {
-      setProducts((prev) => prev.filter((p) => p.id !== productId));
-    };
-    const channel = supabase
-      .channel(`vendor-admin-products-kv-${vendorId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key.startsWith("product:")) return;
-          if (payload.eventType === "DELETE") {
-            applyDeletedProduct(key.slice("product:".length));
-            removeProductsFromVendorAdminCaches([vendorId], [key.slice("product:".length)]);
-            return;
-          }
-          schedule();
-        }
-      )
-      .subscribe();
+    window.addEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, schedule);
     return () => {
       window.clearTimeout(debounce);
-      void supabase.removeChannel(channel);
+      window.removeEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, schedule);
     };
   }, [vendorId]);
 

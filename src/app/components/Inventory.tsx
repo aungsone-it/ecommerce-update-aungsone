@@ -16,6 +16,7 @@ import {
   ADMIN_PRODUCTS_BROADCAST_CHANNEL,
   moduleCache,
   adminProductsPageCacheKey,
+  primeAdminProductsPageFromFullCache,
   type AdminProductsPagePayload,
 } from "../utils/module-cache";
 
@@ -123,7 +124,17 @@ export function Inventory({
           collaborator: "all",
           sort: "newest",
         })
-      ),
+      ) ??
+      primeAdminProductsPageFromFullCache({
+        page: 1,
+        pageSize: ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+        q: committedSearchQuery,
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: "newest",
+      }),
     [committedSearchQuery]
   );
   const initialInventoryRows = useMemo(
@@ -221,7 +232,7 @@ export function Inventory({
   }, [loadInventory]);
 
   const applyCachedInventoryPage = useCallback(() => {
-    const payload = moduleCache.peek<AdminProductsPagePayload>(
+    let payload = moduleCache.peek<AdminProductsPagePayload>(
       adminProductsPageCacheKey({
         page: currentPage,
         pageSize: itemsPerPage,
@@ -233,6 +244,18 @@ export function Inventory({
         sort: "newest",
       })
     );
+    if (!payload) {
+      payload = primeAdminProductsPageFromFullCache({
+        page: currentPage,
+        pageSize: itemsPerPage,
+        q: committedSearchQuery,
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: "newest",
+      });
+    }
     if (!payload) return false;
     const products = (payload.products || []) as any[];
     setInventoryItems(productsToInventoryItems(products));

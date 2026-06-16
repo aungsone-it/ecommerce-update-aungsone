@@ -12,6 +12,7 @@ import {
   fetchCustomerOrdersList,
   VENDOR_CATALOG_MUTATION_EVENT,
   PLATFORM_PRODUCTS_DELETED_EVENT,
+  ADMIN_PRODUCTS_LIST_CHANGED_EVENT,
   type VendorWishlistVendorPageResult,
 } from "../utils/module-cache";
 import {
@@ -1995,28 +1996,17 @@ export function VendorStoreView({
           .catch(() => {});
       }, 260);
     };
-    const channel = supabase
-      .channel(`vendor-store-user-orders-kv-${uid}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key.startsWith("order:")) return;
-          refreshOrders();
-        }
-      )
-      .subscribe();
     const onCustomerOrdersUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ userId?: string }>).detail;
       if (String(detail?.userId || "").trim() !== String(uid).trim()) return;
       refreshOrders();
     };
+    window.addEventListener("adminOrdersUpdated", refreshOrders);
     window.addEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
     return () => {
       window.clearTimeout(debounce);
+      window.removeEventListener("adminOrdersUpdated", refreshOrders);
       window.removeEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
-      void supabase.removeChannel(channel);
     };
   }, [user?.id]);
 
@@ -3835,7 +3825,7 @@ export function VendorStoreView({
     };
   }, [vendorId, savedPage, refetchVendorCatalogPage1]);
 
-  // Realtime bridge: vendor storefront listens product pool websocket updates.
+  // Realtime bridge: central product pulse refreshes storefront catalog without a broad KV subscription here.
   useEffect(() => {
     let debounce: ReturnType<typeof setTimeout> | undefined;
     const scheduleRefetch = () => {
@@ -3844,28 +3834,10 @@ export function VendorStoreView({
         void refetchVendorCatalogPage1(true);
       }, 320);
     };
-    const channel = supabase
-      .channel(`vendor-storefront-products-kv-${vendorId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key.startsWith("product:")) return;
-          if (payload.eventType === "DELETE") {
-            const id = key.slice("product:".length);
-            setProducts((prev) => prev.filter((p) => String(p.id) !== id));
-            setVendorCatalogTotal((prev) => Math.max(0, prev - 1));
-            void refetchVendorCatalogPage1(true);
-            return;
-          }
-          scheduleRefetch();
-        }
-      )
-      .subscribe();
+    window.addEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, scheduleRefetch);
     return () => {
       window.clearTimeout(debounce);
-      void supabase.removeChannel(channel);
+      window.removeEventListener(ADMIN_PRODUCTS_LIST_CHANGED_EVENT, scheduleRefetch);
     };
   }, [vendorId, refetchVendorCatalogPage1]);
 
