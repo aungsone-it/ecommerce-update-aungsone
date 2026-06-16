@@ -32,7 +32,10 @@ import {
   refsRemovedSinceUpdate,
 } from "./storage_delete_helpers.tsx";
 import { appendStaffActivity } from "./staff_activity_helpers.tsx";
-import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
+import {
+  assertAdminMonitoringAllowed,
+  assertDestructiveOperationAllowed,
+} from "./admin_operation_guard.tsx";
 import { hashPasswordPlain, verifyPasswordPlain, isPasswordHashFormat } from "./password_crypto.tsx";
 import { applyNormalizedShippingToOrderBody } from "./order_shipping.ts";
 import {
@@ -576,6 +579,8 @@ async function realtimePulseSummary(): Promise<Record<string, unknown>> {
 }
 
 app.get("/make-server-16010b6f/monitoring/summary", async (c) => {
+  const denied = assertAdminMonitoringAllowed(c);
+  if (denied) return denied;
   try {
     const [readModels, realtime] = await Promise.all([
       readModelParitySummary(),
@@ -606,6 +611,8 @@ app.get("/make-server-16010b6f/monitoring/summary", async (c) => {
 });
 
 app.get("/make-server-16010b6f/read-model/validate", async (c) => {
+  const denied = assertAdminMonitoringAllowed(c);
+  if (denied) return denied;
   try {
     const readModels = await readModelParitySummary();
     return c.json({
@@ -8923,9 +8930,42 @@ app.delete("/make-server-16010b6f/notifications/:id", async (c) => {
 // DASHBOARD STATS ENDPOINT
 // ============================================
 
+async function jsonBasicStatsFromReadModel(): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.rpc("rpc_basic_stats");
+    if (error) {
+      console.warn("[stats] read-model stats unavailable:", error.message);
+      return null;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const readModelRows = Number(body.readModelRows ?? 0);
+    if (readModelRows <= 0) return null;
+    const totalRevenueNumber = Number(body.totalRevenueNumber ?? 0);
+    return {
+      totalProducts: Number(body.totalProducts ?? 0),
+      totalOrders: Number(body.totalOrders ?? 0),
+      totalCustomers: Number(body.totalCustomers ?? 0),
+      totalRevenue: `$${totalRevenueNumber.toFixed(2)}`,
+      pendingOrders: Number(body.pendingOrders ?? 0),
+      completedOrders: Number(body.completedOrders ?? 0),
+      timestamp: body.timestamp || new Date().toISOString(),
+      readModel: true,
+    };
+  } catch (error) {
+    console.warn("[stats] read-model stats failed:", error);
+    return null;
+  }
+}
+
 app.get("/make-server-16010b6f/stats", async (c) => {
   try {
     console.log("📊 Fetching stats...");
+
+    const readModelBody = await jsonBasicStatsFromReadModel();
+    if (readModelBody) {
+      return c.json(readModelBody);
+    }
     
     const [products, orders, customers] = await Promise.all([
       withTimeout(kv.getByPrefix("product:"), 25000).catch(() => []),
@@ -8973,10 +9013,39 @@ app.get("/make-server-16010b6f/stats", async (c) => {
 // LANDING PAGE STATS ENDPOINT
 // ============================================
 
+async function jsonLandingStatsFromReadModel(): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.rpc("rpc_landing_stats");
+    if (error) {
+      console.warn("[landing-stats] read-model stats unavailable:", error.message);
+      return null;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const readModelRows = Number(body.readModelRows ?? 0);
+    if (readModelRows <= 0) return null;
+    return {
+      activeVendors: Number(body.activeVendors ?? 0),
+      totalProducts: Number(body.totalProducts ?? 0),
+      totalCustomers: Number(body.totalCustomers ?? 0),
+      timestamp: body.timestamp || new Date().toISOString(),
+      readModel: true,
+    };
+  } catch (error) {
+    console.warn("[landing-stats] read-model stats failed:", error);
+    return null;
+  }
+}
+
 // Landing page stats endpoint - public stats for visitors
 app.get("/make-server-16010b6f/landing-stats", async (c) => {
   try {
     console.log("📊 Fetching landing page stats...");
+
+    const readModelBody = await jsonLandingStatsFromReadModel();
+    if (readModelBody) {
+      return c.json(readModelBody);
+    }
     
     // Fetch vendors, products, and customers in parallel
     const [vendors, products, customers] = await Promise.all([
@@ -12968,6 +13037,55 @@ app.notFound((c) => {
   return c.json({ error: "Not found", path: c.req.url }, 404);
 });
 
+async function jsonDashboardStatsFromReadModel(filters: {
+  revenueFilter: string;
+  ordersFilter: string;
+  customersFilter: string;
+  productsFilter: string;
+  globalFilter: string;
+}): Promise<Record<string, unknown> | null> {
+  try {
+    const { data, error } = await supabase.rpc("rpc_dashboard_stats", {
+      p_revenue_filter: filters.revenueFilter,
+      p_orders_filter: filters.ordersFilter,
+      p_customers_filter: filters.customersFilter,
+      p_products_filter: filters.productsFilter,
+      p_global_filter: filters.globalFilter,
+    });
+    if (error) {
+      console.warn("[dashboard] read-model stats unavailable:", error.message);
+      return null;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    const body = data as Record<string, unknown>;
+    const readModelRows = Number(body.readModelRows ?? 0);
+    if (readModelRows <= 0) {
+      // Migration may be applied before backfill. Do not cache a false-empty dashboard.
+      return null;
+    }
+    return {
+      totalRevenue: Number(body.totalRevenue ?? 0),
+      totalOrders: Number(body.totalOrders ?? 0),
+      totalCustomers: Number(body.totalCustomers ?? 0),
+      totalProducts: Number(body.totalProducts ?? 0),
+      revenueChange: Number(body.revenueChange ?? 0),
+      ordersChange: Number(body.ordersChange ?? 0),
+      customersChange: Number(body.customersChange ?? 0),
+      productsChange: Number(body.productsChange ?? 0),
+      salesTrend: Array.isArray(body.salesTrend) ? body.salesTrend : [],
+      topProducts: Array.isArray(body.topProducts) ? body.topProducts : [],
+      recentOrders: Array.isArray(body.recentOrders) ? body.recentOrders : [],
+      lastUpdated: body.lastUpdated || new Date().toISOString(),
+      readModel: true,
+      readModelCounts:
+        body.readModelCounts && typeof body.readModelCounts === "object" ? body.readModelCounts : undefined,
+    };
+  } catch (error) {
+    console.warn("[dashboard] read-model stats failed:", error);
+    return null;
+  }
+}
+
 // ============================================
 // DASHBOARD STATS ENDPOINT
 // ============================================
@@ -13003,6 +13121,24 @@ app.get("/make-server-16010b6f/dashboard/stats", async (c) => {
     }
     
     console.log(`🔄 CACHE MISS or FORCE REFRESH - Fetching fresh data from database...`);
+
+    const readModelStats = await jsonDashboardStatsFromReadModel({
+      revenueFilter,
+      ordersFilter,
+      customersFilter,
+      productsFilter,
+      globalFilter,
+    });
+    if (readModelStats) {
+      dashboardStatsCache.set(cacheKey, {
+        data: readModelStats,
+        timestamp: Date.now(),
+      });
+      return c.json({
+        ...readModelStats,
+        cached: false,
+      });
+    }
     
     // Helper function to get date range based on filter
     const getDateRange = (filter: string) => {

@@ -7,10 +7,19 @@ import type { Context } from "npm:hono@4";
  * For local dev only, you may set `ALLOW_UNAUTHENTICATED_DESTRUCTIVE=1` (never in production).
  */
 export function assertDestructiveOperationAllowed(c: Context): Response | undefined {
+  return assertAdminSecretAllowed(c, "bulk/clear routes are not secret-protected");
+}
+
+/** Guards non-destructive admin-only diagnostics/monitoring routes. */
+export function assertAdminMonitoringAllowed(c: Context): Response | undefined {
+  return assertAdminSecretAllowed(c, "admin monitoring routes are not secret-protected");
+}
+
+function assertAdminSecretAllowed(c: Context, legacyWarning: string): Response | undefined {
   const allowLegacy = String(Deno.env.get("ALLOW_UNAUTHENTICATED_DESTRUCTIVE") || "").trim() === "1";
   if (allowLegacy) {
     console.warn(
-      "[security] ALLOW_UNAUTHENTICATED_DESTRUCTIVE=1 — bulk/clear routes are not secret-protected",
+      `[security] ALLOW_UNAUTHENTICATED_DESTRUCTIVE=1 — ${legacyWarning}`,
     );
     return undefined;
   }

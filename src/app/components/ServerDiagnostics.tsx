@@ -1,4 +1,5 @@
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { getAdminOperationHeaders } from '../../utils/api-client';
 
 interface DiagnosticResult {
   endpoint: string;
@@ -35,6 +36,7 @@ export function ServerDiagnostics() {
           headers: {
             'Authorization': `Bearer ${publicAnonKey}`,
             'Content-Type': 'application/json',
+            ...getAdminOperationHeaders(),
           },
           signal: controller.signal,
         }

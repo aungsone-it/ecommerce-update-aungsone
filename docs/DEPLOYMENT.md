@@ -64,7 +64,7 @@ Most of the app reads Supabase URL and anon key from **`utils/supabase/info.tsx`
 
 - `VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN`
 - `VITE_VENDOR_SUBDOMAIN_SLUG_MAP`
-- `VITE_ADMIN_OPERATION_SECRET` (must match server secret for destructive admin routes)
+- `VITE_ADMIN_OPERATION_SECRET` (must match server secret for destructive admin routes and diagnostics)
 - `VITE_SUPABASE_THUMB_MAX` (image transform width)
 - `VITE_STRIPE_PUBLISHABLE_KEY` (Stripe UI only — not used in vendor checkout)
 
@@ -75,7 +75,7 @@ Vercel Edge middleware uses **server** env (no `VITE_` prefix): `VENDOR_SUBDOMAI
 Set these in Supabase project secrets when required by your enabled flows:
 - auth/email provider secrets (for reset email)
 - KBZPay gateway secrets and webhook verification values
-- `EDGE_ADMIN_OPERATION_SECRET` (recommended for destructive admin operations)
+- `EDGE_ADMIN_OPERATION_SECRET` (required for protected admin operations and monitoring endpoints)
 - optional debug flags only in non-production environments
 
 ## 5) Domain and vendor host notes
@@ -93,7 +93,8 @@ Set these in Supabase project secrets when required by your enabled flows:
 4. Verify vendor storefront product list/detail, category tabs, cart, checkout, and order creation (on a **vendor URL**, not apex `/products`).
 5. Verify KBZPay webhook processing in the target environment.
 6. Verify destructive admin actions require authorized secret headers.
-7. Monitor Supabase logs and frontend errors for at least one traffic cycle.
+7. Follow `docs/READ_MODEL_ROLLOUT.md` for SQL read-model validation and monitoring checks.
+8. Monitor Supabase logs and frontend errors for at least one traffic cycle.
 
 ## 7) Troubleshooting
 
@@ -101,6 +102,7 @@ Set these in Supabase project secrets when required by your enabled flows:
 - **Auth redirect/login mismatch**: validate Supabase Auth allowed URLs.
 - **Webhook issues**: verify function secret values and signature settings.
 - **Admin destructive routes blocked**: set and pass admin operation secret headers correctly.
+- **Monitoring endpoints blocked**: set `EDGE_ADMIN_OPERATION_SECRET`; if using the diagnostics UI, set matching `VITE_ADMIN_OPERATION_SECRET`.
 
 
 
