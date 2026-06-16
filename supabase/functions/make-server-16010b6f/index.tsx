@@ -3040,6 +3040,45 @@ app.get("/make-server-16010b6f/platform-settings", async (c) => {
 // PRODUCTS ENDPOINTS
 // ============================================
 
+function normalizeSkuText(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+async function findSkuDuplicateFromReadModel(
+  sku: string,
+  excludeProductId?: string
+): Promise<{ isUnique: boolean; existingProduct?: any } | null> {
+  const normalizedSku = normalizeSkuText(sku);
+  if (!normalizedSku) return { isUnique: true };
+
+  try {
+    const { data, error } = await supabase
+      .from("app_product_skus")
+      .select("sku, product_id, variant_id, app_products!inner(id,name,raw)")
+      .eq("normalized_sku", normalizedSku)
+      .limit(1);
+    if (error) {
+      console.warn("[products] SKU read-model lookup unavailable:", error.message);
+      return null;
+    }
+    const row = Array.isArray(data) ? data[0] : null;
+    if (!row) return { isUnique: true };
+    const productId = String((row as any).product_id || "");
+    if (excludeProductId && productId === excludeProductId) return { isUnique: true };
+    const product = (row as any).app_products;
+    return {
+      isUnique: false,
+      existingProduct: {
+        id: productId,
+        name: product?.name || product?.raw?.name || product?.raw?.title || productId,
+      },
+    };
+  } catch (error) {
+    console.warn("[products] SKU read-model lookup failed:", error);
+    return null;
+  }
+}
+
 // Helper function to check SKU uniqueness
 async function checkSkuUniqueness(sku: string, excludeProductId?: string): Promise<{ isUnique: boolean; existingProduct?: any }> {
   if (!sku || !sku.trim()) {
@@ -3048,6 +3087,11 @@ async function checkSkuUniqueness(sku: string, excludeProductId?: string): Promi
   
   try {
     console.log(`🔍 Checking SKU uniqueness: "${sku}" (excluding: ${excludeProductId || 'none'})`);
+    const readModelResult = await findSkuDuplicateFromReadModel(sku, excludeProductId);
+    if (readModelResult) {
+      return readModelResult;
+    }
+
     const allProducts = await withTimeout(kv.getByPrefix("product:"), 25000);
     
     if (!Array.isArray(allProducts)) {
@@ -13488,19 +13532,134 @@ app.get("/make-server-16010b6f/dashboard/stats", async (c) => {
 // INVENTORY MANAGEMENT ENDPOINTS
 // ============================================
 
+function inventoryItemsFromProducts(products: any[]): any[] {
+  const inventory: any[] = [];
+
+  products.forEach((product: any) => {
+    const inventoryQty = product.inventory || product.stock || 0;
+    const committed = Math.floor(inventoryQty * 0.05);
+    const available = inventoryQty - committed;
+    const reorderPoint = 50;
+    const location = product.vendor || product.vendorName ? `Vendor: ${product.vendor || product.vendorName}` : "Warehouse A";
+    const image = product.images && product.images.length > 0
+      ? product.images[0]
+      : product.image || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop";
+
+    inventory.push({
+      id: product.id,
+      product: product.name || product.title,
+      sku: product.sku,
+      image,
+      available,
+      committed,
+      onHand: inventoryQty,
+      reorderPoint,
+      location,
+      vendorId: product.vendor || product.vendorId,
+      createdAt: product.createdAt || product.createDate,
+      updatedAt: product.updatedAt,
+      isVariant: false,
+    });
+
+    if (product.hasVariants && Array.isArray(product.variants)) {
+      product.variants.forEach((variant: any, vIndex: number) => {
+        const variantInventory = variant.inventory || 0;
+        const variantCommitted = Math.floor(variantInventory * 0.05);
+        const variantAvailable = variantInventory - variantCommitted;
+        const variantName =
+          variant.name ||
+          (variant.options ? Object.values(variant.options).join(" / ") : `Variant ${vIndex + 1}`);
+
+        inventory.push({
+          id: variant.id,
+          product: `${product.name || product.title} - ${variantName}`,
+          sku: variant.sku,
+          image: variant.image || image,
+          available: variantAvailable,
+          committed: variantCommitted,
+          onHand: variantInventory,
+          reorderPoint,
+          location,
+          vendorId: product.vendor || product.vendorId,
+          createdAt: product.createdAt || product.createDate,
+          updatedAt: product.updatedAt,
+          isVariant: true,
+          parentId: product.id,
+          parentName: product.name || product.title,
+        });
+      });
+    }
+  });
+
+  return inventory;
+}
+
+async function loadInventoryProductsFromReadModel(): Promise<any[] | null> {
+  try {
+    const { data, error } = await supabase
+      .from("app_products")
+      .select("id,name,sku,vendor_id,vendor_name,inventory,raw,source_created_at,source_updated_at")
+      .order("source_created_at", { ascending: false, nullsFirst: false });
+    if (error) {
+      console.warn("[inventory] read-model product list unavailable:", error.message);
+      return null;
+    }
+    if (!Array.isArray(data) || data.length === 0) return null;
+    return data.map((row: any) => ({
+      ...(row.raw && typeof row.raw === "object" ? row.raw : {}),
+      id: row.id,
+      name: row.name || row.raw?.name || row.raw?.title,
+      sku: row.sku || row.raw?.sku,
+      vendorId: row.vendor_id || row.raw?.vendorId,
+      vendor: row.vendor_name || row.raw?.vendor,
+      inventory: row.inventory ?? row.raw?.inventory ?? row.raw?.stock,
+      createdAt: row.raw?.createdAt || row.source_created_at,
+      updatedAt: row.raw?.updatedAt || row.source_updated_at,
+    }));
+  } catch (error) {
+    console.warn("[inventory] read-model product list failed:", error);
+    return null;
+  }
+}
+
+async function findProductIdForVariantFromReadModel(variantId: string): Promise<string | null> {
+  const id = String(variantId || "").trim();
+  if (!id) return null;
+  try {
+    const { data, error } = await supabase
+      .from("app_product_skus")
+      .select("product_id")
+      .eq("variant_id", id)
+      .limit(1);
+    if (error) {
+      console.warn("[inventory] variant read-model lookup unavailable:", error.message);
+      return null;
+    }
+    const row = Array.isArray(data) ? data[0] : null;
+    return row?.product_id ? String(row.product_id) : null;
+  } catch (error) {
+    console.warn("[inventory] variant read-model lookup failed:", error);
+    return null;
+  }
+}
+
 // Get all inventory items
 app.get("/make-server-16010b6f/inventory", async (c) => {
   try {
     console.log("📦 [INVENTORY] Starting inventory fetch...");
     
-    // Get all products from database
-    console.log("📦 [INVENTORY] Fetching products with prefix: 'product:'");
-    const allProducts = await kv.getByPrefix("product:");
+    let allProducts = await loadInventoryProductsFromReadModel();
+    const loadedFromReadModel = Array.isArray(allProducts);
+    if (!allProducts) {
+      console.log("📦 [INVENTORY] Read model unavailable, fetching products with prefix: 'product:'");
+      allProducts = await kv.getByPrefix("product:");
+    }
     
     console.log(`📦 [INVENTORY] Raw fetch result:`, {
       isArray: Array.isArray(allProducts),
       length: allProducts?.length || 0,
-      type: typeof allProducts
+      type: typeof allProducts,
+      readModel: loadedFromReadModel,
     });
     
     if (!allProducts || allProducts.length === 0) {
@@ -13537,82 +13696,7 @@ app.get("/make-server-16010b6f/inventory", async (c) => {
       inventory: allProducts[0]?.inventory
     });
     
-    // Convert products AND variants to inventory items
-    const inventory: any[] = [];
-    
-    allProducts.forEach((product: any, index: number) => {
-      console.log(`🔄 [INVENTORY] Processing product ${index + 1}/${allProducts.length}: ${product.name || product.title}`);
-      
-      // Calculate inventory metrics
-      const inventoryQty = product.inventory || 0;
-      const committed = Math.floor(inventoryQty * 0.05); // 5% committed (simulated)
-      const available = inventoryQty - committed;
-      const reorderPoint = 50; // Default reorder point
-      
-      // Determine location based on vendor or default
-      const location = product.vendor ? `Vendor: ${product.vendor}` : "Warehouse A";
-      
-      // Get product image
-      const image = product.images && product.images.length > 0 
-        ? product.images[0] 
-        : product.image || "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop";
-      
-      // Add main product
-      inventory.push({
-        id: product.id,
-        product: product.name || product.title,
-        sku: product.sku,
-        image: image,
-        available: available,
-        committed: committed,
-        onHand: inventoryQty,
-        reorderPoint: reorderPoint,
-        location: location,
-        vendorId: product.vendor,
-        createdAt: product.createdAt,
-        updatedAt: product.updatedAt,
-        isVariant: false,
-      });
-      
-      console.log(`   ✅ Added main product: ${product.sku}`);
-      
-      // Add variants if they exist
-      if (product.hasVariants && product.variants && Array.isArray(product.variants)) {
-        console.log(`   🎨 Product has ${product.variants.length} variants`);
-        
-        product.variants.forEach((variant: any, vIndex: number) => {
-          const variantInventory = variant.inventory || 0;
-          const variantCommitted = Math.floor(variantInventory * 0.05);
-          const variantAvailable = variantInventory - variantCommitted;
-          
-          // Build variant name from options
-          const variantName = variant.name || 
-            (variant.options ? Object.values(variant.options).join(' / ') : `Variant ${vIndex + 1}`);
-          
-          inventory.push({
-            id: variant.id,
-            product: `${product.name || product.title} - ${variantName}`,
-            sku: variant.sku,
-            image: variant.image || image,
-            available: variantAvailable,
-            committed: variantCommitted,
-            onHand: variantInventory,
-            reorderPoint: reorderPoint,
-            location: location,
-            vendorId: product.vendor,
-            createdAt: product.createdAt,
-            updatedAt: product.updatedAt,
-            isVariant: true,
-            parentId: product.id,
-            parentName: product.name || product.title,
-          });
-          
-          console.log(`      ✅ Added variant: ${variant.sku} (${variantName})`);
-        });
-      } else {
-        console.log(`   ℹ️ Product has no variants`);
-      }
-    });
+    const inventory = inventoryItemsFromProducts(allProducts);
     
     console.log(`✅ [INVENTORY] Conversion complete!`);
     console.log(`✅ [INVENTORY] Total: ${allProducts.length} products → ${inventory.length} inventory items`);
@@ -13621,7 +13705,8 @@ app.get("/make-server-16010b6f/inventory", async (c) => {
       success: true,
       inventory: inventory,
       totalProducts: allProducts.length,
-      totalItems: inventory.length
+      totalItems: inventory.length,
+      readModel: loadedFromReadModel,
     });
   } catch (error: any) {
     console.error("❌ [INVENTORY] Failed to load inventory:", error);
@@ -13651,6 +13736,15 @@ app.get("/make-server-16010b6f/inventory/:vendorId", async (c) => {
         },
         403
       );
+    }
+
+    const readModelProducts = await loadInventoryProductsFromReadModel();
+    if (readModelProducts) {
+      const vendorInventory = inventoryItemsFromProducts(readModelProducts).filter(
+        (item: any) => String(item.vendorId || "") === String(vendorId)
+      );
+      console.log(`✅ Found ${vendorInventory.length} read-model inventory items for vendor ${vendorId}`);
+      return c.json({ inventory: vendorInventory, readModel: true });
     }
 
     const allInventory = await kv.getByPrefix("inventory:");
@@ -13683,17 +13777,28 @@ app.post("/make-server-16010b6f/inventory/adjust", async (c) => {
     // If not found, search all products for this variant ID
     if (!product) {
       console.log(`🔍 Item not found as product, searching variants...`);
-      const allProducts = await kv.getByPrefix("product:");
-      
-      for (const p of allProducts) {
-        if (p && p.variants && Array.isArray(p.variants)) {
-          const variant = p.variants.find((v: any) => v.id === itemId);
-          if (variant) {
-            product = p;
-            isVariant = true;
-            variantId = itemId;
-            console.log(`✅ Found as variant in product: ${p.id}`);
-            break;
+      const parentProductId = await findProductIdForVariantFromReadModel(itemId);
+      if (parentProductId) {
+        product = await kv.get(`product:${parentProductId}`);
+        if (product) {
+          isVariant = true;
+          variantId = itemId;
+          console.log(`✅ Found as variant via read model in product: ${parentProductId}`);
+        }
+      }
+
+      if (!product) {
+        const allProducts = await kv.getByPrefix("product:");
+        for (const p of allProducts) {
+          if (p && p.variants && Array.isArray(p.variants)) {
+            const variant = p.variants.find((v: any) => v.id === itemId);
+            if (variant) {
+              product = p;
+              isVariant = true;
+              variantId = itemId;
+              console.log(`✅ Found as variant in product: ${p.id}`);
+              break;
+            }
           }
         }
       }

@@ -11,7 +11,8 @@
     "deploy:edge": "npx supabase functions deploy make-server-16010b6f && npx supabase functions deploy kpay-webhook --no-verify-jwt",
     "db:push": "npx supabase db push --linked",
     "deploy:supabase": "npx supabase db push --linked && npx supabase functions deploy make-server-16010b6f && npx supabase functions deploy kpay-webhook --no-verify-jwt",
-    "kpay:urls": "node scripts/show-kpay-urls.mjs"
+    "kpay:urls": "node scripts/show-kpay-urls.mjs",
+    "validate:read-model": "node scripts/validate-read-model.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",

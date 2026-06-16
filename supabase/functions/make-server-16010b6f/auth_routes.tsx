@@ -63,7 +63,77 @@ function isSyntheticAuthEmail(email: string): boolean {
   return String(email || "").toLowerCase().endsWith(`@${PHONE_AUTH_EMAIL_DOMAIN}`);
 }
 
+function rowToCustomer(row: any): any | null {
+  if (!row) return null;
+  const raw = row.raw && typeof row.raw === "object" ? row.raw : {};
+  return {
+    ...raw,
+    id: row.id || raw.id,
+    userId: row.user_id || raw.userId,
+    email: row.email || raw.email,
+    phone: row.phone || raw.phone,
+    name: row.name || raw.name,
+  };
+}
+
+async function findCustomerByUserIdFromReadModel(userId: string): Promise<any | null> {
+  const uid = String(userId || "").trim();
+  if (!uid) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("app_customers")
+      .select("id,user_id,name,email,phone,raw")
+      .eq("user_id", uid)
+      .limit(1);
+    if (error) {
+      console.warn("[auth] customer userId read-model lookup unavailable:", error.message);
+      return null;
+    }
+    return rowToCustomer(Array.isArray(data) ? data[0] : null);
+  } catch (error) {
+    console.warn("[auth] customer userId read-model lookup failed:", error);
+    return null;
+  }
+}
+
+async function findCustomerByEmailFromReadModel(email: string): Promise<any | null> {
+  const em = String(email || "").trim();
+  if (!em) return null;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("app_customers")
+      .select("id,user_id,name,email,phone,raw")
+      .ilike("email", em)
+      .limit(1);
+    if (error) {
+      console.warn("[auth] customer email read-model lookup unavailable:", error.message);
+      return null;
+    }
+    return rowToCustomer(Array.isArray(data) ? data[0] : null);
+  } catch (error) {
+    console.warn("[auth] customer email read-model lookup failed:", error);
+    return null;
+  }
+}
+
 async function findCustomerByPhone(normalizedPhone: string): Promise<any | null> {
+  try {
+    const phone09 = normalizedPhone.startsWith("+959") ? `09${normalizedPhone.slice(4)}` : normalizedPhone;
+    const { data, error } = await supabaseAdmin
+      .from("app_customers")
+      .select("id,user_id,name,email,phone,raw")
+      .in("phone", [normalizedPhone, phone09])
+      .limit(1);
+    if (!error) {
+      const customer = rowToCustomer(Array.isArray(data) ? data[0] : null);
+      if (customer) return customer;
+    } else {
+      console.warn("[auth] customer phone read-model lookup unavailable:", error.message);
+    }
+  } catch (error) {
+    console.warn("[auth] customer phone read-model lookup failed:", error);
+  }
+
   const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
   if (!Array.isArray(allCustomers)) return null;
   return (
@@ -432,10 +502,13 @@ authApp.get("/profile/:userId", async (c) => {
     }
 
     // Storefront customers (Supabase) live in customer:* — same as login payload, not auth:user
-    const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
-    const customer = Array.isArray(allCustomers)
-      ? allCustomers.find((x: any) => x != null && x.userId === userId)
-      : null;
+    let customer = await findCustomerByUserIdFromReadModel(userId);
+    if (!customer) {
+      const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
+      customer = Array.isArray(allCustomers)
+        ? allCustomers.find((x: any) => x != null && x.userId === userId)
+        : null;
+    }
 
     if (customer && typeof customer === "object") {
       const { password: __, ...customerRest } = customer as Record<string, unknown> & {
@@ -1213,10 +1286,14 @@ authApp.post("/login", async (c) => {
     let customer = null;
     
     // Try to find existing customer by userId
-    const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
-    customer = Array.isArray(allCustomers) 
-      ? allCustomers.find((c: any) => c != null && c.userId === data.user!.id)
-      : null;
+    customer = await findCustomerByUserIdFromReadModel(data.user.id);
+    let allCustomers: any[] | null = null;
+    if (!customer) {
+      allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
+      customer = Array.isArray(allCustomers)
+        ? allCustomers.find((c: any) => c != null && c.userId === data.user!.id)
+        : null;
+    }
 
     // If no customer found, create one
     if (!customer) {
@@ -1229,13 +1306,17 @@ authApp.post("/login", async (c) => {
       const displayEmail = isSyntheticAuthEmail(loginEmail) ? "" : loginEmail;
       
       // 🔥 CHECK FOR DUPLICATE EMAIL (should never happen since auth succeeded, but double-check)
-      const duplicateEmail = displayEmail && Array.isArray(allCustomers)
-        ? allCustomers.find((c: any) => c != null && c.email && c.email.toLowerCase() === displayEmail.toLowerCase() && c.userId !== data.user!.id)
+      const duplicateEmail = displayEmail
+        ? await findCustomerByEmailFromReadModel(displayEmail)
         : null;
+      const duplicateEmailConflict =
+        duplicateEmail && duplicateEmail.userId !== data.user!.id
+          ? duplicateEmail
+          : null;
       
-      if (duplicateEmail) {
+      if (duplicateEmailConflict) {
         console.error(`❌ CRITICAL: Customer with email ${displayEmail} already exists but has different userId!`);
-        console.error(`   Existing customer: ${duplicateEmail.id} (userId: ${duplicateEmail.userId})`);
+        console.error(`   Existing customer: ${duplicateEmailConflict.id} (userId: ${duplicateEmailConflict.userId})`);
         console.error(`   Current auth user: ${data.user.id}`);
         return c.json({ 
           error: "Account conflict detected. Please contact support.",
@@ -1245,17 +1326,13 @@ authApp.post("/login", async (c) => {
       
       // 🔥 CHECK FOR DUPLICATE PHONE (if phone is provided)
       if (userPhone && userPhone.trim() !== "") {
-        const normalizedPhone = userPhone.replace(/\s+/g, ''); // Remove spaces for comparison
-        const duplicatePhone = Array.isArray(allCustomers)
-          ? allCustomers.find((c: any) => {
-              if (!c || !c.phone) return false;
-              const existingPhone = c.phone.replace(/\s+/g, '');
-              return existingPhone === normalizedPhone && c.userId !== data.user!.id;
-            })
-          : null;
+        const normalizedPhone = normalizeMyanmarPhone(userPhone) || userPhone.replace(/\s+/g, '');
+        const duplicatePhone = await findCustomerByPhone(normalizedPhone);
+        const duplicatePhoneConflict =
+          duplicatePhone && duplicatePhone.userId !== data.user!.id ? duplicatePhone : null;
         
-        if (duplicatePhone) {
-          console.error(`❌ Phone number ${userPhone} is already registered to another customer: ${duplicatePhone.id}`);
+        if (duplicatePhoneConflict) {
+          console.error(`❌ Phone number ${userPhone} is already registered to another customer: ${duplicatePhoneConflict.id}`);
           return c.json({ 
             error: "This phone number is already registered to another account.",
             details: `Phone ${userPhone} is already in use.`

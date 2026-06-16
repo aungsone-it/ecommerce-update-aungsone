@@ -56,7 +56,6 @@ import {
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 import { useAdminOrdersResyncOnVisible } from "../hooks/useAdminOrdersResyncOnVisible";
 import { PwaOrphanedOrdersRecovery } from "./PwaOrphanedOrdersRecovery";
-import { supabase } from "../contexts/AuthContext";
 import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import {
   refreshAdminInventoryAfterOrderStatusPut,
@@ -830,37 +829,6 @@ export function Orders({
   useAdminOrdersResyncOnVisible(() => {
     void loadOrders(true);
   });
-
-  // Realtime websocket refresh: admin orders table updates instantly on create/update/delete.
-  useEffect(() => {
-    let debounce: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => {
-        void loadOrders(true);
-      }, 240);
-    };
-    const channel = supabase
-      .channel("super-admin-orders-kv-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key.startsWith("order:")) return;
-          schedule();
-        }
-      )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.warn(`[Orders] KV realtime ${status} — tab-focus refetch active`);
-        }
-      });
-    return () => {
-      window.clearTimeout(debounce);
-      void supabase.removeChannel(channel);
-    };
-  }, [loadOrders]);
 
   const uniqueVendors =
     ordersAggregates?.uniqueVendors?.length ?

@@ -33,7 +33,6 @@ import {
 } from "../../utils/vendorAuthCookie";
 import { clearCachedVendorHostSlug } from "../../utils/vendorHostResolution";
 import { isRenderableImageSrc, pickStoreLogo } from "../../utils/renderableImageSrc";
-import { supabase } from "../../contexts/AuthContext";
 import { getVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
 import { buildVendorSubdomainHostname } from "../../utils/platformApexHost";
 import { useLanguage } from "../../contexts/LanguageContext";
@@ -211,9 +210,6 @@ export function VendorAdminSettings({
 
   // Live sync: vendor settings/logo updates from other tabs/devices should appear immediately.
   useEffect(() => {
-    const storefrontKey = `vendor_storefront_${vendorId}`;
-    const vendorSettingsKey = `vendor_settings:${vendorId}`;
-    const vendorKey = `vendor:${vendorId}`;
     const scheduleReload = () => {
       if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
       realtimeDebounceRef.current = setTimeout(() => {
@@ -221,27 +217,14 @@ export function VendorAdminSettings({
         void loadSettings(true);
       }, 240);
     };
-    const channel = supabase
-      .channel(`vendor-admin-settings-kv-realtime-${vendorId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key) return;
-          if (key === storefrontKey || key === vendorSettingsKey || key === vendorKey) {
-            scheduleReload();
-          }
-        }
-      )
-      .subscribe();
+    window.addEventListener("vendorDataUpdated", scheduleReload);
 
     return () => {
       if (realtimeDebounceRef.current) {
         clearTimeout(realtimeDebounceRef.current);
         realtimeDebounceRef.current = null;
       }
-      void supabase.removeChannel(channel);
+      window.removeEventListener("vendorDataUpdated", scheduleReload);
     };
   }, [vendorId]);
 

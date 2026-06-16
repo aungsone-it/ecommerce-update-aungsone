@@ -68,7 +68,6 @@ import {
   findVendorRowForProductSelectionEntry,
 } from "../utils/vendorDisplay";
 import { useAuth } from "../contexts/AuthContext";
-import { supabase } from "../contexts/AuthContext";
 import { adminOrdersUpdatedStorageKey } from "../utils/adminOrdersRealtime";
 
 interface ProductListProps {
@@ -567,80 +566,6 @@ export function ProductList({
     },
     [adminVendorsRows]
   );
-
-  // Realtime bridge: product pool + vendor profile/settings (badge labels stay in sync).
-  useEffect(() => {
-    let debounceProducts: ReturnType<typeof setTimeout> | undefined;
-    let debounceVendors: ReturnType<typeof setTimeout> | undefined;
-    const scheduleProducts = () => {
-      if (skipProductsRealtimeReloadRef.current) return;
-      window.clearTimeout(debounceProducts);
-      debounceProducts = window.setTimeout(() => {
-        void loadProductPage(true, { silent: true });
-      }, 280);
-    };
-    const scheduleVendors = () => {
-      window.clearTimeout(debounceVendors);
-      debounceVendors = window.setTimeout(() => {
-        moduleCache.invalidate(MODULE_CACHE_KEYS.ADMIN_VENDORS);
-        void (async () => {
-          try {
-            const vendorsList = await getCachedAdminVendorsForProductList(true);
-            if (Array.isArray(vendorsList)) {
-              applyVendorsListToState(vendorsList);
-            }
-          } catch {
-            /* ignore */
-          }
-        })();
-      }, 280);
-    };
-    const channel = supabase
-      .channel("admin-products-kv-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (key.startsWith("product:")) {
-            if (payload.eventType === "DELETE") {
-              const id = key.slice("product:".length);
-              setProducts((prev) => {
-                const deleted = prev.find((p) => p.id === id);
-                if (!deleted) return prev;
-                const delta = statusCountDeltaForProduct(deleted);
-                setAdminTotal((total) => Math.max(0, total - 1));
-                setStatusCounts((counts) => ({
-                  all: Math.max(0, counts.all - 1),
-                  active: Math.max(0, counts.active - delta.active),
-                  offShelf: Math.max(0, counts.offShelf - delta.offShelf),
-                }));
-                return prev.filter((p) => p.id !== id);
-              });
-              removeAdminProductsFromCaches([id]);
-              broadcastPlatformProductsDeleted([id]);
-              SmartCache.delete(CACHE_KEYS.STOREFRONT_PRODUCTS);
-              return;
-            }
-            scheduleProducts();
-            return;
-          }
-          if (key.startsWith("vendor_settings:")) {
-            scheduleVendors();
-            return;
-          }
-          if (key.startsWith("vendor:") && !key.startsWith("vendor:audience:")) {
-            scheduleVendors();
-          }
-        }
-      )
-      .subscribe();
-    return () => {
-      window.clearTimeout(debounceProducts);
-      window.clearTimeout(debounceVendors);
-      void supabase.removeChannel(channel);
-    };
-  }, [loadProductPage, applyVendorsListToState]);
 
   const handleSearchInputChange = useCallback(
     (value: string) => {

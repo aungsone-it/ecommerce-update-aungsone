@@ -29,6 +29,15 @@ The values must match. Monitoring endpoints reject requests without `x-admin-ope
 
 ## 3. Validate
 
+Preferred repeatable check:
+
+```bash
+SUPABASE_PROJECT_REF=<project-ref> \
+SUPABASE_ANON_KEY=<anon-key> \
+EDGE_ADMIN_OPERATION_SECRET=<secret> \
+npm run validate:read-model
+```
+
 After deployment, call:
 
 ```bash

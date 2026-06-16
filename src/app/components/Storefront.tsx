@@ -2721,28 +2721,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           .catch(() => {});
       }, 260);
     };
-    const channel = supabase
-      .channel(`storefront-user-orders-kv-${orderApiUserId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key.startsWith("order:")) return;
-          refreshOrders();
-        }
-      )
-      .subscribe();
     const onCustomerOrdersUpdated = (event: Event) => {
       const detail = (event as CustomEvent<{ userId?: string }>).detail;
       if (String(detail?.userId || "").trim() !== String(orderApiUserId).trim()) return;
       refreshOrders();
     };
+    window.addEventListener("adminOrdersUpdated", refreshOrders);
     window.addEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
     return () => {
       window.clearTimeout(debounce);
+      window.removeEventListener("adminOrdersUpdated", refreshOrders);
       window.removeEventListener("customerOrdersUpdated", onCustomerOrdersUpdated as EventListener);
-      void supabase.removeChannel(channel);
     };
   }, [orderApiUserId, selectedOrder, viewMode]);
 

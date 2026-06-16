@@ -1,4 +1,3 @@
-import { supabase } from "../contexts/AuthContext";
 import { moduleCache, CACHE_KEYS } from "./module-cache";
 import { removePersistedKey, LS_STOREFRONT_SETTINGS } from "./persistedLocalCache";
 import { invalidateStorefrontPolicyCache } from "../hooks/useStorefrontPolicyData";
@@ -292,6 +291,10 @@ export function subscribeStorefrontPolicyUpdates(
 
   window.addEventListener(STOREFRONT_POLICY_UPDATED_EVENT, onCustom);
   window.addEventListener("vendorSettingsUpdated", onVendorSettings);
+  window.addEventListener("vendorDataUpdated", scheduleRefresh);
+  if (includePlatform) {
+    window.addEventListener("marketingDataUpdated", scheduleRefresh);
+  }
 
   let bc: BroadcastChannel | null = null;
   try {
@@ -303,53 +306,15 @@ export function subscribeStorefrontPolicyUpdates(
     /* ignore */
   }
 
-  const channel = supabase
-    .channel(`storefront-policy-kv-${options.storeSlug || options.vendorId || "platform"}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "kv_store_16010b6f" },
-      (payload: { new?: { key?: string; value?: unknown }; old?: { key?: string } }) => {
-        const key = String(payload?.new?.key || payload?.old?.key || "");
-        if (!key) return;
-
-        const isPlatform = includePlatform && key === PLATFORM_KV_KEY;
-        const isVendorStorefront = key.startsWith("vendor_storefront_");
-        if (!isPlatform && !isVendorStorefront) return;
-
-        if (payload?.new?.value != null) {
-          emitLivePatches(buildStorefrontPolicyLivePatchesFromKv(key, payload.new.value));
-        }
-
-        if (isPlatform) {
-          scheduleRefresh();
-          return;
-        }
-
-        if (isVendorStorefront) {
-          const snapshot = parseStorefrontPolicyKvSnapshot(key, payload?.new?.value);
-          const kvVendorId = key.slice("vendor_storefront_".length);
-          const kvSlug = snapshot?.storeSlug;
-          const watchVendorId = String(options.vendorId || "").trim();
-          const watchSlug = normalizeSlug(options.storeSlug);
-
-          if (
-            (watchVendorId && watchVendorId === kvVendorId) ||
-            (watchSlug && kvSlug && watchSlug === normalizeSlug(kvSlug)) ||
-            (!watchVendorId && !watchSlug)
-          ) {
-            scheduleRefresh();
-          }
-        }
-      }
-    )
-    .subscribe();
-
   return () => {
     if (debounce) clearTimeout(debounce);
     if (livePatchTimer) clearTimeout(livePatchTimer);
     window.removeEventListener(STOREFRONT_POLICY_UPDATED_EVENT, onCustom);
     window.removeEventListener("vendorSettingsUpdated", onVendorSettings);
+    window.removeEventListener("vendorDataUpdated", scheduleRefresh);
+    if (includePlatform) {
+      window.removeEventListener("marketingDataUpdated", scheduleRefresh);
+    }
     if (bc) bc.close();
-    void supabase.removeChannel(channel);
   };
 }

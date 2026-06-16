@@ -89,7 +89,6 @@ import {
 } from "../../utils/adminOrdersRealtime";
 import { useAdminOrdersResyncOnVisible } from "../../hooks/useAdminOrdersResyncOnVisible";
 import { broadcastOrderStatusUpdate } from "../../utils/ordersRealtime";
-import { supabase } from "../../contexts/AuthContext";
 import { PwaOrphanedOrdersRecovery } from "../PwaOrphanedOrdersRecovery";
 
 function formatMmk(n: number): string {
@@ -425,37 +424,6 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
       window.removeEventListener("storage", onStorage);
     };
   }, []);
-
-  // Realtime websocket refresh: vendor admin orders table updates instantly on order mutations.
-  useEffect(() => {
-    let debounce: ReturnType<typeof setTimeout> | undefined;
-    const bump = () => {
-      window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => {
-        setOrdersRefreshTick((n) => n + 1);
-      }, 240);
-    };
-    const channel = supabase
-      .channel(`vendor-admin-orders-kv-realtime-${vendorId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "kv_store_16010b6f" },
-        (payload: any) => {
-          const key = String(payload?.new?.key || payload?.old?.key || "");
-          if (!key.startsWith("order:")) return;
-          bump();
-        }
-      )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          console.warn(`[VendorAdminOrders] KV realtime ${status} — tab-focus refetch active`);
-        }
-      });
-    return () => {
-      window.clearTimeout(debounce);
-      void supabase.removeChannel(channel);
-    };
-  }, [vendorId]);
 
   useAdminOrdersResyncOnVisible(() => {
     setOrdersRefreshTick((n) => n + 1);
