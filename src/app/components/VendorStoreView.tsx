@@ -66,6 +66,7 @@ import {
   useMemo,
   startTransition,
   type ChangeEvent,
+  type KeyboardEvent,
 } from "react";
 import { useNavigate, useLocation, matchPath } from "react-router";
 import { 
@@ -591,6 +592,24 @@ const VENDOR_SEARCH_PAGE_SIZE = 100;
 const VENDOR_SEARCH_MIN_SERVER_CHARS = 3;
 /** Ms after last keystroke before server catalog fetch (with `q`); category changes refetch immediately. */
 const VENDOR_SEARCH_DEBOUNCE_MS = 450;
+/** Live typeahead on product detail — only searches already-loaded catalog rows. */
+const VENDOR_SEARCH_PREVIEW_LIMIT = 8;
+
+function productMatchesVendorClientSearch(
+  product: { name?: string; sku?: string },
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    String(product.name || "")
+      .toLowerCase()
+      .includes(q) ||
+    String(product.sku || "")
+      .toLowerCase()
+      .includes(q)
+  );
+}
 
 type VendorCatalogSlice = {
   products: Product[];
@@ -2336,6 +2355,53 @@ export function VendorStoreView({
 
   const closeVendorMobileNav = useCallback(() => setVendorMobileNavOpen(false), []);
 
+  const handleVendorSearchInputChange = useCallback((value: string) => {
+    setSearchQuery(value);
+  }, []);
+
+  const commitVendorSearch = useCallback(() => {
+    const raw = searchQuery.trim();
+    setDebouncedVendorServerQ(
+      raw.length >= VENDOR_SEARCH_MIN_SERVER_CHARS ? raw : ""
+    );
+    if (!raw) return;
+    if (isVendorProductDetailPath || selectedProduct) {
+      setSelectedProduct(null);
+      setSelectedCategory("all");
+      navigateStoreHome();
+    }
+    setVendorMobileNavOpen(false);
+    setVendorMobileSearchOpen(false);
+  }, [
+    isVendorProductDetailPath,
+    navigateStoreHome,
+    searchQuery,
+    selectedProduct,
+  ]);
+
+  const handleVendorSearchKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      commitVendorSearch();
+    },
+    [commitVendorSearch]
+  );
+
+  const openVendorProductFromSearch = useCallback(
+    (product: Product) => {
+      setSearchQuery("");
+      setDebouncedVendorServerQ("");
+      setVendorMobileNavOpen(false);
+      setVendorMobileSearchOpen(false);
+      const segment = buildVendorProductUrlSegment(product);
+      navigate(`${storeBase}/product/${encodeURIComponent(segment)}`, {
+        state: { vendorProduct: product },
+      });
+    },
+    [navigate, storeBase]
+  );
+
   const selectAllProductsNav = useCallback(() => {
     setSearchQuery("");
     setSelectedCategory("all");
@@ -2414,7 +2480,8 @@ export function VendorStoreView({
               <Input
                 placeholder="Search products..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => handleVendorSearchInputChange(e.target.value)}
+                onKeyDown={handleVendorSearchKeyDown}
                 className="pl-4 pr-12 h-11 rounded-full border-slate-200/90 bg-gradient-to-r from-slate-50 to-white shadow-sm transition-all focus-visible:border-violet-300 focus-visible:ring-violet-200/70"
               />
             </div>
@@ -2577,15 +2644,55 @@ export function VendorStoreView({
             <Input
               placeholder="Search products..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleVendorSearchInputChange(e.target.value)}
+              onKeyDown={handleVendorSearchKeyDown}
               className="pl-4 pr-12 h-11 rounded-full border-slate-200 bg-gradient-to-r from-slate-50 to-white shadow-sm w-full transition-all focus-visible:border-violet-300 focus-visible:ring-violet-200/70"
               autoFocus
             />
           </div>
         </div>
-        <p className="p-4 text-sm text-slate-500">
-          Results filter as you type. Close to return to the store.
-        </p>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {searchQuery.trim() ? (
+            <>
+              {products
+                .filter((p) => productMatchesVendorClientSearch(p, searchQuery))
+                .slice(0, VENDOR_SEARCH_PREVIEW_LIMIT)
+                .map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => openVendorProductFromSearch(product)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-slate-200 p-3 text-left hover:bg-slate-50 transition-colors"
+                  >
+                    {product.images?.[0] ? (
+                      <CacheFriendlyImg
+                        src={product.images[0]}
+                        alt=""
+                        className="h-12 w-12 rounded-lg object-cover shrink-0"
+                      />
+                    ) : (
+                      <div className="h-12 w-12 rounded-lg bg-slate-100 shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-slate-900 line-clamp-2">{product.name}</p>
+                      {product.sku ? (
+                        <p className="text-xs text-slate-500 mt-0.5">{product.sku}</p>
+                      ) : null}
+                    </div>
+                  </button>
+                ))}
+              <p className="text-sm text-slate-500 pt-2">
+                {products.some((p) => productMatchesVendorClientSearch(p, searchQuery))
+                  ? "Press Enter to search the full catalog."
+                  : "No matches in loaded products. Press Enter to search the full catalog."}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-500">
+              Type to preview loaded products. Press Enter to search the full catalog.
+            </p>
+          )}
+        </div>
       </div>
     );
   };
@@ -4077,6 +4184,7 @@ export function VendorStoreView({
   }, [vendorId, savedPage, applyStoreNameIfPresent, applyMetaPixelFromCatalog]);
 
   useEffect(() => {
+    if (isVendorProductDetailPath && selectedProduct) return;
     const t = setTimeout(() => {
       const raw = searchQuery.trim();
       setDebouncedVendorServerQ(
@@ -4084,7 +4192,7 @@ export function VendorStoreView({
       );
     }, VENDOR_SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [searchQuery]);
+  }, [searchQuery, isVendorProductDetailPath, selectedProduct]);
 
   useLayoutEffect(() => {
     if (savedPage) return;
@@ -4890,15 +4998,18 @@ export function VendorStoreView({
     savedWishlistPage,
   ]);
 
+  const vendorCachedSearchMatches = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return [];
+    return products
+      .filter((product) => productMatchesVendorClientSearch(product, q))
+      .slice(0, VENDOR_SEARCH_PREVIEW_LIMIT);
+  }, [products, searchQuery]);
+
   /** Instant client filter on loaded rows (name/SKU) — pairs with debounced server fetch for q. */
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
-      const matchesSearch =
-        !searchQuery.trim() ||
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(product.sku || "")
-          .toLowerCase()
-          .includes(searchQuery.toLowerCase());
+      const matchesSearch = productMatchesVendorClientSearch(product, searchQuery);
       let matchesCategory = true;
       if (catalogCategoryForFetch !== "all") {
         if (isVendorUncategorizedFilter(catalogCategoryForFetch)) {
@@ -5142,7 +5253,12 @@ export function VendorStoreView({
   }
 
   // Product Detail View (inline, not modal)
-  if (selectedProduct && vendorViewMode === "storefront" && !savedPage) {
+  if (
+    selectedProduct &&
+    vendorViewMode === "storefront" &&
+    !savedPage &&
+    isVendorProductDetailPath
+  ) {
     const dd = vendorDetailDisplay;
     const galleryImages =
       dd && dd.images.length > 0 ? dd.images : selectedProduct.images?.length ? selectedProduct.images : [];
@@ -5230,9 +5346,50 @@ export function VendorStoreView({
                   <Input
                     placeholder="Search products..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleVendorSearchInputChange(e.target.value)}
+                    onKeyDown={handleVendorSearchKeyDown}
                     className="pl-10 h-10 rounded-lg bg-slate-50 border-slate-200 focus:bg-white"
                   />
+                  {searchQuery.trim() ? (
+                    <div className="absolute top-full left-0 right-0 z-50 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                      {vendorCachedSearchMatches.length > 0 ? (
+                        <ul className="max-h-72 overflow-y-auto py-1">
+                          {vendorCachedSearchMatches.map((product) => (
+                            <li key={product.id}>
+                              <button
+                                type="button"
+                                onClick={() => openVendorProductFromSearch(product)}
+                                className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                              >
+                                {product.images?.[0] ? (
+                                  <CacheFriendlyImg
+                                    src={product.images[0]}
+                                    alt=""
+                                    className="h-10 w-10 rounded-md object-cover shrink-0"
+                                  />
+                                ) : (
+                                  <div className="h-10 w-10 rounded-md bg-slate-100 shrink-0" />
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-slate-900 truncate">{product.name}</p>
+                                  {product.sku ? (
+                                    <p className="text-xs text-slate-500">{product.sku}</p>
+                                  ) : null}
+                                </div>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="px-3 py-2.5 text-sm text-slate-500">
+                          No matches in loaded products.
+                        </p>
+                      )}
+                      <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
+                        Press Enter to search the full catalog
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -5988,7 +6145,8 @@ export function VendorStoreView({
                 <Input
                   placeholder="Search products..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleVendorSearchInputChange(e.target.value)}
+                  onKeyDown={handleVendorSearchKeyDown}
                   className="pl-10 h-10 rounded-lg bg-slate-50 border-slate-200 focus:bg-white"
                 />
               </div>
