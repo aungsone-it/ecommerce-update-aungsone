@@ -29,6 +29,11 @@ import {
 } from "./ui/select";
 import { useCart } from "./CartContext";
 import { useAuth } from "../contexts/AuthContext";
+import {
+  ensureMetaPixelForVendor,
+  trackMetaInitiateCheckout,
+  trackMetaPurchaseOnce,
+} from "../utils/metaPixel";
 import { supabase } from "../contexts/AuthContext";
 import { toast } from "sonner";
 import { QRCodeCanvas } from "qrcode.react";
@@ -110,6 +115,8 @@ interface CheckoutProps {
   storeName: string;
   vendorId?: string;
   vendorName?: string;
+  /** Meta Pixel ID from vendor storefront settings (optional — resolved from API when omitted). */
+  metaPixelId?: string;
   /** Vendor storefront session (migoo-user) — must match addresses page so default shipping loads. */
   accountUser?: { id?: string; userId?: string; email?: string; name?: string; phone?: string } | null;
   /** After a successful order — e.g. invalidate cached order history for instant refresh on profile. */
@@ -649,11 +656,21 @@ async function persistPwaOrderIfMissing(params: {
   return response.status === 404 ? null : response;
 }
 
+function metaPixelLineItems(items: any[]): Array<{ id: string; quantity: number }> {
+  return items
+    .map((item) => ({
+      id: String(item?.productId || item?.id || "").trim(),
+      quantity: Math.max(1, Number(item?.quantity) || 1),
+    }))
+    .filter((row) => row.id);
+}
+
 export function Checkout({
   onBack,
   storeName,
   vendorId,
   vendorName,
+  metaPixelId,
   accountUser = null,
   onOrderPlacedSuccess,
 }: CheckoutProps) {
@@ -1196,6 +1213,48 @@ export function Checkout({
   const summaryDisplayTotal = checkoutSubtotal;
   const payableSubtotal = Math.max(Number(summaryDisplayTotal || 0), 0);
   const finalTotal = Math.max(payableSubtotal - discountAmount, 0);
+
+  useEffect(() => {
+    if (step !== "checkout") return;
+    let cancelled = false;
+    void (async () => {
+      const id = await ensureMetaPixelForVendor(vendorId || storeName || "", metaPixelId);
+      if (cancelled || !id || checkoutItems.length === 0) return;
+      trackMetaInitiateCheckout(metaPixelLineItems(checkoutItems), finalTotal);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [vendorId, storeName, metaPixelId, step, checkoutItems, finalTotal]);
+
+  useEffect(() => {
+    if (step !== "success" || !orderNumber) return;
+    let cancelled = false;
+    void (async () => {
+      await ensureMetaPixelForVendor(vendorId || storeName || "", metaPixelId);
+      if (cancelled) return;
+      const items = confirmedItems.length > 0 ? confirmedItems : checkoutItems;
+      const total = confirmedTotal > 0 ? confirmedTotal : finalTotal;
+      trackMetaPurchaseOnce({
+        orderId: orderNumber,
+        value: total,
+        items: metaPixelLineItems(items),
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    step,
+    orderNumber,
+    confirmedItems,
+    confirmedTotal,
+    checkoutItems,
+    finalTotal,
+    vendorId,
+    storeName,
+    metaPixelId,
+  ]);
 
   useEffect(() => {
     const onSummaryRoute = /\/summary$/.test(location.pathname);

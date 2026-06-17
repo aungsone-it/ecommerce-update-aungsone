@@ -1453,6 +1453,8 @@ export type VendorStorefrontProductsResult = {
   logo: string;
   /** Public contact from vendor storefront settings (matches marketplace header). */
   storePhone?: string;
+  /** Meta (Facebook) Pixel ID for this vendor's ads — from storefront settings. */
+  metaPixelId?: string;
   /** KV vendor id after slug resolution — use for matching wishlist rows to this storefront. */
   resolvedVendorId?: string;
   total: number;
@@ -1540,6 +1542,10 @@ export async function fetchVendorProducts(
     storePhone:
       typeof data.storePhone === "string" && data.storePhone.trim()
         ? data.storePhone.trim()
+        : undefined,
+    metaPixelId:
+      typeof data.metaPixelId === "string" && data.metaPixelId.trim()
+        ? data.metaPixelId.trim()
         : undefined,
     resolvedVendorId:
       typeof data.resolvedVendorId === "string" && data.resolvedVendorId.trim()

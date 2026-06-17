@@ -47,6 +47,13 @@ import {
   showLowStockBadge,
 } from "../utils/productInventory";
 import { notifyStorefrontCustomerRegistered } from "../utils/customersRealtime";
+import {
+  applyMetaPixelIdFromPayload,
+  initMetaPixel,
+  trackMetaAddToCart,
+  trackMetaPageView,
+  trackMetaViewContent,
+} from "../utils/metaPixel";
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
@@ -1326,6 +1333,7 @@ export function VendorStoreView({
     return readCachedVendorBrandingBySlug(vendorId).storeLogo;
   });
   const [storePhone, setStorePhone] = useState<string>(vendorHomeSnapshot.storePhone);
+  const [metaPixelId, setMetaPixelId] = useState<string | undefined>(undefined);
   /** Slide-out nav on small screens (account, browse, wishlist — hamburger on the right like /store). */
   const [vendorMobileNavOpen, setVendorMobileNavOpen] = useState(false);
   /** Full-screen search on mobile — matches main marketplace header search icon. */
@@ -1351,6 +1359,32 @@ export function VendorStoreView({
     if (!trimmed) return;
     setStoreName(trimmed);
   }, [vendorId]);
+
+  const applyMetaPixelFromCatalog = useCallback((payload: { metaPixelId?: string | null } | null | undefined) => {
+    setMetaPixelId((prev) => {
+      const next = applyMetaPixelIdFromPayload(prev, payload);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!metaPixelId) return;
+    initMetaPixel(metaPixelId);
+    trackMetaPageView(location.pathname);
+  }, [metaPixelId, location.pathname]);
+
+  useEffect(() => {
+    if (!metaPixelId || !selectedProduct) return;
+    const price =
+      typeof selectedProduct.price === "number"
+        ? selectedProduct.price
+        : parseFloat(String(selectedProduct.price || "").replace(/[^0-9.-]/g, "")) || undefined;
+    trackMetaViewContent({
+      id: String(selectedProduct.id),
+      name: String(selectedProduct.name || selectedProduct.sku || "Product"),
+      price: Number.isFinite(price) ? price : undefined,
+    });
+  }, [metaPixelId, selectedProduct?.id]);
 
   const isCheckoutRoute = useMemo(
     () => isVendorCheckoutOrSummaryPath(location.pathname, storeBase),
@@ -3566,6 +3600,7 @@ export function VendorStoreView({
             ) {
               setCanonicalStoreSlug(fromLsBranding.storeSlug.trim());
             }
+            applyMetaPixelFromCatalog(fromLsBranding);
           }
           return true;
         }
@@ -3604,6 +3639,7 @@ export function VendorStoreView({
             if (typeof fromLs.storeSlug === "string" && fromLs.storeSlug.trim()) {
               setCanonicalStoreSlug(fromLs.storeSlug.trim());
             }
+            applyMetaPixelFromCatalog(fromLs);
             if (persistEligible) {
               rememberVendorCatalogSlice(cat, slice);
             }
@@ -3649,6 +3685,7 @@ export function VendorStoreView({
       applyStoreNameIfPresent(productsData.storeName);
       setStoreLogo((prev) => productsData.logo || prev);
       setStorePhone(productsData.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
+      applyMetaPixelFromCatalog(productsData);
       setCanonicalVendorId(productsData.resolvedVendorId ?? vendorId);
       if (productsData.storeSlug) {
         setCanonicalStoreSlug(productsData.storeSlug);
@@ -3668,6 +3705,7 @@ export function VendorStoreView({
       vendorCatalogServerCategory,
       savedPage,
       applyStoreNameIfPresent,
+      applyMetaPixelFromCatalog,
       rememberVendorCatalogSlice,
       applyVendorCatalogSlice,
       shouldApplyCachedCatalogSlice,
@@ -4013,8 +4051,9 @@ export function VendorStoreView({
       if (typeof fromLs.storePhone === "string" && fromLs.storePhone.trim()) {
         setStorePhone(fromLs.storePhone.trim());
       }
+      applyMetaPixelFromCatalog(fromLs);
     }
-  }, [savedPage, vendorId]);
+  }, [savedPage, vendorId, applyMetaPixelFromCatalog]);
 
   useEffect(() => {
     if (!savedPage) return;
@@ -4027,6 +4066,7 @@ export function VendorStoreView({
         applyStoreNameIfPresent(data.storeName);
         setStoreLogo((prev) => data.logo || prev);
         setStorePhone(data.storePhone?.trim() || VENDOR_DEFAULT_STORE_PHONE);
+        applyMetaPixelFromCatalog(data);
       } catch {
         if (!cancelled) setCanonicalVendorId(vendorId);
       }
@@ -4034,7 +4074,7 @@ export function VendorStoreView({
     return () => {
       cancelled = true;
     };
-  }, [vendorId, savedPage, applyStoreNameIfPresent]);
+  }, [vendorId, savedPage, applyStoreNameIfPresent, applyMetaPixelFromCatalog]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -4450,6 +4490,15 @@ export function VendorStoreView({
         },
         qty
       );
+      if (metaPixelId) {
+        initMetaPixel(metaPixelId);
+        trackMetaAddToCart({
+          id: String(product.id),
+          name: String(product.name || sku),
+          price: Number(price) || 0,
+          quantity: qty,
+        });
+      }
       setQuantity(1);
       if (typeof window !== "undefined" && window.innerWidth >= 768) {
         setCartOpen(true);
@@ -5082,6 +5131,7 @@ export function VendorStoreView({
           storeName={storeName}
           vendorId={vendorId}
           vendorName={storeName}
+          metaPixelId={metaPixelId}
           accountUser={user}
           onOrderPlacedSuccess={(ctx) => {
             if (ctx?.userId) invalidateCustomerOrdersCache(ctx.userId);

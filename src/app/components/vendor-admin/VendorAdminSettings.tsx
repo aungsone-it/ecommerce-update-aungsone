@@ -36,6 +36,7 @@ import { isRenderableImageSrc, pickStoreLogo } from "../../utils/renderableImage
 import { getVendorSubdomainBase } from "../../utils/vendorSubdomainBase";
 import { buildVendorSubdomainHostname } from "../../utils/platformApexHost";
 import { useLanguage } from "../../contexts/LanguageContext";
+import { normalizeMetaPixelId } from "../../utils/metaPixel";
 import {
   isEdgeOneDeployment,
   isEdgeOnePlatformValue,
@@ -59,6 +60,8 @@ interface StoreSettings {
   customDomain: string;
   termsContent?: string;
   privacyPolicyContent?: string;
+  /** Meta (Facebook) Pixel ID — numeric, per-vendor ads tracking on the public storefront. */
+  metaPixelId?: string;
   domainStatus: 'none' | 'pending' | 'verified' | 'active';
   dnsVerified: boolean;
   isActive: boolean;
@@ -119,6 +122,10 @@ export function VendorAdminSettings({
   });
   const [loading, setLoading] = useState(!cachedSettings);
   const [saving, setSaving] = useState(false);
+  const hasLoadedOnceRef = useRef(!!cachedSettings);
+  /** Ignore self-triggered realtime/cache events right after a successful save. */
+  const suppressRemoteReloadUntilRef = useRef(0);
+  const loadSettingsRequestRef = useRef(0);
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [domainBusy, setDomainBusy] = useState<"prepare" | "verify" | "remove" | null>(null);
   const [domainDraft, setDomainDraft] = useState("");
@@ -148,10 +155,12 @@ export function VendorAdminSettings({
     loadSettings();
   }, [vendorId, vendorLogo]);
 
-  const loadSettings = async (forceRefresh = false) => {
-    if (!cacheManager.get(settingsCacheKey)) {
+  const loadSettings = async (forceRefresh = false, opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true || hasLoadedOnceRef.current;
+    if (!silent && !cacheManager.get(settingsCacheKey)) {
       setLoading(true);
     }
+    const requestId = ++loadSettingsRequestRef.current;
     try {
       if (forceRefresh) {
         cacheManager.clear(settingsCacheKey);
@@ -174,6 +183,7 @@ export function VendorAdminSettings({
         },
         { ttl: 60_000, staleWhileRevalidate: true }
       );
+      if (requestId !== loadSettingsRequestRef.current) return;
       if (data?.settings) {
         setBackendDeploymentPlatform(String(data.deploymentPlatform || ""));
         const rawLogo =
@@ -189,6 +199,7 @@ export function VendorAdminSettings({
         }
         setSettings(nextSettings);
         cacheManager.set(settingsCacheKey, nextSettings);
+        hasLoadedOnceRef.current = true;
         setDomainDraft(String(data.settings.customDomain || "").trim() || "");
         const dv = data.settings.domainVerification;
         if (dv?.txtName && dv?.txtValue) {
@@ -204,27 +215,32 @@ export function VendorAdminSettings({
     } catch (error) {
       console.error("Failed to load settings:", error);
     } finally {
-      setLoading(false);
+      if (requestId === loadSettingsRequestRef.current) {
+        setLoading(false);
+      }
     }
+  };
+
+  const scheduleBackgroundReload = () => {
+    if (Date.now() < suppressRemoteReloadUntilRef.current) return;
+    if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
+    realtimeDebounceRef.current = setTimeout(() => {
+      realtimeDebounceRef.current = null;
+      if (Date.now() < suppressRemoteReloadUntilRef.current) return;
+      void loadSettings(true, { silent: true });
+    }, 240);
   };
 
   // Live sync: vendor settings/logo updates from other tabs/devices should appear immediately.
   useEffect(() => {
-    const scheduleReload = () => {
-      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current);
-      realtimeDebounceRef.current = setTimeout(() => {
-        realtimeDebounceRef.current = null;
-        void loadSettings(true);
-      }, 240);
-    };
-    window.addEventListener("vendorDataUpdated", scheduleReload);
+    window.addEventListener("vendorDataUpdated", scheduleBackgroundReload);
 
     return () => {
       if (realtimeDebounceRef.current) {
         clearTimeout(realtimeDebounceRef.current);
         realtimeDebounceRef.current = null;
       }
-      window.removeEventListener("vendorDataUpdated", scheduleReload);
+      window.removeEventListener("vendorDataUpdated", scheduleBackgroundReload);
     };
   }, [vendorId]);
 
@@ -247,7 +263,7 @@ export function VendorAdminSettings({
           ...(patch.kind === "privacy" ? { privacyPolicyContent: patch.content } : {}),
         }));
       },
-      onUpdate: () => void loadSettings(true),
+      onUpdate: scheduleBackgroundReload,
     });
   }, [vendorId, settings.storeSlug]);
 
@@ -255,6 +271,12 @@ export function VendorAdminSettings({
     setSaving(true);
     try {
       const { domainVerification: _dv, ...settingsForSave } = settings;
+      const pixel = normalizeMetaPixelId(settingsForSave.metaPixelId);
+      if (pixel) {
+        settingsForSave.metaPixelId = pixel;
+      } else {
+        delete settingsForSave.metaPixelId;
+      }
       const response = await fetch(
         `${API_BASE_URL}/vendor/storefront`,
         {
@@ -277,6 +299,8 @@ export function VendorAdminSettings({
         const normalized = { ...saved, logo: pickStoreLogo(saved.logo, "") };
         setSettings(normalized);
         cacheManager.set(settingsCacheKey, normalized);
+        hasLoadedOnceRef.current = true;
+        suppressRemoteReloadUntilRef.current = Date.now() + 1500;
 
         // Also update vendor record with new store name, slug, and logo
         const vendorUpdateResponse = await fetch(
@@ -755,6 +779,27 @@ export function VendorAdminSettings({
               rows={3}
               className="bg-white border-slate-200 resize-none"
             />
+          </div>
+
+          {/* Meta Pixel */}
+          <div>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">
+              {t("vendorAdmin.settings.metaPixelId")}
+            </Label>
+            <Input
+              value={settings.metaPixelId || ""}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  metaPixelId: e.target.value.replace(/[^\d]/g, ""),
+                })
+              }
+              placeholder={t("vendorAdmin.settings.metaPixelIdPlaceholder")}
+              inputMode="numeric"
+              autoComplete="off"
+              className="bg-white border-slate-200 font-mono text-sm"
+            />
+            <p className="text-xs text-slate-500 mt-1.5">{t("vendorAdmin.settings.metaPixelIdHint")}</p>
           </div>
         </div>
       </div>

@@ -480,6 +480,10 @@ export const zhTranslations: Record<string, string> = {
     'vendorAdmin.settings.contactEmailHint': '客户将使用此邮箱与您联系',
     'vendorAdmin.settings.phoneNumber': '电话号码',
     'vendorAdmin.settings.storeAddress': '店铺地址',
+    'vendorAdmin.settings.metaPixelId': 'Meta Pixel ID',
+    'vendorAdmin.settings.metaPixelIdPlaceholder': '例如 123456789012345',
+    'vendorAdmin.settings.metaPixelIdHint':
+      '可选。在 Meta 事件管理工具 → 您的 Pixel → 设置 中获取。仅用于本店铺的 Facebook/Instagram 广告追踪。',
     'vendorAdmin.settings.previewStore': '预览店铺',
     'vendorAdmin.settings.saveChanges': '保存更改',
     'vendorAdmin.settings.saving': '正在保存...',

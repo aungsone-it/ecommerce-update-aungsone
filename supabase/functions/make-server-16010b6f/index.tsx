@@ -10449,6 +10449,15 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     // Slug always derived from current store name (a-z0-9 only) — same vendor reuses their slug if still "free"
     const finalSlug = await allocateUniqueVendorSlugFromName(nameForSlug, settings.vendorId);
     const mergedSettings = { ...settings, storeSlug: finalSlug };
+    const rawPixel =
+      typeof (mergedSettings as Record<string, unknown>).metaPixelId === "string"
+        ? String((mergedSettings as Record<string, unknown>).metaPixelId).trim()
+        : "";
+    if (rawPixel && /^\d{5,20}$/.test(rawPixel)) {
+      (mergedSettings as Record<string, unknown>).metaPixelId = rawPixel;
+    } else {
+      delete (mergedSettings as Record<string, unknown>).metaPixelId;
+    }
     await kv.set(key, mergedSettings);
     const nextStorefrontLogo =
       typeof (mergedSettings as any).logo === "string" ? String((mergedSettings as any).logo).trim() : "";
@@ -11680,6 +11689,11 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
       pickPhone((vendorSettings as Record<string, unknown>)?.contactPhone) ||
       pickPhone(vendorData?.phone);
     const storePhone = storePhoneRaw || "+95 9 XXX XXX XXX";
+    const rawMetaPixelId =
+      typeof (storefrontSettings as Record<string, unknown> | null)?.metaPixelId === "string"
+        ? String((storefrontSettings as Record<string, unknown>).metaPixelId).trim()
+        : "";
+    const metaPixelId = /^\d{5,20}$/.test(rawMetaPixelId) ? rawMetaPixelId : "";
 
     if (rpcData && Array.isArray(rpcData.products)) {
       const vendorProducts = (rpcData.products as any[]).map(mapVendorStorefrontProductRow);
@@ -11688,6 +11702,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
         storeName,
         logo,
         storePhone,
+        metaPixelId: metaPixelId || undefined,
         resolvedVendorId: actualVendorId,
         total: Number(rpcData.total ?? vendorProducts.length),
         page: Number(rpcData.page ?? page),
@@ -11746,6 +11761,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
         storeName,
         logo,
         storePhone,
+        metaPixelId: metaPixelId || undefined,
         resolvedVendorId: actualVendorId,
         total: vendorProducts.length,
         page: 1,
@@ -11794,6 +11810,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
       storeSlug,
       logo,
       storePhone,
+      metaPixelId: metaPixelId || undefined,
       resolvedVendorId: actualVendorId,
       total: totalLegacy,
       page,

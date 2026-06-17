@@ -479,6 +479,10 @@ export const enTranslations: Record<string, string> = {
     'vendorAdmin.settings.contactEmailHint': 'Customers will use this email to contact you',
     'vendorAdmin.settings.phoneNumber': 'Phone number',
     'vendorAdmin.settings.storeAddress': 'Store address',
+    'vendorAdmin.settings.metaPixelId': 'Meta Pixel ID',
+    'vendorAdmin.settings.metaPixelIdPlaceholder': 'e.g. 123456789012345',
+    'vendorAdmin.settings.metaPixelIdHint':
+      'Optional. From Meta Events Manager → your pixel → Settings. Used for Facebook/Instagram ads on this storefront only.',
     'vendorAdmin.settings.previewStore': 'Preview Store',
     'vendorAdmin.settings.saveChanges': 'Save Changes',
     'vendorAdmin.settings.saving': 'Saving...',
