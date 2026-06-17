@@ -1,8 +1,8 @@
-# Simple UI Instructions
+# NEXA Platform — Simple UI Instructions
 
 This version is intentionally short and non-technical.
 
-For detailed operations, use `SECURE_ADMIN_AND_VENDOR_GUIDE.md`.
+For detailed operations, use `NEXA_ADMIN_AND_VENDOR_GUIDE.md`.
 
 **Note:** There is no shared marketplace product catalog. Each vendor has their own storefront URL.
 

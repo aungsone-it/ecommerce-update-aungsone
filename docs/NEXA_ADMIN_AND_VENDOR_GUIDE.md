@@ -1,6 +1,6 @@
-# Super Admin and Vendor Guide
+# NEXA Platform — Super Admin and Vendor Guide
 
-This guide documents operator workflows for the current SECURE OS app (**vendor storefronts** — there is no shared marketplace shopping catalog).
+This guide documents operator workflows for the current **NEXA Platform** app (**vendor storefronts** — there is no shared marketplace shopping catalog).
 
 ## 1) Access and route model
 
@@ -53,6 +53,8 @@ Customers shop on **one vendor at a time**:
 5. Review vendor applications and vendor status.
 6. Use settings/users for staff management (if authorized role).
 
+Platform branding (name, logo) is editable under **Settings → General** and appears on the apex landing page, admin shell, and default tab titles.
+
 ### Security and destructive actions
 
 Destructive admin operations are guarded by backend checks. Production usage should pass admin-operation secret headers from authorized clients only.
@@ -101,12 +103,14 @@ Before release windows, confirm:
 - order updates sync correctly across admin/vendor/customer views
 - KBZPay return lands on apex `/summary` and Continue Shopping returns to the vendor storefront
 - chat and notification flows are healthy
+- after backend deploy: run read-model validation (`docs/READ_MODEL_ROLLOUT.md`)
 
 ## 6) Related docs
 
 - Backend / scaling: `docs/ARCHITECTURE_AND_BACKEND.md`
 - Routing/architecture: `docs/CODE_REVIEW_AND_ROUTING.md`
 - Deployment: `docs/DEPLOYMENT.md`
+- Read-model rollout: `docs/READ_MODEL_ROLLOUT.md`
 - Payments: `docs/PAYMENTS.md`
-- Simplified non-technical instructions: `docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md`
+- Simplified non-technical instructions: `docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md`
 - Outdated root markdown: `docs/LEGACY_DOCS.md`

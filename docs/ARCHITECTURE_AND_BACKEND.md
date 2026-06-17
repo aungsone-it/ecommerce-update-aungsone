@@ -41,7 +41,9 @@ Used by:
 
 ---
 
-## 3) Data model (KV store)
+## 3) Data model (KV store + SQL read model)
+
+### KV (source of truth for writes)
 
 All major entities are stored as JSON documents in `kv_store_16010b6f`:
 
@@ -57,11 +59,26 @@ All major entities are stored as JSON documents in `kv_store_16010b6f`:
 | `wishlist:{uid}` | Wishlist |
 | `chat:message:` | Chat messages |
 
-**Catalog optimization (SQL):** Migrations add RPCs and partial indexes for vendor storefront pagination (`rpc_storefront_catalog`, etc.). See `supabase/migrations/`.
+**Writes:** Edge handlers persist to KV first, then queue async sync to SQL read-model tables via `read_model.ts` (`queueProductReadModelSync`, `queueOrderReadModelSync`, etc.).
 
-**Admin / analytics paths:** Many endpoints still use `getByPrefix("order:")`, `getByPrefix("product:")`, etc. — full prefix scans paginated at 1,000 rows. This is acceptable at small scale but becomes a bottleneck as data grows.
+### SQL read model (optimized reads)
 
-The KV helper file notes it is adequate for **small-scale** use; plan a relational migration before high volume.
+Migrations under `supabase/migrations/` add normalized tables synced from KV:
+
+| Table | Purpose |
+|-------|---------|
+| `app_products`, `app_product_skus` | Admin product lists, SKU lookup |
+| `app_orders`, `app_order_items` | Admin/vendor order lists |
+| `app_vendors` | Vendor directory and admin filters |
+| `app_customers` | Customer admin lists |
+
+**Read path:** Hot admin endpoints prefer SQL RPCs (e.g. admin orders, vendor orders, dashboard stats). If read models are missing or empty, handlers **fall back to KV prefix scans**.
+
+**Validation:** `GET /read-model/validate` and `npm run validate:read-model` compare KV vs SQL counts. See [READ_MODEL_ROLLOUT.md](./READ_MODEL_ROLLOUT.md).
+
+**Catalog (storefront):** Vendor pagination still uses dedicated RPCs (`rpc_storefront_catalog`, etc.) with partial indexes — separate from the admin read-model tables.
+
+The KV layer remains the write source; SQL tables are additive and do not replace KV storage yet.
 
 ---
 
@@ -104,26 +121,27 @@ The app does **not** currently use `signInAnonymously()` for guests.
 
 ## 6) Realtime (current behavior)
 
-Every SPA session mounts `OrderRealtimeBridge`, which opens a **global** subscription:
+Every SPA session mounts `OrderRealtimeBridge`. As of June 2026 it uses **small pulse tables** instead of an always-on global KV subscription:
 
-```
-postgres_changes on kv_store_16010b6f (no row filter)
-```
+| Channel | Table | Purpose |
+|---------|-------|---------|
+| `sec-order-pulse-v1` | `app_order_pulse` (id=1) | Debounced admin order refresh (~400ms) |
+| `sec-vendor-app-pulse-v1` | `app_vendor_application_pulse` (id=1) | Vendor application list updates (~80ms) |
+| `sec-kv-domain-pulse-v1` | `app_kv_domain_pulse` | Domain-scoped invalidation: `products`, `orders`, `customers`, `vendors`, `marketing` |
 
-Channel name: `sec-kv-global-realtime-v1`. Any KV write (order, product, customer, vendor, etc.) is pushed to **every connected browser tab** — admin, vendor, guest storefront.
+KV writes bump the appropriate pulse row (via DB triggers in migrations). The bridge debounces and dispatches browser events / cache patches — e.g. `dispatchAdminProductsCachePatched()` for stock changes without full list refetch.
 
-**Additional subscriptions:**
+**Legacy fallback:** If the domain pulse channel errors, the bridge temporarily subscribes to the full `kv_store_16010b6f` table (`sec-kv-global-realtime-fallback-v1`) and maps changed keys to domains client-side.
+
+**Other subscriptions (unchanged):**
 
 | Location | Channel | Filter |
 |----------|---------|--------|
-| `VendorStoreView` | `vendor-storefront-products-kv-{vendorId}` | Unfiltered table; client filters `product:*` |
 | `Checkout` | `kpay-txn-{orderId}` | Filtered `kpay_txn:{id}` ✓ |
 | Signed-in cart/wishlist | `customer:{uid}:cart`, etc. | Filtered ✓ |
-| Admin `Orders.tsx`, `ProductList.tsx` | Various | Often unfiltered table scans |
+| `VendorStoreView` | Product/policy listeners | Scoped to vendor catalog where configured |
 
-**Pulse tables (lighter):** `app_order_pulse` and `app_vendor_application_pulse` — single-row heartbeats used to debounce admin refetches.
-
-**Scale impact:** Realtime **connections** (~500 included on Pro) and **messages** (~5M/month on Pro) are the first limits hit under traffic — not MAU. Global KV fanout multiplies message cost by concurrent tabs.
+**Scale impact:** Pulse-based Realtime uses far fewer messages than broadcasting every KV row to every tab. Realtime **connections** (~500 on Pro) and checkout/catalog filtered channels remain the main capacity constraints under flash traffic.
 
 ---
 
@@ -180,11 +198,11 @@ See [PERFORMANCE_AND_CACHING.md](./PERFORMANCE_AND_CACHING.md).
 
 **Recommended before scale:**
 
-1. Remove or narrow global KV Realtime for guest storefronts
+1. Keep pulse migrations deployed so KV fallback stays rare
 2. Keep filtered Realtime for checkout (`kpay_txn`) and signed-in cart/wishlist
 3. CDN-cache public catalog responses
-4. Upgrade compute Micro → Small when admin scans slow down
-5. Migrate hot entities to relational tables before 50k+ orders/products
+4. Upgrade compute Micro → Small when admin SQL RPCs slow down
+5. Monitor read-model drift with `/read-model/validate` after bulk imports
 
 ---
 
@@ -211,4 +229,5 @@ Functions deployed:
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Hosting checklist |
 | [PAYMENTS.md](./PAYMENTS.md) | KBZPay flows |
 | [PERFORMANCE_AND_CACHING.md](./PERFORMANCE_AND_CACHING.md) | LCP, client cache |
+| [READ_MODEL_ROLLOUT.md](./READ_MODEL_ROLLOUT.md) | Read-model deploy validation |
 | [LEGACY_DOCS.md](./LEGACY_DOCS.md) | Outdated root markdown files |

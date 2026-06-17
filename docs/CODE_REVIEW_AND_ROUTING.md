@@ -118,19 +118,22 @@ Guarded by `VendorHostOrMarketplaceRoutes.tsx` — routes return **404** on the 
 
 ## 9) Realtime (summary)
 
-- Global bridge: `OrderRealtimeBridge` → `sec-kv-global-realtime-v1` on entire `kv_store_16010b6f` table.
-- Vendor storefront: `VendorStoreView` also subscribes to KV product changes per tab.
-- Checkout: filtered `kpay-txn-{orderId}` channel + polling fallback.
-- Pulse tables: `app_order_pulse`, `app_vendor_application_pulse` for debounced admin refresh.
+- **Pulse bridge:** `OrderRealtimeBridge` listens to `app_order_pulse`, `app_vendor_application_pulse`, and `app_kv_domain_pulse` — debounced domain invalidation instead of global KV fanout.
+- **KV fallback:** If domain pulse channel fails, temporary subscription on `kv_store_16010b6f` maps keys → domains client-side.
+- **Vendor storefront:** `VendorStoreView` + `storefrontPolicyRealtime.ts` for catalog/policy updates; `public/vendor-storefront-head.js` sets tab title before React.
+- **Checkout:** filtered `kpay-txn-{orderId}` channel + polling fallback.
 
 Details and scale limits: [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) §6–§9.
 
 ## 10) Reliability / performance behaviors
 
 - Request caching and coalescing in client data helpers (`module-cache.ts`).
-- Cart/wishlist immediate persistence + server sync.
+- SQL read-model RPCs for admin orders/products/customers where migrations are applied; KV fallback when SQL unavailable.
+- Cart/wishlist immediate persistence + server sync (cart sync hardened June 2026).
+- Debounced admin search (`useAdminPortalDebouncedSearch`, `adminProductSearch.ts`).
 - Throttled badge/profile refresh.
 - Typed timeout/network errors from API client.
+- Early vendor branding: `vendorStorefrontBrandingCache.ts` + `vendor-storefront-head.js`.
 
 ## 11) Routing pitfalls to watch
 

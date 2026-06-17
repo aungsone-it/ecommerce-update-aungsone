@@ -6,15 +6,25 @@ The following markdown files live in the **repository root** and are **historica
 
 | Document | Purpose |
 |----------|---------|
-| [README.md](../README.md) | Platform overview, routes, quick start |
-| [docs/ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) | Backend, KV model, Realtime, scaling, Supabase binding |
+| [README.md](../README.md) | NEXA Platform overview, routes, quick start |
+| [docs/ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) | Backend, KV model, SQL read model, Realtime pulses, scaling, Supabase binding |
 | [docs/CODE_REVIEW_AND_ROUTING.md](./CODE_REVIEW_AND_ROUTING.md) | Routes, hosts, component map |
 | [docs/DEPLOYMENT.md](./DEPLOYMENT.md) | Deploy checklist |
+| [docs/READ_MODEL_ROLLOUT.md](./READ_MODEL_ROLLOUT.md) | Read-model validation and monitoring |
 | [docs/PAYMENTS.md](./PAYMENTS.md) | KBZPay (production payment path) |
 | [docs/PERFORMANCE_AND_CACHING.md](./PERFORMANCE_AND_CACHING.md) | LCP, caching |
-| [docs/SECURE_ADMIN_AND_VENDOR_GUIDE.md](./SECURE_ADMIN_AND_VENDOR_GUIDE.md) | Operator workflows |
-| [docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md](./SECURE_SIMPLE_UI_INSTRUCTIONS.md) | Non-technical guide |
+| [docs/NEXA_ADMIN_AND_VENDOR_GUIDE.md](./NEXA_ADMIN_AND_VENDOR_GUIDE.md) | Operator workflows |
+| [docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md](./NEXA_SIMPLE_UI_INSTRUCTIONS.md) | Non-technical guide |
 | [.env.example](../.env.example) | Environment variable reference |
+
+## Superseded doc filenames
+
+These older filenames are replaced by the NEXA-branded guides above:
+
+| Old file | Replacement |
+|----------|-------------|
+| `docs/SECURE_ADMIN_AND_VENDOR_GUIDE.md` | `docs/NEXA_ADMIN_AND_VENDOR_GUIDE.md` |
+| `docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md` | `docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md` |
 
 ## Outdated root files (do not trust without verifying code)
 

@@ -62,16 +62,18 @@ When changing data-fetching behavior:
 
 ## Realtime and scale (current system)
 
-Every browser tab mounts `OrderRealtimeBridge` with a **global** subscription to all changes on `kv_store_16010b6f`. Vendor storefront tabs add another product-change listener in `VendorStoreView`.
+Every browser tab mounts `OrderRealtimeBridge`, which subscribes to **pulse tables** (`app_order_pulse`, `app_kv_domain_pulse`, `app_vendor_application_pulse`) rather than broadcasting every KV row. Domain pulses are debounced (~400ms) before cache invalidation or admin refetch. A legacy full-KV subscription activates only if the pulse channel fails.
+
+Checkout still uses a **filtered** `kpay_txn:{orderId}` channel. Vendor storefront tabs may listen for product/policy changes in `VendorStoreView`.
 
 | Supabase Pro limit | Included | Impact on this app |
 |--------------------|----------|-------------------|
 | Realtime peak connections | 500 | ~500 open tabs across all users before throttling |
-| Realtime messages / month | 5M | Global KV fanout — can exceed quota well before 100k MAU |
-| Edge Function invocations | 2M/mo | Client cache reduces repeat catalog fetches |
+| Realtime messages / month | 5M | Pulse model reduces fanout vs. global KV; monitor during flash sales |
+| Edge Function invocations | 2M/mo | Client cache + SQL read RPCs reduce repeat scans |
 | Auth MAU | 100k | Guest browsers **do not** count; only signed-in accounts |
 
-Before high-traffic events, read [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) §9. Planned improvements (narrow Realtime for guests, CDN public reads) are documented there — not yet implemented.
+Before high-traffic events, read [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKEND.md) §9 and validate read models per [READ_MODEL_ROLLOUT.md](./READ_MODEL_ROLLOUT.md).
 
 ## Verification checklist
 

@@ -1,6 +1,6 @@
-# SECURE OS E-Commerce Platform
+# NEXA Platform
 
-SECURE OS is a **multi-tenant, vendor-first** e-commerce system: each vendor runs an independent branded storefront, while a single platform apex hosts onboarding, super-admin, and shared payment return flows.
+**NEXA Platform** is a **multi-tenant, vendor-first** e-commerce system: each vendor runs an independent branded storefront, while a single platform apex hosts onboarding, super-admin, and shared payment return flows.
 
 There is **no multi-vendor marketplace catalog** (no shared `/products` shopping surface). Customer shopping happens on **vendor storefronts only**.
 
@@ -12,18 +12,21 @@ There is **no multi-vendor marketplace catalog** (no shared `/products` shopping
 - **Vendor-admin portal** — `/vendor/:slug/admin/*` (and legacy `/store/:slug/admin/*` redirects where configured)
 - **Supabase Edge backend** — auth, orders, products, payments, notifications
 
-## Recent Updates (May 2026)
+## Recent Updates (June 2026)
 
 | Area | What shipped |
 |------|----------------|
-| **Legal pages** | Per-vendor Terms and Privacy from vendor settings; `/terms` and `/privacy` on vendor hosts; `/vendor/:slug/terms` and `/vendor/:slug/privacy` on path-based dev URLs |
+| **Platform branding** | Rebrand to **NEXA Platform** — configurable name/logo in admin General settings; early head script avoids tab-title flash on vendor hosts |
+| **SQL read model** | KV writes sync to `app_*` tables (products, orders, vendors, customers); admin list endpoints prefer SQL RPCs with KV fallback |
+| **Realtime efficiency** | Replaced always-on global KV fanout with **pulse tables** (`app_order_pulse`, `app_kv_domain_pulse`, `app_vendor_application_pulse`); legacy KV channel used only as fallback |
+| **DB migrations** | Schema split into focused migration files under `supabase/migrations/` (catalog RPCs, read-model tables, pulse triggers, backfill) |
+| **Frontend performance** | Smaller route bundles, debounced admin search, `vendor-storefront-head.js` for sync branding before React paint |
+| **Cart & catalog** | Cart sync hardening, product listing and order section fixes, caching/reload race fixes |
+| **i18n / URLs** | Burmese text in URL segments handled correctly on category and product routes |
+| **Deployment** | Tencent Cloud custom-domain middleware adjustments; read-model validation script (`npm run validate:read-model`) |
+| **Legal pages** | Per-vendor Terms and Privacy from vendor settings; `/terms` and `/privacy` on vendor hosts |
 | **Languages** | English + Simplified Chinese via `LanguageContext` on vendor storefront, vendor login/setup, and admin surfaces |
-| **KBZPay returns** | Unified post-payment summary on the platform apex (`walwal.online/summary`); vendor-scoped checkout paths; redirect from vendor hosts when KBZ returns with order params |
-| **Vendor domains** | Subdomain tenancy (`label.base-domain`), optional custom domain, slug map env; vendor login redirects to the correct host |
-| **Vendor catalog** | Server-side category filtering on category routes (`/cosmetic`, `/bag`, etc.) on vendor hosts |
-| **Vendor lifecycle** | Application form, social links, stock policy, slug display and domain-mapping fixes |
-| **Routing & UX** | Legacy `/store/*` and `/products/*` redirects; category slug routes on vendor-only hosts; checkout and footer polish |
-| **Reliability** | Cart/wishlist race-condition fixes, auth token refresh limits, throttled badge/profile refresh, typed API timeout errors |
+| **KBZPay returns** | Unified post-payment summary on the platform apex (`walwal.online/summary`); vendor-scoped checkout paths |
 | **Payments** | KBZPay QR + PWA checkout, webhook sync, refund/cancel flow (production refunds need gateway mTLS/certs) |
 
 ## Current Product Surface
@@ -60,7 +63,7 @@ Implemented in `VendorStorefrontPage` → `VendorStoreView` (not a shared market
 
 - Dashboard, products, categories, inventory, orders, customers, chat, marketing, finances, settings
 - Vendor management, applications, promotions, collaborator flows
-- Realtime order pulse bridge and inventory cache sync paths
+- SQL-backed admin lists where read-model migrations are applied; Realtime via pulse tables
 
 ### Vendor
 
@@ -120,7 +123,7 @@ Configure in `.env` (see `.env.example`):
 
 ```bash
 # Apex only, no protocol
-VITE_VENDOR_SUBDOMAIN_BASE_DOMAIN=walwal.online
+BASE_DOMAIN=walwal.online
 
 # Optional: DNS label → store slug
 VITE_VENDOR_SUBDOMAIN_SLUG_MAP={"gogo":"go-go"}
@@ -136,7 +139,7 @@ Edge middleware (`middleware.ts`) maps vendor subdomains to the SPA; KBZ return 
 - **Customer storefront UI:** `VendorStorefrontPage`, `VendorStoreView`, `Checkout`
 - **Platform landing:** `LandingPage` (apex only)
 - **Backend:** Supabase Edge Functions (`make-server-16010b6f`, `kpay-webhook`) + Supabase Auth + Storage
-- **Primary datastore:** Postgres KV table `kv_store_16010b6f` (JSON documents) + SQL RPCs for catalog pagination
+- **Primary datastore:** Postgres KV table `kv_store_16010b6f` (JSON documents) + **SQL read-model tables** (`app_products`, `app_orders`, etc.) synced on write
 - **Supabase binding:** `utils/supabase/info.tsx` (`projectId`, `publicAnonKey`) — not `VITE_SUPABASE_*` for most API calls
 - **Routing:** React Router — public vendor tree, super-admin, vendor-admin, vendor-host-specific routes
 - **Legacy note:** `Storefront.tsx` remains in the repo for reference but is **not mounted** in the current router
@@ -174,6 +177,7 @@ npm test
 | `npm run deploy:edge` | Deploy Supabase Edge Functions only |
 | `npm run db:push` | Push Supabase DB migrations |
 | `npm run deploy:supabase` | DB push + functions deploy |
+| `npm run validate:read-model` | Validate KV ↔ SQL read-model counts (requires env secrets) |
 
 ## Environment
 
@@ -200,22 +204,23 @@ Use `.env.example` for optional overrides. **Most API and Auth traffic uses `uti
 
 Static SPA frontend + Supabase backend services.
 
-- **Frontend:** any static host with SPA fallback (`index.html` rewrite) — Vercel, Netlify, Cloudflare Pages, etc.
+- **Frontend:** any static host with SPA fallback (`index.html` rewrite) — Vercel, Netlify, Cloudflare Pages, Tencent Cloud, etc.
 - **Backend:** deploy Supabase Edge Functions separately after schema changes.
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). (Root `DEPLOYMENT_CHECKLIST.md` is legacy — see [docs/LEGACY_DOCS.md](docs/LEGACY_DOCS.md).)
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). After deploy, follow [docs/READ_MODEL_ROLLOUT.md](docs/READ_MODEL_ROLLOUT.md). (Root `DEPLOYMENT_CHECKLIST.md` is legacy — see [docs/LEGACY_DOCS.md](docs/LEGACY_DOCS.md).)
 
 ## Documentation Index
 
 | Doc | Contents |
 |-----|----------|
-| [docs/ARCHITECTURE_AND_BACKEND.md](docs/ARCHITECTURE_AND_BACKEND.md) | **Backend truth:** KV model, Realtime, auth, Supabase Pro limits, scaling |
+| [docs/ARCHITECTURE_AND_BACKEND.md](docs/ARCHITECTURE_AND_BACKEND.md) | **Backend truth:** KV model, SQL read model, Realtime pulses, auth, Supabase Pro limits, scaling |
 | [docs/CODE_REVIEW_AND_ROUTING.md](docs/CODE_REVIEW_AND_ROUTING.md) | Routes, hosts, component map |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Hosting and env setup |
+| [docs/READ_MODEL_ROLLOUT.md](docs/READ_MODEL_ROLLOUT.md) | Read-model deploy validation and monitoring |
 | [docs/PAYMENTS.md](docs/PAYMENTS.md) | KBZPay (production path) |
 | [docs/PERFORMANCE_AND_CACHING.md](docs/PERFORMANCE_AND_CACHING.md) | LCP, client cache, Realtime scale notes |
-| [docs/SECURE_ADMIN_AND_VENDOR_GUIDE.md](docs/SECURE_ADMIN_AND_VENDOR_GUIDE.md) | Operator workflows |
-| [docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md](docs/SECURE_SIMPLE_UI_INSTRUCTIONS.md) | Short non-technical guide |
+| [docs/NEXA_ADMIN_AND_VENDOR_GUIDE.md](docs/NEXA_ADMIN_AND_VENDOR_GUIDE.md) | Operator workflows |
+| [docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md](docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md) | Short non-technical guide |
 | [docs/UI_ANIMATIONS.md](docs/UI_ANIMATIONS.md) | Animation reference |
 | [docs/LEGACY_DOCS.md](docs/LEGACY_DOCS.md) | Outdated root markdown files — do not use |
 | [ATTRIBUTIONS.md](ATTRIBUTIONS.md) | Third-party attributions |
@@ -228,6 +233,7 @@ Target vendor hosts (e.g. `https://gogo.walwal.online`) should enable **Supabase
 |--------------|--------|
 | Auto image thumbs (480px grid, 128px logos, 960px banners) | Cuts mobile LCP from multi‑MB originals |
 | Priority load on first 4 product cards + store logo | Faster above-the-fold paint |
+| `vendor-storefront-head.js` before React | Avoids wrong tab title / favicon flash on vendor refresh |
 | Non-blocking fonts + no global Quill CSS on storefront | Better FCP |
 | Supabase preconnect | Faster catalog/API fetch |
 
@@ -238,19 +244,20 @@ After deploy, re-run [PageSpeed Insights](https://pagespeed.web.dev/) on mobile 
 | Metric | Pro included | Notes for this app |
 |--------|--------------|-------------------|
 | Auth MAU | 100,000 | One login account = 1 MAU/month; **guests do not count** |
-| Realtime connections | 500 peak | Every open tab opens WebSocket(s); first limit in flash sales |
-| Realtime messages | 5M/month | Global KV subscription fans out every DB change to all tabs |
-| Edge Function calls | 2M/month | Catalog/checkout API; client cache reduces repeats |
+| Realtime connections | 500 peak | Pulse-based bridge uses fewer messages than global KV fanout; checkout still uses filtered `kpay_txn` channels |
+| Realtime messages | 5M/month | Domain pulses debounced (~400ms); legacy KV fallback only if pulse channel fails |
+| Edge Function calls | 2M/month | Client cache + SQL read paths reduce repeat scans |
 
 See [docs/ARCHITECTURE_AND_BACKEND.md](docs/ARCHITECTURE_AND_BACKEND.md) §9 for tier guidance (~1k / 10k / 100k / 1M users).
 
 ## Important Caveats
 
-- Some internal identifiers still use `kpay` for backwards compatibility; user-facing copy uses **KBZPay**.
+- Some internal identifiers still use `kpay` or `sec-` channel prefixes for backwards compatibility; user-facing copy uses **KBZPay** and **NEXA Platform**.
 - Legacy markdown in the repo root is outdated — see [docs/LEGACY_DOCS.md](docs/LEGACY_DOCS.md). **This README** and **`docs/`** are the source of truth.
 - Supabase URL/key for most calls come from **`utils/supabase/info.tsx`**, not `.env` alone.
 - Subdomain tenancy and custom domains require correct DNS + host env on both Vite and edge middleware (see `docs/DEPLOYMENT.md`).
 - Do not expect a shared marketplace product catalog at `/` or `/products`; customers shop on individual vendor storefront URLs.
+- Admin SQL read paths require migrations deployed; API keeps KV fallbacks if read models are empty or unavailable.
 
 ## License
 
