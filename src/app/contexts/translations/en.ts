@@ -825,7 +825,7 @@ export const enTranslations: Record<string, string> = {
     'finances.allMethods': 'All Methods',
     'finances.dateRange': 'Date Range',
     'finances.filterByDate': 'Filter by date',
-    'finances.filterByDateHint': 'Stats, charts, and tables use orders in this range. Leave unset for all time.',
+    'finances.filterByDateHint': 'Applies to all summary cards, charts, tables, and exports on this page. Leave unset for all time.',
     'finances.statCardDateHint': 'Choose start and end date. Applies to this card only.',
     'finances.allTime': 'All time',
     'finances.selectEndDate': 'Select end date',

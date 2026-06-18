@@ -824,7 +824,7 @@ export const zhTranslations: Record<string, string> = {
     'finances.allMethods': '所有方式',
     'finances.dateRange': '日期范围',
     'finances.filterByDate': '按日期筛选',
-    'finances.filterByDateHint': '统计、图表和表格仅包含该范围内的订单。不选则为全部时间。',
+    'finances.filterByDateHint': '作用于本页所有摘要卡片、图表、表格与导出。不选则为全部时间。',
     'finances.statCardDateHint': '请选择开始与结束日期，仅影响本卡片数字。',
     'finances.allTime': '全部时间',
     'finances.selectEndDate': '请选择结束日期',

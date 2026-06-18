@@ -94,17 +94,11 @@ export function Finances() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterMethod, setFilterMethod] = useState("all");
-  const [txnTableDateRange, setTxnTableDateRange] = useState<DateRange | undefined>(undefined);
-  const [txnDatePickerOpen, setTxnDatePickerOpen] = useState(false);
+  const [pageDateRange, setPageDateRange] = useState<DateRange | undefined>(undefined);
+  const [pageDatePickerOpen, setPageDatePickerOpen] = useState(false);
   const [txnListPage, setTxnListPage] = useState(1);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [chartPeriod, setChartPeriod] = useState("7days");
-  const [overviewDateRange, setOverviewDateRange] = useState<DateRange | undefined>(undefined);
-  const [overviewDatePickerOpen, setOverviewDatePickerOpen] = useState(false);
-  const [revenueCardDateRange, setRevenueCardDateRange] = useState<DateRange | undefined>(undefined);
-  const [revenueCardPickerOpen, setRevenueCardPickerOpen] = useState(false);
-  const [vendorCardDateRange, setVendorCardDateRange] = useState<DateRange | undefined>(undefined);
-  const [vendorCardPickerOpen, setVendorCardPickerOpen] = useState(false);
 
   const financesBoot = useMemo(() => {
     const h = readFinancialAnalyticsHydrate();
@@ -208,19 +202,10 @@ export function Finances() {
   );
   const vendorPayouts = financialData?.vendorPayouts || [];
 
-  const overviewFilterActive = Boolean(overviewDateRange?.from && overviewDateRange?.to);
-
-  const scopedTransactions = useMemo(() => {
-    if (!overviewFilterActive || !overviewDateRange?.from || !overviewDateRange?.to) {
-      return transactions;
-    }
-    const from = startOfDay(overviewDateRange.from);
-    const to = endOfDay(overviewDateRange.to);
-    return transactions.filter((t: any) => {
-      const d = new Date(t.date);
-      return !Number.isNaN(d.getTime()) && d >= from && d <= to;
-    });
-  }, [transactions, overviewFilterActive, overviewDateRange?.from, overviewDateRange?.to]);
+  const scopedTransactions = useMemo(
+    () => filterFinancesTransactionsByRange(transactions, pageDateRange),
+    [transactions, pageDateRange]
+  );
 
   const dashboardSummary = useMemo(() => {
     let totalCommission = 0;
@@ -234,16 +219,12 @@ export function Finances() {
 
   const { totalCommission, totalVendorPayout } = dashboardSummary;
 
-  const revenueStatTotal = useMemo(() => {
-    const list = filterFinancesTransactionsByRange(transactions, revenueCardDateRange);
-    return list.reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0);
-  }, [transactions, revenueCardDateRange]);
+  const revenueStatTotal = useMemo(
+    () => scopedTransactions.reduce((s: number, t: any) => s + (Number(t.amount) || 0), 0),
+    [scopedTransactions]
+  );
 
-  /** Commission amount for this card's date filter (same base rows as vendor Finances logic). */
-  const commissionPayoutStatTotal = useMemo(() => {
-    const list = filterFinancesTransactionsByRange(transactions, vendorCardDateRange);
-    return list.reduce((s: number, t: any) => s + (Number(t.commission) || 0), 0);
-  }, [transactions, vendorCardDateRange]);
+  const commissionPayoutStatTotal = totalCommission;
 
   const periodDays = chartPeriod === "7days" ? 7 : chartPeriod === "30days" ? 30 : 90;
 
@@ -324,20 +305,14 @@ export function Finances() {
       methodText === filterText ||
       (filterText === "kbzpay" && (methodText.includes("kpay") || methodText.includes("kbz")));
     
-    const from = txnTableDateRange?.from ? startOfDay(txnTableDateRange.from) : undefined;
-    const to = txnTableDateRange?.to ? endOfDay(txnTableDateRange.to) : undefined;
-    const transactionDate = new Date(t.date);
-    const matchesDateFrom = !from || transactionDate >= from;
-    const matchesDateTo = !to || transactionDate <= to;
-    
-    return matchesSearch && matchesStatus && matchesMethod && matchesDateFrom && matchesDateTo;
+    return matchesSearch && matchesStatus && matchesMethod;
   });
 
   const TX_PAGE_SIZE = 25;
 
   useEffect(() => {
     setTxnListPage(1);
-  }, [searchQuery, filterStatus, filterMethod, txnTableDateRange?.from, txnTableDateRange?.to]);
+  }, [searchQuery, filterStatus, filterMethod, pageDateRange?.from, pageDateRange?.to]);
 
   const txnListTotalPages = Math.max(1, Math.ceil(filteredTransactions.length / TX_PAGE_SIZE));
 
@@ -359,15 +334,12 @@ export function Finances() {
     setSearchQuery("");
     setFilterStatus("all");
     setFilterMethod("all");
-    setTxnTableDateRange(undefined);
   };
 
   const hasActiveFilters =
     searchQuery ||
     filterStatus !== "all" ||
-    filterMethod !== "all" ||
-    txnTableDateRange?.from ||
-    txnTableDateRange?.to;
+    filterMethod !== "all";
 
   const exportTransactions = () => {
     const headers = ["Transaction ID", "Date", "Customer", "Vendor", "Method", "Amount", "Commission", "Status"];
@@ -463,28 +435,29 @@ export function Finances() {
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <AdminDateRangeFilterPopover
-            value={overviewDateRange}
-            onChange={setOverviewDateRange}
+            value={pageDateRange}
+            onChange={setPageDateRange}
             hintText={t("finances.filterByDateHint")}
-            open={overviewDatePickerOpen}
-            onOpenChange={setOverviewDatePickerOpen}
+            titleText={t("finances.filterByDate")}
+            open={pageDatePickerOpen}
+            onOpenChange={setPageDatePickerOpen}
             align="start"
           >
             <Button variant="outline" size="sm" className="font-normal">
               <Calendar className="mr-2 h-4 w-4 shrink-0" />
               <span className="truncate max-w-[min(100%,16rem)] text-left">
-                {!overviewDateRange?.from
+                {!pageDateRange?.from
                   ? t("finances.allTime")
-                  : !overviewDateRange.to
+                  : !pageDateRange.to
                     ? t("finances.selectEndDate")
-                    : `${format(overviewDateRange.from, "MMM d, yyyy")} – ${format(overviewDateRange.to, "MMM d, yyyy")}`}
+                    : `${format(pageDateRange.from, "MMM d, yyyy")} – ${format(pageDateRange.to, "MMM d, yyyy")}`}
               </span>
             </Button>
           </AdminDateRangeFilterPopover>
         </div>
       </div>
 
-      {/* Stats Cards — per-card date filters; amounts = sum over full analytics data unless a range is set */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <Card className="@container flex h-full min-h-[11rem] flex-col">
           <CardContent className="flex h-full min-h-0 flex-1 flex-col p-6">
@@ -502,28 +475,6 @@ export function Finances() {
                 <TrendingUp className="h-6 w-6 text-green-600" />
               </div>
             </div>
-            <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
-              <AdminDateRangeFilterPopover
-                value={revenueCardDateRange}
-                onChange={setRevenueCardDateRange}
-                hintText={t("finances.statCardDateHint")}
-                open={revenueCardPickerOpen}
-                onOpenChange={setRevenueCardPickerOpen}
-                align="start"
-              >
-                <button
-                  type="button"
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
-                >
-                  {t("finances.filterByDate")}
-                </button>
-              </AdminDateRangeFilterPopover>
-              {revenueCardDateRange?.from && revenueCardDateRange?.to && (
-                <span className="text-xs text-slate-500">
-                  {format(revenueCardDateRange.from, "MMM d, yyyy")} – {format(revenueCardDateRange.to, "MMM d, yyyy")}
-                </span>
-              )}
-            </div>
           </CardContent>
         </Card>
 
@@ -540,28 +491,6 @@ export function Finances() {
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-amber-100">
                 <Coins className="h-6 w-6 text-amber-700" />
               </div>
-            </div>
-            <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
-              <AdminDateRangeFilterPopover
-                value={vendorCardDateRange}
-                onChange={setVendorCardDateRange}
-                hintText={t("finances.statCardDateHint")}
-                open={vendorCardPickerOpen}
-                onOpenChange={setVendorCardPickerOpen}
-                align="start"
-              >
-                <button
-                  type="button"
-                  className="text-xs font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
-                >
-                  {t("finances.filterByDate")}
-                </button>
-              </AdminDateRangeFilterPopover>
-              {vendorCardDateRange?.from && vendorCardDateRange?.to && (
-                <span className="text-xs text-slate-500">
-                  {format(vendorCardDateRange.from, "MMM d, yyyy")} – {format(vendorCardDateRange.to, "MMM d, yyyy")}
-                </span>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -729,26 +658,6 @@ export function Finances() {
                     <SelectItem value="Cash">Cash</SelectItem>
                   </SelectContent>
                 </Select>
-
-                <AdminDateRangeFilterPopover
-                  value={txnTableDateRange}
-                  onChange={setTxnTableDateRange}
-                  hintText={t("admin.dateFilter.hintTransactions")}
-                  open={txnDatePickerOpen}
-                  onOpenChange={setTxnDatePickerOpen}
-                  align="end"
-                >
-                  <Button variant="outline" className="w-full lg:w-auto">
-                    <Calendar className="mr-2 h-4 w-4 shrink-0" />
-                    <span className="truncate text-left">
-                      {!txnTableDateRange?.from
-                        ? t("finances.allTime")
-                        : !txnTableDateRange.to
-                          ? t("finances.selectEndDate")
-                          : `${format(txnTableDateRange.from, "MMM d, yyyy")} – ${format(txnTableDateRange.to, "MMM d, yyyy")}`}
-                    </span>
-                  </Button>
-                </AdminDateRangeFilterPopover>
 
                 {hasActiveFilters && (
                   <Button variant="ghost" onClick={clearFilters}>
