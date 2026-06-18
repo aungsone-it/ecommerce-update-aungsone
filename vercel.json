@@ -9,49 +9,49 @@
     { "source": "/products/:path*", "destination": "/", "permanent": true },
     {
       "source": "/product/:path*",
-      "has": [{ "type": "host", "value": "walwal.online" }],
+      "has": [{ "type": "host", "value": "nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/product/:path*",
-      "has": [{ "type": "host", "value": "www.walwal.online" }],
+      "has": [{ "type": "host", "value": "www.nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/profile/:path*",
-      "has": [{ "type": "host", "value": "walwal.online" }],
+      "has": [{ "type": "host", "value": "nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/profile/:path*",
-      "has": [{ "type": "host", "value": "www.walwal.online" }],
+      "has": [{ "type": "host", "value": "www.nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/profile",
-      "has": [{ "type": "host", "value": "walwal.online" }],
+      "has": [{ "type": "host", "value": "nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/profile",
-      "has": [{ "type": "host", "value": "www.walwal.online" }],
+      "has": [{ "type": "host", "value": "www.nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/saved",
-      "has": [{ "type": "host", "value": "walwal.online" }],
+      "has": [{ "type": "host", "value": "nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/saved",
-      "has": [{ "type": "host", "value": "www.walwal.online" }],
+      "has": [{ "type": "host", "value": "www.nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
@@ -59,37 +59,37 @@
     { "source": "/blog", "destination": "/", "permanent": true },
     {
       "source": "/checkout/:path*",
-      "has": [{ "type": "host", "value": "walwal.online" }],
+      "has": [{ "type": "host", "value": "nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/checkout/:path*",
-      "has": [{ "type": "host", "value": "www.walwal.online" }],
+      "has": [{ "type": "host", "value": "www.nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/checkout",
-      "has": [{ "type": "host", "value": "walwal.online" }],
+      "has": [{ "type": "host", "value": "nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/checkout",
-      "has": [{ "type": "host", "value": "www.walwal.online" }],
+      "has": [{ "type": "host", "value": "www.nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/order-confirmation",
-      "has": [{ "type": "host", "value": "walwal.online" }],
+      "has": [{ "type": "host", "value": "nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },
     {
       "source": "/order-confirmation",
-      "has": [{ "type": "host", "value": "www.walwal.online" }],
+      "has": [{ "type": "host", "value": "www.nexa-mm.com" }],
       "destination": "/",
       "permanent": true
     },

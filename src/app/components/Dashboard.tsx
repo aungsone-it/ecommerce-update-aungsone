@@ -82,62 +82,29 @@ export function Dashboard() {
   const [loading, setLoading] = useState(
     () => !initialStatsPayload
   );
-  const [revenueRange, setRevenueRange] = useState<DateRange | undefined>(undefined);
-  const [ordersRange, setOrdersRange] = useState<DateRange | undefined>(undefined);
-  const [customersRange, setCustomersRange] = useState<DateRange | undefined>(undefined);
-  const [productsRange, setProductsRange] = useState<DateRange | undefined>(undefined);
-
-  const [revenueApiFilter, setRevenueApiFilter] = useState("All time");
-  const [ordersApiFilter, setOrdersApiFilter] = useState("All time");
-  const [customersApiFilter, setCustomersApiFilter] = useState("All time");
-  const [productsApiFilter, setProductsApiFilter] = useState("All time");
-
-  const [globalSectionRange, setGlobalSectionRange] = useState<DateRange | undefined>(undefined);
-  const [globalApiFilter, setGlobalApiFilter] = useState("All time");
-  const [globalPickerOpen, setGlobalPickerOpen] = useState(false);
+  const [pageDateRange, setPageDateRange] = useState<DateRange | undefined>(undefined);
+  const [pageApiFilter, setPageApiFilter] = useState("All time");
+  const [pageDatePickerOpen, setPageDatePickerOpen] = useState(false);
 
   useEffect(() => {
-    if (!globalSectionRange?.from) setGlobalApiFilter("All time");
-    else if (globalSectionRange.to) setGlobalApiFilter(encodeAdminDashboardDateFilter(globalSectionRange));
-  }, [globalSectionRange]);
-
-  useEffect(() => {
-    if (!revenueRange?.from) setRevenueApiFilter("All time");
-    else if (revenueRange.to) setRevenueApiFilter(encodeAdminDashboardDateFilter(revenueRange));
-  }, [revenueRange]);
-  useEffect(() => {
-    if (!ordersRange?.from) setOrdersApiFilter("All time");
-    else if (ordersRange.to) setOrdersApiFilter(encodeAdminDashboardDateFilter(ordersRange));
-  }, [ordersRange]);
-  useEffect(() => {
-    if (!customersRange?.from) setCustomersApiFilter("All time");
-    else if (customersRange.to) setCustomersApiFilter(encodeAdminDashboardDateFilter(customersRange));
-  }, [customersRange]);
-  useEffect(() => {
-    if (!productsRange?.from) setProductsApiFilter("All time");
-    else if (productsRange.to) setProductsApiFilter(encodeAdminDashboardDateFilter(productsRange));
-  }, [productsRange]);
+    if (!pageDateRange?.from) setPageApiFilter("All time");
+    else if (pageDateRange.to) setPageApiFilter(encodeAdminDashboardDateFilter(pageDateRange));
+  }, [pageDateRange]);
 
   const filterPayload = useMemo(
     (): AdminDashboardFilters => ({
-      revenue: revenueApiFilter,
-      orders: ordersApiFilter,
-      customers: customersApiFilter,
-      products: productsApiFilter,
-      globalSection: globalApiFilter,
+      revenue: pageApiFilter,
+      orders: pageApiFilter,
+      customers: pageApiFilter,
+      products: pageApiFilter,
+      globalSection: pageApiFilter,
     }),
-    [revenueApiFilter, ordersApiFilter, customersApiFilter, productsApiFilter, globalApiFilter]
+    [pageApiFilter]
   );
 
   useEffect(() => {
     fetchDashboardStats();
-  }, [
-    filterPayload.revenue,
-    filterPayload.orders,
-    filterPayload.customers,
-    filterPayload.products,
-    filterPayload.globalSection,
-  ]);
+  }, [pageApiFilter]);
   
   const applyDashboardPayload = (data: Record<string, unknown>) => {
     if (data.cached) {
@@ -225,12 +192,12 @@ export function Dashboard() {
           <p className="text-slate-500 mt-1">{t('dashboard.welcome').replace('{name}', 'Aung Sone')}</p>
         </div>
         <AdminDateRangeFilterPopover
-          value={globalSectionRange}
-          onChange={setGlobalSectionRange}
+          value={pageDateRange}
+          onChange={setPageDateRange}
           hintText={t("dashboard.globalDateFilterHint")}
           titleText={t("dashboard.globalDateFilterTitle")}
-          open={globalPickerOpen}
-          onOpenChange={setGlobalPickerOpen}
+          open={pageDatePickerOpen}
+          onOpenChange={setPageDatePickerOpen}
           align="end"
         >
           <Button
@@ -242,11 +209,11 @@ export function Dashboard() {
           >
             <Calendar className="mr-2 h-4 w-4 shrink-0" />
             <span className="truncate text-left">
-              {!globalSectionRange?.from
+              {!pageDateRange?.from
                 ? t("finances.allTime")
-                : !globalSectionRange.to
+                : !pageDateRange.to
                   ? t("finances.selectEndDate")
-                  : `${format(globalSectionRange.from, "MMM d, yyyy")} – ${format(globalSectionRange.to, "MMM d, yyyy")}`}
+                  : `${format(pageDateRange.from, "MMM d, yyyy")} – ${format(pageDateRange.to, "MMM d, yyyy")}`}
             </span>
           </Button>
         </AdminDateRangeFilterPopover>
@@ -261,9 +228,6 @@ export function Dashboard() {
           changeType={stats.revenueChange >= 0 ? "positive" : "negative"}
           icon={DollarSign}
           iconBgColor="bg-gradient-to-br from-green-400 to-green-600"
-          dateRange={revenueRange}
-          onDateRangeChange={setRevenueRange}
-          hintText={t("dashboard.analyticsKpiDateHint")}
         />
         <StatCard
           title={t('dashboard.orders')}
@@ -272,9 +236,6 @@ export function Dashboard() {
           changeType={stats.ordersChange >= 0 ? "positive" : "negative"}
           icon={ShoppingCart}
           iconBgColor="bg-gradient-to-br from-blue-400 to-blue-600"
-          dateRange={ordersRange}
-          onDateRangeChange={setOrdersRange}
-          hintText={t("dashboard.analyticsKpiDateHint")}
         />
         <StatCard
           title={t('dashboard.customers')}
@@ -283,9 +244,6 @@ export function Dashboard() {
           changeType={stats.customersChange >= 0 ? "positive" : "negative"}
           icon={Users}
           iconBgColor="bg-gradient-to-br from-purple-400 to-purple-600"
-          dateRange={customersRange}
-          onDateRangeChange={setCustomersRange}
-          hintText={t("dashboard.analyticsKpiDateHint")}
         />
         <StatCard
           title={t('dashboard.products')}
@@ -294,9 +252,6 @@ export function Dashboard() {
           changeType={stats.productsChange >= 0 ? "positive" : "negative"}
           icon={Package}
           iconBgColor="bg-gradient-to-br from-orange-400 to-orange-600"
-          dateRange={productsRange}
-          onDateRangeChange={setProductsRange}
-          hintText={t("dashboard.analyticsKpiDateHint")}
         />
       </div>
 

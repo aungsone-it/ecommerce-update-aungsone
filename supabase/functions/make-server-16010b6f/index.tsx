@@ -10969,7 +10969,7 @@ async function verifyViaWellKnownHttps(
         redirect: "follow",
         headers: {
           "User-Agent":
-            "Mozilla/5.0 (compatible; MigooDomainVerify/1; +https://walwal.online)",
+            "Mozilla/5.0 (compatible; MigooDomainVerify/1; +https://nexa-mm.com)",
           Accept: "text/plain,text/html;q=0.9,*/*;q=0.8",
         },
         signal: controller.signal,

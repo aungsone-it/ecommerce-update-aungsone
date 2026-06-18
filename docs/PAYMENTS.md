@@ -7,7 +7,7 @@ This is the canonical payment reference for this repo.
 - **KBZPay QR** checkout on vendor storefront (`Checkout.tsx`)
 - **KBZPay PWA** (mobile browser / app return)
 - KBZPay return-page handling (`/kpay/return`)
-- **Unified post-payment summary** on platform apex: `https://walwal.online/summary`
+- **Unified post-payment summary** on platform apex: `https://nexa-mm.com/summary`
 - KBZPay webhook (`kpay-webhook` Edge Function) + Realtime on `kpay_txn:{merchantOrderId}`
 
 ## Not active in vendor checkout

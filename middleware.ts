@@ -5,9 +5,9 @@
  * Vendor subdomains serve the SPA at / (clean URL). No redirect to /store/... — routing uses hostname + optional VENDOR_SUBDOMAIN_SLUG_MAP.
  *
  * Optional env VENDOR_SUBDOMAIN_SLUG_MAP: JSON object, short subdomain label → real store slug.
- * Example: {"gogo":"go-go","abcstore":"abc-store"} so gogo.walwal.online → /store/go-go
+ * Example: {"gogo":"go-go","abcstore":"abc-store"} so gogo.nexa-mm.com → /store/go-go
  *
- * Apex / www (https://walwal.online, https://www.walwal.online) → no redirect (branding + marketplace paths).
+ * Apex / www (https://nexa-mm.com, https://www.nexa-mm.com) → no redirect (branding + marketplace paths).
  *
  * Set Vercel env: VENDOR_SUBDOMAIN_BASE_DOMAIN=your-primary.com (fallback only — host-derived apex wins)
  * DNS: for each marketplace apex, add apex + wildcard in Vercel Domains (e.g. bash2.online and *.bash2.online)

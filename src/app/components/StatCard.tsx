@@ -14,9 +14,9 @@ interface StatCardProps {
   changeType: "positive" | "negative" | "neutral";
   icon: LucideIcon;
   iconBgColor: string;
-  dateRange: DateRange | undefined;
-  onDateRangeChange: (range: DateRange | undefined) => void;
-  hintText: string;
+  dateRange?: DateRange | undefined;
+  onDateRangeChange?: (range: DateRange | undefined) => void;
+  hintText?: string;
 }
 
 export function StatCard({
@@ -59,26 +59,28 @@ export function StatCard({
             <Icon className="h-6 w-6 text-white" />
           </div>
         </div>
-        <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
-          <AdminDateRangeFilterPopover
-            value={dateRange}
-            onChange={onDateRangeChange}
-            hintText={hintText}
-            align="start"
-          >
-            <button
-              type="button"
-              className="text-xs font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
+        {dateRange != null && onDateRangeChange ? (
+          <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3">
+            <AdminDateRangeFilterPopover
+              value={dateRange}
+              onChange={onDateRangeChange}
+              hintText={hintText ?? t("finances.filterByDate")}
+              align="start"
             >
-              {t("finances.filterByDate")}
-            </button>
-          </AdminDateRangeFilterPopover>
-          {dateRange?.from && dateRange?.to && (
-            <span className="text-xs text-slate-500">
-              {format(dateRange.from, "MMM d, yyyy")} – {format(dateRange.to, "MMM d, yyyy")}
-            </span>
-          )}
-        </div>
+              <button
+                type="button"
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 underline-offset-2 hover:underline"
+              >
+                {t("finances.filterByDate")}
+              </button>
+            </AdminDateRangeFilterPopover>
+            {dateRange?.from && dateRange?.to && (
+              <span className="text-xs text-slate-500">
+                {format(dateRange.from, "MMM d, yyyy")} – {format(dateRange.to, "MMM d, yyyy")}
+              </span>
+            )}
+          </div>
+        ) : null}
       </div>
     </Card>
   );
