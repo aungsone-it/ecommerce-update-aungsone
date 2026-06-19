@@ -247,9 +247,11 @@ async function isVerifiedVendorCustomDomainHost(hostname: string): Promise<boole
       encodeURIComponent(host)
     }`;
   try {
+    const anonKey = resolveSupabaseAnonKey();
     const res = await fetch(endpoint, {
       headers: {
-        Authorization: `Bearer ${resolveSupabaseAnonKey()}`,
+        Authorization: `Bearer ${anonKey}`,
+        apikey: anonKey,
         Accept: "application/json",
       },
     });
