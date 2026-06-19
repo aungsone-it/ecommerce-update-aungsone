@@ -3,7 +3,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
-import { isValidStaffActorId } from "./staff_activity_helpers.tsx";
+import { appendStaffActivity, isValidStaffActorId } from "./staff_activity_helpers.tsx";
 import { queueCustomerReadModelSync } from "./read_model.ts";
 
 const authApp = new Hono();
@@ -356,6 +356,16 @@ function profileRolePriority(role: string): number {
   if (OWNER_ROLES.has(r)) return 100;
   if (ADMIN_TIER_ROLES.has(r)) return 50;
   return 10;
+}
+
+function formatAuditRoleLabel(role: unknown): string {
+  const raw = String(role || "").trim();
+  if (!raw) return "Unknown";
+  return raw
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function dedupeAuthProfilesByEmail(profiles: any[]): any[] {
@@ -745,6 +755,11 @@ authApp.post("/create-user", async (c) => {
     await kv.set("auth:users-list", users);
 
     console.log(`✅ User created: ${email} with role ${targetRole}`);
+    await appendStaffActivity(createdBy, {
+      type: "user_created",
+      action: "User created",
+      detail: `User - ${String(name || email || "Staff").slice(0, 120)} · ${String(email || "").slice(0, 120)} · User ID - ${String(data.user.id || "").slice(0, 40)} · Role - ${formatAuditRoleLabel(targetRole)}`,
+    });
 
     let profileImageUrl: string | undefined;
     if (profileImagePath) {
@@ -953,6 +968,35 @@ authApp.put("/user/:userId", async (c) => {
       delete updatedProfile.profileImageUrl;
     }
 
+    const actorId = typeof updatedBy === "string" && updatedBy.trim() ? updatedBy.trim() : userId;
+    const targetName = String(updatedProfile.name || "").trim();
+    const targetEmail = String(updatedProfile.email || "").trim();
+    const targetLabel = String(targetName || targetEmail || userId).slice(0, 120);
+    const detailParts: string[] = [];
+    const prevRole = String(p.role || "").trim();
+    const nextRole = String(updatedProfile.role || "").trim();
+    if (prevRole !== nextRole) {
+      detailParts.push(`Role : ${formatAuditRoleLabel(nextRole)} | ${targetLabel}`);
+    }
+    const prevName = String(p.name || "").trim();
+    const nextName = String(updatedProfile.name || "").trim();
+    if (prevName !== nextName && nextName) {
+      detailParts.push(`Name : ${nextName.slice(0, 80)}`);
+    }
+    const prevEmail = String(p.email || "").trim().toLowerCase();
+    const nextEmail = String(updatedProfile.email || "").trim().toLowerCase();
+    if (prevEmail !== nextEmail && nextEmail) {
+      detailParts.push(`Email : ${nextEmail.slice(0, 120)}`);
+    }
+    if (detailParts.length === 0) {
+      detailParts.push(targetLabel);
+    }
+    await appendStaffActivity(actorId, {
+      type: "user_updated",
+      action: "User updated",
+      detail: detailParts.join(" · "),
+    });
+
     return c.json({ success: true, user: updatedProfile });
   } catch (error: any) {
     console.error("❌ Update user error:", error);
@@ -966,13 +1010,20 @@ authApp.put("/user/:userId", async (c) => {
 authApp.delete("/user/:userId", async (c) => {
   try {
     const userId = c.req.param("userId");
+    const deletedBy = String(c.req.query("deletedBy") || "").trim();
 
     const profile = await kv.get(`auth:user:${userId}`);
     if (!profile) {
       return c.json({ error: "User not found" }, 404);
     }
 
-    if (profile.role === "super-admin" || profile.role === "store-owner") {
+    const profileRole = String((profile as { role?: string }).role || "").trim();
+    if (profileRole === "super-admin" || profileRole === "store-owner") {
+      await appendStaffActivity(deletedBy || undefined, {
+        type: "admin_action",
+        action: "User delete blocked",
+        detail: `User - ${String((profile as { name?: string }).name || (profile as { email?: string }).email || userId).slice(0, 120)} · User ID - ${String(userId).slice(0, 40)} · Role - ${formatAuditRoleLabel(profileRole)} · Owner-level account`,
+      });
       return c.json({ error: "Cannot delete owner-level account" }, 400);
     }
 
@@ -999,6 +1050,11 @@ authApp.delete("/user/:userId", async (c) => {
     }
 
     console.log(`✅ User deleted: ${profile.email}`);
+    await appendStaffActivity(deletedBy || undefined, {
+      type: "user_deleted",
+      action: "User deleted",
+      detail: `User - ${String((profile as { name?: string }).name || (profile as { email?: string }).email || userId).slice(0, 120)} · ${String((profile as { email?: string }).email || "").slice(0, 120)} · User ID - ${String(userId).slice(0, 40)} · Role - ${formatAuditRoleLabel(profileRole)}`,
+    });
 
     return c.json({ success: true });
   } catch (error: any) {
@@ -1013,6 +1069,13 @@ authApp.delete("/user/:userId", async (c) => {
 authApp.post("/reset-password/:userId", async (c) => {
   try {
     const userId = c.req.param("userId");
+    let resetBy = "";
+    try {
+      const body = await c.req.json();
+      resetBy = typeof body?.resetBy === "string" ? body.resetBy.trim() : "";
+    } catch {
+      resetBy = "";
+    }
 
     const profile = await kv.get(`auth:user:${userId}`);
     if (!profile) {
@@ -1040,6 +1103,11 @@ authApp.post("/reset-password/:userId", async (c) => {
     });
 
     console.log(`✅ Password reset for: ${profile.email}`);
+    await appendStaffActivity(resetBy || undefined, {
+      type: "password_reset",
+      action: "Password reset",
+      detail: `${String((profile as { name?: string }).name || (profile as { email?: string }).email || userId).slice(0, 120)} · ${String((profile as { email?: string }).email || "").slice(0, 120)}`,
+    });
 
     return c.json({
       success: true,

@@ -24,6 +24,74 @@ import {
 import { prefetchVendorStorefrontPage } from "./app/pages/vendorStorefrontPageLazy";
 import { primeVendorStorefrontHeadFromCache } from "./app/utils/vendorStorefrontBrandingCache";
 
+const AUTH_USER_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function resolveActorUserIdFromStorage(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const candidates = [
+      localStorage.getItem("migoo-staff-actor-id"),
+      localStorage.getItem("migoo-user"),
+      localStorage.getItem("vendorAuth"),
+    ];
+    for (const raw of candidates) {
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const idCandidate =
+        typeof parsed.id === "string"
+          ? parsed.id
+          : typeof parsed.userId === "string"
+            ? parsed.userId
+            : "";
+      const trimmed = String(idCandidate || "").trim();
+      if (AUTH_USER_ID_RE.test(trimmed)) return trimmed;
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function installActorHeaderFetchBridge(): void {
+  if (typeof window === "undefined") return;
+  const scoped = window as typeof window & { __migooActorFetchPatched?: boolean };
+  if (scoped.__migooActorFetchPatched) return;
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const actorId = resolveActorUserIdFromStorage();
+    if (!actorId) return originalFetch(input, init);
+
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    if (!url.includes("/functions/v1/make-server-16010b6f")) {
+      return originalFetch(input, init);
+    }
+
+    if (input instanceof Request) {
+      const headers = new Headers(init?.headers ?? input.headers);
+      if (!headers.has("x-actor-user-id")) {
+        headers.set("x-actor-user-id", actorId);
+      }
+      const nextRequest = new Request(input, { ...init, headers });
+      return originalFetch(nextRequest);
+    }
+
+    const headers = new Headers(init?.headers);
+    if (!headers.has("x-actor-user-id")) {
+      headers.set("x-actor-user-id", actorId);
+    }
+    return originalFetch(input, { ...init, headers });
+  };
+
+  scoped.__migooActorFetchPatched = true;
+}
+
 function isAdminAppPath(pathname: string): boolean {
   const p = (pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
   return p === "/admin" || p.startsWith("/admin/");
@@ -76,6 +144,10 @@ if (
   })
 ) {
   primePlatformBrandingFaviconFromCache();
+}
+
+if (typeof window !== "undefined") {
+  installActorHeaderFetchBridge();
 }
 
 function mountApp(): void {

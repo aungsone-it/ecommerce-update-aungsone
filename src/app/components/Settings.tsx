@@ -781,6 +781,7 @@ export function Settings() {
           },
           body: JSON.stringify({
             status: newStatus,
+            updatedBy: user?.id || "",
           }),
         }
       );
@@ -811,7 +812,7 @@ export function Settings() {
       console.log(`🗑️ Deleting user: ${userId}`);
       
       const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/user/${userId}`,
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/user/${userId}?deletedBy=${encodeURIComponent(String(user?.id || ""))}`,
         {
           method: "DELETE",
           headers: {

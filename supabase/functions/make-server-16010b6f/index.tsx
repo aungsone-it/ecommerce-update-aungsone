@@ -31,7 +31,7 @@ import {
   deleteOwnedStorageRefs,
   refsRemovedSinceUpdate,
 } from "./storage_delete_helpers.tsx";
-import { appendStaffActivity } from "./staff_activity_helpers.tsx";
+import { appendStaffActivity, isValidStaffActorId } from "./staff_activity_helpers.tsx";
 import {
   assertAdminMonitoringAllowed,
   assertDestructiveOperationAllowed,
@@ -299,7 +299,7 @@ function invalidateDashboardCache(): void {
 app.use("*", cors({
   origin: "*",
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info"],
+  allowHeaders: ["Content-Type", "Authorization", "apikey", "x-client-info", "x-actor-user-id"],
   exposeHeaders: ["Content-Length"],
   maxAge: 86400,
   credentials: false,
@@ -356,6 +356,180 @@ app.use("*", async (c, next) => {
     }
     throw error;
   }
+});
+
+const AUTO_AUDIT_WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const AUTO_AUDIT_EXACT_SKIP_PATHS = new Set([
+  "/make-server-16010b6f/kpay/webhook",
+  "/make-server-16010b6f/health",
+  "/make-server-16010b6f/monitoring/summary",
+  "/make-server-16010b6f/read-model/validate",
+  "/make-server-16010b6f/notifications/mark-all-read",
+]);
+const AUTO_AUDIT_SKIP_PATTERNS = [
+  /^\/make-server-16010b6f\/auth\/(?:login|register|signup|validate|check-setup|email-health|setup|send-email-otp|verify-otp-and-reset|list-emails|update-temp-password)(?:\/|$)/,
+  /^\/make-server-16010b6f\/auth\/staff-activity\/[^/]+$/,
+  /^\/make-server-16010b6f\/auth\/(?:create-user|user\/[^/]+|reset-password\/[^/]+)$/,
+  /^\/make-server-16010b6f\/products(?:\/[^/]+)?$/,
+  /^\/make-server-16010b6f\/notifications\/[^/]+\/read$/,
+  /^\/make-server-16010b6f\/campaigns\/[^/]+\/increment$/,
+  /^\/make-server-16010b6f\/vendor\/audience\/[^/]+\/track$/,
+  /^\/make-server-16010b6f\/chat\/messages(?:\/|$)/,
+];
+const AUTO_AUDIT_ACTOR_KEYS = [
+  "performedByUserId",
+  "updatedBy",
+  "createdBy",
+  "deletedBy",
+  "resetBy",
+  "actorUserId",
+  "actorId",
+  "adminUserId",
+  "staffUserId",
+];
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object" && !Array.isArray(value);
+}
+
+function pickValidActorIdFromRecord(record: Record<string, unknown>): string {
+  for (const key of AUTO_AUDIT_ACTOR_KEYS) {
+    const raw = record[key];
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (isValidStaffActorId(trimmed)) return trimmed;
+  }
+  const nestedActor = record.actor;
+  if (isObjectRecord(nestedActor) && typeof nestedActor.id === "string") {
+    const actorId = nestedActor.id.trim();
+    if (isValidStaffActorId(actorId)) return actorId;
+  }
+  return "";
+}
+
+function shouldAutoAuditPath(pathname: string, method: string): boolean {
+  if (!pathname.startsWith("/make-server-16010b6f/")) return false;
+  if (method === "DELETE" && /^\/make-server-16010b6f\/customers\/[^/]+$/.test(pathname)) {
+    return false;
+  }
+  if (AUTO_AUDIT_EXACT_SKIP_PATHS.has(pathname)) return false;
+  return !AUTO_AUDIT_SKIP_PATTERNS.some((pattern) => pattern.test(pathname));
+}
+
+function actionVerbFromMethod(method: string): string {
+  if (method === "POST") return "created";
+  if (method === "DELETE") return "deleted";
+  return "updated";
+}
+
+function resourceLabelFromPath(pathname: string): string {
+  const trimmed = pathname.replace("/make-server-16010b6f/", "");
+  const [root, second] = trimmed.split("/").filter(Boolean);
+  if (root === "vendor" && second === "custom-domain") return "Vendor custom domain";
+  if (root === "vendor" && second === "storefront") return "Vendor storefront";
+  if (root === "admin" && second === "domain") return "Domain";
+  if (root === "vendor-applications") return "Vendor application";
+  if (root === "blog-posts") return "Blog post";
+  if (root === "appearance-settings") return "Appearance settings";
+  if (root === "announcement") return "Announcement";
+  if (root === "inventory") return "Inventory";
+  if (root === "discounts") return "Discount";
+  if (root === "categories" || root === "vendor" || root === "vendors" || root === "orders" || root === "customers" || root === "campaigns" || root === "settings" || root === "notifications" || root === "collaborators" || root === "auth") {
+    return root.replace(/-/g, " ").replace(/\b\w/g, (x) => x.toUpperCase()).replace(/s$/, "");
+  }
+  return "Admin action";
+}
+
+function buildAutoAuditAction(method: string, pathname: string): string {
+  const label = resourceLabelFromPath(pathname);
+  const verb = actionVerbFromMethod(method);
+  if (label === "Admin action") return `Admin action ${method}`;
+  return `${label} ${verb}`;
+}
+
+function buildAutoAuditDetail(pathname: string, query: URLSearchParams, body: Record<string, unknown> | null): string {
+  const route = pathname.replace("/make-server-16010b6f/", "");
+  const parts: string[] = [route || "/"];
+  const candidateLabel = isObjectRecord(body)
+    ? [
+        body.name,
+        body.title,
+        body.email,
+        body.orderNumber,
+        body.sku,
+        body.code,
+        body.id,
+      ].find((x) => typeof x === "string" && String(x).trim())
+    : "";
+  if (typeof candidateLabel === "string" && candidateLabel.trim()) {
+    parts.push(candidateLabel.trim().slice(0, 80));
+  }
+  const queryId = query.get("id") || query.get("vendorId") || query.get("campaignId");
+  if (queryId && queryId.trim()) {
+    parts.push(`id ${queryId.trim().slice(0, 40)}`);
+  }
+  return parts.join(" · ").slice(0, 220);
+}
+
+// Auto-capture admin/owner write activities so new routes are tracked without manual instrumentation.
+app.use("*", async (c, next) => {
+  const method = c.req.method.toUpperCase();
+  if (!AUTO_AUDIT_WRITE_METHODS.has(method)) {
+    await next();
+    return;
+  }
+
+  let pathname = "";
+  let query = new URLSearchParams();
+  try {
+    const url = new URL(c.req.url);
+    pathname = url.pathname;
+    query = url.searchParams;
+  } catch {
+    pathname = c.req.path;
+  }
+  if (!shouldAutoAuditPath(pathname, method)) {
+    await next();
+    return;
+  }
+
+  const actorFromHeader = String(c.req.header("x-actor-user-id") || "").trim();
+  const actorFromQuery =
+    String(
+      query.get("performedByUserId") ||
+        query.get("updatedBy") ||
+        query.get("createdBy") ||
+        query.get("deletedBy") ||
+        query.get("resetBy") ||
+        ""
+    ).trim();
+
+  let bodyData: Record<string, unknown> | null = null;
+  const contentType = String(c.req.header("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    try {
+      const text = await c.req.raw.clone().text();
+      if (text && text.trim()) {
+        const parsed = JSON.parse(text);
+        if (isObjectRecord(parsed)) bodyData = parsed;
+      }
+    } catch {
+      bodyData = null;
+    }
+  }
+
+  await next();
+  if (c.res.status >= 400) return;
+
+  const actorFromBody = bodyData ? pickValidActorIdFromRecord(bodyData) : "";
+  const actorId = actorFromHeader || actorFromQuery || actorFromBody;
+  if (!isValidStaffActorId(actorId)) return;
+
+  await appendStaffActivity(actorId, {
+    type: "admin_action",
+    action: buildAutoAuditAction(method, pathname),
+    detail: buildAutoAuditDetail(pathname, query, bodyData),
+  });
 });
 
 // Request logging middleware - lightweight

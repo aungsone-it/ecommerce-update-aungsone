@@ -4,6 +4,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
 import { assertDestructiveOperationAllowed } from "./admin_operation_guard.tsx";
+import { appendStaffActivity } from "./staff_activity_helpers.tsx";
 import {
   queueCustomerReadModelDelete,
   queueCustomerReadModelSync,
@@ -800,6 +801,7 @@ customerApp.put("/customers/:customerId", async (c) => {
 customerApp.delete("/customers/:customerId", async (c) => {
   try {
     const idParam = c.req.param("customerId");
+    const deletedBy = String(c.req.query("deletedBy") || c.req.header("x-actor-user-id") || "").trim();
     console.log(`🗑️ Deleting customer: ${idParam}`);
 
     const resolved = await resolveCustomerForDelete(idParam);
@@ -853,6 +855,24 @@ customerApp.delete("/customers/:customerId", async (c) => {
     }
 
     console.log(`✅ Customer deleted completely: ${storageKey} (requested: ${idParam})`);
+    const customerName = String(customer?.name || "").trim();
+    const customerEmail = String(customer?.email || customer?.mail || "").trim();
+    const customerPhone = String(
+      customer?.phone || customer?.phoneNumber || customer?.mobile || ""
+    ).trim();
+    const detailParts = [
+      customerName ? customerName : "",
+      customerEmail ? customerEmail : "",
+      customerPhone ? customerPhone : "",
+    ].filter(Boolean);
+    await appendStaffActivity(deletedBy || undefined, {
+      type: "admin_action",
+      action: "Customer deleted",
+      detail:
+        detailParts.length > 0
+          ? detailParts.join(" | ").slice(0, 220)
+          : String(storageKey || idParam).slice(0, 120),
+    });
 
     return c.json({
       success: true,

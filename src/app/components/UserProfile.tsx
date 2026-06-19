@@ -167,6 +167,35 @@ export function UserProfile({
     { id: string; type: string; action: string; detail: string; at: string }[]
   >([]);
 
+  const loadStaffActivity = async (staffUserId: string, cancelledRef: () => boolean) => {
+    try {
+      const activityRes = await fetch(
+        `${API_BASE_URL}/auth/staff-activity/${staffUserId}`,
+        { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+      );
+      if (cancelledRef()) return;
+      if (!activityRes.ok) {
+        setStaffAuditEvents([]);
+        return;
+      }
+      const actData = await activityRes.json();
+      const list = Array.isArray(actData.activities) ? actData.activities : [];
+      if (cancelledRef()) return;
+      setStaffAuditEvents(
+        list.filter(
+          (x: unknown) =>
+            x &&
+            typeof x === "object" &&
+            typeof (x as { id?: string }).id === "string" &&
+            typeof (x as { action?: string }).action === "string"
+        )
+      );
+    } catch (e) {
+      console.warn("Staff activity refresh skipped:", e);
+      if (!cancelledRef()) setStaffAuditEvents([]);
+    }
+  };
+
   useEffect(() => {
     setIsEditing(!!initialEditMode);
   }, [user?.id, initialEditMode]);
@@ -240,16 +269,10 @@ export function UserProfile({
     setLoadingProfile(true);
     (async () => {
       try {
-        const [profileRes, activityRes] = await Promise.all([
-          fetch(
-            `${API_BASE_URL}/auth/profile/${user.id}`,
-            { headers: { Authorization: `Bearer ${publicAnonKey}` } }
-          ),
-          fetch(
-            `${API_BASE_URL}/auth/staff-activity/${user.id}`,
-            { headers: { Authorization: `Bearer ${publicAnonKey}` } }
-          ),
-        ]);
+        const profileRes = await fetch(
+          `${API_BASE_URL}/auth/profile/${user.id}`,
+          { headers: { Authorization: `Bearer ${publicAnonKey}` } }
+        );
         if (cancelled) return;
         if (profileRes.ok) {
           const data = await profileRes.json();
@@ -259,23 +282,7 @@ export function UserProfile({
             setAvatarPreview(displayAvatarUrl({ ...user, ...u }, variant));
           }
         }
-        if (activityRes.ok) {
-          const actData = await activityRes.json();
-          const list = Array.isArray(actData.activities) ? actData.activities : [];
-          if (!cancelled) {
-            setStaffAuditEvents(
-              list.filter(
-                (x: unknown) =>
-                  x &&
-                  typeof x === "object" &&
-                  typeof (x as { id?: string }).id === "string" &&
-                  typeof (x as { action?: string }).action === "string"
-              )
-            );
-          }
-        } else if (!cancelled) {
-          setStaffAuditEvents([]);
-        }
+        await loadStaffActivity(String(user.id), () => cancelled);
       } catch (e) {
         console.warn("Profile refresh skipped:", e);
         if (!cancelled) setStaffAuditEvents([]);
@@ -284,8 +291,21 @@ export function UserProfile({
       }
     })();
 
+    const intervalId = window.setInterval(() => {
+      void loadStaffActivity(String(user.id), () => cancelled);
+    }, 8000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void loadStaffActivity(String(user.id), () => cancelled);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [user?.id, user?.profileImageUrl, user?.avatar, user?.email, variant]);
 
@@ -339,7 +359,7 @@ export function UserProfile({
     } else if (avatarMarkedForRemoval) {
       payload.removeProfileImage = true;
     }
-    if (editedUser.role !== user.role && sessionUser?.id) {
+    if (sessionUser?.id) {
       payload.updatedBy = sessionUser.id;
     }
 
@@ -719,7 +739,7 @@ export function UserProfile({
         action: ev.action,
         target: ev.detail || "",
         at: atMs,
-        status: ev.type === "product_deleted" ? "neutral" : "success",
+        status: String(ev.type || "").includes("deleted") ? "neutral" : "success",
       });
     }
 

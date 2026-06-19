@@ -30,6 +30,35 @@ interface ApiRequestOptions extends RequestInit {
   keepalive?: boolean;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function resolveActorUserId(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const candidates = [
+      localStorage.getItem("migoo-staff-actor-id"),
+      localStorage.getItem("migoo-user"),
+      localStorage.getItem("vendorAuth"),
+    ];
+    for (const raw of candidates) {
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const idCandidate =
+        typeof parsed.id === "string"
+          ? parsed.id
+          : typeof parsed.userId === "string"
+            ? parsed.userId
+            : "";
+      const trimmed = String(idCandidate || "").trim();
+      if (UUID_RE.test(trimmed)) return trimmed;
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
 // ============================================
 // ERROR HANDLING
 // ============================================
@@ -114,9 +143,11 @@ async function apiRequest<T = any>(
   const url = `${API_BASE_URL}${endpoint}`;
 
   // Prepare headers
+  const actorUserId = resolveActorUserId();
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${publicAnonKey}`,
+    ...(actorUserId ? { "x-actor-user-id": actorUserId } : {}),
     ...getAdminOperationHeaders(),
     ...fetchOptions.headers,
   };

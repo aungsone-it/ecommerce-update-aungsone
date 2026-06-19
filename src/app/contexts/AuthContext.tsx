@@ -87,6 +87,39 @@ const PROFILE_BG_REFRESH_MIN_MS = 5 * 60 * 1000;
 /** Profile fetch: long enough for cold edge + local dev; background refresh stays shorter. */
 const PROFILE_FETCH_TIMEOUT_MS = (background: boolean) => (background ? 12_000 : 25_000);
 const PROFILE_INITIAL_ATTEMPTS = 3;
+const STAFF_ACTOR_ID_STORAGE_KEY = "migoo-staff-actor-id";
+const STAFF_AUDIT_ROLES = new Set([
+  "super-admin",
+  "store-owner",
+  "administrator",
+  "data-entry",
+  "warehouse",
+  "platform-admin",
+  "product-manager",
+  "developer",
+  "vendor-admin",
+  "collaborator",
+]);
+
+function persistStaffActorId(profile: unknown): void {
+  if (typeof window === "undefined") return;
+  const p = (profile || {}) as { id?: unknown; role?: unknown };
+  const id = String(p.id || "").trim();
+  const role = String(p.role || "").trim();
+  if (id && STAFF_AUDIT_ROLES.has(role)) {
+    try {
+      localStorage.setItem(STAFF_ACTOR_ID_STORAGE_KEY, id);
+      return;
+    } catch {
+      /* ignore storage failures */
+    }
+  }
+  try {
+    localStorage.removeItem(STAFF_ACTOR_ID_STORAGE_KEY);
+  } catch {
+    /* ignore storage failures */
+  }
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -202,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 : data;
             console.log("✅ Profile loaded successfully");
             setUser(profile as AuthUser);
+            persistStaffActorId(profile);
 
             if (
               (profile.role === "super-admin" || profile.role === "store-owner") &&
@@ -219,6 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn("   User ID:", userId);
             if (!isBackgroundRefresh) {
               setUser(null);
+              persistStaffActorId(null);
             }
             return null;
           }
@@ -261,6 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (!isBackgroundRefresh) {
             setUser(null);
+            persistStaffActorId(null);
           }
           return null;
         }
@@ -380,6 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('🔓 Logging out...');
       await supabase.auth.signOut();
       setUser(null);
+      persistStaffActorId(null);
       console.log('✅ Logout successful');
     } catch (error) {
       console.error('❌ Logout error:', error);

@@ -89,6 +89,7 @@ import { toast } from "sonner";
 import { MIGOO_USER_SESSION_CHANGED_EVENT } from "../../constants";
 import { useLanguage } from "../contexts/LanguageContext";
 import { subscribeCustomerRealtime } from "../utils/customersRealtime";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Customer {
   id: string;
@@ -141,6 +142,7 @@ export function CustomersEnhanced({
 }: {
   onOpenChatWithCustomer?: (c: ChatHandoffCustomer) => void;
 } = {}) {
+  const { user: sessionUser } = useAuth();
   const navigate = useNavigate();
   const { t } = useLanguage();
   const tr = (key: string, values: Record<string, string | number> = {}) =>
@@ -612,7 +614,10 @@ export function CustomersEnhanced({
             "Content-Type": "application/json",
             Authorization: `Bearer ${publicAnonKey}`,
           },
-          body: JSON.stringify({ status: "blocked" }),
+          body: JSON.stringify({
+            status: "blocked",
+            updatedBy: sessionUser?.id || "",
+          }),
         }
       );
 
@@ -644,7 +649,7 @@ export function CustomersEnhanced({
   // 🔥 DELETE CUSTOMER ACTION
   const deleteCustomerOnServer = async (customerId: string): Promise<void> => {
     const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${customerId}`,
+      `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/customers/${customerId}?deletedBy=${encodeURIComponent(String(sessionUser?.id || ""))}`,
       {
         method: "DELETE",
         headers: {

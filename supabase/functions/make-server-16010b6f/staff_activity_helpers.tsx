@@ -15,7 +15,15 @@ export function isValidStaffActorId(id: string | undefined | null): id is string
 
 export type StaffActivityEntry = {
   id: string;
-  type: "product_created" | "product_updated" | "product_deleted";
+  type:
+    | "product_created"
+    | "product_updated"
+    | "product_deleted"
+    | "user_created"
+    | "user_updated"
+    | "user_deleted"
+    | "password_reset"
+    | "admin_action";
   action: string;
   detail: string;
   at: string;
