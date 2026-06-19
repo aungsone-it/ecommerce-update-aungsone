@@ -205,43 +205,6 @@ function isBarePlatformApexHost(host: string): boolean {
   return h === bare || h === `www.${bare}`;
 }
 
-function isStorefrontPathBlockedOnMarketplaceApex(pathname: string): boolean {
-  const path = (pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
-  if (path === "/checkout" || path === "/order-confirmation" || path === "/saved") return true;
-  if (path.startsWith("/product/")) return true;
-  if (path === "/profile" || path.startsWith("/profile/")) return true;
-  if (path.startsWith("/checkout/")) return true;
-  return false;
-}
-
-function stripWwwHost(host: string): string {
-  const h = normalizeHost(host);
-  return h.startsWith("www.") ? h.slice(4) : h;
-}
-
-/**
- * Only the platform marketplace apex (from env) should block /product/* at the edge.
- * Vendor custom domains (nexa-mm.shop, migoo.store, …) are bare apex too — never block them here;
- * the SPA resolves vendor from Host via /vendor/by-domain.
- */
-function isReservedMarketplaceApexHost(host: string): boolean {
-  const bare = stripWwwHost(host);
-  if (!bare) return false;
-  const reserved = new Set<string>();
-  const primary = stripWwwHost(
-    String(process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase()
-  );
-  if (primary) reserved.add(primary);
-  const raw =
-    String(process.env.PLATFORM_RESERVED_APEX_DOMAINS || "").trim() ||
-    String(process.env.VITE_PLATFORM_RESERVED_APEX_DOMAINS || "").trim();
-  for (const part of raw.split(",")) {
-    const d = stripWwwHost(part.trim());
-    if (d) reserved.add(d);
-  }
-  return reserved.has(bare);
-}
-
 export default function vercelMiddleware(request: Request): Response {
   const host = normalizeHost(request.headers.get("host") || "");
 
@@ -261,9 +224,9 @@ export default function vercelMiddleware(request: Request): Response {
   const path = requestUrl.pathname.replace(/\/+$/, "") || "/";
   const search = requestUrl.search || "";
 
-  if (isReservedMarketplaceApexHost(host) && isStorefrontPathBlockedOnMarketplaceApex(path)) {
-    return Response.redirect(new URL(`https://${host}/`), 301);
-  }
+  // Do NOT redirect /product/* (or other storefront paths) on bare apex here.
+  // Vendor custom domains (nexa-mm.shop, migoo.store) are bare apex too — blocking here
+  // breaks shared product URLs. Marketplace hosts are handled in vercel.json (host-specific).
 
   if (!baseDomain) {
     return next();
