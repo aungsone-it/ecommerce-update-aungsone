@@ -141,6 +141,11 @@ import {
   VendorAddressesSkeleton,
 } from "./SkeletonLoaders";
 import { AuthModal } from "./AuthModal";
+import {
+  ShippingAddressFormFields,
+  isShippingAddressFormValid,
+} from "./ShippingAddressFormFields";
+import { resolveMyanmarRegionForTownship } from "../utils/myanmarRegions";
 import { VendorStorefrontFooter } from "./VendorStorefrontFooter";
 import { NotificationCenter } from "./NotificationCenter";
 import { useChatNotification } from "../contexts/ChatNotificationContext";
@@ -3270,103 +3275,16 @@ export function VendorStoreView({
                 <CardTitle>{editingAddress ? "Edit Address" : "Add New Address"}</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <Label>Address Label *</Label>
-                    <Input
-                      placeholder="e.g., Home, Office, etc."
-                      value={addressForm.label}
-                      onChange={(e) => setAddressForm({ ...addressForm, label: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Recipient Name *</Label>
-                    <Input
-                      placeholder="Full name"
-                      value={addressForm.recipientName}
-                      onChange={(e) => setAddressForm({ ...addressForm, recipientName: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Phone Number *</Label>
-                    <Input
-                      placeholder="+95 9 XXX XXX XXX"
-                      value={addressForm.phone}
-                      onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>City *</Label>
-                    <Input
-                      placeholder="City"
-                      value={addressForm.city}
-                      onChange={(e) => setAddressForm({ ...addressForm, city: e.target.value })}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label>Address Line 1 *</Label>
-                    <Input
-                      placeholder="Street address, P.O. box"
-                      value={addressForm.addressLine1}
-                      onChange={(e) => setAddressForm({ ...addressForm, addressLine1: e.target.value })}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="flex items-baseline justify-between mb-1.5">
-                      <Label>Address Line 2</Label>
-                      <span className="text-xs text-slate-500">(optional)</span>
-                    </div>
-                    <Input
-                      placeholder="Apartment, suite, unit, building, floor, etc."
-                      value={addressForm.addressLine2}
-                      onChange={(e) => setAddressForm({ ...addressForm, addressLine2: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>State/Region</Label>
-                    <Input
-                      placeholder="State or Region"
-                      value={addressForm.state}
-                      onChange={(e) => setAddressForm({ ...addressForm, state: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label>Zip/Postal Code</Label>
-                    <Input
-                      placeholder="Postal code"
-                      value={addressForm.zipCode}
-                      onChange={(e) => setAddressForm({ ...addressForm, zipCode: e.target.value })}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label>Country *</Label>
-                    <Input
-                      value={addressForm.country}
-                      onChange={(e) => setAddressForm({ ...addressForm, country: e.target.value })}
-                      disabled
-                    />
-                  </div>
-                  <div className="md:col-span-2 flex items-center gap-2">
-                    <Checkbox
-                      id="vendor-isDefault"
-                      checked={addressForm.isDefault}
-                      onCheckedChange={(checked) => setAddressForm({ ...addressForm, isDefault: checked as boolean })}
-                    />
-                    <Label htmlFor="vendor-isDefault" className="cursor-pointer">
-                      Set as default address
-                    </Label>
-                  </div>
-                </div>
+                <ShippingAddressFormFields
+                  value={addressForm}
+                  onChange={setAddressForm}
+                  idPrefix="vendor-addr"
+                  defaultCheckboxId="vendor-isDefault"
+                />
                 <div className="flex gap-3 mt-6">
                   <Button
                     onClick={async () => {
-                      if (
-                        !addressForm.label ||
-                        !addressForm.recipientName ||
-                        !addressForm.phone ||
-                        !addressForm.addressLine1 ||
-                        !addressForm.city
-                      ) {
+                      if (!isShippingAddressFormValid(addressForm)) {
                         toast.error("Please fill in all required fields");
                         return;
                       }
@@ -3378,6 +3296,7 @@ export function VendorStoreView({
                       const newAddress: MarketplaceAddress = {
                         id: editingAddress?.id || Date.now().toString(),
                         ...addressForm,
+                        country: addressForm.country || "Myanmar",
                         userId: addressUserId,
                       };
 
@@ -3525,7 +3444,10 @@ export function VendorStoreView({
                             addressLine1: address.addressLine1 || "",
                             addressLine2: address.addressLine2 || "",
                             city: address.city || "",
-                            state: address.state || "",
+                            state:
+                              address.state ||
+                              resolveMyanmarRegionForTownship(address.city || "") ||
+                              "",
                             zipCode: address.zipCode || "",
                             country: address.country || "Myanmar",
                             isDefault: address.isDefault ?? false,
