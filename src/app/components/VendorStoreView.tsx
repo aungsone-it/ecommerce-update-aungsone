@@ -48,6 +48,17 @@ import {
 } from "../utils/productInventory";
 import { notifyStorefrontCustomerRegistered } from "../utils/customersRealtime";
 import {
+  applyCustomerProfileMerge,
+  buildCustomerSessionFromAuthResponse,
+  formatUserPhoneDisplay,
+  getCustomerDisplayEmail,
+  getCustomerProfileSubtitle,
+  normalizeCustomerSessionUser,
+  persistMigooUserSession,
+  resolveCustomerAuthEmail,
+  resolveCustomerPhone,
+} from "../utils/customerAuthIdentity";
+import {
   applyMetaPixelIdFromPayload,
   initMetaPixel,
   trackMetaAddToCart,
@@ -552,18 +563,7 @@ function withVendorProfileImageCacheBust(user: unknown, baseUrl: string): string
  * getUserProfileImageUrl does not prefer a stale URL over the fresh avatar.
  */
 function applyServerProfileMerge(localUser: any, serverUser: any): any {
-  const merged: any = {
-    ...localUser,
-    ...serverUser,
-    id: localUser?.id ?? serverUser.id,
-    email: serverUser.email ?? localUser?.email,
-  };
-  const srv = serverUser?.profileImageUrl;
-  const hasServerProfileImageUrl = typeof srv === "string" && srv.trim().length > 0;
-  if (!hasServerProfileImageUrl) {
-    delete merged.profileImageUrl;
-  }
-  return merged;
+  return applyCustomerProfileMerge(localUser, serverUser);
 }
 
 function resolveVendorProductFromSlug(products: Product[], decoded: string): Product | undefined {
@@ -1795,7 +1795,17 @@ export function VendorStoreView({
     const storedUser = localStorage.getItem('migoo-user');
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser) as Record<string, unknown>;
+        const uid = resolveUserIdFromRecord(parsed);
+        if (!uid) {
+          localStorage.removeItem('migoo-user');
+          return;
+        }
+        const normalized = normalizeCustomerSessionUser({ ...parsed, id: uid });
+        if (normalized) {
+          setUser(normalized);
+          persistMigooUserSession(normalized);
+        }
       } catch (error) {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem('migoo-user');
@@ -1816,8 +1826,8 @@ export function VendorStoreView({
     if (!user) return;
     setProfileForm({
       name: user.name || "",
-      email: user.email || "",
-      phone: user.phone || "",
+      email: getCustomerDisplayEmail(user) || user.email || "",
+      phone: resolveCustomerPhone(user) || user.phone || "",
       profileImage: null,
     });
   }, [user]);
@@ -1862,13 +1872,15 @@ export function VendorStoreView({
       if (!freshProfile || typeof freshProfile !== "object" || Array.isArray(freshProfile)) {
         return;
       }
-      if (!freshProfile.id && !freshProfile.email) {
+      if (!freshProfile.id && !getCustomerDisplayEmail(freshProfile) && !resolveCustomerPhone(freshProfile)) {
         return;
       }
-      const localBase = { ...parsedUser, id: uid };
+      const localBase =
+        normalizeCustomerSessionUser({ ...(parsedUser as Record<string, unknown>), id: uid }) ??
+        ({ ...(parsedUser as object), id: uid } as Record<string, unknown>);
       const updatedUser = applyServerProfileMerge(localBase, freshProfile);
       setUser(updatedUser);
-      localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
+      persistMigooUserSession(updatedUser);
       vendorProfileAmbientLastRef.current = Date.now();
       markVendorUserProfileRefreshed(uid);
     } catch {
@@ -1888,6 +1900,16 @@ export function VendorStoreView({
       void refreshVendorProfileFromServer();
     }, 600);
   }, [refreshVendorProfileFromServer]);
+
+  const profileHydrateAttemptedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (vendorViewMode !== "view-profile" && vendorViewMode !== "edit-profile") return;
+    const uid = resolveUserIdFromRecord(user);
+    if (!uid || resolveCustomerPhone(user)) return;
+    if (profileHydrateAttemptedRef.current === uid) return;
+    profileHydrateAttemptedRef.current = uid;
+    void refreshVendorProfileFromServer({ force: true });
+  }, [vendorViewMode, user, refreshVendorProfileFromServer]);
 
   useEffect(() => {
     scheduleVendorProfileRefresh();
@@ -1912,7 +1934,8 @@ export function VendorStoreView({
           setUser(null);
           return;
         }
-        setUser({ ...(parsed as object), id: uid } as any);
+        const normalized = normalizeCustomerSessionUser({ ...(parsed as object), id: uid });
+        if (normalized) setUser(normalized);
       } catch {
         setUser(null);
         return;
@@ -1936,12 +1959,15 @@ export function VendorStoreView({
     };
   }, [scheduleVendorProfileRefresh]);
 
+  const profileSaveCompletedRef = useRef(false);
+
   const prevPathForProfileExitRef = useRef<string>("");
   useEffect(() => {
     const path = location.pathname;
     const wasEdit = prevPathForProfileExitRef.current.includes("/profile/edit");
     prevPathForProfileExitRef.current = path;
-    if (wasEdit && !path.includes("/profile/edit")) {
+    if (wasEdit && !path.includes("/profile/edit") && profileSaveCompletedRef.current) {
+      profileSaveCompletedRef.current = false;
       void refreshVendorProfileFromServer({ force: true });
     }
   }, [location.pathname, refreshVendorProfileFromServer]);
@@ -2099,8 +2125,13 @@ export function VendorStoreView({
       const userData = response.user;
 
       lastAuthEventRef.current = "login";
-      setUser(userData);
-      localStorage.setItem('migoo-user', JSON.stringify(userData));
+      const sessionUser = buildCustomerSessionFromAuthResponse(
+        userData as Record<string, unknown>,
+        { loginIdentifier: authForm.email.trim() }
+      );
+      if (!sessionUser) throw new Error("Login failed");
+      setUser(sessionUser);
+      persistMigooUserSession(sessionUser);
       notifyMigooUserSessionChanged();
 
       toast.success(`Welcome back, ${userData.name || userData.email}!`);
@@ -2132,8 +2163,13 @@ export function VendorStoreView({
       const userData = response.user;
 
       lastAuthEventRef.current = "register";
-      setUser(userData);
-      localStorage.setItem('migoo-user', JSON.stringify(userData));
+      const sessionUser = buildCustomerSessionFromAuthResponse(
+        userData as Record<string, unknown>,
+        { phone: authForm.phone.trim(), loginIdentifier: authForm.phone.trim() }
+      );
+      if (!sessionUser) throw new Error("Registration failed");
+      setUser(sessionUser);
+      persistMigooUserSession(sessionUser);
       notifyMigooUserSessionChanged();
 
       toast.success(`Welcome to ${storeName}, ${userData.name}!`);
@@ -2286,6 +2322,7 @@ export function VendorStoreView({
       const payload: Record<string, unknown> = {
         name: profileForm.name,
         phone: profileForm.phone,
+        email: profileForm.email.trim(),
       };
       if (profileForm.profileImage) {
         payload.profileImage = profileForm.profileImage;
@@ -2317,11 +2354,17 @@ export function VendorStoreView({
       }
 
       if (data.success && data.user && typeof data.user === "object") {
-        setUser(data.user);
-        localStorage.setItem("migoo-user", JSON.stringify(data.user));
+        const mergedUser = buildCustomerSessionFromAuthResponse(data.user, {
+          phone: profileForm.phone.trim(),
+          email: profileForm.email.trim(),
+        });
+        if (!mergedUser) throw new Error("Failed to update profile");
+        setUser(mergedUser);
+        persistMigooUserSession(mergedUser);
         notifyMigooUserSessionChanged();
         invalidateAdminCustomersCache();
         toast.success("Profile updated successfully!");
+        profileSaveCompletedRef.current = true;
         goToProfileMode("view-profile");
       } else {
         throw new Error(data.error || "Failed to update profile");
@@ -2335,8 +2378,9 @@ export function VendorStoreView({
   };
 
   const handleChangePassword = async () => {
-    if (!user?.email) {
-      toast.error("User email not found. Please log in again.");
+    const authEmail = resolveCustomerAuthEmail(user);
+    if (!authEmail) {
+      toast.error("Account sign-in email not found. Please log in again.");
       return;
     }
     if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
@@ -2354,7 +2398,7 @@ export function VendorStoreView({
 
     setIsChangingPassword(true);
     try {
-      await authApi.changePassword(user.email, passwordForm.currentPassword, passwordForm.newPassword);
+      await authApi.changePassword(authEmail, passwordForm.currentPassword, passwordForm.newPassword);
       toast.success("Password changed successfully! Please use your new password next time you log in.");
       setPasswordForm({
         currentPassword: "",
@@ -2835,7 +2879,7 @@ export function VendorStoreView({
                       <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
                         {user?.name || "Guest User"}
                       </h1>
-                      <p className="text-slate-600">{user?.email || "No email provided"}</p>
+                      <p className="text-slate-600">{getCustomerProfileSubtitle(user)}</p>
                     </div>
                     <Button
                       type="button"
@@ -2865,11 +2909,11 @@ export function VendorStoreView({
                 </div>
                 <div>
                   <Label className="text-sm text-slate-600">Email Address</Label>
-                  <p className="font-medium text-slate-900">{user?.email || "Not provided"}</p>
+                  <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? "Not provided"}</p>
                 </div>
                 <div>
                   <Label className="text-sm text-slate-600">Phone Number</Label>
-                  <p className="font-medium text-slate-900">{user?.phone || "+95 9 XXX XXX XXX"}</p>
+                  <p className="font-medium text-slate-900">{formatUserPhoneDisplay(user)}</p>
                 </div>
               </CardContent>
             </Card>
@@ -3668,7 +3712,7 @@ export function VendorStoreView({
           <CardContent className="space-y-4">
             <div>
               <Label className="text-sm text-slate-600">Email Address</Label>
-              <p className="font-medium text-slate-900">{user?.email || "Not provided"}</p>
+              <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? "Not provided"}</p>
               <p className="text-xs text-slate-500 mt-1">Your email is used for login and notifications</p>
             </div>
             <Separator />

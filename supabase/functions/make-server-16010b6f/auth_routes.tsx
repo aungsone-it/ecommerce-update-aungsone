@@ -96,6 +96,100 @@ async function findCustomerByUserIdFromReadModel(userId: string): Promise<any | 
   }
 }
 
+function pickNonEmpty(...values: unknown[]): string {
+  for (const value of values) {
+    const trimmed = String(value ?? "").trim();
+    if (trimmed) return trimmed;
+  }
+  return "";
+}
+
+/** KV is authoritative for storefront customers; read-model can lag or omit phone/email. */
+async function findStorefrontCustomerByUserId(userId: string): Promise<any | null> {
+  const uid = String(userId || "").trim();
+  if (!uid) return null;
+
+  const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
+  const fromKv = Array.isArray(allCustomers)
+    ? allCustomers.find((c: any) => c != null && c.userId === uid)
+    : null;
+
+  const fromReadModel = await findCustomerByUserIdFromReadModel(uid);
+  if (!fromKv && !fromReadModel) return null;
+  if (!fromKv) return fromReadModel;
+  if (!fromReadModel) return fromKv;
+
+  return {
+    ...fromReadModel,
+    ...fromKv,
+    id: fromKv.id || fromReadModel.id,
+    userId: uid,
+    name: pickNonEmpty(fromKv.name, fromReadModel.name),
+    email: pickNonEmpty(fromKv.email, fromReadModel.email),
+    phone: pickNonEmpty(fromKv.phone, fromReadModel.phone),
+  };
+}
+
+async function getSupabaseAuthEmail(userId: string): Promise<string> {
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (error || !data?.user?.email) return "";
+    return String(data.user.email).trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function buildStorefrontUserResponse(customer: any, userId: string, authEmail?: string) {
+  const displayEmail = isSyntheticAuthEmail(String(customer?.email || "")) ? "" : String(customer?.email || "").trim();
+  const normalizedPhone = normalizeMyanmarPhone(String(customer?.phone || ""));
+  const phoneAuth = normalizedPhone ? phoneToAuthEmail(normalizedPhone) : "";
+  const resolvedAuthEmail = pickNonEmpty(
+    authEmail,
+    displayEmail && !isSyntheticAuthEmail(displayEmail) ? displayEmail : "",
+    phoneAuth
+  );
+
+  return {
+    ...customer,
+    email: displayEmail,
+    id: userId,
+    customerId: customer.id,
+    ...(resolvedAuthEmail ? { authEmail: resolvedAuthEmail } : {}),
+  };
+}
+
+async function enrichCustomerFromAuthUser(customer: any, authUser: { user_metadata?: Record<string, unknown>; email?: string | null }): Promise<any> {
+  if (!customer || typeof customer !== "object") return customer;
+
+  const metaPhone = normalizeMyanmarPhone(String(authUser.user_metadata?.phone || ""));
+  const metaName = String(authUser.user_metadata?.name || "").trim();
+  let changed = false;
+
+  if (metaPhone && !pickNonEmpty(customer.phone)) {
+    customer.phone = metaPhone;
+    changed = true;
+  }
+  if (metaName && !pickNonEmpty(customer.name)) {
+    customer.name = metaName;
+    changed = true;
+  }
+
+  const authEmail = String(authUser.email || "").trim().toLowerCase();
+  if (authEmail && !pickNonEmpty(customer.email) && !isSyntheticAuthEmail(authEmail)) {
+    customer.email = authEmail;
+    changed = true;
+  }
+
+  if (changed && customer.id) {
+    customer.updatedAt = new Date().toISOString();
+    await withTimeout(kv.set(`customer:${customer.id}`, customer), 5000);
+    queueCustomerReadModelSync(String(customer.id), customer);
+  }
+
+  return customer;
+}
+
 async function findCustomerByEmailFromReadModel(email: string): Promise<any | null> {
   const em = String(email || "").trim();
   if (!em) return null;
@@ -502,15 +596,11 @@ authApp.get("/profile/:userId", async (c) => {
     }
 
     // Storefront customers (Supabase) live in customer:* — same as login payload, not auth:user
-    let customer = await findCustomerByUserIdFromReadModel(userId);
-    if (!customer) {
-      const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
-      customer = Array.isArray(allCustomers)
-        ? allCustomers.find((x: any) => x != null && x.userId === userId)
-        : null;
-    }
+    let customer = await findStorefrontCustomerByUserId(userId);
 
     if (customer && typeof customer === "object") {
+      const authEmail = await getSupabaseAuthEmail(userId);
+      customer = await enrichCustomerFromAuthUser(customer, { email: authEmail });
       const { password: __, ...customerRest } = customer as Record<string, unknown> & {
         password?: string;
       };
@@ -519,11 +609,11 @@ authApp.get("/profile/:userId", async (c) => {
         profileImage?: string;
         avatar?: string;
       };
-      const userPayload: Record<string, unknown> = {
-        ...customerRest,
-        id: userId,
-        customerId: cust.id,
-      };
+      const userPayload: Record<string, unknown> = buildStorefrontUserResponse(
+        { ...customerRest, customerId: cust.id },
+        userId,
+        authEmail
+      );
       if (typeof cust.profileImage === "string" && cust.profileImage.trim()) {
         const su = await getSignedImageUrl(cust.profileImage.trim());
         if (su) userPayload.profileImageUrl = su;
@@ -1286,7 +1376,7 @@ authApp.post("/login", async (c) => {
     let customer = null;
     
     // Try to find existing customer by userId
-    customer = await findCustomerByUserIdFromReadModel(data.user.id);
+    customer = await findStorefrontCustomerByUserId(data.user.id);
     let allCustomers: any[] | null = null;
     if (!customer) {
       allCustomers = await withTimeout(kv.getByPrefix("customer:"), 30000);
@@ -1301,7 +1391,9 @@ authApp.post("/login", async (c) => {
       
       const customerId = `cust_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const userName = data.user.user_metadata?.name || loginEmail.split('@')[0];
-      const userPhone = data.user.user_metadata?.phone || "";
+      const loginPhone = normalizeMyanmarPhone(String(email || ""));
+      const userPhoneRaw = data.user.user_metadata?.phone || loginPhone || "";
+      const userPhone = normalizeMyanmarPhone(String(userPhoneRaw)) || String(userPhoneRaw).trim();
       const profileImage = data.user.user_metadata?.profileImage || null;
       const displayEmail = isSyntheticAuthEmail(loginEmail) ? "" : loginEmail;
       
@@ -1376,6 +1468,7 @@ authApp.post("/login", async (c) => {
       queueCustomerReadModelSync(customerId, customer);
       console.log(`✅ Customer record created: ${customerId}`);
     } else {
+      customer = await enrichCustomerFromAuthUser(customer, data.user);
       // Update last visit
       customer.lastVisit = new Date().toISOString().split('T')[0];
       customer.updatedAt = new Date().toISOString();
@@ -1386,11 +1479,11 @@ authApp.post("/login", async (c) => {
 
     // Prepare user object for frontend - IMPORTANT: Ensure id is the Supabase userId (UUID)
     // so profile fetching works correctly. Store the customerId separately.
-    const userResponse = {
-      ...customer,
-      id: data.user.id, // Always use UUID as the primary ID
-      customerId: customer.id, // Keep the original customerId just in case
-    };
+    const userResponse = buildStorefrontUserResponse(
+      customer,
+      data.user.id,
+      String(data.user.email || "").trim().toLowerCase()
+    );
 
     return c.json({
       success: true,
@@ -1557,11 +1650,11 @@ authApp.post("/register", async (c) => {
 
     // Prepare user object for frontend - IMPORTANT: Ensure id is the Supabase userId (UUID)
     // so profile fetching works correctly. Store the customerId separately.
-    const userResponse = {
-      ...customer,
-      id: data.user.id, // Always use UUID as the primary ID
-      customerId: customer.id, // Keep the original customerId just in case
-    };
+    const userResponse = buildStorefrontUserResponse(
+      customer,
+      data.user.id,
+      authEmail.toLowerCase()
+    );
 
     return c.json({
       success: true,

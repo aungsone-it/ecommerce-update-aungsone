@@ -85,6 +85,19 @@ import {
   invalidateCustomerOrdersCache,
   invalidateAdminCustomersCache,
 } from "../utils/module-cache";
+import {
+  applyCustomerProfileMerge,
+  buildCustomerSessionFromAuthResponse,
+  formatUserPhoneDisplay,
+  getCustomerDisplayEmail,
+  getCustomerProfileSubtitle,
+  normalizeCustomerSessionUser,
+  persistMigooUserSession,
+  readNormalizedMigooUserFromStorage,
+  resolveCustomerAuthEmail,
+  resolveCustomerPhone,
+  withCustomerAuthEmail,
+} from "../utils/customerAuthIdentity";
 import { loadCatalogBootstrapCached, loadCategoriesCached, loadSiteSettingsCached } from "./StorefrontCached";
 import {
   AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS,
@@ -301,22 +314,17 @@ function resolveUserIdFromRecord(u: unknown): string | null {
 }
 
 function readMigooUserFromStorage(): User | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("migoo-user");
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const id = resolveUserIdFromRecord(parsed);
-    if (!id) return null;
-    return {
-      ...(parsed as unknown as User),
-      id,
-      email: String(parsed.email ?? ""),
-      name: String((parsed.name as string) ?? parsed.email ?? ""),
-    };
-  } catch {
-    return null;
-  }
+  const parsed = readNormalizedMigooUserFromStorage();
+  if (!parsed) return null;
+  const id = resolveUserIdFromRecord(parsed);
+  if (!id) return null;
+  return {
+    ...(parsed as unknown as User),
+    id,
+    email: String(parsed.email ?? ""),
+    name: String((parsed.name as string) ?? parsed.email ?? ""),
+    phone: String(parsed.phone ?? resolveCustomerPhone(parsed) ?? ""),
+  };
 }
 
 function resolveOrderApiUserId(user: User | null): string | null {
@@ -2454,8 +2462,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
           setUser(null);
           return;
         }
-        const normalized = { ...(parsedUser as unknown as User), id: uid };
+        const normalized = normalizeCustomerSessionUser({ ...(parsedUser as unknown as User), id: uid }) as User;
         setUser(normalized);
+        persistMigooUserSession(normalized as unknown as Record<string, unknown>);
         try {
           const cachedCart = localStorage.getItem(storefrontCartCacheKey(uid));
           if (cachedCart) {
@@ -2490,14 +2499,9 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
               const freshProfile = response?.user || response;
               if (freshProfile && typeof freshProfile === "object" && !Array.isArray(freshProfile)) {
                 // Never drop id/email from session — bad merges were breaking order history & profile APIs
-                const updatedUser = {
-                  ...normalized,
-                  ...freshProfile,
-                  id: uid,
-                  email: (freshProfile as { email?: string }).email ?? String(normalized.email ?? ""),
-                };
-                setUser(updatedUser);
-                localStorage.setItem("migoo-user", JSON.stringify(updatedUser));
+                const updatedUser = applyCustomerProfileMerge(normalized, freshProfile);
+                setUser(updatedUser as User);
+                persistMigooUserSession(updatedUser);
                 markUserProfileRefreshed(uid);
               }
             })
@@ -2602,8 +2606,8 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     if (user) {
       setProfileForm({
         name: user.name || "",
-        email: user.email || "",
-        phone: user.phone || "",
+        email: getCustomerDisplayEmail(user) || user.email || "",
+        phone: resolveCustomerPhone(user) || user.phone || "",
         profileImage: null, // Don't show existing image in upload preview
       });
     }
@@ -3005,10 +3009,13 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       });
       
       // Update state
-      setUser(userData);
+      const sessionUser = buildCustomerSessionFromAuthResponse(userData as Record<string, unknown>, {
+        loginIdentifier: authForm.email.trim(),
+      }) as User;
+      setUser(sessionUser);
       setWishlist(mergedWishlist);
       setCart(mergedCart);
-      localStorage.setItem("migoo-user", JSON.stringify(userData));
+      persistMigooUserSession(sessionUser as unknown as Record<string, unknown>);
       localStorage.removeItem("migoo-wishlist"); // Clear guest wishlist from localStorage
       localStorage.removeItem("migoo-guest-cart"); // 🔥 Clear guest cart from localStorage (merged to DB)
       notifyMigooUserSessionChanged();
@@ -3070,8 +3077,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const guestWishlist = [...wishlist];
       
       // Update state
-      setUser(userData);
-      localStorage.setItem("migoo-user", JSON.stringify(userData));
+      const sessionUser = buildCustomerSessionFromAuthResponse(userData as Record<string, unknown>, {
+        phone: authForm.phone.trim(),
+        loginIdentifier: authForm.phone.trim(),
+      }) as User;
+      setUser(sessionUser);
+      persistMigooUserSession(sessionUser as unknown as Record<string, unknown>);
       localStorage.removeItem("migoo-wishlist"); // Clear guest wishlist from localStorage
       notifyMigooUserSessionChanged();
 
@@ -3159,6 +3170,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const payload: any = {
         name: profileForm.name,
         phone: profileForm.phone,
+        email: profileForm.email.trim(),
       };
 
       // Include profile image if a new one was uploaded
@@ -3190,8 +3202,12 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
       const data = await response.json();
       
       if (data.success && data.user) {
-        setUser(data.user);
-        localStorage.setItem("migoo-user", JSON.stringify(data.user));
+        const mergedUser = buildCustomerSessionFromAuthResponse(data.user, {
+          phone: profileForm.phone.trim(),
+          email: profileForm.email.trim(),
+        }) as User;
+        setUser(mergedUser);
+        persistMigooUserSession(mergedUser as unknown as Record<string, unknown>);
         notifyMigooUserSessionChanged();
         invalidateAdminCustomersCache();
         toast.success("Profile updated successfully!");
@@ -5391,7 +5407,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                       <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
                         {user?.name || "Guest User"}
                       </h1>
-                      <p className="text-slate-600">{user?.email || "No email provided"}</p>
+                      <p className="text-slate-600">{getCustomerProfileSubtitle(user)}</p>
                     </div>
                     <Button
                       type="button"
@@ -5422,11 +5438,11 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 </div>
                 <div>
                   <Label className="text-sm text-slate-600">Email Address</Label>
-                  <p className="font-medium text-slate-900">{user?.email || "Not provided"}</p>
+                  <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? "Not provided"}</p>
                 </div>
                 <div>
                   <Label className="text-sm text-slate-600">Phone Number</Label>
-                  <p className="font-medium text-slate-900">{user?.phone || "+95 9 XXX XXX XXX"}</p>
+                  <p className="font-medium text-slate-900">{formatUserPhoneDisplay(user)}</p>
                 </div>
               </CardContent>
             </Card>
@@ -6238,15 +6254,16 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 
                 setSavingSecurity(true);
                 try {
-                  if (!user?.email) {
-                    toast.error('User email not found. Please log in again.');
+                  const authEmail = resolveCustomerAuthEmail(user);
+                  if (!authEmail) {
+                    toast.error('Account sign-in email not found. Please log in again.');
                     setSavingSecurity(false);
                     return;
                   }
                   
                   
                   const response = await authApi.changePassword(
-                    user.email,
+                    authEmail,
                     securityForm.currentPassword,
                     securityForm.newPassword
                   );
@@ -6368,7 +6385,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             <CardContent className="space-y-4">
               <div>
                 <Label className="text-sm text-slate-600">Email Address</Label>
-                <p className="font-medium text-slate-900">{user?.email || "Not provided"}</p>
+                <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? "Not provided"}</p>
                 <p className="text-xs text-slate-500 mt-1">Your email is used for login and notifications</p>
               </div>
               <Separator />

@@ -1282,6 +1282,84 @@ const signedImageUrlMemo = new Map<string, { url: string; expiresAt: number }>()
 const SIGNED_IMAGE_URL_MEMO_TTL_MS = 55 * 60 * 1000;
 const SIGNED_IMAGE_URL_MEMO_MAX = 4000;
 
+const STOREFRONT_PHONE_AUTH_EMAIL_DOMAIN = "phone.migoo.store";
+
+function isSyntheticStorefrontAuthEmail(email: string): boolean {
+  return String(email || "").toLowerCase().endsWith(`@${STOREFRONT_PHONE_AUTH_EMAIL_DOMAIN}`);
+}
+
+async function getSupabaseAuthEmailForProfile(userId: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.auth.admin.getUserById(userId);
+    if (error || !data?.user?.email) return "";
+    return String(data.user.email).trim().toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+async function applyStorefrontProfileEmailUpdate(
+  userId: string,
+  record: { email?: string },
+  emailRaw: unknown
+): Promise<{ error?: string; displayEmail?: string; authEmail?: string }> {
+  if (emailRaw === undefined) {
+    const authEmail = await getSupabaseAuthEmailForProfile(userId);
+    const display = isSyntheticStorefrontAuthEmail(String(record.email || ""))
+      ? ""
+      : String(record.email || "").trim();
+    return { displayEmail: display, authEmail: authEmail || undefined };
+  }
+
+  const emailTrim = typeof emailRaw === "string" ? emailRaw.trim() : "";
+  if (emailTrim) {
+    const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(emailTrim)) {
+      return { error: "Please enter a valid email address (e.g., name@example.com)" };
+    }
+
+    const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 5000);
+    const duplicate = Array.isArray(allCustomers)
+      ? allCustomers.find(
+          (c: any) =>
+            c?.email &&
+            !isSyntheticStorefrontAuthEmail(String(c.email)) &&
+            String(c.email).trim().toLowerCase() === emailTrim.toLowerCase() &&
+            String(c.userId || "") !== userId
+        )
+      : null;
+    if (duplicate) {
+      return { error: "This email is already registered to another account" };
+    }
+    record.email = emailTrim;
+  } else {
+    record.email = "";
+  }
+
+  const currentAuthEmail = await getSupabaseAuthEmailForProfile(userId);
+  let authEmail = currentAuthEmail;
+
+  if (emailTrim && isSyntheticStorefrontAuthEmail(currentAuthEmail)) {
+    const { error } = await supabase.auth.admin.updateUserById(userId, {
+      email: emailTrim,
+      email_confirm: true,
+    });
+    if (error) {
+      console.error("❌ Supabase Auth email update (profile):", error);
+      return { error: error.message || "Failed to update sign-in email" };
+    }
+    authEmail = emailTrim.toLowerCase();
+  } else if (emailTrim) {
+    authEmail = emailTrim.toLowerCase();
+  }
+
+  const displayEmail = isSyntheticStorefrontAuthEmail(String(record.email || ""))
+    ? ""
+    : String(record.email || "").trim();
+
+  return { displayEmail, authEmail: authEmail || undefined };
+}
+
 // Helper function to get signed URL for profile image
 async function getSignedImageUrl(filePath: string): Promise<string | null> {
   try {
@@ -1627,9 +1705,22 @@ app.post("/make-server-16010b6f/auth/validate", async (c) => {
       if (!emailRegex.test(email.trim())) {
         errors.email = "Please enter a valid email address (e.g., name@example.com)";
       } else {
+        const emailLower = email.trim().toLowerCase();
         const existingUser = await withTimeout(kv.get(`user:${email.trim()}`), 5000);
         if (existingUser) {
           errors.email = "An account with this email already exists";
+        } else {
+          const allCustomers = await withTimeout(kv.getByPrefix("customer:"), 5000);
+          const existingEmailCustomer = Array.isArray(allCustomers)
+            ? allCustomers.find((c: any) => {
+                if (!c?.email) return false;
+                const em = String(c.email).trim().toLowerCase();
+                return em && !em.endsWith(`@${STOREFRONT_PHONE_AUTH_EMAIL_DOMAIN}`) && em === emailLower;
+              })
+            : null;
+          if (existingEmailCustomer) {
+            errors.email = "An account with this email already exists";
+          }
         }
       }
     }
@@ -1974,9 +2065,12 @@ app.get("/make-server-16010b6f/auth/profile/:userId", async (c) => {
         };
         const userPayload: Record<string, unknown> = {
           ...customerRest,
+          email: isSyntheticStorefrontAuthEmail(String(customer.email || "")) ? "" : String(customer.email || "").trim(),
           id: userId,
           customerId: cust.id,
         };
+        const authEmail = await getSupabaseAuthEmailForProfile(userId);
+        if (authEmail) userPayload.authEmail = authEmail;
         if (typeof cust.profileImage === "string" && cust.profileImage.trim()) {
           const su = await getSignedImageUrl(cust.profileImage.trim());
           if (su) userPayload.profileImageUrl = su;
@@ -2092,7 +2186,13 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
           phone: typeof body.phone === "string" ? body.phone : (authKvProfile as { phone?: string }).phone,
           profileImage: profileImagePath,
           updatedAt: new Date().toISOString(),
-        };
+        } as { email?: string; name?: string; phone?: string; profileImage?: string; updatedAt?: string };
+
+        const emailResult = await applyStorefrontProfileEmailUpdate(userId, updatedProfile, body.email);
+        if (emailResult.error) {
+          return c.json({ error: emailResult.error }, 400);
+        }
+
         await withTimeout(kv.set(`auth:user:${userId}`, updatedProfile), 5000);
         const metadataUpdates: Record<string, unknown> = {
           name: updatedProfile.name,
@@ -2108,7 +2208,11 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
           console.error("❌ Supabase Auth update (auth:user profile):", authUpdErr);
         }
         const { password: __, ...userOut } = updatedProfile as Record<string, unknown> & { password?: string };
-        const out = { ...userOut } as Record<string, unknown>;
+        const out = {
+          ...userOut,
+          email: emailResult.displayEmail ?? "",
+          ...(emailResult.authEmail ? { authEmail: emailResult.authEmail } : {}),
+        } as Record<string, unknown>;
         if (out.profileImage && typeof out.profileImage === "string") {
           const signedUrl = await getSignedImageUrl(out.profileImage as string);
           if (signedUrl) out.profileImageUrl = signedUrl;
@@ -2148,6 +2252,12 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
         if (typeof body.phone === "string") {
           customer.phone = body.phone.trim();
         }
+
+        const emailResult = await applyStorefrontProfileEmailUpdate(userId, customer, body.email);
+        if (emailResult.error) {
+          return c.json({ error: emailResult.error }, 400);
+        }
+
         customer.updatedAt = new Date().toISOString();
         if (profileImagePath) {
           customer.profileImage = profileImagePath;
@@ -2173,11 +2283,14 @@ app.put("/make-server-16010b6f/auth/profile/:userId", async (c) => {
         }
 
         const { password: _, ...customerRest } = customer as Record<string, unknown> & { password?: string };
+        const authEmail = emailResult.authEmail || (await getSupabaseAuthEmailForProfile(userId));
         const userResponse = {
           ...customerRest,
+          email: emailResult.displayEmail ?? (isSyntheticStorefrontAuthEmail(String(customer.email || "")) ? "" : String(customer.email || "").trim()),
           id: userId,
           customerId: customer.id,
           profileImageUrl: profileImagePath ? await getSignedImageUrl(profileImagePath) : customer.avatar,
+          ...(authEmail ? { authEmail } : {}),
         };
         if (profileImagePath) {
           const su = await getSignedImageUrl(profileImagePath);
