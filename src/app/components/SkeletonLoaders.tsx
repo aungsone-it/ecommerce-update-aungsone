@@ -60,10 +60,13 @@ export function VendorStorefrontNavSkeleton({
           </div>
         </div>
         {showCategories && (
-          <div className="flex gap-2 py-3 overflow-hidden scrollbar-hide">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="h-8 w-[5.5rem] shrink-0 rounded-full bg-slate-200 animate-pulse" />
-            ))}
+          <div className="hidden md:flex items-center justify-between gap-6 py-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-9 w-24 shrink-0 rounded-full bg-slate-200 animate-pulse" />
+              ))}
+            </div>
+            <div className="h-5 w-32 shrink-0 rounded bg-slate-200 animate-pulse" />
           </div>
         )}
       </div>

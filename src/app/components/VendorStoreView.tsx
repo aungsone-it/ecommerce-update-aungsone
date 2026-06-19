@@ -57,6 +57,7 @@ import {
 import { ProductCard, type ProductCardProduct } from "./ProductCard";
 import { BackToTop } from "./BackToTop";
 import { CacheFriendlyImg } from "./CacheFriendlyImg";
+import { VendorStorefrontSubnav, type VendorSubnavTab } from "./VendorStorefrontSubnav";
 import {
   useState,
   useEffect,
@@ -1610,91 +1611,59 @@ export function VendorStoreView({
     navigate(`${storeBase}/saved`);
   }, [user, navigate, storeBase]);
 
-  /** Desktop secondary row — matches `/store` marketplace: category links + phone (Saved stays in header). */
-  const renderVendorStorefrontDesktopSubnav = useCallback(() => {
+  const vendorSubnavTabs = useMemo((): VendorSubnavTab[] => {
+    return [
+      { id: "all" },
+      ...subnavCategoryItems.map((category) => ({
+        id: "category" as const,
+        categoryId: category.id,
+        name: category.name,
+      })),
+      { id: "uncategorized" },
+    ];
+  }, [subnavCategoryItems]);
+
+  const navigateVendorSubnavTab = useCallback(
+    (tab: VendorSubnavTab) => {
+      setSelectedProduct(null);
+      setSearchQuery("");
+      if (tab.id === "all") {
+        setSelectedCategory("all");
+        navigate(categoryPathForName("all"), { replace: true });
+        return;
+      }
+      if (tab.id === "uncategorized") {
+        setSelectedCategory(VENDOR_STORE_UNCATEGORIZED_FILTER);
+        navigate(uncategorizedTabPath, { replace: true });
+        return;
+      }
+      setSelectedCategory(tab.name);
+      navigate(categoryPathForName(tab.name), { replace: true });
+    },
+    [navigate, categoryPathForName, uncategorizedTabPath]
+  );
+
+  /** Desktop-only category subnav — fills the row first, then More when it overflows. */
+  const renderVendorStorefrontSubnav = useCallback(() => {
     if (vendorViewMode !== "storefront" || savedPage) return null;
-    const telHref = telHrefFromDisplay(storePhone);
+
     return (
-      <div className="hidden md:block bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-          <div className="flex items-center justify-between gap-4 py-3 min-w-0">
-            <div className="flex items-center gap-x-6 overflow-x-auto scrollbar-hide min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedProduct(null);
-                  setSearchQuery("");
-                  setSelectedCategory("all");
-                  navigate(categoryPathForName("all"), { replace: true });
-                }}
-                className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  isVendorCategoryTabActive("all", normalizedCategorySlugFromRoute)
-                    ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
-                    : "text-slate-700 hover:text-amber-700"
-                }`}
-              >
-                All Products
-              </button>
-              {subnavCategoryItems.map((category: { id: string; name: string }) => (
-                <button
-                  type="button"
-                  key={category.id}
-                  onClick={() => {
-                    setSelectedProduct(null);
-                    setSearchQuery("");
-                    setSelectedCategory(category.name);
-                    navigate(categoryPathForName(category.name), { replace: true });
-                  }}
-                  className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                    isVendorCategoryTabActive(category, normalizedCategorySlugFromRoute)
-                      ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
-                      : "text-slate-700 hover:text-amber-700"
-                  }`}
-                >
-                  {category.name}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedProduct(null);
-                  setSearchQuery("");
-                  setSelectedCategory(VENDOR_STORE_UNCATEGORIZED_FILTER);
-                  navigate(uncategorizedTabPath, { replace: true });
-                }}
-                className={`text-sm font-medium transition-colors whitespace-nowrap shrink-0 ${
-                  isVendorCategoryTabActive("uncategorized", normalizedCategorySlugFromRoute)
-                    ? "text-amber-700 font-semibold border-b-2 border-amber-600 pb-0.5"
-                    : "text-slate-700 hover:text-amber-700"
-                }`}
-              >
-                Uncategorized
-              </button>
-            </div>
-            {!isPlaceholderVendorPhone(storePhone) ? (
-            <div className="flex items-center gap-4 shrink-0">
-              <a
-                href={telHref}
-                className="flex items-center gap-2 text-slate-700 hover:text-orange-600 transition-colors cursor-pointer whitespace-nowrap"
-              >
-                <Phone className="w-4 h-4 shrink-0" />
-                <span className="text-sm font-medium">{storePhone}</span>
-              </a>
-            </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
+      <VendorStorefrontSubnav
+        tabs={vendorSubnavTabs}
+        routeSlug={normalizedCategorySlugFromRoute}
+        storePhone={storePhone}
+        telHref={telHrefFromDisplay(storePhone)}
+        showPhone={!isPlaceholderVendorPhone(storePhone)}
+        onTabSelect={navigateVendorSubnavTab}
+      />
     );
   }, [
     vendorViewMode,
     savedPage,
-    subnavCategoryItems,
+    vendorSubnavTabs,
     normalizedCategorySlugFromRoute,
     storePhone,
-    categoryPathForName,
-    uncategorizedTabPath,
-    navigate,
+    navigateVendorSubnavTab,
   ]);
 
   /** Pass 'register' from handleRegister before setUser; cleared after track. */
@@ -5567,7 +5536,7 @@ export function VendorStoreView({
             </div>
             </div>
           </div>
-          {renderVendorStorefrontDesktopSubnav()}
+          {renderVendorStorefrontSubnav()}
         </header>
 
         {renderVendorMobileNavDrawer()}
@@ -6330,7 +6299,7 @@ export function VendorStoreView({
           </div>
           </div>
         </div>
-        {renderVendorStorefrontDesktopSubnav()}
+        {renderVendorStorefrontSubnav()}
       </header>
 
       {renderVendorMobileNavDrawer()}
