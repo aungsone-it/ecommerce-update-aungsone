@@ -2,11 +2,7 @@ import { Outlet, useLocation } from "react-router";
 import { Suspense, lazy } from "react";
 import { ProtectedLayout } from "./ProtectedLayout";
 import { VendorProtectedLayout } from "./VendorProtectedLayout";
-import {
-  SuperAdminRouteFallback,
-  VendorAdminRouteFallback,
-  RouteSuspenseFallback,
-} from "./RouteLoadingFallback";
+import { RouteLoadingFallback } from "./RouteLoadingFallback";
 import {
   resolveVendorSubdomainStoreSlug,
   parseVendorSubdomainAdminPath,
@@ -47,7 +43,7 @@ export function AdminEntryLayout() {
   const { slug: hostSlug, loading } = useResolvedVendorHostSlug();
   const slug = subSlug ?? hostSlug;
   if (loading && !subSlug) {
-    return <RouteSuspenseFallback />;
+    return <RouteLoadingFallback />;
   }
   const useVendorLayoutForAdmin = Boolean(slug) && !isLocalDevHostname();
   if (useVendorLayoutForAdmin) {
@@ -75,7 +71,7 @@ export function AdminSubdomainLeaf() {
   const vendorHostResolvedSlug = Boolean(slug) && !isLocalDevHostname();
 
   if (loading && !subSlug) {
-    return <VendorAdminRouteFallback />;
+    return <RouteLoadingFallback />;
   }
 
   if (!vendorHostResolvedSlug) {
@@ -86,13 +82,13 @@ export function AdminSubdomainLeaf() {
       ) : (
         <AdminPage />
       );
-    return <Suspense fallback={<SuperAdminRouteFallback />}>{inner}</Suspense>;
+    return <Suspense fallback={<RouteLoadingFallback />}>{inner}</Suspense>;
   }
 
   const parsed = parseVendorSubdomainAdminPath(location.pathname, slug);
   if (parsed === null) {
     return (
-      <Suspense fallback={<VendorAdminRouteFallback />}>
+      <Suspense fallback={<RouteLoadingFallback />}>
         <NotFound />
       </Suspense>
     );
@@ -100,14 +96,14 @@ export function AdminSubdomainLeaf() {
 
   if (parsed.productId) {
     return (
-      <Suspense fallback={<VendorAdminRouteFallback />}>
+      <Suspense fallback={<RouteLoadingFallback />}>
         <VendorAdminProductViewPage />
       </Suspense>
     );
   }
 
   return (
-    <Suspense fallback={<VendorAdminRouteFallback />}>
+    <Suspense fallback={<RouteLoadingFallback />}>
       <VendorAdminPage />
     </Suspense>
   );

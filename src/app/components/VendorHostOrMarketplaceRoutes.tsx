@@ -10,10 +10,7 @@ import {
   toMarketplaceVendorCheckoutPath,
 } from "../utils/vendorCheckoutPaths";
 import { StorefrontAwareRouteFallback } from "./RouteLoadingFallback";
-
-const VendorStorefrontPage = lazy(() =>
-  import("../pages/VendorStorefrontPage").then((m) => ({ default: m.VendorStorefrontPage }))
-);
+import { VendorStorefrontPage } from "../pages/vendorStorefrontPageLazy";
 const NotFound = lazy(() =>
   import("../pages/NotFound").then((m) => ({ default: m.NotFound }))
 );

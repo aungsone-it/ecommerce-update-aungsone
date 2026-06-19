@@ -32,6 +32,7 @@ import {
 } from "./components/VendorHostOrMarketplaceRoutes";
 import { LegacyStoreRedirect } from "./components/LegacyStoreRedirect";
 import { isBarePlatformApexHost, isMarketplaceApexHost } from "./utils/platformApexHost";
+import { VendorStorefrontPage } from "./pages/vendorStorefrontPageLazy";
 
 // —— Lazy route chunks: marketplace, admin, and vendor panels load on demand ——
 const LandingPage = lazy(() =>
@@ -45,11 +46,6 @@ const VendorApplicationPage = lazy(() =>
 const VendorSetupPage = lazy(() =>
   import("./pages/VendorSetupPage").then((m) => ({
     default: m.VendorSetupPage,
-  })),
-);
-const VendorStorefrontPage = lazy(() =>
-  import("./pages/VendorStorefrontPage").then((m) => ({
-    default: m.VendorStorefrontPage,
   })),
 );
 const VendorAdminPage = lazy(() =>

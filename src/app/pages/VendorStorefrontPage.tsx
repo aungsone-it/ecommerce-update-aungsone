@@ -506,13 +506,12 @@ export function VendorStorefrontPage() {
   let storefrontGate: ReactNode = null;
   if (!resolvedStoreName) {
     storefrontGate = <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />;
-  } else if (shouldBlockOnVendorExistenceCheck && slugToVerify && vendorExistence !== "found") {
-    storefrontGate =
-      vendorExistence === "not_found" ? (
-        <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />
-      ) : (
-        <StorefrontAwareRouteFallback />
-      );
+  } else if (
+    shouldBlockOnVendorExistenceCheck &&
+    slugToVerify &&
+    vendorExistence === "not_found"
+  ) {
+    storefrontGate = <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />;
   }
   if (storefrontGate) return storefrontGate;
 

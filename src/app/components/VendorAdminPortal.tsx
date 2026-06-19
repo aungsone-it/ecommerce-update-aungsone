@@ -50,7 +50,7 @@ import { applyVendorStoreLogoFavicon, resetDocumentFavicon } from "../utils/docu
 import { isRenderableImageSrc, pickStoreLogo } from "../utils/renderableImageSrc";
 import { UserProfile } from "./UserProfile";
 import { useVendorAuth, type VendorUser } from "../contexts/VendorAuthContext";
-import { VendorAdminPanelSkeleton } from "./AdminSkeletonLoaders";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface Vendor {
   id: string;
@@ -199,9 +199,6 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   const [mountedPages, setMountedPages] = useState<VendorPage[]>(["dashboard"]);
   const [vendorProfileOpen, setVendorProfileOpen] = useState(false);
   const [vendorProfileInitialEdit, setVendorProfileInitialEdit] = useState(false);
-  const [dashboardBootLoading, setDashboardBootLoading] = useState(
-    () => currentPage === "dashboard"
-  );
   /** Snapshot for rolling back optimistic session updates if vendor profile PUT fails. */
   const vendorSessionBeforeOptimisticRef = useRef<VendorUser | null>(null);
 
@@ -451,14 +448,6 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
     setMountedPages((prev) => (prev.includes(currentPage) ? prev : [...prev, currentPage]));
   }, [currentPage]);
 
-  useEffect(() => {
-    if (currentPage !== "dashboard") {
-      setDashboardBootLoading(false);
-    } else {
-      setDashboardBootLoading(true);
-    }
-  }, [currentPage]);
-
   // Poll vendor pending orders on a long interval (same badge behavior as super admin orders)
   useEffect(() => {
     const fetchPendingOrders = async () => {
@@ -645,7 +634,6 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
             vendorName={vendor.name}
             onNavigate={setCurrentPage}
             onPreviewStore={onPreviewStore}
-            onLoadingChange={setDashboardBootLoading}
           />
         );
       case "products":
@@ -741,13 +729,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
   }
 
   return (
-    <>
-      {currentPage === "dashboard" && dashboardBootLoading && (
-        <div className="fixed inset-0 z-[100]">
-          <VendorAdminPanelSkeleton />
-        </div>
-      )}
-      <div className="flex h-screen bg-slate-50 overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Mobile Overlay */}
       {sidebarOpen && (
         <div 
@@ -1063,6 +1045,5 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
         </div>
       </main>
     </div>
-    </>
   );
 }

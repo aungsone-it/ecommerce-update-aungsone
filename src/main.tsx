@@ -11,6 +11,7 @@ import {
   fetchVendorSlugByCustomDomain,
   shouldResolveCustomDomainHost,
 } from "./app/utils/vendorHostResolution";
+import { isMarketplaceVendorStorefrontPath } from "./app/utils/vendorStorefrontRoutePaths";
 import {
   clearKpayRedirectShell,
   maybeRedirectKpayReturnToUnifiedSummary,
@@ -20,7 +21,13 @@ import {
   isUnifiedKpayReturnHost,
   UNIFIED_KPAY_SUMMARY_PATH,
 } from "./app/utils/vendorCheckoutPaths";
+import { prefetchVendorStorefrontPage } from "./app/pages/vendorStorefrontPageLazy";
 import { primeVendorStorefrontHeadFromCache } from "./app/utils/vendorStorefrontBrandingCache";
+
+function isAdminAppPath(pathname: string): boolean {
+  const p = (pathname.split("?")[0] || "").replace(/\/+$/, "") || "/";
+  return p === "/admin" || p.startsWith("/admin/");
+}
 
 function isKpayReturnTraffic(): boolean {
   if (typeof window === "undefined") return false;
@@ -58,15 +65,9 @@ const kpayUnifiedSummaryRedirecting =
   maybeRedirectKpayReturnToUnifiedSummary();
 
 if (typeof window !== "undefined" && !kpayUnifiedSummaryRedirecting) {
-  const host = window.location.hostname;
-  const skipVendorPrefetch = isOnVendorSubdomainHost() && isKpayReturnTraffic();
-  if (!skipVendorPrefetch && (isOnVendorSubdomainHost() || shouldResolveCustomDomainHost(host))) {
-    void import("./app/pages/VendorStorefrontPage");
-    if (shouldResolveCustomDomainHost(host)) {
-      void fetchVendorSlugByCustomDomain(host);
-    }
-  }
+  primeVendorStorefrontHeadFromCache();
 }
+
 if (
   typeof window !== "undefined" &&
   isPlatformBrandedPublicPath(window.location.pathname, {
@@ -77,14 +78,31 @@ if (
   primePlatformBrandingFaviconFromCache();
 }
 
-if (typeof window !== "undefined" && !kpayUnifiedSummaryRedirecting) {
-  primeVendorStorefrontHeadFromCache();
-}
+function mountApp(): void {
+  if (typeof window !== "undefined" && !kpayUnifiedSummaryRedirecting) {
+    const path = window.location.pathname;
+    const host = window.location.hostname;
+    const skipVendorPrefetch = isOnVendorSubdomainHost() && isKpayReturnTraffic();
+    const onVendorStorefront =
+      !isAdminAppPath(path) &&
+      (isOnVendorSubdomainHost() ||
+        shouldResolveCustomDomainHost(host) ||
+        isMarketplaceVendorStorefrontPath(path));
+    if (!skipVendorPrefetch && onVendorStorefront) {
+      prefetchVendorStorefrontPage();
+      if (shouldResolveCustomDomainHost(host)) {
+        void fetchVendorSlugByCustomDomain(host);
+      }
+    }
+  }
 
-if (!kpayUnifiedSummaryRedirecting) {
   createRoot(document.getElementById("root")!).render(
     <ErrorBoundary>
       <App />
     </ErrorBoundary>,
   );
+}
+
+if (!kpayUnifiedSummaryRedirecting) {
+  mountApp();
 }

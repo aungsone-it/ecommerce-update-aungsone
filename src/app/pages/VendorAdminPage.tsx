@@ -1,6 +1,6 @@
 import { VendorAdminPortal } from "../components/VendorAdminPortal";
 import { useVendorAuth } from "../contexts/VendorAuthContext";
-import { VendorAdminPanelSkeleton } from "../components/AdminSkeletonLoaders";
+import { Loader2 } from "lucide-react";
 import { resolveVendorSubdomainStoreSlug } from "../utils/vendorSubdomainHooks";
 import { useResolvedVendorHostSlug } from "../utils/vendorHostResolution";
 import { useLayoutEffect, useMemo } from "react";
@@ -77,7 +77,14 @@ export function VendorAdminPage() {
 
   // Safety check - this should never happen due to VendorAuthGate, but just in case
   if (!vendor) {
-    return <VendorAdminPanelSkeleton />;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-12 h-12 animate-spin text-slate-900 mx-auto" />
+          <p className="text-slate-600 font-medium">Loading vendor data...</p>
+        </div>
+      </div>
+    );
   }
 
   // Convert vendor auth data to format expected by VendorAdminPortal

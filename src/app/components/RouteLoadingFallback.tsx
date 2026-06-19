@@ -2,12 +2,14 @@ import {
   VendorStorefrontFullSkeleton,
   VendorStorefrontProductRouteSkeleton,
 } from "./SkeletonLoaders";
-import {
-  SuperAdminPanelSkeleton,
-  VendorAdminPanelSkeleton,
-} from "./AdminSkeletonLoaders";
 import { isOnVendorSubdomainHost } from "../utils/vendorSubdomainHooks";
 import { shouldResolveCustomDomainHost } from "../utils/vendorHostResolution";
+import {
+  isMarketplaceVendorStorefrontPath,
+  isVendorStorefrontProductPath,
+  isVendorStorefrontSavedPath,
+  normalizeStorefrontPath,
+} from "../utils/vendorStorefrontRoutePaths";
 
 const VENDOR_ROOT_RESERVED = new Set([
   "admin",
@@ -30,32 +32,21 @@ const VENDOR_ROOT_RESERVED = new Set([
 ]);
 
 function normalizePath(pathname: string): string {
-  return pathname.replace(/\/+$/, "") || "/";
+  return normalizeStorefrontPath(pathname);
 }
 
 function isVendorProductRoutePath(pathname: string): boolean {
-  return /^\/product\/[^/]+/.test(normalizePath(pathname));
+  return isVendorStorefrontProductPath(pathname);
 }
 
-function isSuperAdminPath(pathname: string): boolean {
-  const p = normalizePath(pathname);
-  if (p === "/admin/setup" || p === "/admin/fix-slugs") return false;
-  return p === "/admin" || p.startsWith("/admin/");
-}
-
-function isVendorAdminPath(pathname: string, hostname: string): boolean {
-  const p = normalizePath(pathname);
-  if (/^\/vendor\/[^/]+\/admin(\/|$)/.test(p)) return true;
-
-  const onVendorHost = isOnVendorSubdomainHost() || shouldResolveCustomDomainHost(hostname);
-  if (!onVendorHost) return false;
-  if (p === "/admin/setup") return false;
-  return p === "/admin" || p.startsWith("/admin/");
+function isVendorSavedRoutePath(pathname: string): boolean {
+  return isVendorStorefrontSavedPath(pathname);
 }
 
 function isVendorStorefrontSuspenseContext(pathname: string, hostname: string): boolean {
   const p = normalizePath(pathname);
   if (isVendorProductRoutePath(p)) return true;
+  if (isMarketplaceVendorStorefrontPath(p)) return true;
   if (p === "/saved" || p.startsWith("/profile")) return true;
   if (["/checkout", "/summary", "/kpay/return", "/order-confirmation"].includes(p)) {
     return true;
@@ -66,6 +57,16 @@ function isVendorStorefrontSuspenseContext(pathname: string, hostname: string): 
   if (p === "/") return true;
   const first = p.split("/").filter(Boolean)[0] ?? "";
   return first.length > 0 && !VENDOR_ROOT_RESERVED.has(first);
+}
+
+function resolveStorefrontSuspenseFallback(path: string) {
+  if (isVendorProductRoutePath(path)) {
+    return <VendorStorefrontProductRouteSkeleton />;
+  }
+  if (isVendorSavedRoutePath(path)) {
+    return <VendorStorefrontFullSkeleton savedLayout />;
+  }
+  return <VendorStorefrontFullSkeleton />;
 }
 
 /**
@@ -82,25 +83,11 @@ export function StorefrontAwareRouteFallback() {
   if (!isVendorStorefrontSuspenseContext(path, host)) {
     return <RouteLoadingFallback />;
   }
-  if (isVendorProductRoutePath(path)) {
-    return <VendorStorefrontProductRouteSkeleton />;
-  }
-  return <VendorStorefrontFullSkeleton />;
-}
-
-/** Suspense fallback for super-admin panel routes. */
-export function SuperAdminRouteFallback() {
-  return <SuperAdminPanelSkeleton />;
-}
-
-/** Suspense fallback for vendor admin panel routes. */
-export function VendorAdminRouteFallback() {
-  return <VendorAdminPanelSkeleton />;
+  return resolveStorefrontSuspenseFallback(path);
 }
 
 /**
- * Unified Suspense fallback — admin panels, vendor storefront, then generic.
- * Use on all lazy route boundaries so first paint matches in-page loading UI.
+ * Unified Suspense fallback — vendor storefront skeletons, then generic for admin/auth/etc.
  */
 export function RouteSuspenseFallback() {
   if (typeof window === "undefined") {
@@ -110,17 +97,8 @@ export function RouteSuspenseFallback() {
   const path = window.location.pathname;
   const host = window.location.hostname;
 
-  if (isVendorAdminPath(path, host)) {
-    return <VendorAdminPanelSkeleton />;
-  }
-  if (isSuperAdminPath(path)) {
-    return <SuperAdminPanelSkeleton />;
-  }
   if (isVendorStorefrontSuspenseContext(path, host)) {
-    if (isVendorProductRoutePath(path)) {
-      return <VendorStorefrontProductRouteSkeleton />;
-    }
-    return <VendorStorefrontFullSkeleton />;
+    return resolveStorefrontSuspenseFallback(path);
   }
   return <RouteLoadingFallback />;
 }
