@@ -214,7 +214,54 @@ function isStorefrontPathBlockedOnMarketplaceApex(pathname: string): boolean {
   return false;
 }
 
-export default function vercelMiddleware(request: Request): Response {
+function stripWwwHost(host: string): string {
+  const h = normalizeHost(host);
+  return h.startsWith("www.") ? h.slice(4) : h;
+}
+
+/** Platform apex hosts that always serve the marketplace — never vendor custom domains. */
+function isReservedPlatformApexHost(host: string): boolean {
+  const bare = stripWwwHost(host);
+  if (!bare) return false;
+  const reserved = new Set<string>();
+  const primary = stripWwwHost(
+    String(process.env.VENDOR_SUBDOMAIN_BASE_DOMAIN || "").trim().toLowerCase()
+  );
+  if (primary) reserved.add(primary);
+  const raw =
+    String(process.env.PLATFORM_RESERVED_APEX_DOMAINS || "").trim() ||
+    String(process.env.VITE_PLATFORM_RESERVED_APEX_DOMAINS || "").trim();
+  for (const part of raw.split(",")) {
+    const d = stripWwwHost(part.trim());
+    if (d) reserved.add(d);
+  }
+  return reserved.has(bare);
+}
+
+/** True when hostname is a verified vendor custom domain (allows shared /product/* links on bare apex). */
+async function isVerifiedVendorCustomDomainHost(hostname: string): Promise<boolean> {
+  const host = normalizeHost(hostname);
+  if (!host || isReservedPlatformApexHost(host)) return false;
+  const endpoint =
+    `https://${resolveSupabaseProjectRef()}.supabase.co/functions/v1/make-server-16010b6f/vendor/by-domain?domain=${
+      encodeURIComponent(host)
+    }`;
+  try {
+    const res = await fetch(endpoint, {
+      headers: {
+        Authorization: `Bearer ${resolveSupabaseAnonKey()}`,
+        Accept: "application/json",
+      },
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { storeSlug?: string };
+    return typeof data.storeSlug === "string" && data.storeSlug.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+export default async function vercelMiddleware(request: Request): Promise<Response> {
   const host = normalizeHost(request.headers.get("host") || "");
 
   if (host === "localhost" || host.startsWith("127.0.0.1")) {
@@ -234,7 +281,12 @@ export default function vercelMiddleware(request: Request): Response {
   const search = requestUrl.search || "";
 
   if (isBarePlatformApexHost(host) && isStorefrontPathBlockedOnMarketplaceApex(path)) {
-    return Response.redirect(new URL(`https://${host}/`), 301);
+    const reservedMarketplaceApex = isReservedPlatformApexHost(host);
+    const vendorCustomDomain =
+      !reservedMarketplaceApex && (await isVerifiedVendorCustomDomainHost(host));
+    if (!vendorCustomDomain) {
+      return Response.redirect(new URL(`https://${host}/`), 301);
+    }
   }
 
   if (!baseDomain) {
