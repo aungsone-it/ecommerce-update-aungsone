@@ -5,8 +5,7 @@ import { RootLayout } from "./components/RootLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
 import { KPayVendorReturnRedirect } from "./components/KPayVendorReturnRedirect";
-import { RouteLoadingFallback } from "./components/RouteLoadingFallback";
-import { VendorStorefrontFullSkeleton } from "./components/SkeletonLoaders";
+import { RouteSuspenseFallback } from "./components/RouteLoadingFallback";
 import { LanguageProvider } from "./contexts/LanguageContext";
 import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
@@ -118,7 +117,7 @@ function VendorSubdomainIndexOrLanding() {
   if (customLookup) {
     if (loading) {
       // Claimable bare apex (e.g. migoo.store) must not flash marketplace landing while by-domain resolves.
-      return <VendorStorefrontFullSkeleton />;
+      return <RouteSuspenseFallback />;
     }
     if (customSlug) return <VendorStorefrontPage />;
     if (bareApex || isMarketplaceApexHost(host)) return <LandingPage />;
@@ -133,7 +132,7 @@ function VendorSubdomainIndexOrLanding() {
 }
 
 function LazyBoundary({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<RouteLoadingFallback />}>{children}</Suspense>;
+  return <Suspense fallback={<RouteSuspenseFallback />}>{children}</Suspense>;
 }
 
 function NotFoundBoundary() {

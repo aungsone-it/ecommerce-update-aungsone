@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
 import { AuthGate } from './AuthGate';
-import { Loader2 } from 'lucide-react';
+import { SuperAdminPanelSkeleton } from './AdminSkeletonLoaders';
 import { usePlatformBranding } from '../hooks/usePlatformBranding';
 import { buildSuperAdminDocumentTitle } from '../utils/superAdminDocumentTitle';
 
@@ -67,14 +67,7 @@ export function AppRouter({ children }: { children: React.ReactNode }) {
   }, [checkingSetup, needsSetup, onAdminSetup, platformBranding.storeName]);
 
   if (checkingSetup) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100">
-        <div className="text-center space-y-4">
-          <Loader2 className="w-12 h-12 animate-spin text-amber-600 mx-auto" />
-          <p className="text-slate-600 font-medium">Checking system setup...</p>
-        </div>
-      </div>
-    );
+    return <SuperAdminPanelSkeleton />;
   }
 
   if (needsSetup && !onAdminSetup) {

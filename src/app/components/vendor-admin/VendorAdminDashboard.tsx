@@ -82,6 +82,8 @@ interface VendorAdminDashboardProps {
   onNavigate: (page: string) => void;
   /** Reserved for header/store actions from parent; analytics view does not use it yet. */
   onPreviewStore?: (vendorId: string, storeSlug: string) => void;
+  /** Parent can keep a full-panel skeleton visible until the first data fetch settles. */
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 function peekCachedVendorDashboardData(vendorId: string): { products: any[]; orders: any[] } | null {
@@ -106,6 +108,7 @@ export function VendorAdminDashboard({
   vendorId,
   vendorName,
   onNavigate,
+  onLoadingChange,
 }: VendorAdminDashboardProps) {
   const { t } = useLanguage();
   const tr = (key: string, values: Record<string, string | number> = {}) =>
@@ -201,6 +204,10 @@ export function VendorAdminDashboard({
     return () => window.removeEventListener("adminOrdersUpdated", onOrdersUpdated);
   }, [vendorId]);
 
+  useEffect(() => {
+    onLoadingChange?.(loading);
+  }, [loading, onLoadingChange]);
+
   const loadDashboardData = async (forceRefresh = false) => {
     if (!forceRefresh) {
       const cached = peekCachedVendorDashboardData(vendorId);
@@ -243,6 +250,7 @@ export function VendorAdminDashboard({
   };
 
   if (loading) {
+    if (onLoadingChange) return null;
     return (
       <div className="space-y-6">
         <div>

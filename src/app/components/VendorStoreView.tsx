@@ -122,9 +122,9 @@ import { Checkout } from "./Checkout";
 import { OrderDetailView } from "./OrderDetailView";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import {
-  ProductDetailSkeleton,
   ProductGridSkeleton,
   VendorStorefrontFullSkeleton,
+  VendorStorefrontProductRouteSkeleton,
   VendorOrdersListSkeleton,
   VendorAddressesSkeleton,
 } from "./SkeletonLoaders";
@@ -5079,11 +5079,27 @@ export function VendorStoreView({
 
   const catalogListTotalForDisplay = vendorCatalogTotal;
 
+  const showVendorProductRouteSkeleton = useMemo(
+    () =>
+      vendorViewMode === "storefront" &&
+      isVendorProductDetailPath &&
+      !selectedProduct,
+    [vendorViewMode, isVendorProductDetailPath, selectedProduct]
+  );
+
   const showVendorPageFullSkeleton = useMemo(
     () =>
       vendorViewMode === "storefront" &&
-      (showVendorStorefrontFullSkeleton || (savedPage && showSavedPageSkeleton)),
-    [vendorViewMode, showVendorStorefrontFullSkeleton, savedPage, showSavedPageSkeleton]
+      (showVendorStorefrontFullSkeleton ||
+        showVendorProductRouteSkeleton ||
+        (savedPage && showSavedPageSkeleton)),
+    [
+      vendorViewMode,
+      showVendorStorefrontFullSkeleton,
+      showVendorProductRouteSkeleton,
+      savedPage,
+      showSavedPageSkeleton,
+    ]
   );
 
   const { setSuppressFloatingChat } = useLoading();
@@ -6094,10 +6110,14 @@ export function VendorStoreView({
       />
 
       {showVendorPageFullSkeleton ? (
-        <VendorStorefrontFullSkeleton
-          count={10}
-          savedLayout={savedPage && showSavedPageSkeleton && !showVendorStorefrontFullSkeleton}
-        />
+        showVendorProductRouteSkeleton ? (
+          <VendorStorefrontProductRouteSkeleton />
+        ) : (
+          <VendorStorefrontFullSkeleton
+            count={10}
+            savedLayout={savedPage && showSavedPageSkeleton && !showVendorStorefrontFullSkeleton}
+          />
+        )
       ) : (
         <>
       {/* Header */}
@@ -6436,10 +6456,6 @@ export function VendorStoreView({
           </>
         ) : (
           <>
-            {isVendorProductDetailPath && !selectedProduct ? (
-              <ProductDetailSkeleton />
-            ) : (
-              <>
             {/* Network / timeout — not an empty catalog or app bug */}
             {serverStatus === 'unhealthy' && (
               <div className="flex flex-col items-center justify-center py-16 sm:py-24 max-w-md mx-auto px-4 text-center">
@@ -6551,8 +6567,6 @@ export function VendorStoreView({
                     </Button>
                   </div>
                 )}
-              </>
-            )}
               </>
             )}
           </>

@@ -40,7 +40,7 @@ import { CartProvider } from "../components/CartContext";
 import { VendorStoreView } from "../components/VendorStoreView";
 import { Checkout } from "../components/Checkout";
 import { UnifiedKpaySummarySignInGate } from "../components/UnifiedKpaySummarySignInGate";
-import { VendorStorefrontFullSkeleton } from "../components/SkeletonLoaders";
+import { StorefrontAwareRouteFallback } from "../components/RouteLoadingFallback";
 import { Store, ArrowLeft } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { seedStorefrontPolicyCacheFromVendorSettings } from "../hooks/useStorefrontPolicyData";
@@ -463,11 +463,11 @@ export function VendorStorefrontPage() {
   }, []);
 
   if (customHostLoading && !params.storeName && !onVendorSubdomainHost) {
-    return <VendorStorefrontFullSkeleton />;
+    return <StorefrontAwareRouteFallback />;
   }
 
   if (unifiedSummaryRoute && draftSlugLoading) {
-    return <VendorStorefrontFullSkeleton />;
+    return <StorefrontAwareRouteFallback />;
   }
 
   if (unifiedSummaryRoute && !storeName) {
@@ -511,7 +511,7 @@ export function VendorStorefrontPage() {
       vendorExistence === "not_found" ? (
         <VendorStoreNotFoundPanel onBackHome={backToMarketplaceHome} />
       ) : (
-        <VendorStorefrontFullSkeleton />
+        <StorefrontAwareRouteFallback />
       );
   }
   if (storefrontGate) return storefrontGate;

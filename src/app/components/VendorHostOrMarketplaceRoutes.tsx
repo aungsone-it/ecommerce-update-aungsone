@@ -9,7 +9,7 @@ import {
   readKpayPendingStoreContext,
   toMarketplaceVendorCheckoutPath,
 } from "../utils/vendorCheckoutPaths";
-import { RouteLoadingFallback } from "./RouteLoadingFallback";
+import { StorefrontAwareRouteFallback } from "./RouteLoadingFallback";
 
 const VendorStorefrontPage = lazy(() =>
   import("../pages/VendorStorefrontPage").then((m) => ({ default: m.VendorStorefrontPage }))
@@ -67,7 +67,7 @@ export function VendorHostOnlyStorefront() {
     navigate,
   ]);
 
-  if (loading && !marketplaceSlug) return <RouteLoadingFallback />;
+  if (loading && !marketplaceSlug) return <StorefrontAwareRouteFallback />;
 
   const unifiedKpaySummary = isUnifiedKpaySummaryPath(location.pathname);
 
@@ -79,14 +79,14 @@ export function VendorHostOnlyStorefront() {
 
   if (!canRender) {
     return (
-      <Suspense fallback={<RouteLoadingFallback />}>
+      <Suspense fallback={<StorefrontAwareRouteFallback />}>
         <NotFound />
       </Suspense>
     );
   }
 
   return (
-    <Suspense fallback={<RouteLoadingFallback />}>
+    <Suspense fallback={<StorefrontAwareRouteFallback />}>
       <VendorStorefrontPage />
     </Suspense>
   );

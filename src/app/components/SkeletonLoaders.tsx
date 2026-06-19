@@ -34,6 +34,53 @@ export function ProductGridSkeleton({ count = 8 }: { count?: number }) {
   );
 }
 
+/** Storefront header + optional category chip row (shared by shop and product route skeletons). */
+export function VendorStorefrontNavSkeleton({
+  showCategories = true,
+}: {
+  showCategories?: boolean;
+}) {
+  return (
+    <div className="shrink-0 border-b border-[rgba(15,23,42,0.08)] bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)]">
+      <div className="max-w-7xl mx-auto w-full px-4">
+        <div className="relative flex h-16 items-center md:justify-between md:gap-3">
+          <div className="flex min-w-0 items-center gap-2 pr-[9.25rem] md:max-w-xs md:pr-0 animate-pulse">
+            <div className="h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl bg-slate-200" />
+            <div className="h-5 w-28 rounded bg-slate-200 sm:w-36" />
+          </div>
+          <div className="hidden min-w-0 flex-1 justify-center px-2 md:flex animate-pulse">
+            <div className="h-10 w-full max-w-lg rounded-lg bg-slate-200" />
+          </div>
+          <div className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 gap-0.5 md:static md:z-auto md:translate-y-0 md:gap-1 animate-pulse">
+            <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:h-10 md:w-10" />
+            <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:h-10 md:w-10" />
+            <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:h-10 md:w-10" />
+            <div className="hidden h-10 w-10 shrink-0 rounded-full bg-slate-200 md:block" />
+            <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:hidden" />
+          </div>
+        </div>
+        {showCategories && (
+          <div className="flex gap-2 py-3 overflow-hidden scrollbar-hide">
+            {Array.from({ length: 7 }).map((_, i) => (
+              <div key={i} className="h-8 w-[5.5rem] shrink-0 rounded-full bg-slate-200 animate-pulse" />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Product detail route — same shell as live storefront loading (nav + PDP placeholders). */
+export function VendorStorefrontProductRouteSkeleton() {
+  return (
+    <div className="flex min-h-[100svh] w-full flex-1 flex-col bg-white">
+      <VendorStorefrontNavSkeleton />
+      <ProductDetailSkeleton />
+    </div>
+  );
+}
+
 /** Full viewport: nav skeleton + (category chips OR saved banner) + product grid. */
 export function VendorStorefrontFullSkeleton({
   count = 10,
@@ -45,33 +92,7 @@ export function VendorStorefrontFullSkeleton({
 }) {
   return (
     <div className="flex min-h-[100svh] w-full flex-1 flex-col bg-white">
-      <div className="shrink-0 border-b border-[rgba(15,23,42,0.08)] bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)]">
-        <div className="max-w-7xl mx-auto w-full px-4">
-          <div className="relative flex h-16 items-center md:justify-between md:gap-3">
-            <div className="flex min-w-0 items-center gap-2 pr-[9.25rem] md:max-w-xs md:pr-0 animate-pulse">
-              <div className="h-9 w-9 md:h-10 md:w-10 shrink-0 rounded-xl bg-slate-200" />
-              <div className="h-5 w-28 rounded bg-slate-200 sm:w-36" />
-            </div>
-            <div className="hidden min-w-0 flex-1 justify-center px-2 md:flex animate-pulse">
-              <div className="h-10 w-full max-w-lg rounded-lg bg-slate-200" />
-            </div>
-            <div className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 gap-0.5 md:static md:z-auto md:translate-y-0 md:gap-1 animate-pulse">
-              <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:h-10 md:w-10" />
-              <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:h-10 md:w-10" />
-              <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:h-10 md:w-10" />
-              <div className="hidden h-10 w-10 shrink-0 rounded-full bg-slate-200 md:block" />
-              <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200 md:hidden" />
-            </div>
-          </div>
-          {!savedLayout && (
-            <div className="flex gap-2 py-3 overflow-hidden scrollbar-hide">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="h-8 w-[5.5rem] shrink-0 rounded-full bg-slate-200 animate-pulse" />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <VendorStorefrontNavSkeleton showCategories={!savedLayout} />
 
       {savedLayout && (
         <div className="w-screen max-w-none ml-[calc(50%-50vw)] shrink-0">

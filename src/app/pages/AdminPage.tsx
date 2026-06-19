@@ -26,9 +26,8 @@ import {
   peekPendingOrdersDigestSourceMs,
   peekPendingVendorApplicationsDigestSourceMs,
 } from "../utils/adminDigestSourceTimes";
-import {
-  adminOrdersUpdatedStorageKey,
-} from "../utils/adminOrdersRealtime";
+import { AdminPanelContentSkeleton, SuperAdminPanelSkeleton } from "../components/AdminSkeletonLoaders";
+import { AdminSectionReady } from "../components/AdminSectionReady";
 
 const Dashboard = lazy(() => import("../components/Dashboard").then((m) => ({ default: m.Dashboard })));
 const ProductList = lazy(() => import("../components/ProductList").then((m) => ({ default: m.ProductList })));
@@ -97,22 +96,6 @@ const ADMIN_PAGES = {
 
 type AdminPage = typeof ADMIN_PAGES[keyof typeof ADMIN_PAGES];
 
-function AdminSectionFallback() {
-  return (
-    <div className="p-4 sm:p-8">
-      <div className="space-y-4">
-        <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="h-28 animate-pulse rounded-2xl bg-white shadow-sm ring-1 ring-slate-200" />
-          ))}
-        </div>
-        <div className="h-96 animate-pulse rounded-2xl bg-white shadow-sm ring-1 ring-slate-200" />
-      </div>
-    </div>
-  );
-}
-
 export function AdminPage() {
   const [searchParams] = useSearchParams();
   const params = useParams();
@@ -169,6 +152,7 @@ export function AdminPage() {
   /** Inventory tab — draft + server `q` survive switching admin sections (same idea as ProductList + TopNav search). */
   const [inventorySearchQuery, setInventorySearchQuery] = useState("");
   const [inventoryCommittedSearchQuery, setInventoryCommittedSearchQuery] = useState("");
+  const [initialSectionReady, setInitialSectionReady] = useState(false);
 
   const handleInventorySearchQueryChange = useCallback((value: string) => {
     setInventorySearchQuery(value);
@@ -750,7 +734,20 @@ export function AdminPage() {
 
   return (
     <>
-      {viewingUserProfile && (
+      {!initialSectionReady && (
+        <>
+          <div className="sr-only" aria-hidden>
+            <Suspense fallback={null}>
+              <AdminSectionReady onReady={() => setInitialSectionReady(true)}>
+                {renderContent()}
+              </AdminSectionReady>
+            </Suspense>
+          </div>
+          <SuperAdminPanelSkeleton />
+        </>
+      )}
+
+      {initialSectionReady && viewingUserProfile && (
         <UserProfile
           user={viewingUserProfile}
           initialEditMode={userProfileInitialEdit}
@@ -763,7 +760,7 @@ export function AdminPage() {
         />
       )}
 
-      {viewingOrder && (
+      {initialSectionReady && viewingOrder && (
         <OrderDetails
           order={viewingOrder as any}
           onBack={() => setViewingOrder(null)}
@@ -771,7 +768,7 @@ export function AdminPage() {
         />
       )}
 
-      {!viewingUserProfile && !viewingOrder && (
+      {initialSectionReady && !viewingUserProfile && !viewingOrder && (
         <div key={appKey} className="flex h-screen bg-slate-50 overflow-hidden">
           {sidebarOpen && (
             <div 
@@ -860,7 +857,7 @@ export function AdminPage() {
                   />
                 </div>
               )}
-              <Suspense fallback={<AdminSectionFallback />}>
+              <Suspense fallback={<AdminPanelContentSkeleton />}>
                 {renderContent()}
               </Suspense>
             </main>
