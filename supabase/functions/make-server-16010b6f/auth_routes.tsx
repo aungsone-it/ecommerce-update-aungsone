@@ -368,6 +368,12 @@ function formatAuditRoleLabel(role: unknown): string {
     .join(" ");
 }
 
+function formatAuditStatusLabel(status: unknown): string {
+  const raw = String(status || "").trim().toLowerCase();
+  if (!raw) return "Unknown";
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
 function dedupeAuthProfilesByEmail(profiles: any[]): any[] {
   const byEmail = new Map<string, any[]>();
   const noEmail: any[] = [];
@@ -755,10 +761,12 @@ authApp.post("/create-user", async (c) => {
     await kv.set("auth:users-list", users);
 
     console.log(`✅ User created: ${email} with role ${targetRole}`);
+    const createdName = String(name || email || "User").trim();
+    const createdMail = String(email || "").trim();
     await appendStaffActivity(createdBy, {
       type: "user_created",
       action: "User created",
-      detail: `User - ${String(name || email || "Staff").slice(0, 120)} · ${String(email || "").slice(0, 120)} · User ID - ${String(data.user.id || "").slice(0, 40)} · Role - ${formatAuditRoleLabel(targetRole)}`,
+      detail: `${createdName.slice(0, 120)} | Role : ${formatAuditRoleLabel(targetRole)}${createdMail ? ` | Mail : ${createdMail.slice(0, 120)}` : ""}`,
     });
 
     let profileImageUrl: string | undefined;
@@ -825,6 +833,7 @@ authApp.put("/user/:userId", async (c) => {
       name,
       email,
       phone,
+      status,
       role,
       storeId,
       profileImage,
@@ -928,6 +937,7 @@ authApp.put("/user/:userId", async (c) => {
       name: name !== undefined ? name : p.name,
       email: email !== undefined ? email : p.email,
       phone: phone !== undefined ? phone : p.phone,
+      status: status !== undefined ? status : (p as { status?: unknown }).status,
       role: role !== undefined ? role : p.role,
       storeId: storeId !== undefined ? storeId : p.storeId,
       updatedAt: new Date().toISOString(),
@@ -976,7 +986,14 @@ authApp.put("/user/:userId", async (c) => {
     const prevRole = String(p.role || "").trim();
     const nextRole = String(updatedProfile.role || "").trim();
     if (prevRole !== nextRole) {
-      detailParts.push(`Role : ${formatAuditRoleLabel(nextRole)} | ${targetLabel}`);
+      detailParts.push(
+        `${targetLabel} | Role : ${formatAuditRoleLabel(nextRole)}${targetEmail ? ` | Mail : ${targetEmail.slice(0, 120)}` : ""}`
+      );
+    }
+    const prevStatus = String((p as { status?: unknown }).status || "").trim().toLowerCase();
+    const nextStatus = String(updatedProfile.status || "").trim().toLowerCase();
+    if (prevStatus !== nextStatus && nextStatus) {
+      detailParts.push(`${targetLabel} | Status : ${formatAuditStatusLabel(nextStatus)}`);
     }
     const prevName = String(p.name || "").trim();
     const nextName = String(updatedProfile.name || "").trim();
@@ -1019,10 +1036,14 @@ authApp.delete("/user/:userId", async (c) => {
 
     const profileRole = String((profile as { role?: string }).role || "").trim();
     if (profileRole === "super-admin" || profileRole === "store-owner") {
+      const blockedName = String(
+        (profile as { name?: string }).name || (profile as { email?: string }).email || userId
+      ).slice(0, 120);
+      const blockedMail = String((profile as { email?: string }).email || "").slice(0, 120);
       await appendStaffActivity(deletedBy || undefined, {
         type: "admin_action",
         action: "User delete blocked",
-        detail: `User - ${String((profile as { name?: string }).name || (profile as { email?: string }).email || userId).slice(0, 120)} · User ID - ${String(userId).slice(0, 40)} · Role - ${formatAuditRoleLabel(profileRole)} · Owner-level account`,
+        detail: `${blockedName} | Role : ${formatAuditRoleLabel(profileRole)}${blockedMail ? ` | Mail : ${blockedMail}` : ""}`,
       });
       return c.json({ error: "Cannot delete owner-level account" }, 400);
     }
@@ -1050,10 +1071,14 @@ authApp.delete("/user/:userId", async (c) => {
     }
 
     console.log(`✅ User deleted: ${profile.email}`);
+    const deletedName = String(
+      (profile as { name?: string }).name || (profile as { email?: string }).email || userId
+    ).slice(0, 120);
+    const deletedMail = String((profile as { email?: string }).email || "").slice(0, 120);
     await appendStaffActivity(deletedBy || undefined, {
       type: "user_deleted",
       action: "User deleted",
-      detail: `User - ${String((profile as { name?: string }).name || (profile as { email?: string }).email || userId).slice(0, 120)} · ${String((profile as { email?: string }).email || "").slice(0, 120)} · User ID - ${String(userId).slice(0, 40)} · Role - ${formatAuditRoleLabel(profileRole)}`,
+      detail: `${deletedName} | Role : ${formatAuditRoleLabel(profileRole)}${deletedMail ? ` | Mail : ${deletedMail}` : ""}`,
     });
 
     return c.json({ success: true });

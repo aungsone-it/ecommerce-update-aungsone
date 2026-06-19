@@ -75,12 +75,20 @@ import {
   notifyStorefrontPolicyUpdated,
   subscribeStorefrontPolicyUpdates,
 } from "../utils/storefrontPolicyRealtime";
+import { compressImage } from "../../utils/imageCompression";
 
 interface SettingsTab {
   id: string;
   label: string;
   icon: React.ElementType;
 }
+
+type AddUserFormErrors = {
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+};
 
 export function Settings() {
   const { language, setLanguage, t } = useLanguage();
@@ -215,6 +223,7 @@ export function Settings() {
   const [avatarPreview, setAvatarPreview] = useState("");
   const [tempPassword, setTempPassword] = useState("");
   const [showTempPassword, setShowTempPassword] = useState(false);
+  const [addUserFormErrors, setAddUserFormErrors] = useState<AddUserFormErrors>({});
 
   useEffect(() => {
     if (activeTab === "users" && !isOwnerRole(user?.role)) {
@@ -658,26 +667,76 @@ export function Settings() {
     setUserRole(choices[0] || "data-entry");
     setUserAvatar("");
     setAvatarPreview("");
+    setAddUserFormErrors({});
+    setError("");
     setShowUserDialog(true);
   };
 
+  const validateAddUserForm = () => {
+    const errors: AddUserFormErrors = {};
+    const allowedRoles = assignableRolesForCreator(user?.role);
+    const name = userName.trim();
+    const email = userEmail.trim().toLowerCase();
+    const phone = userPhone.trim();
+    const selectedRole = canonicalizeStaffRoleForSave(userRole);
+
+    if (!name) {
+      errors.name = "Full name is required.";
+    } else if (name.length < 2) {
+      errors.name = "Full name must be at least 2 characters.";
+    }
+
+    if (!email) {
+      errors.email = "Email is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      errors.email = "Enter a valid email address.";
+    }
+
+    if (phone) {
+      const digitCount = phone.replace(/\D/g, "").length;
+      if (!/^[\d+\-\s()]+$/.test(phone) || digitCount < 7 || digitCount > 15) {
+        errors.phone = "Enter a valid phone number (7-15 digits).";
+      }
+    }
+
+    if (!allowedRoles.includes(selectedRole)) {
+      errors.role = "Selected role is not allowed for your account.";
+    }
+
+    setAddUserFormErrors(errors);
+
+    return {
+      isValid: Object.keys(errors).length === 0,
+      normalized: {
+        name,
+        email,
+        phone,
+        role: selectedRole,
+      },
+    };
+  };
+
   const handleSaveUser = async () => {
-    if (!userName.trim() || !userEmail.trim()) return;
+    const { isValid, normalized } = validateAddUserForm();
+    if (!isValid) {
+      toast.error("Please fix the highlighted fields.");
+      return;
+    }
 
     setSaving(true);
     setError('');
 
     try {
-      console.log(`➕ Creating new user: ${userEmail}`);
+      console.log(`➕ Creating new user: ${normalized.email}`);
       if (!user?.id) {
         throw new Error("You must be signed in to create staff accounts.");
       }
 
       const createPayload: Record<string, unknown> = {
-        email: userEmail,
-        name: userName,
-        phone: userPhone,
-        role: canonicalizeStaffRoleForSave(userRole),
+        email: normalized.email,
+        name: normalized.name,
+        phone: normalized.phone,
+        role: normalized.role,
         storeId: user?.storeId || '',
         createdBy: user.id,
       };
@@ -706,13 +765,13 @@ export function Settings() {
       console.log('✅ User created:', data);
 
       const fallbackAv =
-        `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(userEmail || userName || "user")}`;
+        `https://api.dicebear.com/7.x/pixel-art/svg?seed=${encodeURIComponent(normalized.email || normalized.name || "user")}`;
       const newUser = {
         id: data.userId,
-        name: userName,
-        email: userEmail,
-        phone: userPhone,
-        role: canonicalizeStaffRoleForSave(userRole),
+        name: normalized.name,
+        email: normalized.email,
+        phone: normalized.phone,
+        role: normalized.role,
         storeId: user?.storeId || '',
         status: "active",
         profileImageUrl: data.profileImageUrl,
@@ -1584,9 +1643,18 @@ export function Settings() {
                       id="userName"
                       placeholder={t('settings.users.dialog.fullNamePlaceholder')}
                       value={userName}
-                      onChange={(e) => setUserName(e.target.value)}
+                      onChange={(e) => {
+                        setUserName(e.target.value);
+                        if (addUserFormErrors.name) {
+                          setAddUserFormErrors((prev) => ({ ...prev, name: undefined }));
+                        }
+                      }}
                       className="h-10"
+                      aria-invalid={!!addUserFormErrors.name}
                     />
+                    {addUserFormErrors.name ? (
+                      <p className="text-xs text-red-600 mt-1">{addUserFormErrors.name}</p>
+                    ) : null}
                   </div>
 
                   <div>
@@ -1598,9 +1666,18 @@ export function Settings() {
                       type="email"
                       placeholder="john@example.com"
                       value={userEmail}
-                      onChange={(e) => setUserEmail(e.target.value)}
+                      onChange={(e) => {
+                        setUserEmail(e.target.value);
+                        if (addUserFormErrors.email) {
+                          setAddUserFormErrors((prev) => ({ ...prev, email: undefined }));
+                        }
+                      }}
                       className="h-10"
+                      aria-invalid={!!addUserFormErrors.email}
                     />
+                    {addUserFormErrors.email ? (
+                      <p className="text-xs text-red-600 mt-1">{addUserFormErrors.email}</p>
+                    ) : null}
                     <p className="text-xs text-slate-500 mt-1">
                       User will receive login credentials at this email
                     </p>
@@ -1615,16 +1692,33 @@ export function Settings() {
                       type="tel"
                       placeholder="+95 9 XXX XXX XXX"
                       value={userPhone}
-                      onChange={(e) => setUserPhone(e.target.value)}
+                      onChange={(e) => {
+                        setUserPhone(e.target.value);
+                        if (addUserFormErrors.phone) {
+                          setAddUserFormErrors((prev) => ({ ...prev, phone: undefined }));
+                        }
+                      }}
                       className="h-10"
+                      aria-invalid={!!addUserFormErrors.phone}
                     />
+                    {addUserFormErrors.phone ? (
+                      <p className="text-xs text-red-600 mt-1">{addUserFormErrors.phone}</p>
+                    ) : null}
                   </div>
 
                   <div>
                     <Label htmlFor="userRole" className="text-sm font-medium text-slate-900 mb-2 block">
                       Role
                     </Label>
-                    <Select value={userRole} onValueChange={setUserRole}>
+                    <Select
+                      value={userRole}
+                      onValueChange={(value) => {
+                        setUserRole(value);
+                        if (addUserFormErrors.role) {
+                          setAddUserFormErrors((prev) => ({ ...prev, role: undefined }));
+                        }
+                      }}
+                    >
                       <SelectTrigger className="h-10">
                         <SelectValue />
                       </SelectTrigger>
@@ -1639,6 +1733,9 @@ export function Settings() {
                     <p className="text-xs text-slate-500 mt-1">
                       {getRoleInfo(userRole).description}
                     </p>
+                    {addUserFormErrors.role ? (
+                      <p className="text-xs text-red-600 mt-1">{addUserFormErrors.role}</p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1653,7 +1750,7 @@ export function Settings() {
                   <Button 
                     onClick={handleSaveUser} 
                     className="bg-slate-900 hover:bg-slate-800 text-white"
-                    disabled={saving || !userName.trim() || !userEmail.trim()}
+                    disabled={saving}
                   >
                     {saving ? (
                       <>
