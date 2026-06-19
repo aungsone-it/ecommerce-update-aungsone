@@ -1011,7 +1011,14 @@ export function VendorStoreView({
     ]
   );
 
+  const restoreCatalogForBrowseRef = useRef<(() => void) | null>(null);
+  /** True while URL is a product detail route — used to restore browse catalog only when leaving PDP. */
+  const wasOnVendorProductRouteRef = useRef(false);
+
   const navigateStoreHome = useCallback(() => {
+    wasOnVendorProductRouteRef.current = false;
+    restoreCatalogForBrowseRef.current?.();
+    setSelectedProduct(null);
     navigate(
       buildVendorStoreHomePath({
         pathSlug: storeLinkSlug || canonicalPathSlug || storeSlug || vendorId,
@@ -1325,6 +1332,53 @@ export function VendorStoreView({
     [normalizedCategorySlugFromRoute, subnavCategoryItems]
   );
 
+  const restoreVendorBrowseCatalogSliceForRoute = useCallback(() => {
+    if (savedPage) return;
+    const qRaw = debouncedVendorServerQ.trim();
+    if (qRaw) return;
+
+    const cat = catalogCategoryForFetch;
+    const pageSize = VENDOR_BROWSE_PAGE_SIZE;
+    const memSlice = readCatalogSliceForKey(catalogSliceMemoryKey(cat));
+    if (memSlice?.products?.length) {
+      applyVendorCatalogSlice(memSlice);
+      return;
+    }
+
+    const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, "", cat, pageSize);
+    const fromMem = moduleCache.peek<any>(cacheKey);
+    if (fromMem && typeof fromMem === "object" && Array.isArray(fromMem.products) && fromMem.products.length > 0) {
+      applyVendorCatalogSlice({
+        products: fromMem.products || [],
+        total: typeof fromMem.total === "number" ? fromMem.total : 0,
+        page: typeof fromMem.page === "number" ? fromMem.page : 1,
+        hasMore: !!fromMem.hasMore,
+      });
+      return;
+    }
+
+    const lsKey = lsVendorCatalogPage1Key(vendorId, "", cat, pageSize);
+    const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
+    if (fromLs && typeof fromLs === "object" && Array.isArray(fromLs.products) && fromLs.products.length > 0) {
+      applyVendorCatalogSlice({
+        products: fromLs.products || [],
+        total: typeof fromLs.total === "number" ? fromLs.total : 0,
+        page: typeof fromLs.page === "number" ? fromLs.page : 1,
+        hasMore: !!fromLs.hasMore,
+      });
+    }
+  }, [
+    savedPage,
+    debouncedVendorServerQ,
+    catalogCategoryForFetch,
+    catalogSliceMemoryKey,
+    readCatalogSliceForKey,
+    applyVendorCatalogSlice,
+    vendorId,
+  ]);
+
+  restoreCatalogForBrowseRef.current = restoreVendorBrowseCatalogSliceForRoute;
+
   /** Server category for paginated catalog — category tabs and search both filter on the API. */
   const vendorCatalogServerCategory = useMemo(
     () => catalogCategoryForFetch,
@@ -1552,8 +1606,8 @@ export function VendorStoreView({
   }, [selectedProduct?.id, vendorViewMode, savedPage]);
 
   const vendorScrollRebindKey = useMemo(
-    () => `${selectedProduct?.id ?? "home"}-${savedPage}-${vendorViewMode}`,
-    [selectedProduct?.id, savedPage, vendorViewMode]
+    () => `${savedPage}-${vendorViewMode}-storefront`,
+    [savedPage, vendorViewMode]
   );
 
   const [authForm, setAuthForm] = useState({
@@ -4352,9 +4406,14 @@ export function VendorStoreView({
       matchPath({ path: "/vendor-:storeName/product/:productSlug", end: true }, location.pathname) ??
       matchPath({ path: "/product/:productSlug", end: true }, location.pathname);
     if (!stillOnProduct) {
-      startTransition(() => setSelectedProduct(null));
+      if (wasOnVendorProductRouteRef.current) {
+        wasOnVendorProductRouteRef.current = false;
+        restoreVendorBrowseCatalogSliceForRoute();
+      }
+      setSelectedProduct(null);
       return;
     }
+    wasOnVendorProductRouteRef.current = true;
     const slug = productSlugFromPath ?? initialProductSlug;
     if (!slug) {
       startTransition(() => setSelectedProduct(null));
@@ -4397,6 +4456,7 @@ export function VendorStoreView({
     products,
     location.pathname,
     location.state,
+    restoreVendorBrowseCatalogSliceForRoute,
   ]);
 
   // Shop grid and /product/* share this scroll root. Only snap to top when opening or switching
@@ -4993,24 +5053,8 @@ export function VendorStoreView({
     });
   }, [products, searchQuery, catalogCategoryForFetch]);
 
-  /** Loaded rows still belong to a previous category tab until page-1 refetch finishes. */
-  const productsMatchServerCategory = useMemo(() => {
-    if (catalogCategoryForFetch === "all") return true;
-    if (products.length === 0) return true;
-    return (
-      clientFilterProductsForCatalogCategory(products, catalogCategoryForFetch).length ===
-      products.length
-    );
-  }, [products, catalogCategoryForFetch, clientFilterProductsForCatalogCategory]);
-
-  const isCategoryCatalogStale = useMemo(
-    () =>
-      !savedPage &&
-      products.length > 0 &&
-      filteredProducts.length === 0 &&
-      !productsMatchServerCategory,
-    [savedPage, products.length, filteredProducts.length, productsMatchServerCategory]
-  );
+  /** Keep the last loaded grid visible during tab refetch — avoids skeleton blink on route change. */
+  const isCategoryCatalogStale = false;
 
   /** Full-page skeleton on /saved: wishlist GET or first product hydration — not while refetching with cards visible */
   const showSavedPageSkeleton = useMemo(
@@ -5218,7 +5262,6 @@ export function VendorStoreView({
     if (idx >= 0) setVendorProductImageIndex(idx);
   }, [selectedProduct, vendorVariantSelections]);
 
-  // Checkout must render before product detail — otherwise selectedProduct keeps the detail view mounted and checkout never shows
   if (showCheckout) {
     return (
       <div className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50 scrollbar-thin">
@@ -5263,6 +5306,7 @@ export function VendorStoreView({
       <>
         <div
           ref={vendorScrollRootRef}
+          key="vendor-storefront-shell"
           className="h-screen min-h-0 overflow-y-auto overflow-x-hidden bg-white scrollbar-thin flex flex-col"
         >
         <ServerStatusBanner
@@ -5287,7 +5331,7 @@ export function VendorStoreView({
 
         {/* Header - Same as main storefront */}
         <header
-          className={`${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
+          className={`shrink-0 ${vendorNavbarSticky ? "sticky top-0" : "relative"} z-40 bg-white shadow-[0_2px_10px_-2px_rgba(15,23,42,0.08)] transition-all duration-300`}
         >
           <div className="border-b border-[rgba(15,23,42,0.08)]">
             <div className="max-w-7xl mx-auto w-full px-4">
@@ -5296,10 +5340,9 @@ export function VendorStoreView({
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedProduct(null);
                   setSearchQuery("");
                   setSelectedCategory("all");
-                  navigate(storeBase || "/", { replace: false });
+                  navigateStoreHome();
                 }}
                 className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden pr-[9.25rem] text-left group md:max-w-xs md:flex-initial md:pr-0"
                 aria-label={`${storeName} — home`}
@@ -5547,8 +5590,9 @@ export function VendorStoreView({
           {/* Breadcrumb */}
           <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-3">
             <button onClick={() => {
-              setSelectedProduct(null);
-              navigate(storeBase || "/", { replace: false });
+              setSearchQuery("");
+              setSelectedCategory("all");
+              navigateStoreHome();
             }} className="hover:text-amber-700 transition-colors whitespace-nowrap text-xs">
               Home
             </button>
@@ -6059,6 +6103,7 @@ export function VendorStoreView({
     <>
     <div
       ref={vendorScrollRootRef}
+      key="vendor-storefront-shell"
       className={`h-screen min-h-0 overflow-y-auto overflow-x-hidden scrollbar-thin flex flex-col ${
         vendorViewMode !== "storefront" ? "bg-slate-50" : "bg-white"
       }`}
