@@ -23,6 +23,9 @@ import {
   Plus,
   Image,
   X,
+  Activity,
+  CheckCircle,
+  Clock,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -55,6 +58,7 @@ import { useLanguage } from "../contexts/LanguageContext";
 import { useAuth } from "../contexts/AuthContext";
 import {
   assignableRolesForCreator,
+  canAccessSuperAdminPage,
   canonicalizeStaffRoleForSave,
   isOwnerRole,
 } from "../utils/superAdminRolePermissions";
@@ -65,6 +69,13 @@ import {
   CACHE_KEYS,
   getCachedAdminAuthUsers,
   invalidateAdminAuthUsersCache,
+  getCachedStaffActivities,
+  fetchIncrementalStaffActivities,
+  mergeStaffActivities,
+  peekStaffActivitiesCache,
+  primeStaffActivitiesCache,
+  STAFF_ACTIVITIES_POLL_MS,
+  type StaffActivityFeedRow,
 } from "../utils/module-cache";
 import {
   readPersistedJson,
@@ -90,6 +101,109 @@ type AddUserFormErrors = {
   role?: string;
 };
 
+type StaffActivityRow = StaffActivityFeedRow;
+
+function parseActivityDateMs(value: unknown): number | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function formatActivityDateTime(value: unknown, locale?: string): string {
+  const ms = parseActivityDateMs(value);
+  if (ms == null) return "—";
+  return new Date(ms).toLocaleString(locale || undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+const ACTIVITY_UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ACTIVITY_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function stripActivityDetailLabel(part: string): string {
+  return String(part || "")
+    .replace(/^(user(?:\s+id)?|name|mail|email|role|status|id)\s*[-:]\s*/i, "")
+    .trim();
+}
+
+function splitActivityDetail(detail: string): string[] {
+  const text = String(detail || "").trim();
+  if (!text) return [];
+  return text
+    .split(/\s*(?:·|\|)\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function isUserStaffAction(action: string): boolean {
+  return /user (created|updated|deleted)|password reset|delete blocked/i.test(action);
+}
+
+function formatUserActivityDetailPieces(detail: string): string[] {
+  const segments = String(detail || "")
+    .split(/\s*·\s*/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  let name = "";
+  let mail = "";
+  let role = "";
+
+  for (const segment of segments.length > 0 ? segments : [String(detail || "")]) {
+    for (const part of segment.split(/\s*\|\s*/).map((p) => p.trim()).filter(Boolean)) {
+      if (/^user\s+id\s*[-:]/i.test(part) || /^id\s*[-:]/i.test(part)) continue;
+      if (/^status\s*[-:]/i.test(part)) continue;
+
+      const stripped = stripActivityDetailLabel(part);
+      if (!stripped || ACTIVITY_UUID_RE.test(stripped)) continue;
+
+      if (/^role\s*[-:]/i.test(part)) {
+        role = stripped;
+        continue;
+      }
+      if (/^(mail|email)\s*[-:]/i.test(part)) {
+        mail = stripped;
+        continue;
+      }
+      if (/^(user|name)\s*[-:]/i.test(part)) {
+        name = stripped;
+        continue;
+      }
+      if (ACTIVITY_EMAIL_RE.test(stripped)) {
+        mail = stripped;
+        continue;
+      }
+      if (!name) {
+        name = stripped;
+        continue;
+      }
+      if (!role) {
+        role = stripped;
+      }
+    }
+  }
+
+  return [name, mail, role].filter(Boolean);
+}
+
+function formatActivityDetailPieces(detail: string, action: string): string[] {
+  if (isUserStaffAction(action)) {
+    return formatUserActivityDetailPieces(detail);
+  }
+  return splitActivityDetail(detail)
+    .map(stripActivityDetailLabel)
+    .filter((part) => part && !ACTIVITY_UUID_RE.test(part));
+}
+
+function canViewStaffActivities(role: string | undefined): boolean {
+  return canAccessSuperAdminPage(role, "Settings");
+}
+
 export function Settings() {
   const { language, setLanguage, t } = useLanguage();
   const { user } = useAuth();
@@ -101,11 +215,15 @@ export function Settings() {
     { id: "general", label: t('settings.general'), icon: Store },
     { id: "users", label: t('settings.users'), icon: Users },
     { id: "appearance", label: t('settings.appearance'), icon: Palette },
+    { id: "activities", label: t('settings.activities'), icon: Activity },
   ];
 
-  const visibleSettingsTabs = settingsTabs.filter(
-    (tab) => tab.id !== "users" || isOwnerRole(user?.role)
-  );
+  const visibleSettingsTabs = settingsTabs.filter((tab) => {
+    if (tab.id === "appearance") return false;
+    if (tab.id === "users") return isOwnerRole(user?.role);
+    if (tab.id === "activities") return canViewStaffActivities(user?.role);
+    return true;
+  });
 
   const applyAuthUsersTransform = useCallback(
     (data: any[]) => {
@@ -224,9 +342,19 @@ export function Settings() {
   const [tempPassword, setTempPassword] = useState("");
   const [showTempPassword, setShowTempPassword] = useState(false);
   const [addUserFormErrors, setAddUserFormErrors] = useState<AddUserFormErrors>({});
+  const initialStaffActivities = peekStaffActivitiesCache() || [];
+  const [staffActivities, setStaffActivities] = useState<StaffActivityRow[]>(initialStaffActivities);
+  const [activitiesLoading, setActivitiesLoading] = useState(initialStaffActivities.length === 0);
+  const [activitiesRefreshing, setActivitiesRefreshing] = useState(false);
 
   useEffect(() => {
     if (activeTab === "users" && !isOwnerRole(user?.role)) {
+      setActiveTab("general");
+    }
+    if (activeTab === "activities" && !canViewStaffActivities(user?.role)) {
+      setActiveTab("general");
+    }
+    if (activeTab === "appearance") {
       setActiveTab("general");
     }
   }, [activeTab, user?.role]);
@@ -604,6 +732,71 @@ export function Settings() {
       loadUsers(false);
     }
   }, [activeTab, user?.role, loadUsers]);
+
+  const loadActivities = useCallback(
+    async (opts?: { forceFull?: boolean; showFullLoading?: boolean }) => {
+      if (!canViewStaffActivities(user?.role)) return;
+
+      const cached = peekStaffActivitiesCache();
+      const hasCached = Boolean(cached && cached.length > 0);
+
+      if (opts?.showFullLoading && !hasCached) {
+        setActivitiesLoading(true);
+      }
+
+      try {
+        if (opts?.forceFull || !hasCached) {
+          const list = await getCachedStaffActivities(Boolean(opts?.forceFull));
+          setStaffActivities(list);
+          primeStaffActivitiesCache(list);
+          return;
+        }
+
+        const latestAt = cached?.[0]?.at;
+        if (!latestAt) return;
+
+        const incoming = await fetchIncrementalStaffActivities(latestAt);
+        if (incoming.length === 0) return;
+
+        setStaffActivities((prev) => {
+          const merged = mergeStaffActivities(prev, incoming);
+          primeStaffActivitiesCache(merged);
+          return merged;
+        });
+      } catch (err) {
+        console.warn("Staff activities load skipped:", err);
+        if (!hasCached) setStaffActivities([]);
+      } finally {
+        setActivitiesLoading(false);
+        setActivitiesRefreshing(false);
+      }
+    },
+    [user?.role]
+  );
+
+  useEffect(() => {
+    if (activeTab !== "activities" || !canViewStaffActivities(user?.role)) return;
+
+    const cached = peekStaffActivitiesCache();
+    if (cached && cached.length > 0) {
+      setStaffActivities(cached);
+      setActivitiesLoading(false);
+      void loadActivities();
+    } else {
+      void loadActivities({ showFullLoading: true });
+    }
+
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadActivities();
+    };
+
+    const intervalId = window.setInterval(poll, STAFF_ACTIVITIES_POLL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab, user?.role, loadActivities]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1960,6 +2153,103 @@ export function Settings() {
           </div>
         );
 
+      case "activities":
+        return (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg border border-slate-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900">{t("settings.activities.title")}</h3>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  {activitiesRefreshing ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>{t("settings.activities.refreshing")}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Activity className="w-5 h-5 text-slate-400" />
+                    </>
+                  )}
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mb-4">{t("settings.activities.description")}</p>
+
+              {activitiesLoading ? (
+                <div className="py-16 flex flex-col items-center justify-center text-slate-500">
+                  <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                  <p className="text-sm">{t("settings.activities.loading")}</p>
+                </div>
+              ) : staffActivities.length === 0 ? (
+                <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-lg">
+                  {t("settings.activities.empty")}
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500 mb-3">
+                    {t("settings.activities.showingCount").replace("{count}", String(staffActivities.length))}
+                  </p>
+                  <div className="space-y-3">
+                    {staffActivities.map((activity) => {
+                      const actorLabel =
+                        String(activity.actorName || "").trim() ||
+                        String(activity.actorEmail || "").trim() ||
+                        t("settings.activities.unknownActor");
+                      const roleInfo = getRoleInfo(activity.actorRole || "");
+                      const isNeutral = String(activity.type || "").includes("deleted");
+                      const detailPieces = formatActivityDetailPieces(
+                        activity.detail || "",
+                        activity.action || ""
+                      );
+
+                      return (
+                        <div
+                          key={`${activity.actorUserId}-${activity.id}`}
+                          className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors"
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                              isNeutral ? "bg-slate-100" : "bg-green-100"
+                            }`}
+                          >
+                            {isNeutral ? (
+                              <Clock className="w-4 h-4 text-slate-500" />
+                            ) : (
+                              <CheckCircle className="w-4 h-4 text-green-600" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-slate-900">{activity.action}</p>
+                            {detailPieces.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                {detailPieces.map((piece, pieceIdx) => (
+                                  <span
+                                    key={`${activity.id}-piece-${pieceIdx}`}
+                                    className="inline-flex max-w-full items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 break-words"
+                                  >
+                                    {piece}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                            <p className="text-xs text-slate-400 mt-1.5">
+                              {t("settings.activities.by")} {actorLabel}
+                              {roleInfo.label ? ` · ${roleInfo.label}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500 flex-shrink-0">
+                            <Clock className="w-3 h-3" />
+                            <span>{formatActivityDateTime(activity.at, language === "zh" ? "zh-CN" : undefined)}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -1986,7 +2276,7 @@ export function Settings() {
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-64 bg-white border-r border-slate-200 overflow-y-auto flex-shrink-0">
+        <aside className="w-64 bg-white border-r border-slate-200 overflow-y-auto flex-shrink-0 scrollbar-thin">
           <nav className="p-4">
             <ul className="space-y-1">
               {visibleSettingsTabs.map((tab) => {
@@ -2012,8 +2302,8 @@ export function Settings() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl p-6">
+        <main className="flex-1 overflow-y-auto scrollbar-thin [&::-webkit-scrollbar]:w-1">
+          <div className={activeTab === "activities" ? "max-w-5xl p-6" : "max-w-3xl p-6"}>
             {renderTabContent()}
           </div>
         </main>

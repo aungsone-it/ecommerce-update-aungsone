@@ -1761,6 +1761,8 @@ export const CACHE_KEYS = {
   ADMIN_CUSTOMERS: 'admin-customers-v1',
   /** Settings → Users: raw GET `/auth/users` JSON array (filtered client-side by viewer) */
   ADMIN_AUTH_USERS: 'admin-auth-users-v1',
+  /** Settings → Activities: global staff activity feed */
+  ADMIN_STAFF_ACTIVITIES: 'admin-staff-activities-v1',
   /** Super Admin GET /finances/analytics — invalidated with orders (revenue source). */
   ADMIN_FINANCES_ANALYTICS: 'admin-finances-analytics-v1',
   
@@ -2558,6 +2560,94 @@ export function primeAdminAuthUsersCache(raw: unknown[]): void {
   if (typeof window !== "undefined") {
     writePersistedJson(LS_ADMIN_AUTH_USERS, raw);
   }
+}
+
+export type StaffActivityFeedRow = {
+  id: string;
+  type: string;
+  action: string;
+  detail: string;
+  at: string;
+  actorUserId: string;
+  actorName?: string;
+  actorEmail?: string;
+  actorRole?: string;
+};
+
+const STAFF_ACTIVITIES_API =
+  `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/auth/staff-activities`;
+
+/** Poll interval while Activities tab is open — lightweight incremental requests only. */
+export const STAFF_ACTIVITIES_POLL_MS = 30_000;
+
+function normalizeStaffActivityRows(list: unknown): StaffActivityFeedRow[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (row: unknown) =>
+      row &&
+      typeof row === "object" &&
+      typeof (row as { id?: string }).id === "string" &&
+      typeof (row as { action?: string }).action === "string"
+  ) as StaffActivityFeedRow[];
+}
+
+async function fetchStaffActivitiesFull(): Promise<StaffActivityFeedRow[]> {
+  const response = await fetch(STAFF_ACTIVITIES_API, {
+    headers: { Authorization: `Bearer ${publicAnonKey}` },
+  });
+  if (!response.ok) return [];
+  const data = await response.json();
+  return normalizeStaffActivityRows(data.activities);
+}
+
+export async function fetchIncrementalStaffActivities(
+  since: string
+): Promise<StaffActivityFeedRow[]> {
+  const sinceParam = encodeURIComponent(String(since || "").trim());
+  if (!sinceParam) return [];
+  const response = await fetch(`${STAFF_ACTIVITIES_API}?since=${sinceParam}`, {
+    headers: { Authorization: `Bearer ${publicAnonKey}` },
+  });
+  if (!response.ok) return [];
+  const data = await response.json();
+  return normalizeStaffActivityRows(data.activities);
+}
+
+export function peekStaffActivitiesCache(): StaffActivityFeedRow[] | null {
+  const peeked = moduleCache.peek<StaffActivityFeedRow[]>(CACHE_KEYS.ADMIN_STAFF_ACTIVITIES);
+  return peeked && Array.isArray(peeked) ? peeked : null;
+}
+
+export async function getCachedStaffActivities(
+  forceRefresh = false
+): Promise<StaffActivityFeedRow[]> {
+  return moduleCache.get(
+    CACHE_KEYS.ADMIN_STAFF_ACTIVITIES,
+    fetchStaffActivitiesFull,
+    forceRefresh
+  );
+}
+
+export function primeStaffActivitiesCache(rows: StaffActivityFeedRow[]): void {
+  moduleCache.prime(CACHE_KEYS.ADMIN_STAFF_ACTIVITIES, rows);
+}
+
+export function mergeStaffActivities(
+  existing: StaffActivityFeedRow[],
+  incoming: StaffActivityFeedRow[]
+): StaffActivityFeedRow[] {
+  if (incoming.length === 0) return existing;
+  const seen = new Set(existing.map((row) => `${row.actorUserId}-${row.id}`));
+  const merged = [
+    ...incoming.filter((row) => !seen.has(`${row.actorUserId}-${row.id}`)),
+    ...existing,
+  ];
+  merged.sort((a, b) => {
+    const aMs = Date.parse(String(a.at || ""));
+    const bMs = Date.parse(String(b.at || ""));
+    return (Number.isFinite(bMs) ? bMs : 0) - (Number.isFinite(aMs) ? aMs : 0);
+  });
+  return merged;
 }
 
 export async function getCachedAdminDashboardStats(filters: AdminDashboardFilters, forceRefresh = false) {

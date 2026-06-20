@@ -3,7 +3,11 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
-import { appendStaffActivity, isValidStaffActorId } from "./staff_activity_helpers.tsx";
+import {
+  appendStaffActivity,
+  getGlobalStaffActivityFeed,
+  isValidStaffActorId,
+} from "./staff_activity_helpers.tsx";
 import { queueCustomerReadModelSync } from "./read_model.ts";
 
 const authApp = new Hono();
@@ -372,6 +376,19 @@ function formatAuditStatusLabel(status: unknown): string {
   const raw = String(status || "").trim().toLowerCase();
   if (!raw) return "Unknown";
   return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function formatUserAuditDetail(opts: {
+  name?: unknown;
+  email?: unknown;
+  role?: unknown;
+}): string {
+  const parts = [
+    String(opts.name || "").trim(),
+    String(opts.email || "").trim(),
+    opts.role ? formatAuditRoleLabel(opts.role) : "",
+  ].filter(Boolean);
+  return parts.join(" | ").slice(0, 220);
 }
 
 function dedupeAuthProfilesByEmail(profiles: any[]): any[] {
@@ -766,7 +783,7 @@ authApp.post("/create-user", async (c) => {
     await appendStaffActivity(createdBy, {
       type: "user_created",
       action: "User created",
-      detail: `${createdName.slice(0, 120)} | Role : ${formatAuditRoleLabel(targetRole)}${createdMail ? ` | Mail : ${createdMail.slice(0, 120)}` : ""}`,
+      detail: formatUserAuditDetail({ name: createdName, email: createdMail, role: targetRole }),
     });
 
     let profileImageUrl: string | undefined;
@@ -987,23 +1004,29 @@ authApp.put("/user/:userId", async (c) => {
     const nextRole = String(updatedProfile.role || "").trim();
     if (prevRole !== nextRole) {
       detailParts.push(
-        `${targetLabel} | Role : ${formatAuditRoleLabel(nextRole)}${targetEmail ? ` | Mail : ${targetEmail.slice(0, 120)}` : ""}`
+        formatUserAuditDetail({
+          name: targetName,
+          email: targetEmail,
+          role: nextRole,
+        })
       );
     }
     const prevStatus = String((p as { status?: unknown }).status || "").trim().toLowerCase();
     const nextStatus = String(updatedProfile.status || "").trim().toLowerCase();
     if (prevStatus !== nextStatus && nextStatus) {
-      detailParts.push(`${targetLabel} | Status : ${formatAuditStatusLabel(nextStatus)}`);
+      detailParts.push(
+        [targetLabel, formatAuditStatusLabel(nextStatus)].filter(Boolean).join(" | ")
+      );
     }
     const prevName = String(p.name || "").trim();
     const nextName = String(updatedProfile.name || "").trim();
     if (prevName !== nextName && nextName) {
-      detailParts.push(`Name : ${nextName.slice(0, 80)}`);
+      detailParts.push(formatUserAuditDetail({ name: nextName, email: targetEmail, role: nextRole }));
     }
     const prevEmail = String(p.email || "").trim().toLowerCase();
     const nextEmail = String(updatedProfile.email || "").trim().toLowerCase();
     if (prevEmail !== nextEmail && nextEmail) {
-      detailParts.push(`Email : ${nextEmail.slice(0, 120)}`);
+      detailParts.push(formatUserAuditDetail({ name: targetName, email: nextEmail, role: nextRole }));
     }
     if (detailParts.length === 0) {
       detailParts.push(targetLabel);
@@ -1043,7 +1066,11 @@ authApp.delete("/user/:userId", async (c) => {
       await appendStaffActivity(deletedBy || undefined, {
         type: "admin_action",
         action: "User delete blocked",
-        detail: `${blockedName} | Role : ${formatAuditRoleLabel(profileRole)}${blockedMail ? ` | Mail : ${blockedMail}` : ""}`,
+        detail: formatUserAuditDetail({
+          name: blockedName,
+          email: blockedMail,
+          role: profileRole,
+        }),
       });
       return c.json({ error: "Cannot delete owner-level account" }, 400);
     }
@@ -1078,7 +1105,11 @@ authApp.delete("/user/:userId", async (c) => {
     await appendStaffActivity(deletedBy || undefined, {
       type: "user_deleted",
       action: "User deleted",
-      detail: `${deletedName} | Role : ${formatAuditRoleLabel(profileRole)}${deletedMail ? ` | Mail : ${deletedMail}` : ""}`,
+      detail: formatUserAuditDetail({
+        name: deletedName,
+        email: deletedMail,
+        role: profileRole,
+      }),
     });
 
     return c.json({ success: true });
@@ -1131,7 +1162,11 @@ authApp.post("/reset-password/:userId", async (c) => {
     await appendStaffActivity(resetBy || undefined, {
       type: "password_reset",
       action: "Password reset",
-      detail: `${String((profile as { name?: string }).name || (profile as { email?: string }).email || userId).slice(0, 120)} · ${String((profile as { email?: string }).email || "").slice(0, 120)}`,
+      detail: formatUserAuditDetail({
+        name: (profile as { name?: string }).name,
+        email: (profile as { email?: string }).email,
+        role: (profile as { role?: string }).role,
+      }),
     });
 
     return c.json({
@@ -1756,6 +1791,18 @@ authApp.post("/register", async (c) => {
   } catch (error: any) {
     console.error("Registration error:", error);
     return c.json({ error: error.message || "Registration failed" }, 500);
+  }
+});
+
+// Aggregated staff actions — reads single global feed (cheap); ?since= for incremental poll
+authApp.get("/staff-activities", async (c) => {
+  try {
+    const since = String(c.req.query("since") || "").trim();
+    const activities = await getGlobalStaffActivityFeed(since || undefined);
+    return c.json({ activities });
+  } catch (error: any) {
+    console.error("staff-activities GET:", error);
+    return c.json({ activities: [] });
   }
 });
 

@@ -4,6 +4,7 @@ export const enTranslations: Record<string, string> = {
     'settings.general': 'General',
     'settings.users': 'Users',
     'settings.appearance': 'Appearance',
+    'settings.activities': 'Activities',
     
     // General Tab
     'settings.general.storeInfo': 'Store information',
@@ -26,6 +27,15 @@ export const enTranslations: Record<string, string> = {
     'settings.general.language': 'Language',
     'settings.general.languageHint': 'Select your preferred language for the interface',
     'settings.general.saveChanges': 'Save changes',
+
+    'settings.activities.title': 'Activity timeline',
+    'settings.activities.description': 'Every admin action across the platform in one place. Each detail is shown separately so nothing is hidden. Visible to everyone who can open Settings.',
+    'settings.activities.loading': 'Loading activities...',
+    'settings.activities.empty': 'No activities recorded yet. Actions from the admin panel will appear here automatically.',
+    'settings.activities.refreshing': 'Refreshing...',
+    'settings.activities.showingCount': 'Showing all {count} activities',
+    'settings.activities.by': 'By',
+    'settings.activities.unknownActor': 'Unknown user',
 
     // Currency & timezone (Settings selects)
     'currency.MMK': 'Myanmar Kyat (MMK)',

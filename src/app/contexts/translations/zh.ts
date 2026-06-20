@@ -5,6 +5,7 @@ export const zhTranslations: Record<string, string> = {
     'settings.general': '常规',
     'settings.users': '用户',
     'settings.appearance': '外观',
+    'settings.activities': '活动',
     
     // General Tab
     'settings.general.storeInfo': '商店信息',
@@ -27,6 +28,15 @@ export const zhTranslations: Record<string, string> = {
     'settings.general.language': '语言',
     'settings.general.languageHint': '选择您的界面首选语言',
     'settings.general.saveChanges': '保存更改',
+
+    'settings.activities.title': '活动时间线',
+    'settings.activities.description': '平台所有管理操作集中在此。每条详情单独显示，不遗漏任何信息。所有可打开设置的用户均可查看。',
+    'settings.activities.loading': '正在加载活动...',
+    'settings.activities.empty': '暂无活动记录。管理后台的操作会自动显示在这里。',
+    'settings.activities.refreshing': '刷新中...',
+    'settings.activities.showingCount': '共 {count} 条活动',
+    'settings.activities.by': '操作人',
+    'settings.activities.unknownActor': '未知用户',
 
     // Currency & timezone (Settings selects)
     'currency.MMK': '缅甸元 (MMK)',
