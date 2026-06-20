@@ -16,6 +16,9 @@ export type ChatNotificationContextValue = {
   forceOpenFloatingChat: boolean;
   /** Called when the chat panel finishes opening so `forceOpen` can reset. */
   resetForceOpenFloatingChat: () => void;
+  /** True while the floating chat panel is open (hides overlapping FABs like BackToTop). */
+  floatingChatOpen: boolean;
+  setFloatingChatOpen: (open: boolean) => void;
 };
 
 const ChatNotificationContext = createContext<ChatNotificationContextValue | null>(null);
@@ -23,6 +26,7 @@ const ChatNotificationContext = createContext<ChatNotificationContextValue | nul
 export function ChatNotificationProvider({ children }: { children: ReactNode }) {
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const [forceOpenFloatingChat, setForceOpenFloatingChat] = useState(false);
+  const [floatingChatOpen, setFloatingChatOpen] = useState(false);
 
   const openFloatingChat = useCallback(() => {
     setForceOpenFloatingChat(true);
@@ -39,8 +43,10 @@ export function ChatNotificationProvider({ children }: { children: ReactNode }) 
       openFloatingChat,
       forceOpenFloatingChat,
       resetForceOpenFloatingChat,
+      floatingChatOpen,
+      setFloatingChatOpen,
     }),
-    [chatUnreadCount, forceOpenFloatingChat, openFloatingChat, resetForceOpenFloatingChat]
+    [chatUnreadCount, forceOpenFloatingChat, openFloatingChat, resetForceOpenFloatingChat, floatingChatOpen]
   );
 
   return (

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { MessageCircle, X, Send, Paperclip, Smile, Image as ImageIcon, Loader2, Headset, MessageCircleMore, Lock } from "lucide-react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -26,6 +27,7 @@ import { EmojiPicker, type EmojiClickData } from "./EmojiPickerLazy";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { useDocumentVisible } from "../hooks/useDocumentVisible";
 import { canonicalChatThreadId } from "../../utils/chatConversation";
+import { useChatNotification } from "../contexts/ChatNotificationContext";
 
 const MIGOO_USER_STORAGE_KEY = "migoo-user";
 
@@ -78,6 +80,7 @@ function sanitizeChatEmailToken(email: string): string {
 }
 
 export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false, aboveStickyPurchaseBar = false }: FloatingChatProps) {
+  const { setFloatingChatOpen } = useChatNotification();
   const docVisible = useDocumentVisible();
   const chatBrandLabel = vendorId ? "this store" : "SECURE";
   
@@ -495,6 +498,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     localStorage.setItem("migoo-chat-isOpen", JSON.stringify(isOpen));
   }, [isOpen]);
 
+  useEffect(() => {
+    setFloatingChatOpen(isOpen);
+    return () => setFloatingChatOpen(false);
+  }, [isOpen, setFloatingChatOpen]);
+
   // 🔒 Sync auth: other tabs + window focus; merge with Supabase-backed AuthContext user
   useEffect(() => {
     const checkAuth = () => {
@@ -778,19 +786,20 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     </Dialog>
   );
 
-  // Floating chat button (when closed)
-  const fabBottomClass = aboveStickyPurchaseBar
-    ? "bottom-[calc(5.5rem+0.625rem+2.5rem+0.625rem+env(safe-area-inset-bottom,0px))] md:bottom-[176px]"
-    : "bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))]";
+  const stickyAnchorClass = aboveStickyPurchaseBar ? "floating-chat-anchor--above-sticky" : "";
+  const stickyFabClass = aboveStickyPurchaseBar ? "floating-chat-fab-anchor--above-sticky" : "";
+
+  const renderPortal = (node: ReactNode) => {
+    if (typeof document === "undefined") return node;
+    return createPortal(node, document.body);
+  };
 
   if (!isOpen) {
-    return (
+    return renderPortal(
       <>
-        <div 
-          className={`fixed right-4 md:right-6 z-50 flex justify-center transition-all duration-700 ease-out ${fabBottomClass} ${
-            isMounted 
-              ? 'translate-x-0 opacity-100' 
-              : 'translate-x-20 opacity-0'
+        <div
+          className={`floating-chat-fab-anchor ${stickyFabClass} transition-all duration-700 ease-out ${
+            isMounted ? "translate-x-0 opacity-100" : "translate-x-20 opacity-0"
           }`}
         >
           <Button
@@ -799,9 +808,8 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
             aria-label="Open chat"
             className="h-11 w-11 md:h-14 md:w-14 rounded-full shadow-2xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-300 hover:scale-110 relative border-0 flex items-center justify-center"
           >
-            {/* Chat Bot Icon */}
             <MessageCircleMore className="w-5 h-5 md:w-7 md:h-7 text-white" />
-            
+
             {unreadCount > 0 && (
               <Badge className="absolute -top-1 -right-1 h-5 w-5 md:h-6 md:w-6 flex items-center justify-center p-0 bg-red-500 border-2 border-white text-xs font-semibold">
                 {unreadCount}
@@ -815,15 +823,12 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     );
   }
 
-  // Chat window (when open) — height capped to viewport so composer never clips on short screens / production
-  return (
+  return renderPortal(
     <>
-    <div className="fixed z-50 w-full sm:w-96 max-w-full sm:max-w-none right-0 sm:right-6 bottom-0 sm:bottom-6 pb-[env(safe-area-inset-bottom,0px)] sm:pb-0">
-      <div 
-        className="bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 flex flex-col min-h-0 overflow-hidden w-full h-[min(100dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] sm:h-[min(600px,calc(100dvh-3rem-env(safe-area-inset-bottom,0px)))]"
-      >
+      <div className={`floating-chat-anchor ${stickyAnchorClass}`}>
+        <div className="floating-chat-panel bg-white shadow-2xl border border-slate-200 transition-all duration-300">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 sm:rounded-t-2xl flex items-center justify-between shrink-0">
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-t-2xl flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
               <MessageCircleMore className="w-5 h-5" />
@@ -909,7 +914,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
             </div>
 
             {/* Input Area */}
-            <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:pb-3 bg-white border-t border-slate-200 sm:rounded-b-2xl shrink-0">
+            <div className="floating-chat-input p-3 bg-white border-t border-slate-200 rounded-b-2xl shrink-0">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1009,9 +1014,9 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
               </div>
             </div>
           </>
+        </div>
       </div>
-    </div>
-    {signInRequiredDialog}
+      {signInRequiredDialog}
     </>
   );
 }

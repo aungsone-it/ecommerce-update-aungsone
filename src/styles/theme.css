@@ -463,6 +463,79 @@
   }
 }
 
+/* Floating chat — compact bottom-right widget (stable across prod builds / viewports) */
+.floating-chat-fab-anchor {
+  position: fixed;
+  z-index: 100;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  justify-content: center;
+}
+
+.floating-chat-fab-anchor--above-sticky {
+  bottom: calc(5.5rem + 0.625rem + 2.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 768px) {
+  .floating-chat-fab-anchor {
+    right: max(1.5rem, env(safe-area-inset-right, 0px));
+  }
+
+  .floating-chat-fab-anchor--above-sticky {
+    bottom: 11rem;
+  }
+}
+
+.floating-chat-anchor {
+  position: fixed;
+  z-index: 100;
+  right: max(1rem, env(safe-area-inset-right, 0px));
+  bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  width: min(24rem, calc(100vw - 2rem));
+  max-width: min(24rem, calc(100vw - 2rem));
+}
+
+.floating-chat-anchor--above-sticky {
+  bottom: calc(5.5rem + 0.625rem + 2.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .floating-chat-anchor {
+    right: max(1.5rem, env(safe-area-inset-right, 0px));
+    bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+    width: 24rem;
+    max-width: 24rem;
+  }
+}
+
+@media (min-width: 768px) {
+  .floating-chat-anchor--above-sticky {
+    bottom: 11rem;
+  }
+}
+
+.floating-chat-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  width: 100%;
+  height: min(600px, calc(100dvh - 2rem - env(safe-area-inset-bottom, 0px)));
+  max-height: min(600px, calc(100dvh - 2rem - env(safe-area-inset-bottom, 0px)));
+  border-radius: 1rem;
+}
+
+.floating-chat-input {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .floating-chat-input {
+    padding-bottom: 0.75rem;
+  }
+}
+
 /*
  * Admin CSS loads a second Tailwind preflight (in @layer base) that resets
  * border-color to currentColor — making plain `border` look harsh/black.

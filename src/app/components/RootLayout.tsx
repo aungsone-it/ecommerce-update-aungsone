@@ -39,7 +39,7 @@ export function RootLayout() {
 function RootLayoutContent() {
   const { user } = useAuth();
   const location = useLocation();
-  const { setChatUnreadCount, forceOpenFloatingChat, resetForceOpenFloatingChat } =
+  const { setChatUnreadCount, forceOpenFloatingChat, resetForceOpenFloatingChat, floatingChatOpen } =
     useChatNotification();
   const { isCartOpen } = useCartVisibility();
   const { isLoading, suppressFloatingChat } = useLoading();
@@ -135,7 +135,8 @@ function RootLayoutContent() {
         !isVendorApplicationPage &&
         !isLandingPage &&
         !isResetPasswordPage &&
-        !isVendorStorefront && <BackToTop />}
+        !isVendorStorefront &&
+        !floatingChatOpen && <BackToTop />}
     </>
   );
 }
