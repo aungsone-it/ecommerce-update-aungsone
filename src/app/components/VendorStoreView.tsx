@@ -134,7 +134,7 @@ import { Checkout } from "./Checkout";
 import { OrderDetailView } from "./OrderDetailView";
 import { ServerStatusBanner } from "./ServerStatusBanner";
 import {
-  ProductGridSkeleton,
+  ProductCardSkeleton,
   VendorStorefrontFullSkeleton,
   VendorStorefrontProductRouteSkeleton,
   VendorOrdersListSkeleton,
@@ -1148,6 +1148,7 @@ export function VendorStoreView({
   const [vendorCatalogPage, setVendorCatalogPage] = useState(vendorHomeSnapshot.vendorCatalogPage);
   const [vendorCatalogHasMore, setVendorCatalogHasMore] = useState(vendorHomeSnapshot.vendorCatalogHasMore);
   const [vendorCatalogLoadingMore, setVendorCatalogLoadingMore] = useState(false);
+  const [vendorCatalogRefetching, setVendorCatalogRefetching] = useState(false);
   const [savedDisplayProducts, setSavedDisplayProducts] = useState<Product[]>([]);
   /** Server total of wishlist products belonging to this storefront (all pages). */
   const [savedVendorWishlistTotal, setSavedVendorWishlistTotal] = useState(0);
@@ -1205,6 +1206,7 @@ export function VendorStoreView({
       setVendorCatalogTotal(slice.total);
       setVendorCatalogPage(slice.page);
       setVendorCatalogHasMore(slice.hasMore);
+      setVendorCatalogRefetching(false);
       setServerStatus("healthy");
     },
     []
@@ -4260,6 +4262,11 @@ export function VendorStoreView({
       }
       return;
     }
+
+    const interim = clientFilterProductsForCatalogCategory(productsRef.current, cat);
+    if (interim.length === 0 && productsRef.current.length > 0) {
+      setVendorCatalogRefetching(true);
+    }
   }, [
     vendorId,
     debouncedVendorServerQ,
@@ -4270,6 +4277,7 @@ export function VendorStoreView({
     rememberVendorCatalogSlice,
     shouldApplyCachedCatalogSlice,
     readCatalogSliceForKey,
+    clientFilterProductsForCatalogCategory,
   ]);
 
   /** Refetch browse/search catalog when vendor, search query, or category tab changes. */
@@ -4300,6 +4308,7 @@ export function VendorStoreView({
           const serverCat = catalogCategoryForFetch;
           if (!qRaw && vendorCatalogSliceHasMoreLoaded(serverCat)) {
             setServerStatus("healthy");
+            setVendorCatalogRefetching(false);
             return;
           }
           const page1Key = CACHE_KEYS.vendorProductsPage(
@@ -4328,8 +4337,10 @@ export function VendorStoreView({
               rememberVendorCatalogSlice(serverCat, slice);
             }
             setServerStatus("healthy");
+            setVendorCatalogRefetching(false);
             return;
           }
+          setVendorCatalogRefetching(true);
           let applied = await refetchVendorCatalogPage1(false);
           if (runId !== vendorCatalogRefetchRunRef.current) return;
           if (!applied) {
@@ -4346,6 +4357,10 @@ export function VendorStoreView({
             setServerStatus("unhealthy");
           } else {
             setServerStatus("healthy");
+          }
+        } finally {
+          if (runId === vendorCatalogRefetchRunRef.current) {
+            setVendorCatalogRefetching(false);
           }
         }
       })();
@@ -5019,8 +5034,90 @@ export function VendorStoreView({
     });
   }, [products, searchQuery, catalogCategoryForFetch]);
 
-  /** Keep the last loaded grid visible during tab refetch — avoids skeleton blink on route change. */
-  const isCategoryCatalogStale = false;
+  /** Skeleton while category/search catalog refetch is in flight — never flash empty states mid-load. */
+  const isCategoryCatalogStale = useMemo(() => {
+    if (savedPage || isVendorProductDetailPath) return false;
+    const raw = searchQuery.trim();
+    if (raw.length >= VENDOR_SEARCH_MIN_SERVER_CHARS) {
+      if (raw.toLowerCase() !== debouncedVendorServerQ.trim().toLowerCase()) return true;
+    }
+    return vendorCatalogRefetching;
+  }, [
+    savedPage,
+    isVendorProductDetailPath,
+    searchQuery,
+    debouncedVendorServerQ,
+    vendorCatalogRefetching,
+  ]);
+
+  /** Page-1 target: server fetch + skeleton fill both use 12 slots on browse tabs. */
+  const catalogPageTargetSize = VENDOR_BROWSE_PAGE_SIZE;
+
+  /** During refetch, show client-matched rows immediately; server rows replace them when fetch completes. */
+  const catalogStalePreviewProducts = useMemo(() => {
+    if (!isCategoryCatalogStale) return filteredProducts;
+
+    const filterRow = (product: Product) => {
+      const matchesSearch = productMatchesVendorClientSearch(product, searchQuery);
+      let matchesCategory = true;
+      if (catalogCategoryForFetch !== "all") {
+        if (isVendorUncategorizedFilter(catalogCategoryForFetch)) {
+          matchesCategory = productHasNoCategory(product);
+        } else {
+          matchesCategory =
+            String(product.category || "").trim().toLowerCase() ===
+            String(catalogCategoryForFetch).trim().toLowerCase();
+        }
+      }
+      return matchesSearch && matchesCategory;
+    };
+
+    const byId = new Map<string, Product>();
+    const ingest = (rows: Product[]) => {
+      for (const p of rows) {
+        if (!filterRow(p)) continue;
+        byId.set(String(p.id), p);
+      }
+    };
+
+    ingest(products);
+    if (!debouncedVendorServerQ.trim()) {
+      const allSlice = readCatalogSliceForKey(catalogSliceMemoryKey("all"));
+      if (allSlice?.products?.length) ingest(allSlice.products);
+      if (catalogCategoryForFetch !== "all") {
+        const catSlice = readCatalogSliceForKey(catalogSliceMemoryKey(catalogCategoryForFetch));
+        if (catSlice?.products?.length) ingest(catSlice.products);
+      }
+    }
+
+    return [...byId.values()].slice(0, catalogPageTargetSize);
+  }, [
+    isCategoryCatalogStale,
+    filteredProducts,
+    products,
+    searchQuery,
+    catalogCategoryForFetch,
+    debouncedVendorServerQ,
+    catalogPageTargetSize,
+    readCatalogSliceForKey,
+    catalogSliceMemoryKey,
+  ]);
+
+  const catalogVisibleProducts = isCategoryCatalogStale
+    ? catalogStalePreviewProducts
+    : filteredProducts;
+
+  const catalogSkeletonFillCount = useMemo(() => {
+    if (!isCategoryCatalogStale) return 0;
+    return Math.max(0, catalogPageTargetSize - catalogVisibleProducts.length);
+  }, [isCategoryCatalogStale, catalogPageTargetSize, catalogVisibleProducts.length]);
+
+  const showCatalogProductGrid = useMemo(
+    () =>
+      serverStatus === "healthy" &&
+      (isCategoryCatalogStale || catalogVisibleProducts.length > 0),
+    [serverStatus, isCategoryCatalogStale, catalogVisibleProducts.length]
+  );
 
   /** Full-page skeleton on /saved: wishlist GET or first product hydration — not while refetching with cards visible */
   const showSavedPageSkeleton = useMemo(
@@ -6461,7 +6558,7 @@ export function VendorStoreView({
               </div>
             )}
 
-            {serverStatus === 'healthy' && products.length === 0 && (
+            {serverStatus === 'healthy' && !isCategoryCatalogStale && products.length === 0 && (
               <div className="text-center py-20">
                 <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">No Products Found</h3>
@@ -6469,10 +6566,6 @@ export function VendorStoreView({
                   {searchQuery ? "Try adjusting your search" : "This store hasn't added any products yet"}
                 </p>
               </div>
-            )}
-
-            {serverStatus === 'healthy' && isCategoryCatalogStale && (
-              <ProductGridSkeleton count={10} />
             )}
 
             {serverStatus === 'healthy' &&
@@ -6486,10 +6579,10 @@ export function VendorStoreView({
               </div>
             )}
 
-            {serverStatus === 'healthy' && filteredProducts.length > 0 && (
+            {showCatalogProductGrid && (
               <>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 lg:gap-6 stagger-children">
-                  {filteredProducts.map((product, index) => (
+                  {catalogVisibleProducts.map((product, index) => (
                     <ProductCard
                       key={product.id}
                       priority={index < 2}
@@ -6528,13 +6621,16 @@ export function VendorStoreView({
                       formatPriceMMK={formatPriceMMK}
                     />
                   ))}
+                  {Array.from({ length: catalogSkeletonFillCount }).map((_, i) => (
+                    <ProductCardSkeleton key={`catalog-skeleton-${i}`} />
+                  ))}
                 </div>
-                {catalogListTotalForDisplay > 0 && (
+                {!isCategoryCatalogStale && catalogListTotalForDisplay > 0 && (
                   <p className="text-center text-sm text-slate-500 mt-6">
                     Showing {filteredProducts.length} of {catalogListTotalForDisplay} products
                   </p>
                 )}
-                {vendorCatalogHasMore && !debouncedVendorServerQ.trim() && (
+                {!isCategoryCatalogStale && vendorCatalogHasMore && !debouncedVendorServerQ.trim() && (
                   <div className="flex justify-center mt-6">
                     <Button
                       type="button"
