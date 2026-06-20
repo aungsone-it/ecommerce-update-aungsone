@@ -38,11 +38,29 @@ Customers shop on **one vendor at a time**:
 - Dashboard/home
 - Products, categories, inventory (platform-wide catalog management for admins)
 - Orders
-- Vendors and vendor applications
+- Vendors (**Review applications** — new sellers are approved here; there is no “Add vendor” button)
 - Customers
 - Marketing
 - Chat
 - Finances and settings (role dependent)
+
+### Settings tabs
+
+| Tab | Who sees it | Purpose |
+|-----|-------------|---------|
+| **General** | All roles with Settings access | Platform name, logo, support phone/email, banners |
+| **Users** | Store owner only | Create/edit/delete staff accounts |
+| **Activities** | All roles with Settings access | Global audit timeline — every admin action across the platform |
+
+The **Appearance** tab is hidden in the UI; branding fields live under **General**.
+
+**Activities feed behavior:**
+
+- Shows actions such as **User created/updated/deleted**, **Product created/updated/deleted**, **Vendor Approved**, **Vendor Deleted**
+- Vendor rows display as: `Vendor Approved > StoreName | email | phone` and **By Name · Role**
+- Feed is stored in KV `staff:activity:global-feed` (max 500 entries)
+- While the Activities tab is open, the client polls incrementally every **30 seconds** (`?since=` timestamp) — no full reload on every visit
+- Approve/reject/delete actions require the acting staff member’s Supabase Auth UUID (`performedByUserId`) from the browser session
 
 ### Typical daily flow
 
@@ -50,8 +68,9 @@ Customers shop on **one vendor at a time**:
 2. Review order/customer/vendor alerts.
 3. Manage catalog and inventory updates.
 4. Process order lifecycle transitions.
-5. Review vendor applications and vendor status.
-6. Use settings/users for staff management (if authorized role).
+5. Review vendor applications via **Vendor → Review applications**; approve or reject (logged in Activities).
+6. Use **Settings → Users** for staff management (store owner only).
+7. Check **Settings → Activities** for a cross-platform audit trail when needed.
 
 Platform branding (name, logo) is editable under **Settings → General** and appears on the apex landing page, admin shell, and default tab titles.
 
@@ -60,6 +79,18 @@ Platform branding (name, logo) is editable under **Settings → General** and ap
 Destructive admin operations are guarded by backend checks. Production usage should pass admin-operation secret headers from authorized clients only.
 
 ## 3) Vendor workflows
+
+### Vendor application (public form)
+
+Applicants use `/vendor/application`:
+
+| Field | Rule |
+|-------|------|
+| Phone | Myanmar format: `+959XXXXXXXXX` (12 digits) or `09XXXXXXXXX` (11 digits) |
+| Store description | At least **10 characters** (max 5,000) |
+| Email | Live availability check while typing (debounced; 8s timeout — submit still validated server-side) |
+
+After approval, the vendor completes setup at `/vendor/setup` and signs in at `/vendor/login`.
 
 ### Vendor login and setup
 
@@ -86,6 +117,15 @@ Use **preview / open store** from vendor admin to verify:
 
 Share the **vendor URL** (subdomain or custom domain), not a generic marketplace `/products` link.
 
+### Platform landing page (apex `/`)
+
+Customers and prospects visiting the marketplace apex see:
+
+- Platform hero, stats (active vendors, products, customers)
+- **Vendor partner carousel** — active vendors with **store logos**, sorted by **total revenue** (best selling first)
+- Clicking a vendor card opens their storefront: **verified custom domain** → **subdomain** → path `/vendor/:slug`
+- **FloatingChat** bubble for customer support (same component as vendor storefronts)
+
 ## 4) Role and permission notes
 
 - Super-admin/staff roles control sidebar visibility and privileged actions.
@@ -103,6 +143,9 @@ Before release windows, confirm:
 - order updates sync correctly across admin/vendor/customer views
 - KBZPay return lands on apex `/summary` and Continue Shopping returns to the vendor storefront
 - chat and notification flows are healthy
+- **Settings → Activities** updates after vendor approve/delete and staff user changes
+- **Landing page** carousel logos load; cards link to correct vendor store URL
+- **Vendor application** form accepts `+959…` / `09…` phones and rejects duplicate emails
 - after backend deploy: run read-model validation (`docs/READ_MODEL_ROLLOUT.md`)
 
 ## 6) Related docs

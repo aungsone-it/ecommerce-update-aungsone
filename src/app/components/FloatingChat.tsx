@@ -779,15 +779,15 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   );
 
   // Floating chat button (when closed)
+  const fabBottomClass = aboveStickyPurchaseBar
+    ? "bottom-[calc(5.5rem+0.625rem+2.5rem+0.625rem+env(safe-area-inset-bottom,0px))] md:bottom-[176px]"
+    : "bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))]";
+
   if (!isOpen) {
     return (
       <>
         <div 
-          className={`fixed right-4 md:right-6 z-50 flex justify-center transition-all duration-700 ease-out ${
-            aboveStickyPurchaseBar
-              ? "bottom-[calc(5.5rem+0.625rem+2.5rem+0.625rem+env(safe-area-inset-bottom,0px))] md:bottom-[176px]"
-              : "bottom-16 md:bottom-[176px]"
-          } ${
+          className={`fixed right-4 md:right-6 z-50 flex justify-center transition-all duration-700 ease-out ${fabBottomClass} ${
             isMounted 
               ? 'translate-x-0 opacity-100' 
               : 'translate-x-20 opacity-0'
@@ -815,12 +815,12 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     );
   }
 
-  // Chat window (when open)
+  // Chat window (when open) — height capped to viewport so composer never clips on short screens / production
   return (
     <>
-    <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 w-full sm:w-auto min-w-0 max-w-full sm:max-w-none">
+    <div className="fixed z-50 w-full sm:w-96 max-w-full sm:max-w-none right-0 sm:right-6 bottom-0 sm:bottom-6 pb-[env(safe-area-inset-bottom,0px)] sm:pb-0">
       <div 
-        className="bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 flex flex-col min-h-0 overflow-hidden w-full sm:w-96 h-[100dvh] max-h-[100dvh] sm:h-[600px] sm:max-h-[min(600px,calc(100dvh-3rem))]"
+        className="bg-white sm:rounded-2xl shadow-2xl border border-slate-200 transition-all duration-300 flex flex-col min-h-0 overflow-hidden w-full h-[min(100dvh,calc(100dvh-env(safe-area-inset-bottom,0px)))] sm:h-[min(600px,calc(100dvh-3rem-env(safe-area-inset-bottom,0px)))]"
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 sm:rounded-t-2xl flex items-center justify-between shrink-0">
@@ -909,7 +909,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
             </div>
 
             {/* Input Area */}
-            <div className="p-3 bg-white border-t border-slate-200 rounded-b-2xl shrink-0">
+            <div className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:pb-3 bg-white border-t border-slate-200 sm:rounded-b-2xl shrink-0">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1003,7 +1003,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
                     className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 h-9 px-4 rounded-xl flex items-center gap-2 shrink-0"
                   >
                     <Send className="w-4 h-4" />
-                    <span className="text-sm hidden sm:inline">Send</span>
+                    <span className="text-sm">Send</span>
                   </Button>
                 </div>
               </div>

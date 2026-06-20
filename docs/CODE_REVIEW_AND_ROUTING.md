@@ -32,7 +32,7 @@ This file is the evergreen technical reference for the **current** app structure
 
 | Host type | Example | `/` behavior |
 |-----------|---------|--------------|
-| Platform apex | `walwal.online` | `LandingPage` (marketing / vendor directory) |
+| Platform apex | `walwal.online` | `LandingPage` — stats, vendor carousel (logos, revenue-sorted), FloatingChat |
 | Vendor subdomain | `gogo.walwal.online` | `VendorStorefrontPage` (that vendor’s catalog) |
 | Custom domain | `migoo.store` | `VendorStorefrontPage` (resolved slug) |
 | Localhost path dev | `localhost:5173` | `LandingPage` or `/vendor/:slug` |
@@ -45,7 +45,7 @@ Vendor identity is resolved from **hostname** (subdomain map, custom domain look
 
 | Path | Component / behavior |
 |------|----------------------|
-| `/` | `LandingPage` on apex; `VendorStorefrontPage` on vendor hosts |
+| `/` | Apex: `LandingPage` (vendor carousel, stats, FloatingChat). Vendor host: `VendorStorefrontPage`. Carousel cards use `resolveLandingVendorStoreUrl()` (custom domain → subdomain → `/vendor/:slug`). |
 | `/admin/*` | Super-admin portal |
 | `/vendor/application`, `/vendor/setup`, `/vendor/login` | Vendor onboarding / auth |
 | `/summary` | Unified KBZPay post-payment summary (`VendorHostOnlyStorefront` on apex) |
@@ -134,6 +134,10 @@ Details and scale limits: [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKE
 - Throttled badge/profile refresh.
 - Typed timeout/network errors from API client.
 - Early vendor branding: `vendorStorefrontBrandingCache.ts` + `vendor-storefront-head.js`.
+- **RootLayout:** `FloatingChat` lazy-loaded globally — shown on apex landing and storefronts; hidden on admin portals, `/vendor/application`, reset-password, and vendor login routes.
+- **Settings (`Settings.tsx`):** Activities tab with global feed; Appearance tab filtered out; `scrollbar-thin` on nav and main pane.
+- **Vendor admin list (`Vendor.tsx`):** no Add Vendor button; horizontal table scroll uses `scrollbar-thin-x` (4px, inset track).
+- **Landing vendors:** `fetchLandingVendorsCached()` → `GET /vendors`; active vendors sorted client-side by `totalRevenue` descending.
 
 ## 11) Routing pitfalls to watch
 

@@ -28,6 +28,10 @@ There is **no multi-vendor marketplace catalog** (no shared `/products` shopping
 | **Languages** | English + Simplified Chinese via `LanguageContext` on vendor storefront, vendor login/setup, and admin surfaces |
 | **KBZPay returns** | Unified post-payment summary on the platform apex (`walwal.online/summary`); vendor-scoped checkout paths |
 | **Payments** | KBZPay QR + PWA checkout, webhook sync, refund/cancel flow (production refunds need gateway mTLS/certs) |
+| **Settings & audit** | **Activities** tab — global platform audit timeline (vendor approve/delete, users, products); **Appearance** tab hidden (branding stays under General) |
+| **Landing page** | Vendor partner **carousel** (logos, revenue-sorted, click opens store); **FloatingChat** on apex homepage |
+| **Vendor onboarding** | Application form: Myanmar phone (`+959…` / `09…`), store description ≥10 characters, live email availability check |
+| **Admin UI polish** | Vendors added via **Review applications** only (no manual Add Vendor button); thinner scrollbars platform-wide |
 
 ## Current Product Surface
 
@@ -45,7 +49,8 @@ Implemented in `VendorStorefrontPage` → `VendorStoreView` (not a shared market
 
 ### Platform apex (non-shopping)
 
-- `/` on `walwal.online` (and similar apex hosts) — **LandingPage** (platform marketing / vendor directory)
+- `/` on `walwal.online` (and similar apex hosts) — **LandingPage** (platform marketing, stats, vendor partner carousel)
+- **FloatingChat** on the apex landing page and vendor storefronts (hidden on admin, vendor application, and login routes)
 - `/summary` — unified KBZPay order summary after mobile app payment
 - `/vendor/application`, `/vendor/login`, `/vendor/setup` — vendor onboarding and auth
 - `/admin/*` — super-admin portal
@@ -62,12 +67,15 @@ Implemented in `VendorStorefrontPage` → `VendorStoreView` (not a shared market
 ### Super Admin
 
 - Dashboard, products, categories, inventory, orders, customers, chat, marketing, finances, settings
-- Vendor management, applications, promotions, collaborator flows
+- Vendor management (**Review applications** only — no manual “Add vendor” button), promotions, collaborator flows
+- **Settings → General** — platform name, logo, support contact (formerly split with Appearance; Appearance tab is hidden)
+- **Settings → Users** — staff accounts (owner-only)
+- **Settings → Activities** — global audit timeline for all admin actions (visible to everyone who can open Settings)
 - SQL-backed admin lists where read-model migrations are applied; Realtime via pulse tables
 
 ### Vendor
 
-- Onboarding: `/vendor/application`, `/vendor/setup`, `/vendor/login`
+- Onboarding: `/vendor/application` (Myanmar phone formats, ≥10 character store description, email availability check), `/vendor/setup`, `/vendor/login`
 - Public storefront: subdomain/custom domain host root, or `/vendor/:storeName/*`
 - Admin portal: `/vendor/:storeName/admin/*`
 - Settings: branding, subdomain URL preview, custom domain, terms/privacy content, social links, stock policy
@@ -104,7 +112,7 @@ Implemented in `VendorStorefrontPage` → `VendorStoreView` (not a shared market
 
 | Purpose | URL |
 |---------|-----|
-| Platform landing | `/` |
+| Platform landing | `/` — vendor carousel (logos, sorted by revenue), stats, Become a Vendor |
 | Unified KBZPay summary | `/summary` |
 | Super admin | `/admin`, `/admin/:section` |
 | Vendor apply / login | `/vendor/application`, `/vendor/login` |

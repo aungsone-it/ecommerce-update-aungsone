@@ -13,6 +13,20 @@ For detailed operations, use `NEXA_ADMIN_AND_VENDOR_GUIDE.md`.
 3. Use the left menu for Products, Orders, Vendors, Customers, Marketing, Chat, and Settings.
 4. If you cannot see a section, your role likely does not have permission.
 
+### Settings
+
+- **General** — platform name, logo, support contact
+- **Users** — add/edit staff (store owner only)
+- **Activities** — see who did what across the whole platform (approvals, deletes, user changes)
+
+There is no separate **Appearance** tab; branding is under **General**.
+
+### Vendors
+
+- New sellers apply at `/vendor/application`; you approve them with **Vendor → Review applications**.
+- There is **no “Add vendor” button** — all vendors come through the application flow.
+- Deleting a vendor from the list does **not** remove past actions from **Settings → Activities** (that is an audit log).
+
 ## Vendor
 
 1. Open `https://walwal.online/vendor/login` (or your platform apex + `/vendor/login`).
@@ -23,9 +37,19 @@ For detailed operations, use `NEXA_ADMIN_AND_VENDOR_GUIDE.md`.
 4. Your **customer-facing shop** is at your subdomain or custom domain (e.g. `https://gogo.walwal.online/`), not at `/products` on the main site.
 5. Use preview/open-store in admin to verify catalog, categories, and checkout before sharing your link.
 
+### Applying to sell
+
+At `/vendor/application`:
+
+- Phone: use `+959…` or `09…` (Myanmar mobile format)
+- Store description: at least 10 characters
+- Email: wait for “Email is available” before submitting
+
 ## Customers
 
 - Shop at a **vendor’s store URL** (subdomain or custom domain), not on a central marketplace catalog.
+- On the **platform homepage**, click a vendor logo in the carousel to open that shop (best-selling vendors appear first).
+- Use the **chat bubble** (bottom-right) on the homepage or any vendor store for support.
 - After KBZPay app payment, order summary may open on `walwal.online/summary`; use Continue Shopping to return to the vendor store.
 
 ## Quick troubleshooting
@@ -34,3 +58,5 @@ For detailed operations, use `NEXA_ADMIN_AND_VENDOR_GUIDE.md`.
 - Category page empty but products exist: hard refresh; if it persists, report a catalog filter issue.
 - Missing menu items: ask admin to confirm your role.
 - Login issues: use reset flow or contact your system admin.
+- Vendor application “Checking email…” stuck: refresh and try again; server validates again on submit.
+- Activity missing after approve: ensure you were logged in as staff (actions need your user account).

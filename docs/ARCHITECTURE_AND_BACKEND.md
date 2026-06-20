@@ -58,6 +58,20 @@ All major entities are stored as JSON documents in `kv_store_16010b6f`:
 | `customer:{uid}:cart` | Signed-in cart |
 | `wishlist:{uid}` | Wishlist |
 | `chat:message:` | Chat messages |
+| `staff:activity:{userId}` | Per-staff audit log (max 150 entries per user) |
+| `staff:activity:global-feed` | Platform-wide admin activity feed (max 500 entries) |
+
+**Staff activity writes:** Mutations call `appendStaffActivity(actorUserId, …)` in `staff_activity_helpers.tsx`. The actor must be a valid Supabase Auth staff UUID — typically sent as `performedByUserId` in the request body or query. Vendor approve/reject and vendor delete log **Vendor Approved** / **Vendor Deleted** with contact detail `StoreName | email | phone`.
+
+**Staff activity reads:**
+
+```
+GET /auth/staff-activities              → full global feed
+GET /auth/staff-activities?since=ISO8601  → incremental rows newer than timestamp
+GET /auth/staff-activity/:userId          → per-user history (profile timeline)
+```
+
+Client cache: `ADMIN_STAFF_ACTIVITIES` in `module-cache.ts`; 30s incremental poll while Settings → Activities tab is open (`STAFF_ACTIVITIES_POLL_MS`).
 
 **Writes:** Edge handlers persist to KV first, then queue async sync to SQL read-model tables via `read_model.ts` (`queueProductReadModelSync`, `queueOrderReadModelSync`, etc.).
 
@@ -101,6 +115,14 @@ GET /vendor/products/:vendorId?page=&pageSize=&category=&q=
 ```
 
 Uses server pagination + category filter (see `fetchVendorProducts` in `module-cache.ts`).
+
+**Vendor application validation** (`POST /vendor-applications`, `PUT /vendor-applications/:id`, `POST /vendors/validate`):
+
+- Myanmar phone: `+959XXXXXXXXX` or `09XXXXXXXXX`
+- Store description: minimum 10 characters
+- Email policy: one email per vendor account; blocks duplicate pending/approved applications (`vendorEmailPolicyConflict`)
+
+**Admin audit fields:** Product create/update/delete, vendor application status changes, and vendor delete accept `performedByUserId` (UUID) for activity attribution. Auto-audit middleware logs other admin writes when a valid actor id is present in body, query, or `x-actor-user-id` header.
 
 ---
 

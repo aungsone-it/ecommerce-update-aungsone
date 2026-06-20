@@ -60,6 +60,17 @@ When changing data-fetching behavior:
 3. Keep cache invalidation scoped to affected entities.
 4. Confirm behavior with immediate refresh and multi-tab checks.
 
+**Known polling exceptions:**
+
+| Surface | Interval | Notes |
+|---------|----------|-------|
+| KPay checkout | ~1.5s | Fallback while waiting for webhook/Realtime |
+| Settings → Activities | 30s | Incremental `GET /auth/staff-activities?since=` while tab is open; session cache on tab switch |
+
+Activities cache key: `ADMIN_STAFF_ACTIVITIES` (`module-cache.ts`). Invalidate on vendor approve/delete via `invalidateStaffActivitiesCache()`.
+
+**Scrollbars:** Global thin styling in `theme.css` (`scrollbar-thin`, `scrollbar-thin-x` for horizontal admin tables).
+
 ## Realtime and scale (current system)
 
 Every browser tab mounts `OrderRealtimeBridge`, which subscribes to **pulse tables** (`app_order_pulse`, `app_kv_domain_pulse`, `app_vendor_application_pulse`) rather than broadcasting every KV row. Domain pulses are debounced (~400ms) before cache invalidation or admin refetch. A legacy full-KV subscription activates only if the pulse channel fails.
