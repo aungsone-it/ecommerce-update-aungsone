@@ -125,6 +125,7 @@ function RootLayoutContent() {
             vendorId={vendorId}
             isAuthenticated={!!user}
             aboveStickyPurchaseBar={isVendorProductDetailPage}
+            reserveBackToTopStack={!isLandingPage}
           />
         </Suspense>
       )}

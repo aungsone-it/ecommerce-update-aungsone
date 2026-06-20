@@ -54,11 +54,9 @@ export function BackToTop({
       {isVisible && (
         <Button
           onClick={scrollToTop}
-          className={
-            aboveStickyPurchaseBar
-              ? "fixed bottom-[calc(5.5rem+0.625rem+env(safe-area-inset-bottom,0px))] md:bottom-[112px] right-4 md:right-6 z-50 w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center p-1.5 animate-fade-in-right"
-              : "fixed bottom-4 md:bottom-[112px] right-4 md:right-6 z-50 w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center p-1.5 animate-fade-in-right"
-          }
+          className={`back-to-top-fab ${
+            aboveStickyPurchaseBar ? "back-to-top-fab--above-sticky" : ""
+          } w-10 h-10 md:w-12 md:h-12 rounded-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 shadow-2xl transition-all duration-300 hover:scale-110 flex items-center justify-center p-1.5 animate-fade-in-right`}
           size="icon"
         >
           <ArrowUp className="w-5 h-5 md:w-6 md:h-6 text-white" strokeWidth={2.5} />

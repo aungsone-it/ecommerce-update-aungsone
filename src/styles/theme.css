@@ -463,46 +463,86 @@
   }
 }
 
+/* Floating action button stack — chat sits above back-to-top, both above storefront footer */
+:root {
+  --fab-stack-right: max(1rem, env(safe-area-inset-right, 0px));
+  --fab-stack-gap: 0.75rem;
+  --back-to-top-size: 2.5rem;
+  /* Vendor footer ~ py-6 + two text rows — keep FABs floating above it, not on the border */
+  --fab-stack-footer-clearance: 5.75rem;
+  --fab-stack-base-bottom: calc(var(--fab-stack-footer-clearance) + env(safe-area-inset-bottom, 0px));
+  --back-to-top-bottom: var(--fab-stack-base-bottom);
+  --chat-fab-bottom: calc(var(--back-to-top-bottom) + var(--back-to-top-size) + var(--fab-stack-gap));
+}
+
+@media (min-width: 768px) {
+  :root {
+    --fab-stack-right: max(1.5rem, env(safe-area-inset-right, 0px));
+    --back-to-top-size: 3rem;
+    --fab-stack-footer-clearance: 7rem;
+  }
+}
+
+.back-to-top-fab {
+  position: fixed;
+  z-index: 50;
+  right: var(--fab-stack-right);
+  bottom: var(--back-to-top-bottom);
+}
+
+.back-to-top-fab--above-sticky {
+  --back-to-top-bottom: calc(5.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
+  --chat-fab-bottom: calc(var(--back-to-top-bottom) + var(--back-to-top-size) + var(--fab-stack-gap));
+}
+
+@media (min-width: 768px) {
+  .back-to-top-fab--above-sticky {
+    --back-to-top-bottom: 7rem;
+    --chat-fab-bottom: calc(7rem + var(--back-to-top-size) + var(--fab-stack-gap));
+  }
+}
+
 /* Floating chat — compact bottom-right widget (stable across prod builds / viewports) */
 .floating-chat-fab-anchor {
   position: fixed;
   z-index: 100;
-  right: max(1rem, env(safe-area-inset-right, 0px));
-  bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+  right: var(--fab-stack-right);
+  bottom: var(--chat-fab-bottom);
   display: flex;
   justify-content: center;
 }
 
 .floating-chat-fab-anchor--above-sticky {
-  bottom: calc(5.5rem + 0.625rem + 2.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
+  --back-to-top-bottom: calc(5.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
+  --chat-fab-bottom: calc(var(--back-to-top-bottom) + var(--back-to-top-size) + var(--fab-stack-gap));
 }
 
 @media (min-width: 768px) {
-  .floating-chat-fab-anchor {
-    right: max(1.5rem, env(safe-area-inset-right, 0px));
-  }
-
   .floating-chat-fab-anchor--above-sticky {
-    bottom: 11rem;
+    --back-to-top-bottom: 7rem;
+    --chat-fab-bottom: calc(7rem + var(--back-to-top-size) + var(--fab-stack-gap));
   }
+}
+
+.floating-chat-fab-anchor--solo {
+  bottom: var(--fab-stack-base-bottom);
 }
 
 .floating-chat-anchor {
   position: fixed;
   z-index: 100;
-  right: max(1rem, env(safe-area-inset-right, 0px));
+  right: var(--fab-stack-right);
   bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
   width: min(24rem, calc(100vw - 2rem));
   max-width: min(24rem, calc(100vw - 2rem));
 }
 
 .floating-chat-anchor--above-sticky {
-  bottom: calc(5.5rem + 0.625rem + 2.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
+  bottom: calc(5.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
 }
 
 @media (min-width: 640px) {
   .floating-chat-anchor {
-    right: max(1.5rem, env(safe-area-inset-right, 0px));
     bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
     width: 24rem;
     max-width: 24rem;
@@ -511,7 +551,7 @@
 
 @media (min-width: 768px) {
   .floating-chat-anchor--above-sticky {
-    bottom: 11rem;
+    bottom: 7rem;
   }
 }
 

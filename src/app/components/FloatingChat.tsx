@@ -50,6 +50,16 @@ function hasMigooCustomerSession(): boolean {
   }
 }
 
+/** Vendor storefront chat requires sign-in; apex SECURE chat is open to guests. */
+function chatRequiresSignIn(vendorId?: string): boolean {
+  return Boolean(vendorId);
+}
+
+function hasActiveChatSession(vendorId: string | undefined, isAuthenticated: boolean): boolean {
+  if (!chatRequiresSignIn(vendorId)) return true;
+  return hasMigooCustomerSession() || isAuthenticated;
+}
+
 interface Message {
   id: string;
   text: string;
@@ -70,6 +80,8 @@ interface FloatingChatProps {
   isAuthenticated?: boolean; // NEW: Check if user is logged in
   /** Lift chat bubble above vendor mobile sticky purchase bar (product detail). */
   aboveStickyPurchaseBar?: boolean;
+  /** Reserve vertical space for the back-to-top button below the chat FAB. */
+  reserveBackToTopStack?: boolean;
 }
 
 function sanitizeChatEmailToken(email: string): string {
@@ -79,7 +91,7 @@ function sanitizeChatEmailToken(email: string): string {
     .replace(/[^a-z0-9]/g, "-");
 }
 
-export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false, aboveStickyPurchaseBar = false }: FloatingChatProps) {
+export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnreadCountChange, forceOpen, onOpen, vendorId, isAuthenticated = false, aboveStickyPurchaseBar = false, reserveBackToTopStack = true }: FloatingChatProps) {
   const { setFloatingChatOpen } = useChatNotification();
   const docVisible = useDocumentVisible();
   const chatBrandLabel = vendorId ? "this store" : "SECURE";
@@ -96,6 +108,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     try {
       const saved = localStorage.getItem("migoo-chat-isOpen");
       if (!saved || !JSON.parse(saved)) return false;
+      if (!vendorId) return true;
       return hasMigooCustomerSession();
     } catch {
       return false;
@@ -188,7 +201,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   useEffect(() => {
     const email = (customerEmail || "").trim();
     if (!email) return;
-    if (!hasMigooCustomerSession() && !isAuthenticated) return;
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) return;
     const canonical = canonicalChatThreadId(email, vendorId ? String(vendorId).trim() : undefined);
     if (canonical) adoptConversationId(canonical);
   }, [customerEmail, vendorId, isAuthenticated, isCustomerAuthenticated]);
@@ -319,7 +332,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   // Signed-in: keep thread in sync with server (silent when minimized; full load when panel is open).
   useEffect(() => {
     if (!conversationId) return;
-    if (!hasMigooCustomerSession() && !isAuthenticated) return;
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) return;
     void loadMessages(!isOpen);
   }, [conversationId, isOpen, isCustomerAuthenticated, isAuthenticated]);
 
@@ -351,7 +364,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
       }
       return;
     }
-    if (!hasMigooCustomerSession() && !isAuthenticated) {
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) {
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -400,7 +413,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     ];
 
     const email = (customerEmail || "").trim();
-    if (email && (hasMigooCustomerSession() || isAuthenticated)) {
+    if (email && hasActiveChatSession(vendorId, isAuthenticated)) {
       unsubs.push(subscribeCustomerChatBroadcast(email, appendAdminMessage));
 
       const mainThreadId = canonicalChatThreadId(email);
@@ -421,24 +434,25 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     }
   }, [isOpen]);
 
-  // Handle forceOpen prop — still require a customer or app auth session
+  // Handle forceOpen prop — vendor storefront still requires a customer session
   useEffect(() => {
     if (!forceOpen) return;
-    if (!hasMigooCustomerSession() && !isAuthenticated) {
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) {
       setShowSignInDialog(true);
       onOpen?.();
       return;
     }
     setIsOpen(true);
     onOpen?.();
-  }, [forceOpen, onOpen, isAuthenticated]);
+  }, [forceOpen, onOpen, isAuthenticated, vendorId]);
 
-  // Close chat when session is missing (incl. same-tab logout via migoo-user)
+  // Close chat when session is missing on vendor storefront (incl. same-tab logout via migoo-user)
   useEffect(() => {
+    if (!chatRequiresSignIn(vendorId)) return;
     const enforce = () => {
       setIsOpen((open) => {
         if (!open) return open;
-        if (hasMigooCustomerSession() || isAuthenticated) return open;
+        if (hasActiveChatSession(vendorId, isAuthenticated)) return open;
         try {
           localStorage.setItem("migoo-chat-isOpen", JSON.stringify(false));
         } catch {
@@ -451,7 +465,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     enforce();
     window.addEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, enforce);
     return () => window.removeEventListener(MIGOO_USER_SESSION_CHANGED_EVENT, enforce);
-  }, [isOpen, isAuthenticated]);
+  }, [isOpen, isAuthenticated, vendorId]);
 
   // Notify parent of unread count changes
   useEffect(() => {
@@ -523,7 +537,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
 
   const handleSendMessage = async () => {
     if (!messageInput.trim() && !selectedImage) return;
-    if (!hasMigooCustomerSession() && !isAuthenticated) {
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) {
       toast.error("Please sign in to send messages");
       setIsOpen(false);
       try {
@@ -629,7 +643,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!hasMigooCustomerSession() && !isAuthenticated) {
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) {
       toast.error("Please sign in to use chat");
       setShowSignInDialog(true);
       return;
@@ -700,7 +714,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
   const handleAttachmentSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!hasMigooCustomerSession() && !isAuthenticated) {
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) {
       toast.error("Please sign in to use chat");
       setShowSignInDialog(true);
       return;
@@ -740,11 +754,11 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // 🔒 Open chat only for signed-in customers (read localStorage at click — avoids stale state after same-tab login on vendor store)
+  // Open chat — apex SECURE chat allows guests; vendor storefront requires sign-in
   const handleOpenChat = () => {
     const hasMigoo = hasMigooCustomerSession();
     setIsCustomerAuthenticated(hasMigoo || isAuthenticated);
-    if (!hasMigoo && !isAuthenticated) {
+    if (!hasActiveChatSession(vendorId, isAuthenticated)) {
       setShowSignInDialog(true);
       return;
     }
@@ -788,6 +802,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
 
   const stickyAnchorClass = aboveStickyPurchaseBar ? "floating-chat-anchor--above-sticky" : "";
   const stickyFabClass = aboveStickyPurchaseBar ? "floating-chat-fab-anchor--above-sticky" : "";
+  const soloFabClass = !reserveBackToTopStack && !aboveStickyPurchaseBar ? "floating-chat-fab-anchor--solo" : "";
 
   const renderPortal = (node: ReactNode) => {
     if (typeof document === "undefined") return node;
@@ -798,7 +813,7 @@ export function FloatingChat({ customerName = "Guest", customerEmail = "", onUnr
     return renderPortal(
       <>
         <div
-          className={`floating-chat-fab-anchor ${stickyFabClass} transition-all duration-700 ease-out ${
+          className={`floating-chat-fab-anchor ${stickyFabClass} ${soloFabClass} transition-all duration-700 ease-out ${
             isMounted ? "translate-x-0 opacity-100" : "translate-x-20 opacity-0"
           }`}
         >
