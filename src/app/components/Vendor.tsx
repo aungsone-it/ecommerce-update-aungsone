@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { publicAnonKey } from "../../../utils/supabase/info";
 import { API_BASE_URL } from "../../utils/api-client";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useAuth } from "../contexts/AuthContext";
 import { cacheManager } from "../utils/cacheManager";
 import {
   moduleCache,
@@ -10,6 +11,7 @@ import {
   fetchAllVendors,
   getCachedAdminVendorApplications,
   invalidateAdminVendorApplicationsCache,
+  invalidateStaffActivitiesCache,
   invalidateVendorStorefrontCatalogCachesAfterProductLinkChange,
 } from "../utils/module-cache";
 import { formatNumber } from "../../utils/formatNumber";
@@ -315,6 +317,7 @@ export function Vendor({
   onVendorApplicationsMutated,
 }: VendorProps = {}) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
@@ -614,7 +617,11 @@ export function Vendor({
     try {
       console.log("🗑️ Deleting vendor:", vendorId);
 
-      const response = await fetch(`${API_BASE_URL}/vendors/${vendorId}`, {
+      const actorQuery =
+        user?.id && String(user.id).trim()
+          ? `?performedByUserId=${encodeURIComponent(String(user.id).trim())}`
+          : "";
+      const response = await fetch(`${API_BASE_URL}/vendors/${vendorId}${actorQuery}`, {
         method: "DELETE",
         headers: {
           "Authorization": `Bearer ${publicAnonKey}`,
@@ -624,6 +631,8 @@ export function Vendor({
       if (!response.ok) {
         throw new Error(`Failed to delete vendor: ${response.statusText}`);
       }
+
+      invalidateStaffActivitiesCache();
 
       // Keep cache coherent and verify with a background refresh.
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
@@ -666,8 +675,12 @@ export function Vendor({
       console.log(`🗑️ Bulk deleting ${count} vendors:`, idsToDelete);
 
       // Delete all selected vendors
+      const actorQuery =
+        user?.id && String(user.id).trim()
+          ? `?performedByUserId=${encodeURIComponent(String(user.id).trim())}`
+          : "";
       const deletePromises = idsToDelete.map(vendorId =>
-        fetch(`${API_BASE_URL}/vendors/${vendorId}`, {
+        fetch(`${API_BASE_URL}/vendors/${vendorId}${actorQuery}`, {
           method: "DELETE",
           headers: {
             "Authorization": `Bearer ${publicAnonKey}`,
@@ -685,6 +698,7 @@ export function Vendor({
 
       // Keep cache coherent and verify with a background refresh.
       moduleCache.invalidate(CACHE_KEYS.ADMIN_VENDORS);
+      invalidateStaffActivitiesCache();
       window.dispatchEvent(new CustomEvent("vendorDataUpdated", { detail: { bulk: true } }));
       void loadVendors();
 
@@ -1098,9 +1112,6 @@ export function Vendor({
               </Badge>
             )}
           </Button>
-          <Button onClick={() => setShowAddForm(true)} className="bg-slate-900 hover:bg-slate-800">
-            {t('vendor.addVendor')}
-          </Button>
         </div>
       </div>
 
@@ -1230,7 +1241,7 @@ export function Vendor({
       {/* Vendors Table */}
       <Card className="border border-slate-200">
         {showTableSkeleton ? (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto scrollbar-thin-x">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
@@ -1290,7 +1301,7 @@ export function Vendor({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto scrollbar-thin-x">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">

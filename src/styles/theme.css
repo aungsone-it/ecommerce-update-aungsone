@@ -344,6 +344,31 @@
     background-color: rgb(148 163 184);
   }
 
+  /* Horizontal table scroll — thin bar, inset track so it does not span edge-to-edge */
+  .scrollbar-thin-x {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) transparent;
+  }
+
+  .scrollbar-thin-x::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  .scrollbar-thin-x::-webkit-scrollbar-track {
+    background: transparent;
+    margin-inline: 1.5rem;
+  }
+
+  .scrollbar-thin-x::-webkit-scrollbar-thumb {
+    background-color: rgb(203 213 225);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-thin-x:hover::-webkit-scrollbar-thumb {
+    background-color: rgb(148 163 184);
+  }
+
   /* Custom scrollbar styling for main content area */
   .scrollbar-custom {
     scrollbar-width: thin;

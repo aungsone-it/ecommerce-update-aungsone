@@ -414,12 +414,17 @@ export const vendorApplicationsApi = {
     id: string,
     status: string,
     reviewNotes?: string,
+    performedByUserId?: string,
     reviewedBy?: string
   ): Promise<ApiResponse<any>> => {
     return apiClient.put<ApiResponse<any>>(`/vendor-applications/${id}`, {
       status,
       reviewNotes,
-      reviewedBy: reviewedBy || 'Admin',
+      performedByUserId:
+        performedByUserId && String(performedByUserId).trim()
+          ? String(performedByUserId).trim()
+          : undefined,
+      reviewedBy: reviewedBy?.trim() || "Admin",
     });
   },
 };

@@ -204,6 +204,32 @@ export const getVendorProfiles = async (): Promise<any[]> => {
     });
 };
 
+/** Targeted vendor-application lookup by email (avoids loading every application row). */
+export const findVendorApplicationsByEmailNorm = async (
+  emailNorm: string,
+): Promise<any[] | null> => {
+  const normalized = String(emailNorm || "").trim().toLowerCase();
+  if (!normalized) return [];
+
+  const { data, error } = await withTimeout(
+    supabaseClient
+      .from("kv_store_16010b6f")
+      .select("value")
+      .like("key", "vendor_application:%")
+      .filter("value->>email", "ilike", normalized),
+    8000,
+  );
+
+  if (error) {
+    console.warn("findVendorApplicationsByEmailNorm:", error.message);
+    return null;
+  }
+
+  return (data ?? [])
+    .map((row) => row.value)
+    .filter((value) => value != null && typeof value === "object");
+};
+
 /** Postgres RPC: paginated platform catalog (avoids loading all product:* rows into the edge). */
 export async function rpcStorefrontCatalog(opts: {
   kind: "bootstrap" | "catalog";

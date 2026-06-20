@@ -61,7 +61,7 @@ function RootLayoutContent() {
     customHostSlug ??
     (isPathVendorStorefront ? location.pathname.split("/")[2] : undefined);
 
-  // Hide chat button and back to top on vendor application page, landing page, and reset password page
+  // Hide chat button on vendor application, reset password, vendor login, and admin panels
   const isVendorApplicationPage = location.pathname === '/vendor/application';
   const isLandingPage =
     location.pathname === "/" &&
@@ -112,7 +112,6 @@ function RootLayoutContent() {
         !isLoading &&
         !suppressFloatingChat &&
         !isVendorApplicationPage &&
-        !isLandingPage &&
         !isResetPasswordPage &&
         !isVendorLoginPage &&
         !isAdminPortal && (

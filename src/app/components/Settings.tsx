@@ -144,6 +144,37 @@ function isUserStaffAction(action: string): boolean {
   return /user (created|updated|deleted)|password reset|delete blocked/i.test(action);
 }
 
+function normalizeVendorActivityAction(action: string): string {
+  const normalized = String(action || "").trim();
+  if (/^vendor application approved$/i.test(normalized)) return "Vendor Approved";
+  if (/^vendor application rejected$/i.test(normalized)) return "Vendor Rejected";
+  if (/^vendor deleted$/i.test(normalized)) return "Vendor Deleted";
+  return normalized;
+}
+
+function isVendorStaffAction(action: string): boolean {
+  const normalized = normalizeVendorActivityAction(action);
+  return /^vendor (approved|deleted|rejected)$/i.test(normalized);
+}
+
+function formatVendorActivityContactLine(detail: string): string {
+  const parts = splitActivityDetail(detail)
+    .map(stripActivityDetailLabel)
+    .filter((part) => part && !ACTIVITY_UUID_RE.test(part))
+    .filter((part) => !/^(approved|rejected|deleted|pending)$/i.test(part));
+
+  if (parts.length === 0) return String(detail || "").trim();
+  return parts.join(" | ");
+}
+
+function isNeutralStaffActivity(action: string, type: string): boolean {
+  if (String(type || "").includes("deleted")) return true;
+  const normalized = normalizeVendorActivityAction(action);
+  return /user deleted|vendor deleted|vendor rejected|password reset|delete blocked/i.test(
+    String(action || "")
+  ) || /^vendor (deleted|rejected)$/i.test(normalized);
+}
+
 function formatUserActivityDetailPieces(detail: string): string[] {
   const segments = String(detail || "")
     .split(/\s*·\s*/)
@@ -2195,10 +2226,24 @@ export function Settings() {
                         String(activity.actorEmail || "").trim() ||
                         t("settings.activities.unknownActor");
                       const roleInfo = getRoleInfo(activity.actorRole || "");
-                      const isNeutral = String(activity.type || "").includes("deleted");
+                      const vendorAction = normalizeVendorActivityAction(activity.action || "");
+                      const isVendorAction = isVendorStaffAction(activity.action || "");
+                      const isNeutral = isNeutralStaffActivity(
+                        activity.action || "",
+                        String(activity.type || "")
+                      );
                       const detailPieces = formatActivityDetailPieces(
                         activity.detail || "",
                         activity.action || ""
+                      );
+                      const vendorContactLine = isVendorAction
+                        ? formatVendorActivityContactLine(activity.detail || "")
+                        : "";
+                      const actorLine = (
+                        <p className="text-xs text-slate-400 mt-1.5">
+                          {t("settings.activities.by")} {actorLabel}
+                          {roleInfo.label ? ` · ${roleInfo.label}` : ""}
+                        </p>
                       );
 
                       return (
@@ -2218,23 +2263,39 @@ export function Settings() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-slate-900">{activity.action}</p>
-                            {detailPieces.length > 0 ? (
-                              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                                {detailPieces.map((piece, pieceIdx) => (
-                                  <span
-                                    key={`${activity.id}-piece-${pieceIdx}`}
-                                    className="inline-flex max-w-full items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 break-words"
-                                  >
-                                    {piece}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                            <p className="text-xs text-slate-400 mt-1.5">
-                              {t("settings.activities.by")} {actorLabel}
-                              {roleInfo.label ? ` · ${roleInfo.label}` : ""}
-                            </p>
+                            {isVendorAction ? (
+                              <>
+                                <p className="text-sm font-medium text-slate-900 leading-snug">
+                                  <span>{vendorAction}</span>
+                                  {vendorContactLine ? (
+                                    <>
+                                      <span className="text-slate-400 font-normal mx-1.5" aria-hidden="true">
+                                        &gt;
+                                      </span>
+                                      <span className="font-normal text-slate-700">{vendorContactLine}</span>
+                                    </>
+                                  ) : null}
+                                </p>
+                                {actorLine}
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-sm font-medium text-slate-900">{activity.action}</p>
+                                {detailPieces.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                    {detailPieces.map((piece, pieceIdx) => (
+                                      <span
+                                        key={`${activity.id}-piece-${pieceIdx}`}
+                                        className="inline-flex max-w-full items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600 break-words"
+                                      >
+                                        {piece}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : null}
+                                {actorLine}
+                              </>
+                            )}
                           </div>
                           <div className="flex items-center gap-1.5 text-xs text-slate-500 flex-shrink-0">
                             <Clock className="w-3 h-3" />

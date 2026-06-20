@@ -2632,6 +2632,10 @@ export function primeStaffActivitiesCache(rows: StaffActivityFeedRow[]): void {
   moduleCache.prime(CACHE_KEYS.ADMIN_STAFF_ACTIVITIES, rows);
 }
 
+export function invalidateStaffActivitiesCache(): void {
+  moduleCache.invalidate(CACHE_KEYS.ADMIN_STAFF_ACTIVITIES);
+}
+
 export function mergeStaffActivities(
   existing: StaffActivityFeedRow[],
   incoming: StaffActivityFeedRow[]

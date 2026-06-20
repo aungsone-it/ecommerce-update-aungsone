@@ -57,18 +57,20 @@ function isValidEmailStrict(email: string): boolean {
   return tld.length >= 2 && tld.length <= 24;
 }
 
-/** Myanmar (+95 9…) or international 10–15 digit subscriber (digits only after normalizing). */
+/** Myanmar (+959 / 09) or international 10–15 digit subscriber. */
 function isValidPhoneStrict(phone: string): boolean {
   const raw = phone.trim();
   if (!raw) return false;
-  const d = raw.replace(/\D/g, "");
-  if (d.length < 10 || d.length > 15) return false;
-  if (d.startsWith("95")) {
-    const rest = d.slice(2);
-    if (rest.startsWith("9") && rest.length >= 9 && rest.length <= 11) return true;
-  }
-  if (d.startsWith("0")) return false;
-  return d.length >= 10 && d.length <= 15;
+  const normalized = raw.replace(/[\s\-()]/g, "");
+
+  if (/^(\+959|09)\d{9}$/.test(normalized)) return true;
+
+  const digits = normalized.replace(/\D/g, "");
+  if (/^959\d{9}$/.test(digits) || /^09\d{9}$/.test(digits)) return true;
+
+  if (digits.length >= 10 && digits.length <= 15 && !digits.startsWith("0")) return true;
+
+  return false;
 }
 
 function validateRegistrationNumber(s: string): boolean {
@@ -98,7 +100,7 @@ function validateSharedApplicationFields(formData: Record<string, unknown>): str
   const phone = String(formData.phone ?? "");
   if (!isValidPhoneStrict(phone)) {
     errs.push(
-      "Enter a valid phone number (e.g. Myanmar mobile +95 9XX XXX XXXX, or 10–15 digits international)."
+      "Enter a valid phone number (Myanmar: +959XXXXXXXXX or 09XXXXXXXXX, or 10–15 digits international)."
     );
   }
 
@@ -108,8 +110,8 @@ function validateSharedApplicationFields(formData: Record<string, unknown>): str
   }
 
   const storeDescription = str("storeDescription");
-  if (storeDescription.length < 30 || storeDescription.length > 5000) {
-    errs.push("Store description must be at least 30 characters and at most 5,000 characters.");
+  if (storeDescription.length < 10 || storeDescription.length > 5000) {
+    errs.push("Store description must be at least 10 characters and at most 5,000 characters.");
   }
 
   const categories = formData.categories as unknown;
@@ -305,17 +307,20 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
     valid: boolean;
   }>({ checking: false, error: "", valid: false });
   const emailCheckTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const emailCheckAbortRef = useRef<AbortController | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
       if (emailCheckTimeoutRef.current) clearTimeout(emailCheckTimeoutRef.current);
+      emailCheckAbortRef.current?.abort();
     };
   }, []);
 
   useEffect(() => {
     if (emailCheckTimeoutRef.current) clearTimeout(emailCheckTimeoutRef.current);
+    emailCheckAbortRef.current?.abort();
 
     const email = String(formData.email || "").trim();
     if (!email || !isValidEmailStrict(email)) {
@@ -325,6 +330,10 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
 
     setEmailValidation({ checking: true, error: "", valid: false });
     emailCheckTimeoutRef.current = setTimeout(async () => {
+      const controller = new AbortController();
+      emailCheckAbortRef.current = controller;
+      const timeoutId = window.setTimeout(() => controller.abort(), 8000);
+
       try {
         const response = await fetch(`${API_BASE_URL}/vendors/validate`, {
           method: "POST",
@@ -333,20 +342,27 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
             Authorization: `Bearer ${publicAnonKey}`,
           },
           body: JSON.stringify({ email }),
+          signal: controller.signal,
         });
         const data = await response.json();
-        if (!isMountedRef.current) return;
+        if (!isMountedRef.current || controller.signal.aborted) return;
         if (data.errors?.email) {
           setEmailValidation({ checking: false, error: String(data.errors.email), valid: false });
         } else {
           setEmailValidation({ checking: false, error: "", valid: true });
         }
-      } catch {
-        if (isMountedRef.current) {
-          setEmailValidation({ checking: false, error: "", valid: false });
-        }
+      } catch (error) {
+        if (!isMountedRef.current || emailCheckAbortRef.current !== controller) return;
+        const timedOut = error instanceof DOMException && error.name === "AbortError";
+        setEmailValidation({
+          checking: false,
+          error: "",
+          valid: timedOut,
+        });
+      } finally {
+        window.clearTimeout(timeoutId);
       }
-    }, 700);
+    }, 500);
   }, [formData.email]);
 
   const categoryOptions = [
@@ -948,7 +964,7 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   onChange={handleInputChange}
                   aria-required="true"
                   className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all"
-                  placeholder="+95 9XX XXX XXXX or international"
+                  placeholder="+959XXXXXXXXX or 09XXXXXXXXX"
                 />
               </div>
             </div>
@@ -999,6 +1015,9 @@ export function VendorApplicationForm({ onBack, source = "admin" }: VendorApplic
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all resize-none"
                   placeholder="Describe what your store sells and what makes it unique..."
                 />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  At least 10 characters (max 5,000).
+                </p>
               </div>
 
               <div>

@@ -275,6 +275,38 @@ export function buildVendorSubdomainHomeUrl(params: {
   return `${protocol}//${hostLabel}.${base}${port}/`;
 }
 
+/** Landing page vendor carousel — verified custom domain first, else vendor subdomain, else /vendor/:slug. */
+export function resolveLandingVendorStoreUrl(vendor: {
+  storeSlug?: string | null;
+  storeName?: string | null;
+  businessName?: string | null;
+  name?: string | null;
+  customDomain?: string | null;
+  domainStatus?: string | null;
+}): string | null {
+  const customDomain = String(vendor.customDomain || "").trim().toLowerCase();
+  const domainStatus = String(vendor.domainStatus || "").trim().toLowerCase();
+  if (customDomain && (domainStatus === "verified" || domainStatus === "active")) {
+    return `https://${customDomain}/`;
+  }
+
+  const storeName = String(vendor.storeName || vendor.businessName || vendor.name || "").trim();
+  const slugSource = String(vendor.storeSlug || storeName || "").trim();
+  if (!slugSource) return null;
+
+  const subdomainUrl = buildVendorSubdomainHomeUrl({
+    storeSlug: slugSource,
+    storeName: storeName || null,
+  });
+  if (subdomainUrl) return subdomainUrl;
+
+  const slug = resolveVendorPathSlug(slugSource);
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/vendor/${encodeURIComponent(slug)}`;
+  }
+  return `/vendor/${encodeURIComponent(slug)}`;
+}
+
 /** Resolve vendor home URL: checkout origin → verified custom domain → subdomain → /vendor/:slug. */
 export async function resolveVendorStorefrontHomeUrl(params: {
   storeSlug?: string | null;

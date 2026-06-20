@@ -162,6 +162,30 @@ export async function deleteVendorReadModel(vendorId: string): Promise<void> {
   });
 }
 
+/** Fast indexed lookup for vendor email availability checks (avoids scanning all vendor:* KV rows). */
+export async function findVendorReadModelByEmailNorm(
+  emailNorm: string,
+): Promise<{ id: string; email: string | null } | null> {
+  const normalized = text(emailNorm)?.toLowerCase();
+  if (!normalized) return null;
+  try {
+    const { data, error } = await readModelClient
+      .from("app_vendors")
+      .select("id, email")
+      .ilike("email", normalized)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.warn("[read-model] findVendorReadModelByEmailNorm:", error.message);
+      return null;
+    }
+    return data as { id: string; email: string | null } | null;
+  } catch (error) {
+    console.warn("[read-model] findVendorReadModelByEmailNorm:", error);
+    return null;
+  }
+}
+
 export async function syncCustomerReadModel(customerId: string, customerValue: unknown): Promise<void> {
   const customer = asRecord(customerValue);
   const id = text(customer.id) || text(customerId);

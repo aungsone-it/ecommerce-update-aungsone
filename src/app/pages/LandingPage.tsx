@@ -1,5 +1,11 @@
-import { ArrowRight, ShoppingBag, Store, TrendingUp, Shield, Zap, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, ShoppingBag, Store, TrendingUp, Shield, Zap, Users } from "lucide-react";
 import { Button } from "../components/ui/button";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  useCarousel,
+} from "../components/ui/carousel";
 import { useNavigate } from "react-router";
 import { useEffect, useState } from "react";
 import { usePlatformBranding } from "../hooks/usePlatformBranding";
@@ -12,6 +18,7 @@ import {
   fetchLandingStatsCached,
   fetchLandingCategoriesCached,
 } from "../utils/landingPageCached";
+import { resolveLandingVendorStoreUrl } from "../utils/vendorCheckoutPaths";
 
 // Dynamic site name - pulled from platform General settings when available
 const SITE_NAME_FALLBACK = "SECURE";
@@ -22,8 +29,12 @@ interface Vendor {
   name: string;
   storeName?: string;
   storeSlug?: string;
-  category?: string;
   status?: string;
+  logo?: string;
+  avatar?: string;
+  customDomain?: string;
+  domainStatus?: string;
+  totalRevenue?: number;
 }
 
 interface PlatformSettings {
@@ -43,6 +54,104 @@ interface Category {
   description?: string;
 }
 
+function VendorPartnerCard({ vendor }: { vendor: Vendor }) {
+  const logoSrc = String(vendor.logo || vendor.avatar || "").trim();
+  const displayName = vendor.storeName || vendor.businessName || vendor.name;
+
+  const handleOpenStore = () => {
+    const url = resolveLandingVendorStoreUrl(vendor);
+    if (!url) return;
+    window.location.assign(url);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleOpenStore}
+      className="group w-full bg-white border border-slate-200 rounded-lg p-4 h-32 flex flex-col items-center justify-center gap-2 text-center hover:border-purple-300 hover:shadow-sm transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+    >
+      {logoSrc ? (
+        <img
+          src={logoDisplayImageUrl(logoSrc)}
+          alt=""
+          width={40}
+          height={40}
+          decoding="async"
+          className="w-10 h-10 shrink-0 rounded-lg object-cover ring-1 ring-slate-200 group-hover:ring-purple-200"
+        />
+      ) : (
+        <Store className="w-8 h-8 shrink-0 text-purple-600" />
+      )}
+      <h4 className="font-semibold text-slate-900 text-sm leading-snug line-clamp-2 px-1">
+        {displayName}
+      </h4>
+    </button>
+  );
+}
+
+function VendorPartnersCarousel({ vendors }: { vendors: Vendor[] }) {
+  return (
+    <Carousel
+      opts={{
+        align: "start",
+        loop: false,
+      }}
+      className="w-full"
+    >
+      <VendorPartnersCarouselTrack vendors={vendors} />
+    </Carousel>
+  );
+}
+
+function VendorPartnersCarouselTrack({ vendors }: { vendors: Vendor[] }) {
+  const { scrollPrev, scrollNext, canScrollPrev, canScrollNext } = useCarousel();
+
+  return (
+    <div className="grid grid-cols-[2.75rem_minmax(0,1fr)_2.75rem] items-center gap-x-4 sm:grid-cols-[3rem_minmax(0,1fr)_3rem] sm:gap-x-5 md:gap-x-8">
+      <div className="flex items-center justify-center">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Previous vendors"
+          disabled={!canScrollPrev}
+          onClick={scrollPrev}
+          className="size-10 shrink-0 rounded-full border-slate-300 bg-white shadow-md hover:bg-slate-50 disabled:opacity-30"
+        >
+          <ChevronLeft className="size-5 text-slate-700" />
+        </Button>
+      </div>
+
+      <div className="min-w-0 overflow-hidden px-1">
+        <CarouselContent className="-ml-4">
+          {vendors.map((vendor) => (
+            <CarouselItem
+              key={vendor.id}
+              className="pl-4 basis-[160px] sm:basis-[180px] md:basis-[200px]"
+            >
+              <VendorPartnerCard vendor={vendor} />
+            </CarouselItem>
+          ))}
+        </CarouselContent>
+      </div>
+
+      <div className="flex items-center justify-center">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Next vendors"
+          disabled={!canScrollNext}
+          onClick={scrollNext}
+          className="size-10 shrink-0 rounded-full border-slate-300 bg-white shadow-md hover:bg-slate-50 disabled:opacity-30"
+        >
+          <ChevronRight className="size-5 text-slate-700" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function LandingPage() {
   const navigate = useNavigate();
   const platformBranding = usePlatformBranding();
@@ -59,7 +168,6 @@ export function LandingPage() {
     supportPhone: "+95 9 XXX XXX XXX",
     supportEmail: "support@migoo.com"
   });
-  const [currentSlide, setCurrentSlide] = useState(0);
   const [stats, setStats] = useState<LandingStats>({
     activeVendors: 0,
     totalProducts: 0,
@@ -91,7 +199,15 @@ export function LandingPage() {
       try {
         const data = await fetchLandingVendorsCached();
         if (cancelled) return;
-        const activeVendors = data.vendors?.filter((v: Vendor) => v.status === "active") || [];
+        const activeVendors = (data.vendors?.filter((v: Vendor) => v.status === "active") || [])
+          .slice()
+          .sort((a: Vendor, b: Vendor) => {
+            const revenueDiff = (Number(b.totalRevenue) || 0) - (Number(a.totalRevenue) || 0);
+            if (revenueDiff !== 0) return revenueDiff;
+            const nameA = String(a.storeName || a.businessName || a.name || "").toLowerCase();
+            const nameB = String(b.storeName || b.businessName || b.name || "").toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
         setVendors(activeVendors);
       } catch (error) {
         console.error("Error fetching vendors:", error);
@@ -153,18 +269,6 @@ export function LandingPage() {
       }
     };
   }, []);
-
-  const nextSlide = () => {
-    if (currentSlide < vendors.length - 2) {
-      setCurrentSlide(currentSlide + 1);
-    }
-  };
-
-  const prevSlide = () => {
-    if (currentSlide > 0) {
-      setCurrentSlide(currentSlide - 1);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-white">
@@ -353,62 +457,7 @@ export function LandingPage() {
               </p>
             </div>
 
-            {/* Mobile: Carousel with Arrow Navigation */}
-            <div className="md:hidden relative px-4">
-              <div className="overflow-hidden">
-                <div 
-                  className="flex gap-4 transition-transform duration-300"
-                  style={{ 
-                    transform: `translateX(-${currentSlide * (160 + 16)}px)`
-                  }}
-                >
-                  {vendors.map((vendor) => (
-                    <div key={vendor.id} className="w-[160px] flex-shrink-0">
-                      <div className="bg-white border border-slate-200 rounded-lg p-6 h-32 flex flex-col items-center justify-center text-center hover:border-purple-300 transition-colors">
-                        <Store className="w-8 h-8 text-purple-600 mb-2" />
-                        <h4 className="font-semibold text-slate-900 text-sm mb-1 line-clamp-1">
-                          {vendor.storeName || vendor.businessName || vendor.name}
-                        </h4>
-                        <p className="text-xs text-slate-500">{vendor.category || "General"}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Navigation Arrows */}
-              <button
-                onClick={prevSlide}
-                disabled={currentSlide === 0}
-                className="absolute left-0 top-1/2 -translate-y-1/2 w-10 h-10 bg-white border border-slate-300 rounded-full flex items-center justify-center shadow-lg disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                aria-label="Previous"
-              >
-                <ChevronLeft className="w-5 h-5 text-slate-700" />
-              </button>
-              <button
-                onClick={nextSlide}
-                disabled={currentSlide >= vendors.length - 2}
-                className="absolute right-0 top-1/2 -translate-y-1/2 w-10 h-10 bg-white border border-slate-300 rounded-full flex items-center justify-center shadow-lg disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-50 transition-colors"
-                aria-label="Next"
-              >
-                <ChevronRight className="w-5 h-5 text-slate-700" />
-              </button>
-            </div>
-
-            {/* Desktop: lightweight horizontal scroll (no react-slick bundle) */}
-            <div className="hidden md:flex gap-4 overflow-x-auto pb-2 [scrollbar-width:thin]">
-              {vendors.map((vendor) => (
-                <div key={vendor.id} className="w-[200px] flex-shrink-0">
-                  <div className="bg-white border border-slate-200 rounded-lg p-6 h-32 flex flex-col items-center justify-center text-center hover:border-purple-300 transition-colors">
-                    <Store className="w-8 h-8 text-purple-600 mb-2" />
-                    <h4 className="font-semibold text-slate-900 text-sm mb-1 line-clamp-1">
-                      {vendor.storeName || vendor.businessName || vendor.name}
-                    </h4>
-                    <p className="text-xs text-slate-500">{vendor.category || "General"}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <VendorPartnersCarousel vendors={vendors} />
           </div>
         </section>
       )}

@@ -25,6 +25,8 @@ import { Separator } from "./ui/separator";
 import { vendorApplicationsApi } from "../../utils/api";
 import { toast } from "sonner";
 import { useLanguage } from "../contexts/LanguageContext";
+import { useAuth } from "../contexts/AuthContext";
+import { invalidateStaffActivitiesCache } from "../utils/module-cache";
 import { VendorOnlinePresenceDisplay } from "./VendorOnlinePresenceFields";
 import { hasOnlinePresenceLinks, pickOnlinePresenceLinks } from "../utils/vendorOnlinePresence";
 
@@ -82,6 +84,7 @@ export function VendorApplicationReview({
   onApplicationsMutated,
 }: VendorApplicationReviewProps) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [reviewNotes, setReviewNotes] = useState(application.notes || "");
   const [updating, setUpdating] = useState(false);
   const [viewingImage, setViewingImage] = useState<{ url: string; name: string } | null>(null);
@@ -129,8 +132,15 @@ export function VendorApplicationReview({
 
     setUpdating(true);
     try {
-      const response = await vendorApplicationsApi.updateStatus(application.id, newStatus, reviewNotes);
+      const response = await vendorApplicationsApi.updateStatus(
+        application.id,
+        newStatus,
+        reviewNotes,
+        user?.id,
+        user?.name || user?.email
+      );
       if (response.success) {
+        invalidateStaffActivitiesCache();
         // Update the application status locally to prevent further clicks
         application.status = newStatus;
 

@@ -48,6 +48,7 @@ import {
   queueVendorReadModelDelete,
   queueVendorReadModelSync,
   findProductIdFromReadModelSkuOrVariant,
+  findVendorReadModelByEmailNorm,
 } from "./read_model.ts";
 
 // FIRST: Override console.error to filter out HTTP connection errors from Deno runtime
@@ -371,6 +372,7 @@ const AUTO_AUDIT_SKIP_PATTERNS = [
   /^\/make-server-16010b6f\/auth\/staff-activity\/[^/]+$/,
   /^\/make-server-16010b6f\/auth\/(?:create-user|user\/[^/]+|reset-password\/[^/]+)$/,
   /^\/make-server-16010b6f\/products(?:\/[^/]+)?$/,
+  /^\/make-server-16010b6f\/vendor-applications(?:\/[^/]+)?$/,
   /^\/make-server-16010b6f\/notifications\/[^/]+\/read$/,
   /^\/make-server-16010b6f\/campaigns\/[^/]+\/increment$/,
   /^\/make-server-16010b6f\/vendor\/audience\/[^/]+\/track$/,
@@ -409,6 +411,9 @@ function pickValidActorIdFromRecord(record: Record<string, unknown>): string {
 
 function shouldAutoAuditPath(pathname: string, method: string): boolean {
   if (!pathname.startsWith("/make-server-16010b6f/")) return false;
+  if (method === "DELETE" && /^\/make-server-16010b6f\/vendors\/[^/]+$/.test(pathname)) {
+    return false;
+  }
   if (method === "DELETE" && /^\/make-server-16010b6f\/customers\/[^/]+$/.test(pathname)) {
     return false;
   }
@@ -6930,7 +6935,20 @@ type VendorEmailPolicyConflict = {
 async function vendorEmailPolicyConflict(emailNorm: string): Promise<VendorEmailPolicyConflict> {
   if (!emailNorm) return { blocked: false };
 
-  const validVendors = await withTimeout(kv.getVendorProfiles(), 15000).catch(() => []);
+  const [readModelVendor, targetedApplications, validVendors] = await Promise.all([
+    findVendorReadModelByEmailNorm(emailNorm),
+    withTimeout(kv.findVendorApplicationsByEmailNorm(emailNorm), 8000).catch(() => null),
+    withTimeout(kv.getVendorProfiles(), 8000).catch(() => [] as any[]),
+  ]);
+
+  if (readModelVendor) {
+    return {
+      blocked: true,
+      code: "VENDOR_EMAIL_TAKEN",
+      message: "This email is already registered to a vendor account.",
+    };
+  }
+
   const vendorList = Array.isArray(validVendors) ? validVendors : [];
   if (
     vendorList.some(
@@ -6944,10 +6962,14 @@ async function vendorEmailPolicyConflict(emailNorm: string): Promise<VendorEmail
     };
   }
 
-  const applications = await withTimeout(kv.getByPrefix("vendor_application:"), 15000).catch(
-    () => []
-  );
-  const appList = Array.isArray(applications) ? applications : [];
+  let appList = Array.isArray(targetedApplications) ? targetedApplications : [];
+  if (targetedApplications === null) {
+    const applications = await withTimeout(kv.getByPrefix("vendor_application:"), 8000).catch(
+      () => []
+    );
+    appList = Array.isArray(applications) ? applications : [];
+  }
+
   const sameEmailApps = appList.filter(
     (a: any) =>
       a &&
@@ -6989,10 +7011,7 @@ app.post("/make-server-16010b6f/vendors/validate", async (c) => {
     const { email, phone } = body;
     
     const errors: { email?: string; phone?: string } = {};
-    
-    // Get all vendors for validation
-    const validVendors = await withTimeout(kv.getVendorProfiles(), 5000);
-    
+
     // Check email if provided
     if (email && email.trim()) {
       const emailNorm = normalizeVendorLifecycleEmail(email);
@@ -7001,9 +7020,10 @@ app.post("/make-server-16010b6f/vendors/validate", async (c) => {
         errors.email = conflict.message || "This email cannot be used for a new vendor account.";
       }
     }
-    
+
     // Check phone if provided
     if (phone && phone.trim()) {
+      const validVendors = await withTimeout(kv.getVendorProfiles(), 5000).catch(() => [] as any[]);
       const normalizedPhone = phone.replace(/\s+/g, ''); // Remove spaces for comparison
       const existingPhoneVendor = validVendors.find((v: any) => {
         if (v && v.phone) {
@@ -7784,6 +7804,12 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
     await withTimeout(kv.del(`vendor:${vendorId}`), 5000);
     queueVendorReadModelDelete(vendorId);
     console.log(`✅ Deleted vendor: ${vendorId}`);
+
+    await logVendorStaffActivity(
+      pickActorIdFromRequest(c),
+      vendor as Record<string, unknown>,
+      "Vendor Deleted"
+    );
     
     // Clear vendor cache
     serverCache.delete("vendors");
@@ -7813,6 +7839,66 @@ app.delete("/make-server-16010b6f/vendors/:vendorId", async (c) => {
 // ============================================
 // VENDOR APPLICATION ENDPOINTS
 // ============================================
+
+function vendorActivityContactDetail(record: Record<string, unknown>): string {
+  const name = String(
+    record.storeName ||
+      record.businessName ||
+      record.companyName ||
+      record.name ||
+      record.contactName ||
+      "Vendor"
+  ).trim();
+  const email = String(record.email || "").trim();
+  const phone = String(record.phone || "").trim();
+  return [name, email, phone].filter(Boolean).join(" | ");
+}
+
+function pickActorIdFromRequest(c: { req: { query: (key: string) => string; header: (key: string) => string | undefined } }): string {
+  const fromQuery = String(c.req.query("performedByUserId") || "").trim();
+  if (isValidStaffActorId(fromQuery)) return fromQuery;
+  const fromHeader = String(c.req.header("x-actor-user-id") || "").trim();
+  if (isValidStaffActorId(fromHeader)) return fromHeader;
+  return "";
+}
+
+async function logVendorStaffActivity(
+  actorUserId: string | undefined,
+  vendor: Record<string, unknown>,
+  action: string
+): Promise<void> {
+  if (!isValidStaffActorId(actorUserId)) return;
+  await appendStaffActivity(actorUserId, {
+    type: "admin_action",
+    action,
+    detail: vendorActivityContactDetail(vendor),
+  });
+}
+
+function pickVendorApplicationActorId(body: Record<string, unknown>): string {
+  const performedByUserId = body.performedByUserId;
+  if (typeof performedByUserId === "string" && isValidStaffActorId(performedByUserId.trim())) {
+    return performedByUserId.trim();
+  }
+  const reviewedBy = body.reviewedBy;
+  if (typeof reviewedBy === "string" && isValidStaffActorId(reviewedBy.trim())) {
+    return reviewedBy.trim();
+  }
+  return "";
+}
+
+async function logVendorApplicationStaffActivity(
+  actorUserId: string | undefined,
+  application: Record<string, unknown>,
+  action: string
+): Promise<void> {
+  if (!isValidStaffActorId(actorUserId)) return;
+  await appendStaffActivity(actorUserId, {
+    type: "admin_action",
+    action,
+    detail: vendorActivityContactDetail(application),
+  });
+}
 
 // Submit vendor application
 app.post("/make-server-16010b6f/vendor-applications", async (c) => {
@@ -7933,7 +8019,11 @@ app.get("/make-server-16010b6f/vendor-applications/:id", async (c) => {
 app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
   try {
     const { id } = c.req.param();
-    const { status, reviewNotes, reviewedBy } = await c.req.json();
+    const body = await c.req.json();
+    const { status, reviewNotes, reviewedBy } = body;
+    const performedByUserId = pickVendorApplicationActorId(
+      body && typeof body === "object" ? body : {}
+    );
 
     const application = await withTimeout(kv.get(`vendor_application:${id}`), 5000);
 
@@ -7970,6 +8060,11 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
 
     if (nextStatus !== "approved") {
       await withTimeout(kv.set(`vendor_application:${id}`, baseUpdate), 5000);
+      await logVendorApplicationStaffActivity(
+        performedByUserId,
+        baseUpdate as Record<string, unknown>,
+        nextStatus === "rejected" ? "Vendor Rejected" : "Vendor application updated"
+      );
       return c.json({
         success: true,
         application: baseUpdate,
@@ -7997,6 +8092,11 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
           /* non-fatal */
         }
         console.log(`ℹ️ Application ${id} already approved → vendor ${priorApprovedId}`);
+        await logVendorApplicationStaffActivity(
+          performedByUserId,
+          finalApplication as Record<string, unknown>,
+          "Vendor Approved"
+        );
         return c.json({
           success: true,
           application: finalApplication,
@@ -8031,6 +8131,11 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
           /* non-fatal */
         }
         console.log(`✅ Application ${id} approved → linked existing vendor ${dup.id} (${appEmail})`);
+        await logVendorApplicationStaffActivity(
+          performedByUserId,
+          finalApplication as Record<string, unknown>,
+          "Vendor Approved"
+        );
         return c.json({
           success: true,
           application: finalApplication,
@@ -8135,6 +8240,12 @@ app.put("/make-server-16010b6f/vendor-applications/:id", async (c) => {
     }
 
     console.log(`✅ Vendor account created: ${vendorId} for ${newVendor.name} with slug: ${baseSlug}`);
+
+    await logVendorApplicationStaffActivity(
+      performedByUserId,
+      finalApplication as Record<string, unknown>,
+      "Vendor Approved"
+    );
 
     return c.json({
       success: true,
