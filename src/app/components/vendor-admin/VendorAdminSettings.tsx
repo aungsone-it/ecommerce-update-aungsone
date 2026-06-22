@@ -134,7 +134,15 @@ export function VendorAdminSettings({
   const [domainBusy, setDomainBusy] = useState<"prepare" | "verify" | "remove" | null>(null);
   const [metaCapiTokenInput, setMetaCapiTokenInput] = useState("");
   const [metaCapiTokenConfigured, setMetaCapiTokenConfigured] = useState(false);
+  const [metaCapiTokenEditing, setMetaCapiTokenEditing] = useState(false);
   const [clearMetaCapiToken, setClearMetaCapiToken] = useState(false);
+  /** Placeholder value — password input renders it as bullets, not sent on save. */
+  const META_CAPI_SAVED_MASK = "************************";
+  const showSavedCapiTokenMask =
+    metaCapiTokenConfigured &&
+    !clearMetaCapiToken &&
+    !metaCapiTokenInput &&
+    !metaCapiTokenEditing;
   const [domainDraft, setDomainDraft] = useState("");
   const [domainHints, setDomainHints] = useState<{
     hostname: string;
@@ -207,6 +215,7 @@ export function VendorAdminSettings({
         setSettings(nextSettings);
         setMetaCapiTokenConfigured(Boolean(data.settings.metaCapiAccessTokenConfigured));
         setMetaCapiTokenInput("");
+        setMetaCapiTokenEditing(false);
         setClearMetaCapiToken(false);
         cacheManager.set(settingsCacheKey, nextSettings);
         hasLoadedOnceRef.current = true;
@@ -318,6 +327,7 @@ export function VendorAdminSettings({
         setSettings(normalized);
         setMetaCapiTokenConfigured(Boolean(saved.metaCapiAccessTokenConfigured));
         setMetaCapiTokenInput("");
+        setMetaCapiTokenEditing(false);
         setClearMetaCapiToken(false);
         cacheManager.set(settingsCacheKey, normalized);
         hasLoadedOnceRef.current = true;
@@ -828,20 +838,35 @@ export function VendorAdminSettings({
               {t("vendorAdmin.settings.metaCapiAccessToken")}
             </Label>
             <Input
-              value={metaCapiTokenInput}
+              value={showSavedCapiTokenMask ? META_CAPI_SAVED_MASK : metaCapiTokenInput}
+              readOnly={showSavedCapiTokenMask}
+              onFocus={() => {
+                if (showSavedCapiTokenMask) {
+                  setMetaCapiTokenEditing(true);
+                  setMetaCapiTokenInput("");
+                }
+              }}
+              onBlur={() => {
+                if (!metaCapiTokenInput.trim()) {
+                  setMetaCapiTokenEditing(false);
+                }
+              }}
               onChange={(e) => {
+                if (showSavedCapiTokenMask) return;
                 setMetaCapiTokenInput(e.target.value);
                 if (clearMetaCapiToken) setClearMetaCapiToken(false);
               }}
               placeholder={t("vendorAdmin.settings.metaCapiAccessTokenPlaceholder")}
               type="password"
               autoComplete="off"
-              className="bg-white border-slate-200 font-mono text-sm"
+              className={`bg-white border-slate-200 font-mono text-sm ${
+                showSavedCapiTokenMask ? "text-slate-600 cursor-text" : ""
+              }`}
             />
             <p className="text-xs text-slate-500 mt-1.5">
               {t("vendorAdmin.settings.metaCapiAccessTokenHint")}
             </p>
-            {metaCapiTokenConfigured && !clearMetaCapiToken && !metaCapiTokenInput && (
+            {showSavedCapiTokenMask && (
               <p className="text-xs text-emerald-700 mt-1">
                 {t("vendorAdmin.settings.metaCapiAccessTokenConfigured")}
               </p>
@@ -852,6 +877,7 @@ export function VendorAdminSettings({
                 onClick={() => {
                   setClearMetaCapiToken((prev) => !prev);
                   setMetaCapiTokenInput("");
+                  setMetaCapiTokenEditing(false);
                 }}
                 className={`text-xs mt-1 underline-offset-2 hover:underline ${
                   clearMetaCapiToken ? "text-red-600" : "text-slate-600"

@@ -497,7 +497,7 @@ export const enTranslations: Record<string, string> = {
     'vendorAdmin.settings.metaCapiAccessTokenPlaceholder': 'Paste access token from Events Manager',
     'vendorAdmin.settings.metaCapiAccessTokenHint':
       'Optional. Meta Events Manager → your pixel → Settings → Conversions API → Generate access token. Used server-side for confirmed Purchase events (more reliable than browser-only tracking). Never shown on your public store.',
-    'vendorAdmin.settings.metaCapiAccessTokenConfigured': 'Token saved. Leave blank to keep it, or paste a new one to replace.',
+    'vendorAdmin.settings.metaCapiAccessTokenConfigured': 'Token saved. Click the field to replace, or save without changes to keep it.',
     'vendorAdmin.settings.metaCapiAccessTokenClear': 'Remove saved token',
     'vendorAdmin.settings.metaCapiAccessTokenClearPending': 'Token will be removed when you save',
     'vendorAdmin.settings.previewStore': 'Preview Store',
