@@ -494,6 +494,13 @@ export const zhTranslations: Record<string, string> = {
     'vendorAdmin.settings.metaPixelIdPlaceholder': '例如 123456789012345',
     'vendorAdmin.settings.metaPixelIdHint':
       '可选。在 Meta 事件管理工具 → 您的 Pixel → 设置 中获取。仅用于本店铺的 Facebook/Instagram 广告追踪。',
+    'vendorAdmin.settings.metaCapiAccessToken': 'Meta 转化 API 访问令牌',
+    'vendorAdmin.settings.metaCapiAccessTokenPlaceholder': '粘贴事件管理工具中的访问令牌',
+    'vendorAdmin.settings.metaCapiAccessTokenHint':
+      '可选。Meta 事件管理工具 → 您的 Pixel → 设置 → 转化 API → 生成访问令牌。用于服务器端发送已确认的 Purchase 事件（比仅浏览器追踪更可靠）。不会在公开店铺中显示。',
+    'vendorAdmin.settings.metaCapiAccessTokenConfigured': '令牌已保存。留空则保持不变，或粘贴新令牌以替换。',
+    'vendorAdmin.settings.metaCapiAccessTokenClear': '移除已保存的令牌',
+    'vendorAdmin.settings.metaCapiAccessTokenClearPending': '保存后将移除令牌',
     'vendorAdmin.settings.previewStore': '预览店铺',
     'vendorAdmin.settings.saveChanges': '保存更改',
     'vendorAdmin.settings.saving': '正在保存...',

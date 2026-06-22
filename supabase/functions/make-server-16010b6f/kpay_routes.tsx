@@ -13,6 +13,7 @@ import {
   postPwaReconcileRoute as runPwaReconcileRoute,
 } from "./pwa_reconcile.ts";
 import { queueOrderReadModelSync } from "./read_model.ts";
+import { queueMetaCapiPurchaseFromOrder } from "./meta_capi.tsx";
 
 type AnyRecord = Record<string, unknown>;
 type PaymentStatus = "pending" | "paid" | "failed";
@@ -490,6 +491,9 @@ async function upsertOrderPaymentStatus(
   };
   await kv.set(found.key, nextOrder);
   queueOrderReadModelSync(String(nextOrder.id || found.key.replace(/^order:/, "") || merchantOrderId), nextOrder);
+  if (status === "paid") {
+    queueMetaCapiPurchaseFromOrder(nextOrder);
+  }
 }
 
 function kpayConfig() {

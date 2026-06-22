@@ -165,13 +165,18 @@ export function trackMetaPurchaseOnce(order: {
     /* private mode — still attempt one fire per page load */
   }
 
-  window.fbq?.("track", "Purchase", {
-    content_ids: order.items.map((i) => i.id),
-    content_type: "product",
-    value: order.value,
-    currency: order.currency || "MMK",
-    order_id: orderId,
-  });
+  window.fbq?.(
+    "track",
+    "Purchase",
+    {
+      content_ids: order.items.map((i) => i.id),
+      content_type: "product",
+      value: order.value,
+      currency: order.currency || "MMK",
+      order_id: orderId,
+    },
+    { eventID: orderId }
+  );
 }
 
 /** Resolve pixel id from prop or vendor catalog API, then init. */

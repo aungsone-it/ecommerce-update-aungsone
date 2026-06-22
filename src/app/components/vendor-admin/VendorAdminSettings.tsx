@@ -62,6 +62,10 @@ interface StoreSettings {
   privacyPolicyContent?: string;
   /** Meta (Facebook) Pixel ID — numeric, per-vendor ads tracking on the public storefront. */
   metaPixelId?: string;
+  /** Meta Conversions API access token — server-side only, never exposed on public storefront APIs. */
+  metaCapiAccessToken?: string;
+  /** Read-only from API — whether a CAPI token is stored (value is never returned). */
+  metaCapiAccessTokenConfigured?: boolean;
   domainStatus: 'none' | 'pending' | 'verified' | 'active';
   dnsVerified: boolean;
   isActive: boolean;
@@ -128,6 +132,9 @@ export function VendorAdminSettings({
   const loadSettingsRequestRef = useRef(0);
   const realtimeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [domainBusy, setDomainBusy] = useState<"prepare" | "verify" | "remove" | null>(null);
+  const [metaCapiTokenInput, setMetaCapiTokenInput] = useState("");
+  const [metaCapiTokenConfigured, setMetaCapiTokenConfigured] = useState(false);
+  const [clearMetaCapiToken, setClearMetaCapiToken] = useState(false);
   const [domainDraft, setDomainDraft] = useState("");
   const [domainHints, setDomainHints] = useState<{
     hostname: string;
@@ -198,6 +205,9 @@ export function VendorAdminSettings({
           );
         }
         setSettings(nextSettings);
+        setMetaCapiTokenConfigured(Boolean(data.settings.metaCapiAccessTokenConfigured));
+        setMetaCapiTokenInput("");
+        setClearMetaCapiToken(false);
         cacheManager.set(settingsCacheKey, nextSettings);
         hasLoadedOnceRef.current = true;
         setDomainDraft(String(data.settings.customDomain || "").trim() || "");
@@ -277,6 +287,14 @@ export function VendorAdminSettings({
       } else {
         delete settingsForSave.metaPixelId;
       }
+      delete settingsForSave.metaCapiAccessToken;
+      const saveBody: Record<string, unknown> = { settings: settingsForSave };
+      if (metaCapiTokenInput.trim()) {
+        settingsForSave.metaCapiAccessToken = metaCapiTokenInput.trim();
+      }
+      if (clearMetaCapiToken) {
+        saveBody.clearMetaCapiAccessToken = true;
+      }
       const response = await fetch(
         `${API_BASE_URL}/vendor/storefront`,
         {
@@ -285,7 +303,7 @@ export function VendorAdminSettings({
             "Content-Type": "application/json",
             Authorization: `Bearer ${publicAnonKey}`,
           },
-          body: JSON.stringify({ settings: settingsForSave }),
+          body: JSON.stringify(saveBody),
         }
       );
 
@@ -298,6 +316,9 @@ export function VendorAdminSettings({
         }
         const normalized = { ...saved, logo: pickStoreLogo(saved.logo, "") };
         setSettings(normalized);
+        setMetaCapiTokenConfigured(Boolean(saved.metaCapiAccessTokenConfigured));
+        setMetaCapiTokenInput("");
+        setClearMetaCapiToken(false);
         cacheManager.set(settingsCacheKey, normalized);
         hasLoadedOnceRef.current = true;
         suppressRemoteReloadUntilRef.current = Date.now() + 1500;
@@ -800,6 +821,47 @@ export function VendorAdminSettings({
               className="bg-white border-slate-200 font-mono text-sm"
             />
             <p className="text-xs text-slate-500 mt-1.5">{t("vendorAdmin.settings.metaPixelIdHint")}</p>
+          </div>
+
+          <div>
+            <Label className="text-sm font-normal text-slate-900 mb-2 block">
+              {t("vendorAdmin.settings.metaCapiAccessToken")}
+            </Label>
+            <Input
+              value={metaCapiTokenInput}
+              onChange={(e) => {
+                setMetaCapiTokenInput(e.target.value);
+                if (clearMetaCapiToken) setClearMetaCapiToken(false);
+              }}
+              placeholder={t("vendorAdmin.settings.metaCapiAccessTokenPlaceholder")}
+              type="password"
+              autoComplete="off"
+              className="bg-white border-slate-200 font-mono text-sm"
+            />
+            <p className="text-xs text-slate-500 mt-1.5">
+              {t("vendorAdmin.settings.metaCapiAccessTokenHint")}
+            </p>
+            {metaCapiTokenConfigured && !clearMetaCapiToken && !metaCapiTokenInput && (
+              <p className="text-xs text-emerald-700 mt-1">
+                {t("vendorAdmin.settings.metaCapiAccessTokenConfigured")}
+              </p>
+            )}
+            {metaCapiTokenConfigured && (
+              <button
+                type="button"
+                onClick={() => {
+                  setClearMetaCapiToken((prev) => !prev);
+                  setMetaCapiTokenInput("");
+                }}
+                className={`text-xs mt-1 underline-offset-2 hover:underline ${
+                  clearMetaCapiToken ? "text-red-600" : "text-slate-600"
+                }`}
+              >
+                {clearMetaCapiToken
+                  ? t("vendorAdmin.settings.metaCapiAccessTokenClearPending")
+                  : t("vendorAdmin.settings.metaCapiAccessTokenClear")}
+              </button>
+            )}
           </div>
         </div>
       </div>

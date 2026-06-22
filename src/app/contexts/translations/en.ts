@@ -493,6 +493,13 @@ export const enTranslations: Record<string, string> = {
     'vendorAdmin.settings.metaPixelIdPlaceholder': 'e.g. 123456789012345',
     'vendorAdmin.settings.metaPixelIdHint':
       'Optional. From Meta Events Manager → your pixel → Settings. Used for Facebook/Instagram ads on this storefront only.',
+    'vendorAdmin.settings.metaCapiAccessToken': 'Meta Conversions API access token',
+    'vendorAdmin.settings.metaCapiAccessTokenPlaceholder': 'Paste access token from Events Manager',
+    'vendorAdmin.settings.metaCapiAccessTokenHint':
+      'Optional. Meta Events Manager → your pixel → Settings → Conversions API → Generate access token. Used server-side for confirmed Purchase events (more reliable than browser-only tracking). Never shown on your public store.',
+    'vendorAdmin.settings.metaCapiAccessTokenConfigured': 'Token saved. Leave blank to keep it, or paste a new one to replace.',
+    'vendorAdmin.settings.metaCapiAccessTokenClear': 'Remove saved token',
+    'vendorAdmin.settings.metaCapiAccessTokenClearPending': 'Token will be removed when you save',
     'vendorAdmin.settings.previewStore': 'Preview Store',
     'vendorAdmin.settings.saveChanges': 'Save Changes',
     'vendorAdmin.settings.saving': 'Saving...',

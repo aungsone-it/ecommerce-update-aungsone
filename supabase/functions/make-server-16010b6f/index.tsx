@@ -39,6 +39,12 @@ import {
 import { hashPasswordPlain, verifyPasswordPlain, isPasswordHashFormat } from "./password_crypto.tsx";
 import { applyNormalizedShippingToOrderBody } from "./order_shipping.ts";
 import {
+  mergeMetaCapiAccessTokenOnSave,
+  queueMetaCapiPurchaseFromOrder,
+  sanitizeMetaCapiForAdminResponse,
+  stripMetaCapiFromPublicSettings,
+} from "./meta_capi.tsx";
+import {
   queueCustomerReadModelDelete,
   queueCustomerReadModelSync,
   queueOrderReadModelDelete,
@@ -5916,6 +5922,8 @@ app.post("/make-server-16010b6f/orders", async (c) => {
     serverCache.delete('orders_minimal');
     
     console.log(`✅ Order ${orderData.orderNumber} created successfully`);
+
+    queueMetaCapiPurchaseFromOrder(orderData);
     
     return c.json({ 
       success: true,
@@ -6168,6 +6176,16 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     
     await withTimeout(kv.set(storageKey, updatedOrder), 5000);
     queueOrderReadModelSync(orderKvId, updatedOrder);
+
+    const nextPaymentStatus = String(updatedOrder.paymentStatus || "").toLowerCase();
+    const nextKpayStatus = String((updatedOrder.kpay as Record<string, unknown> | undefined)?.status || "")
+      .toLowerCase();
+    const becamePaid =
+      prevPaymentStatus !== "paid" &&
+      (nextPaymentStatus === "paid" || nextKpayStatus === "paid");
+    if (becamePaid) {
+      queueMetaCapiPurchaseFromOrder(updatedOrder);
+    }
     
     // Clear cache when order is updated
     serverCache.delete('orders_minimal');
@@ -10856,6 +10874,12 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     } else {
       delete (mergedSettings as Record<string, unknown>).metaPixelId;
     }
+    mergeMetaCapiAccessTokenOnSave(
+      mergedSettings as Record<string, unknown>,
+      prevStorefront,
+      body?.clearMetaCapiAccessToken === true,
+    );
+    delete (mergedSettings as Record<string, unknown>).clearMetaCapiAccessToken;
     await kv.set(key, mergedSettings);
     const nextStorefrontLogo =
       typeof (mergedSettings as any).logo === "string" ? String((mergedSettings as any).logo).trim() : "";
@@ -10976,7 +11000,10 @@ app.post("/make-server-16010b6f/vendor/storefront", async (c) => {
     }
 
     console.log(`✅ Vendor storefront settings saved for vendor ${settings.vendorId} with slug: ${mergedSettings.storeSlug}`);
-    return c.json({ success: true, settings: mergedSettings });
+    return c.json({
+      success: true,
+      settings: sanitizeMetaCapiForAdminResponse(mergedSettings as Record<string, unknown>),
+    });
 
   } catch (error: any) {
     console.error("❌ Failed to save vendor storefront settings:", error);
@@ -11197,7 +11224,10 @@ app.get("/make-server-16010b6f/vendor/storefront/:vendorId", async (c) => {
     console.log(`✅ Loaded settings for vendor ${actualVendorId}, isActive: ${populatedSettings.isActive}`);
 
     return c.json({
-      settings: { ...populatedSettings, domainVerification },
+      settings: sanitizeMetaCapiForAdminResponse({
+        ...(populatedSettings as Record<string, unknown>),
+        domainVerification,
+      }),
       deploymentPlatform: deploymentPlatformName(),
     });
 
@@ -11985,7 +12015,9 @@ app.get("/make-server-16010b6f/vendor/store/:storeSlug", async (c) => {
     }
 
     console.log(`✅ Returning settings for vendor ${slugData.vendorId}, isActive: ${settings.isActive}`);
-    return c.json({ settings });
+    return c.json({
+      settings: stripMetaCapiFromPublicSettings(settings as Record<string, unknown>),
+    });
 
   } catch (error: any) {
     console.error("❌ Failed to load vendor store:", error);
