@@ -147,6 +147,7 @@ import {
 } from "./ShippingAddressFormFields";
 import { resolveMyanmarRegionForTownship } from "../utils/myanmarRegions";
 import { VendorStorefrontFooter } from "./VendorStorefrontFooter";
+import { VendorInstallFab } from "./VendorInstallFab";
 import { NotificationCenter } from "./NotificationCenter";
 import { useChatNotification } from "../contexts/ChatNotificationContext";
 import { authApi, wishlistApi } from "../../utils/api";
@@ -6151,11 +6152,20 @@ export function VendorStoreView({
         />
         </div>
         {!cartOpen && (
-          <BackToTop
-            scrollContainerRef={vendorScrollRootRef}
-            scrollContainerKey={vendorScrollRebindKey}
-            aboveStickyPurchaseBar
-          />
+          <>
+            <BackToTop
+              scrollContainerRef={vendorScrollRootRef}
+              scrollContainerKey={vendorScrollRebindKey}
+              aboveStickyPurchaseBar
+            />
+            <VendorInstallFab
+              storeName={storeName}
+              storeLogo={storeLogo}
+              pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
+              hostRootStorePaths={hostRootStorePaths}
+              aboveStickyPurchaseBar
+            />
+          </>
         )}
       </>
     );
@@ -6673,7 +6683,15 @@ export function VendorStoreView({
       />
     </div>
     {!cartOpen && (
-      <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
+      <>
+        <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
+        <VendorInstallFab
+          storeName={storeName}
+          storeLogo={storeLogo}
+          pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
+          hostRootStorePaths={hostRootStorePaths}
+        />
+      </>
     )}
     </>
   );
