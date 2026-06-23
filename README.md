@@ -31,6 +31,7 @@ There is **no multi-vendor marketplace catalog** (no shared `/products` shopping
 | **Settings & audit** | **Activities** tab — global platform audit timeline (vendor approve/delete, users, products); **Appearance** tab hidden (branding stays under General) |
 | **Landing page** | Vendor partner **carousel** (logos, revenue-sorted, click opens store); **FloatingChat** on apex homepage |
 | **Vendor onboarding** | Application form: Myanmar phone (`+959…` / `09…`), store description ≥10 characters, live email availability check |
+| **Add to Home** | Vendor storefront **Add to Home** FAB (above chat) — Android Chrome native install when eligible; iOS/manual fallback; uses vendor name + logo |
 | **Admin UI polish** | Vendors added via **Review applications** only (no manual Add Vendor button); thinner scrollbars platform-wide |
 
 ## Current Product Surface
@@ -46,6 +47,7 @@ Implemented in `VendorStorefrontPage` → `VendorStoreView` (not a shared market
   - **Path-based (local dev / apex)** — `/vendor/:storeSlug/*`
 - Terms and privacy: `/terms`, `/privacy` on vendor hosts; `/vendor/:slug/terms` on path-based URLs
 - Bilingual UI: English / 简体中文
+- **Add to Home** — floating button above chat; Android Chrome can show native install prompt; iOS uses Safari Share → Add to Home Screen (see [docs/VENDOR_ADD_TO_HOME.md](docs/VENDOR_ADD_TO_HOME.md))
 
 ### Platform apex (non-shopping)
 
@@ -229,6 +231,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md). After deploy, follow [docs/READ_MO
 | [docs/PERFORMANCE_AND_CACHING.md](docs/PERFORMANCE_AND_CACHING.md) | LCP, client cache, Realtime scale notes |
 | [docs/NEXA_ADMIN_AND_VENDOR_GUIDE.md](docs/NEXA_ADMIN_AND_VENDOR_GUIDE.md) | Operator workflows |
 | [docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md](docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md) | Short non-technical guide |
+| [docs/VENDOR_ADD_TO_HOME.md](docs/VENDOR_ADD_TO_HOME.md) | Add to Home button — Android/iOS behavior, testing, limitations |
 | [docs/UI_ANIMATIONS.md](docs/UI_ANIMATIONS.md) | Animation reference |
 | [docs/LEGACY_DOCS.md](docs/LEGACY_DOCS.md) | Outdated root markdown files — do not use |
 | [ATTRIBUTIONS.md](ATTRIBUTIONS.md) | Third-party attributions |

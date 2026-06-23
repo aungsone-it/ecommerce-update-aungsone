@@ -114,8 +114,11 @@ Use **preview / open store** from vendor admin to verify:
 - catalog visibility and category tabs (`/`, `/{category-slug}`)
 - pricing and stock
 - checkout and KBZPay readiness
+- **Add to Home** button (floating, above chat) — test on Android Chrome over HTTPS; verify home-screen icon uses store name/logo
 
 Share the **vendor URL** (subdomain or custom domain), not a generic marketplace `/products` link.
+
+Full Add to Home behavior (Android vs iOS, testing, limitations): [VENDOR_ADD_TO_HOME.md](./VENDOR_ADD_TO_HOME.md).
 
 ### Platform landing page (apex `/`)
 

@@ -91,10 +91,11 @@ Set these in Supabase project secrets when required by your enabled flows:
 2. Deploy frontend build with matching env values.
 3. Verify auth + admin login + vendor login.
 4. Verify vendor storefront product list/detail, category tabs, cart, checkout, and order creation (on a **vendor URL**, not apex `/products`).
-5. Verify KBZPay webhook processing in the target environment.
-6. Verify destructive admin actions require authorized secret headers.
-7. Follow `docs/READ_MODEL_ROLLOUT.md` for SQL read-model validation and monitoring checks.
-8. Monitor Supabase logs and frontend errors for at least one traffic cycle.
+5. Verify **Add to Home** on a vendor storefront over HTTPS (Android Chrome install prompt + home-screen icon). Ensure `public/sw.js` is deployed with the static build. See [VENDOR_ADD_TO_HOME.md](./VENDOR_ADD_TO_HOME.md).
+6. Verify KBZPay webhook processing in the target environment.
+7. Verify destructive admin actions require authorized secret headers.
+8. Follow `docs/READ_MODEL_ROLLOUT.md` for SQL read-model validation and monitoring checks.
+9. Monitor Supabase logs and frontend errors for at least one traffic cycle.
 
 ## 7) Troubleshooting
 

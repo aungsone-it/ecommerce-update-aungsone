@@ -15,6 +15,7 @@ The following markdown files live in the **repository root** and are **historica
 | [docs/PERFORMANCE_AND_CACHING.md](./PERFORMANCE_AND_CACHING.md) | LCP, caching |
 | [docs/NEXA_ADMIN_AND_VENDOR_GUIDE.md](./NEXA_ADMIN_AND_VENDOR_GUIDE.md) | Operator workflows |
 | [docs/NEXA_SIMPLE_UI_INSTRUCTIONS.md](./NEXA_SIMPLE_UI_INSTRUCTIONS.md) | Non-technical guide |
+| [docs/VENDOR_ADD_TO_HOME.md](./VENDOR_ADD_TO_HOME.md) | Vendor storefront Add to Home / install shortcut |
 | [.env.example](../.env.example) | Environment variable reference |
 
 ## Superseded doc filenames

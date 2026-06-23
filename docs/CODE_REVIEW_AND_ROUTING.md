@@ -135,6 +135,7 @@ Details and scale limits: [ARCHITECTURE_AND_BACKEND.md](./ARCHITECTURE_AND_BACKE
 - Typed timeout/network errors from API client.
 - Early vendor branding: `vendorStorefrontBrandingCache.ts` + `vendor-storefront-head.js`.
 - **RootLayout:** `FloatingChat` lazy-loaded globally — shown on apex landing and storefronts; hidden on admin portals, `/vendor/application`, reset-password, and vendor login routes.
+- **Add to Home:** `VendorInstallFab` (portal to `document.body`) mounted from `VendorStoreView` above the chat FAB stack; injects per-vendor web manifest + registers `public/sw.js` for Chrome install eligibility. See [VENDOR_ADD_TO_HOME.md](./VENDOR_ADD_TO_HOME.md).
 - **Settings (`Settings.tsx`):** Activities tab with global feed; Appearance tab filtered out; `scrollbar-thin` on nav and main pane.
 - **Vendor admin list (`Vendor.tsx`):** no Add Vendor button; horizontal table scroll uses `scrollbar-thin-x` (4px, inset track).
 - **Landing vendors:** `fetchLandingVendorsCached()` → `GET /vendors`; active vendors sorted client-side by `totalRevenue` descending.
