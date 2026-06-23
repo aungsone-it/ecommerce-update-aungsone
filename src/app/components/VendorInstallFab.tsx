@@ -111,12 +111,15 @@ export function VendorInstallFab({
           type="button"
           onClick={() => void handleClick()}
           disabled={installing}
-          size="lg"
-          aria-label={`Install ${storeName} shortcut`}
-          title={`Install ${storeName}`}
-          className="h-11 w-11 md:h-14 md:w-14 rounded-full shadow-2xl bg-white hover:bg-slate-50 border border-slate-200 transition-all duration-300 hover:scale-110 flex items-center justify-center p-0"
+          size="sm"
+          aria-label={`Add ${storeName} to Home screen`}
+          title={`Add ${storeName} to Home screen`}
+          className="h-11 md:h-12 rounded-full shadow-2xl bg-white hover:bg-slate-50 border border-slate-200 transition-all duration-300 hover:scale-105 flex items-center gap-2 px-3 md:px-4"
         >
-          <Download className="w-5 h-5 md:w-6 md:h-6 text-slate-700" />
+          <Download className="w-4 h-4 md:w-5 md:h-5 text-slate-700" />
+          <span className="text-xs md:text-sm font-medium text-slate-700 whitespace-nowrap">
+            Add to Home
+          </span>
         </Button>
       </div>
 
