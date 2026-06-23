@@ -34,6 +34,11 @@ function isAndroidChrome(): boolean {
   return /android/i.test(ua) && /chrome|chromium|crios/i.test(ua);
 }
 
+function isStandaloneMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(display-mode: standalone)").matches;
+}
+
 export function VendorInstallFab({
   storeName,
   storeLogo,
@@ -54,6 +59,8 @@ export function VendorInstallFab({
   const [installing, setInstalling] = useState(false);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [promptConsumed, setPromptConsumed] = useState(false);
+  const [installed, setInstalled] = useState(() => isStandaloneMode());
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -112,15 +119,34 @@ export function VendorInstallFab({
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setDeferredPrompt(event as BeforeInstallPromptEvent);
+      setPromptConsumed(false);
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onInstalled = () => {
+      setInstalled(true);
+      setDeferredPrompt(null);
+      setPromptConsumed(true);
+    };
+    window.addEventListener("appinstalled", onInstalled);
+    return () => window.removeEventListener("appinstalled", onInstalled);
+  }, []);
+
   if (!canShowAction) return null;
+  if (installed) return null;
 
   const handleClick = async () => {
     if (!deferredPrompt) {
+      if (promptConsumed) {
+        toast.message("Install prompt already used", {
+          description: "Reload this page and tap Add to Home again, or use Chrome menu (⋮).",
+        });
+        return;
+      }
       setInstructionsOpen(true);
       return;
     }
@@ -130,11 +156,14 @@ export function VendorInstallFab({
       await deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice;
       setDeferredPrompt(null);
+      setPromptConsumed(true);
       if (choice.outcome === "accepted") {
         toast.success(`${storeName} is being added to your home screen`);
         return;
       }
-      setInstructionsOpen(true);
+      toast.message("Install dismissed", {
+        description: "Tap Add to Home again after reloading, or use Chrome menu (⋮).",
+      });
     } catch {
       setInstructionsOpen(true);
     } finally {
