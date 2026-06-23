@@ -15,6 +15,7 @@ import { buildVendorStoreHomePath } from "../utils/vendorStorePaths";
 
 type VendorInstallFabProps = {
   storeName: string;
+  storeLogo?: string;
   pathSlug: string;
   hostRootStorePaths?: boolean;
   aboveStickyPurchaseBar?: boolean;
@@ -25,6 +26,8 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 };
 
+const DEFAULT_ICON = "/favicon.svg";
+
 function isAndroidChrome(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
@@ -33,6 +36,7 @@ function isAndroidChrome(): boolean {
 
 export function VendorInstallFab({
   storeName,
+  storeLogo,
   pathSlug,
   hostRootStorePaths = false,
   aboveStickyPurchaseBar = false,
@@ -50,6 +54,58 @@ export function VendorInstallFab({
   const [installing, setInstalling] = useState(false);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+
+    const iconSrc =
+      typeof storeLogo === "string" && storeLogo.trim().length > 0 ? storeLogo.trim() : DEFAULT_ICON;
+
+    const manifest = {
+      id: `${shortcutUrl}?source=a2hs`,
+      name: storeName || "Store",
+      short_name: (storeName || "Store").slice(0, 12),
+      start_url: shortcutUrl,
+      scope: "/",
+      display: "standalone",
+      background_color: "#ffffff",
+      theme_color: "#ffffff",
+      icons: [
+        { src: iconSrc, sizes: "192x192", purpose: "any maskable" },
+        { src: iconSrc, sizes: "512x512", purpose: "any maskable" },
+      ],
+    };
+
+    const manifestBlobUrl = URL.createObjectURL(
+      new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }),
+    );
+
+    let manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null;
+    if (!manifestLink) {
+      manifestLink = document.createElement("link");
+      manifestLink.rel = "manifest";
+      document.head.appendChild(manifestLink);
+    }
+    manifestLink.href = manifestBlobUrl;
+
+    let themeMeta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null;
+    if (!themeMeta) {
+      themeMeta = document.createElement("meta");
+      themeMeta.name = "theme-color";
+      document.head.appendChild(themeMeta);
+    }
+    themeMeta.content = "#ffffff";
+
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+        /* ignore and fall back to manual steps */
+      });
+    }
+
+    return () => {
+      URL.revokeObjectURL(manifestBlobUrl);
+    };
+  }, [shortcutUrl, storeName, storeLogo]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
