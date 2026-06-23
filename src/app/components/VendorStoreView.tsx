@@ -6160,7 +6160,6 @@ export function VendorStoreView({
             />
             <VendorInstallFab
               storeName={storeName}
-              storeLogo={storeLogo}
               pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
               hostRootStorePaths={hostRootStorePaths}
               aboveStickyPurchaseBar
@@ -6687,7 +6686,6 @@ export function VendorStoreView({
         <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
         <VendorInstallFab
           storeName={storeName}
-          storeLogo={storeLogo}
           pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
           hostRootStorePaths={hostRootStorePaths}
         />
