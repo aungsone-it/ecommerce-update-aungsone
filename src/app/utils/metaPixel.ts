@@ -3,7 +3,6 @@ import { fetchVendorProducts } from "./module-cache";
 const PIXEL_ID_RE = /^\d{5,20}$/;
 const PURCHASE_DEDUPE_PREFIX = "meta-pixel-purchase:";
 const INITIATE_CHECKOUT_DEDUPE_PREFIX = "meta-pixel-initiate-checkout:";
-const PAGEVIEW_DEDUPE_PREFIX = "meta-pixel-pageview:";
 /** In-memory guard for rapid React re-renders / effect re-runs. */
 const META_EVENT_DEDUPE_MS = 5000;
 
@@ -113,16 +112,9 @@ export function getActiveMetaPixelId(): string | null {
 }
 
 export function trackMetaPageView(pathname?: string): void {
-  if (!activePixelId) return;
-  const path =
-    String(pathname || "").trim() ||
-    (typeof window !== "undefined" ? window.location.pathname : "");
-  const sessionKey = `${PAGEVIEW_DEDUPE_PREFIX}${activePixelId}`;
-  if (hasSessionMetaDedupe(sessionKey)) return;
-  const key = `PageView:${path}`;
-  if (!shouldFireMetaEvent(key)) return;
-  markSessionMetaDedupe(sessionKey);
-  window.fbq?.("track", "PageView");
+  // Intentionally disabled per storefront preference.
+  // Keep function for call-site compatibility while suppressing PageView events.
+  void pathname;
 }
 
 export function trackMetaViewContent(product: {
