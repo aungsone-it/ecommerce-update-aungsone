@@ -4610,9 +4610,9 @@ export function VendorStoreView({
         qty
       );
       if (metaPixelId) {
-        initMetaPixel(metaPixelId);
         trackMetaAddToCart({
           id: String(product.id),
+          sku,
           name: String(product.name || sku),
           price: Number(price) || 0,
           quantity: qty,

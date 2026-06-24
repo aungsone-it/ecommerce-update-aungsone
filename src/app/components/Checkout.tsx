@@ -1214,18 +1214,39 @@ export function Checkout({
   const payableSubtotal = Math.max(Number(summaryDisplayTotal || 0), 0);
   const finalTotal = Math.max(payableSubtotal - discountAmount, 0);
 
+  const checkoutPixelTrackKey = useMemo(() => {
+    const lines = metaPixelLineItems(checkoutItems);
+    if (lines.length === 0) return "";
+    return `${checkoutStoragePath}:${lines.map((i) => `${i.id}x${i.quantity}`).join(",")}:${Math.round(finalTotal)}`;
+  }, [checkoutItems, checkoutStoragePath, finalTotal]);
+
+  const initiateCheckoutTrackedRef = useRef("");
+
   useEffect(() => {
-    if (step !== "checkout") return;
+    if (step !== "checkout" || !checkoutPixelTrackKey) return;
+    if (initiateCheckoutTrackedRef.current === checkoutPixelTrackKey) return;
     let cancelled = false;
     void (async () => {
       const id = await ensureMetaPixelForVendor(vendorId || storeName || "", metaPixelId);
-      if (cancelled || !id || checkoutItems.length === 0) return;
-      trackMetaInitiateCheckout(metaPixelLineItems(checkoutItems), finalTotal);
+      if (cancelled || !id) return;
+      trackMetaInitiateCheckout(
+        metaPixelLineItems(checkoutItems),
+        finalTotal,
+      );
+      initiateCheckoutTrackedRef.current = checkoutPixelTrackKey;
     })();
     return () => {
       cancelled = true;
     };
-  }, [vendorId, storeName, metaPixelId, step, checkoutItems, finalTotal]);
+  }, [
+    vendorId,
+    storeName,
+    metaPixelId,
+    step,
+    checkoutPixelTrackKey,
+    checkoutItems,
+    finalTotal,
+  ]);
 
   useEffect(() => {
     if (step !== "success" || !orderNumber) return;

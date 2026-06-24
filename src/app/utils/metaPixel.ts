@@ -2,8 +2,9 @@ import { fetchVendorProducts } from "./module-cache";
 
 const PIXEL_ID_RE = /^\d{5,20}$/;
 const PURCHASE_DEDUPE_PREFIX = "meta-pixel-purchase:";
-/** Match Meta Pixel Helper duplicate window. */
-const META_EVENT_DEDUPE_MS = 2000;
+const INITIATE_CHECKOUT_DEDUPE_PREFIX = "meta-pixel-initiate-checkout:";
+/** In-memory guard for rapid React re-renders / effect re-runs. */
+const META_EVENT_DEDUPE_MS = 5000;
 
 declare global {
   interface Window {
@@ -39,6 +40,24 @@ function shouldFireMetaEvent(eventKey: string): boolean {
   }
   recentMetaEvents.set(eventKey, now);
   return true;
+}
+
+function hasSessionMetaDedupe(key: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return Boolean(sessionStorage.getItem(key));
+  } catch {
+    return false;
+  }
+}
+
+function markSessionMetaDedupe(key: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(key, "1");
+  } catch {
+    /* private mode */
+  }
 }
 
 function loadFbeventsScript(): void {
@@ -113,17 +132,22 @@ export function trackMetaViewContent(product: {
 
 export function trackMetaAddToCart(item: {
   id: string;
+  sku?: string;
   name: string;
   price: number;
   quantity: number;
   currency?: string;
 }): void {
   if (!activePixelId) return;
+  const sku = String(item.sku || "").trim();
+  const value = Math.round((Number(item.price) || 0) * (Number(item.quantity) || 1));
+  const key = `AddToCart:${item.id}:${sku}:${Math.max(1, Number(item.quantity) || 1)}:${value}`;
+  if (!shouldFireMetaEvent(key)) return;
   window.fbq?.("track", "AddToCart", {
     content_ids: [item.id],
     content_name: item.name,
     content_type: "product",
-    value: item.price * item.quantity,
+    value,
     currency: item.currency || "MMK",
   });
 }
@@ -135,10 +159,12 @@ export function trackMetaInitiateCheckout(
 ): void {
   if (!activePixelId) return;
   const path = typeof window !== "undefined" ? window.location.pathname : "";
-  const key = `InitiateCheckout:${path}:${Math.round(value)}:${items
-    .map((i) => `${i.id}x${i.quantity}`)
-    .join(",")}`;
+  const linesKey = items.map((i) => `${i.id}x${i.quantity}`).join(",");
+  const key = `InitiateCheckout:${path}:${Math.round(value)}:${linesKey}`;
+  const sessionKey = `${INITIATE_CHECKOUT_DEDUPE_PREFIX}${key}`;
+  if (hasSessionMetaDedupe(sessionKey)) return;
   if (!shouldFireMetaEvent(key)) return;
+  markSessionMetaDedupe(sessionKey);
   window.fbq?.("track", "InitiateCheckout", {
     content_ids: items.map((i) => i.id),
     num_items: items.reduce((n, i) => n + i.quantity, 0),
