@@ -122,7 +122,7 @@ Uses server pagination + category filter (see `fetchVendorProducts` in `module-c
 - Store description: minimum 10 characters
 - Email policy: one email per vendor account; blocks duplicate pending/approved applications (`vendorEmailPolicyConflict`)
 
-**Admin audit fields:** Product create/update/delete, vendor application status changes, and vendor delete accept `performedByUserId` (UUID) for activity attribution. Auto-audit middleware logs other admin writes when a valid actor id is present in body, query, or `x-actor-user-id` header.
+**Admin audit (Settings → Activities):** Tracks **super-admin portal** actions only — product/user/vendor CRUD (explicit), settings, categories, orders status changes, etc. Storefront traffic (cart, checkout, KBZPay, customer self-service) is **not** logged. Actor must be a staff profile in `auth:user:{id}` with a staff role; `x-actor-user-id` is sent only from `migoo-staff-actor-id` (admin session), never from customer `migoo-user`.
 
 ---
 

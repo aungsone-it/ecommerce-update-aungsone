@@ -3,6 +3,20 @@ import * as kv from "./kv_store.tsx";
 const STAFF_UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/** Roles allowed to appear in the super-admin Activities feed. */
+const STAFF_AUDIT_ROLES = new Set([
+  "super-admin",
+  "store-owner",
+  "administrator",
+  "data-entry",
+  "warehouse",
+  "platform-admin",
+  "product-manager",
+  "developer",
+  "vendor-admin",
+  "collaborator",
+]);
+
 const MAX_ACTIVITIES = 150;
 const MAX_GLOBAL_FEED = 500;
 const GLOBAL_FEED_KEY = "staff:activity:global-feed";
@@ -13,6 +27,20 @@ function staffActivityKey(userId: string): string {
 
 export function isValidStaffActorId(id: string | undefined | null): id is string {
   return typeof id === "string" && STAFF_UUID_RE.test(id.trim());
+}
+
+export async function isStaffAuditActor(id: string | undefined | null): Promise<boolean> {
+  if (!isValidStaffActorId(id)) return false;
+  const uid = id.trim();
+  try {
+    const profile = await kv.get(`auth:user:${uid}`);
+    if (!profile || typeof profile !== "object") return false;
+    const role = String((profile as Record<string, unknown>).role || "").trim();
+    if (!role || role === "customer") return false;
+    return STAFF_AUDIT_ROLES.has(role);
+  } catch {
+    return false;
+  }
 }
 
 export type StaffActivityEntry = {
@@ -49,9 +77,11 @@ async function resolveActorMeta(userId: string): Promise<{
       return { actorName: "", actorEmail: "", actorRole: "" };
     }
     const p = profile as Record<string, unknown>;
+    const email = String(p.email || "").trim();
+    const name = String(p.name || "").trim();
     return {
-      actorName: String(p.name || "").trim(),
-      actorEmail: String(p.email || "").trim(),
+      actorName: name || email,
+      actorEmail: email,
       actorRole: String(p.role || "").trim(),
     };
   } catch {
@@ -162,8 +192,8 @@ export async function appendStaffActivity(
   userId: string | undefined | null,
   entry: Omit<StaffActivityEntry, "id" | "at"> & { at?: string }
 ): Promise<void> {
-  if (!isValidStaffActorId(userId)) return;
-  const uid = userId.trim();
+  if (!(await isStaffAuditActor(userId))) return;
+  const uid = userId!.trim();
   const at = entry.at || new Date().toISOString();
   const id = `act_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
   const row: StaffActivityEntry = {

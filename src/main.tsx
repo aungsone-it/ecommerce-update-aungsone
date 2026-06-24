@@ -30,23 +30,10 @@ const AUTH_USER_ID_RE =
 function resolveActorUserIdFromStorage(): string {
   if (typeof window === "undefined") return "";
   try {
-    const candidates = [
-      localStorage.getItem("migoo-staff-actor-id"),
-      localStorage.getItem("migoo-user"),
-      localStorage.getItem("vendorAuth"),
-    ];
-    for (const raw of candidates) {
-      if (!raw) continue;
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      const idCandidate =
-        typeof parsed.id === "string"
-          ? parsed.id
-          : typeof parsed.userId === "string"
-            ? parsed.userId
-            : "";
-      const trimmed = String(idCandidate || "").trim();
-      if (AUTH_USER_ID_RE.test(trimmed)) return trimmed;
-    }
+    const raw = localStorage.getItem("migoo-staff-actor-id");
+    if (!raw) return "";
+    const trimmed = String(raw).trim();
+    if (AUTH_USER_ID_RE.test(trimmed)) return trimmed;
   } catch {
     return "";
   }

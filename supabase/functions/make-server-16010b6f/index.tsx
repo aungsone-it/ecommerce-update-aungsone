@@ -31,7 +31,7 @@ import {
   deleteOwnedStorageRefs,
   refsRemovedSinceUpdate,
 } from "./storage_delete_helpers.tsx";
-import { appendStaffActivity, isValidStaffActorId } from "./staff_activity_helpers.tsx";
+import { appendStaffActivity, isStaffAuditActor, isValidStaffActorId } from "./staff_activity_helpers.tsx";
 import {
   assertAdminMonitoringAllowed,
   assertDestructiveOperationAllowed,
@@ -366,23 +366,30 @@ app.use("*", async (c, next) => {
 });
 
 const AUTO_AUDIT_WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const AUTO_AUDIT_EXACT_SKIP_PATHS = new Set([
-  "/make-server-16010b6f/kpay/webhook",
-  "/make-server-16010b6f/health",
-  "/make-server-16010b6f/monitoring/summary",
-  "/make-server-16010b6f/read-model/validate",
-  "/make-server-16010b6f/notifications/mark-all-read",
-]);
-const AUTO_AUDIT_SKIP_PATTERNS = [
-  /^\/make-server-16010b6f\/auth\/(?:login|register|signup|validate|check-setup|email-health|setup|send-email-otp|verify-otp-and-reset|list-emails|update-temp-password)(?:\/|$)/,
-  /^\/make-server-16010b6f\/auth\/staff-activity\/[^/]+$/,
-  /^\/make-server-16010b6f\/auth\/(?:create-user|user\/[^/]+|reset-password\/[^/]+)$/,
-  /^\/make-server-16010b6f\/products(?:\/[^/]+)?$/,
-  /^\/make-server-16010b6f\/vendor-applications(?:\/[^/]+)?$/,
-  /^\/make-server-16010b6f\/notifications\/[^/]+\/read$/,
-  /^\/make-server-16010b6f\/campaigns\/[^/]+\/increment$/,
-  /^\/make-server-16010b6f\/vendor\/audience\/[^/]+\/track$/,
-  /^\/make-server-16010b6f\/chat\/messages(?:\/|$)/,
+/** Only super-admin portal writes — storefront/customer/vendor-host traffic is excluded. */
+const SUPER_ADMIN_AUTO_AUDIT_RULES: Array<(pathname: string, method: string) => boolean> = [
+  (p) => /^\/make-server-16010b6f\/categories(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/settings(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/inventory(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/discounts(?:\/|$)/.test(p),
+  (p, m) => p === "/make-server-16010b6f/campaigns" && m !== "GET",
+  (p, m) =>
+    /^\/make-server-16010b6f\/campaigns\/[^/]+$/.test(p) &&
+    !/\/(validate|increment)$/.test(p),
+  (p) => /^\/make-server-16010b6f\/notifications(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/collaborators(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/admin(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/blog-posts(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/appearance-settings(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/announcement(?:\/|$)/.test(p),
+  (p, m) => /^\/make-server-16010b6f\/orders\/[^/]+$/.test(p) && m !== "POST",
+  (p, m) => p === "/make-server-16010b6f/orders" && m === "DELETE",
+  (p, m) => p === "/make-server-16010b6f/customers" && m === "POST",
+  (p, m) =>
+    /^\/make-server-16010b6f\/customers\/[^/]+$/.test(p) &&
+    !/\/(cart|wishlist|addresses|activities|orders|saved-products)(?:\/|$)/.test(p),
+  (p) => /^\/make-server-16010b6f\/customers\/(bulk-delete|deduplicate|cleanup-corrupted)$/.test(p),
+  (p, m) => /^\/make-server-16010b6f\/vendors\/[^/]+$/.test(p) && m !== "DELETE",
 ];
 const AUTO_AUDIT_ACTOR_KEYS = [
   "performedByUserId",
@@ -417,14 +424,7 @@ function pickValidActorIdFromRecord(record: Record<string, unknown>): string {
 
 function shouldAutoAuditPath(pathname: string, method: string): boolean {
   if (!pathname.startsWith("/make-server-16010b6f/")) return false;
-  if (method === "DELETE" && /^\/make-server-16010b6f\/vendors\/[^/]+$/.test(pathname)) {
-    return false;
-  }
-  if (method === "DELETE" && /^\/make-server-16010b6f\/customers\/[^/]+$/.test(pathname)) {
-    return false;
-  }
-  if (AUTO_AUDIT_EXACT_SKIP_PATHS.has(pathname)) return false;
-  return !AUTO_AUDIT_SKIP_PATTERNS.some((pattern) => pattern.test(pathname));
+  return SUPER_ADMIN_AUTO_AUDIT_RULES.some((rule) => rule(pathname, method));
 }
 
 function actionVerbFromMethod(method: string): string {
@@ -533,8 +533,8 @@ app.use("*", async (c, next) => {
   if (c.res.status >= 400) return;
 
   const actorFromBody = bodyData ? pickValidActorIdFromRecord(bodyData) : "";
-  const actorId = actorFromHeader || actorFromQuery || actorFromBody;
-  if (!isValidStaffActorId(actorId)) return;
+  const actorId = actorFromBody || actorFromQuery || actorFromHeader;
+  if (!(await isStaffAuditActor(actorId))) return;
 
   await appendStaffActivity(actorId, {
     type: "admin_action",
