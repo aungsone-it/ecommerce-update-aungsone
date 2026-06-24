@@ -37,6 +37,11 @@ export const zhTranslations: Record<string, string> = {
     'settings.activities.showingCount': '共 {count} 条活动',
     'settings.activities.by': '操作人',
     'settings.activities.unknownActor': '未知用户',
+    'settings.activities.clearAll': '全部清除',
+    'settings.activities.clearing': '清除中...',
+    'settings.activities.clearConfirm': '确定删除所有活动记录吗？此操作无法撤销。',
+    'settings.activities.clearSuccess': '活动记录已清除。',
+    'settings.activities.clearFailed': '无法清除活动记录。',
 
     // Currency & timezone (Settings selects)
     'currency.MMK': '缅甸元 (MMK)',

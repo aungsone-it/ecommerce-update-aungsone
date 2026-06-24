@@ -5,6 +5,7 @@ import { ensureBucket } from "./storage_bucket_helpers.tsx";
 import { deleteOwnedStorageRefs } from "./storage_delete_helpers.tsx";
 import {
   appendStaffActivity,
+  clearAllStaffActivities,
   getGlobalStaffActivityFeed,
   isValidStaffActorId,
 } from "./staff_activity_helpers.tsx";
@@ -1803,6 +1804,32 @@ authApp.get("/staff-activities", async (c) => {
   } catch (error: any) {
     console.error("staff-activities GET:", error);
     return c.json({ activities: [] });
+  }
+});
+
+// Clear all staff activity logs — store owner / super-admin only (for fresh testing)
+authApp.delete("/staff-activities", async (c) => {
+  try {
+    const clearedBy = String(c.req.query("clearedBy") || "").trim();
+    if (!isValidStaffActorId(clearedBy)) {
+      return c.json({ error: "Invalid actor" }, 400);
+    }
+
+    const profile = await kv.get(`auth:user:${clearedBy}`);
+    if (!profile || typeof profile !== "object") {
+      return c.json({ error: "Unauthorized" }, 403);
+    }
+
+    const role = String((profile as { role?: string }).role || "").trim();
+    if (!OWNER_ROLES.has(role)) {
+      return c.json({ error: "Only store owner can clear activity log" }, 403);
+    }
+
+    const deletedKeys = await clearAllStaffActivities();
+    return c.json({ success: true, deletedKeys });
+  } catch (error: any) {
+    console.error("staff-activities DELETE:", error);
+    return c.json({ error: error.message || "Failed to clear activities" }, 500);
   }
 });
 

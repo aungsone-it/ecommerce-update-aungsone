@@ -540,6 +540,12 @@
   justify-content: center;
 }
 
+@media (min-width: 1024px) {
+  .vendor-install-fab-anchor {
+    display: none;
+  }
+}
+
 .vendor-install-fab-anchor--above-sticky {
   --back-to-top-bottom: calc(5.5rem + 0.625rem + env(safe-area-inset-bottom, 0px));
   --chat-fab-bottom: calc(var(--back-to-top-bottom) + var(--back-to-top-size) + var(--fab-stack-gap));

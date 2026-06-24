@@ -1028,21 +1028,7 @@ export function VendorAdminOrderManagement({ vendorId, vendorStoreSlug }: Vendor
             <div className="flex items-center gap-4">
               <div className="flex-1">
                 <Label>Order Status</Label>
-                <Select
-                  value={selectedOrder.status}
-                  onValueChange={(value) => handleStatusChange(selectedOrder.id, value as OrderStatus)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="processing">Processing</SelectItem>
-                    <SelectItem value="ready-to-ship">Ready to Ship</SelectItem>
-                    <SelectItem value="fulfilled">Fulfilled</SelectItem>
-                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="pt-2">{getStatusBadge(selectedOrder.status)}</div>
               </div>
               <div className="flex-1">
                 <Label>Payment Status</Label>

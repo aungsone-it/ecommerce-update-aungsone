@@ -2636,6 +2636,21 @@ export function invalidateStaffActivitiesCache(): void {
   moduleCache.invalidate(CACHE_KEYS.ADMIN_STAFF_ACTIVITIES);
 }
 
+export async function clearStaffActivities(clearedByUserId: string): Promise<boolean> {
+  const actorId = String(clearedByUserId || "").trim();
+  if (!actorId) return false;
+  const response = await fetch(
+    `${STAFF_ACTIVITIES_API}?clearedBy=${encodeURIComponent(actorId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${publicAnonKey}` },
+    }
+  );
+  if (!response.ok) return false;
+  invalidateStaffActivitiesCache();
+  return true;
+}
+
 export function mergeStaffActivities(
   existing: StaffActivityFeedRow[],
   incoming: StaffActivityFeedRow[]

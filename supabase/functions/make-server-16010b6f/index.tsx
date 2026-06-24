@@ -382,13 +382,11 @@ const SUPER_ADMIN_AUTO_AUDIT_RULES: Array<(pathname: string, method: string) => 
   (p) => /^\/make-server-16010b6f\/blog-posts(?:\/|$)/.test(p),
   (p) => /^\/make-server-16010b6f\/appearance-settings(?:\/|$)/.test(p),
   (p) => /^\/make-server-16010b6f\/announcement(?:\/|$)/.test(p),
-  (p, m) => /^\/make-server-16010b6f\/orders\/[^/]+$/.test(p) && m !== "POST",
   (p, m) => p === "/make-server-16010b6f/orders" && m === "DELETE",
   (p, m) => p === "/make-server-16010b6f/customers" && m === "POST",
   (p, m) =>
     /^\/make-server-16010b6f\/customers\/[^/]+$/.test(p) &&
-    !/\/(cart|wishlist|addresses|activities|orders|saved-products)(?:\/|$)/.test(p),
-  (p) => /^\/make-server-16010b6f\/customers\/(bulk-delete|deduplicate|cleanup-corrupted)$/.test(p),
+    !/\/(cart|wishlist|addresses|activities|orders|saved-products|bulk-delete|deduplicate|cleanup-corrupted)(?:\/|$)/.test(p),
   (p, m) => /^\/make-server-16010b6f\/vendors\/[^/]+$/.test(p) && m !== "DELETE",
 ];
 const AUTO_AUDIT_ACTOR_KEYS = [
@@ -5410,6 +5408,28 @@ function normalizeOrderStatus(s: string | undefined): string {
   return String(s).trim().toLowerCase().replace(/\s+/g, "-");
 }
 
+function formatOrderStatusLabel(status: unknown): string {
+  const normalized = normalizeOrderStatus(String(status || ""));
+  if (normalized === "cancelled") return "cancelled";
+  if (normalized === "fulfilled") return "fulfilled";
+  if (normalized === "processing") return "processing";
+  if (normalized === "pending") return "pending";
+  if (normalized === "ready-to-ship") return "ready to ship";
+  const raw = String(status || "").trim();
+  return raw ? raw.replace(/_/g, " ") : "unknown";
+}
+
+function buildOrderActivityDetail(
+  orderNumber: string,
+  nextStatus: unknown,
+  statusChanged: boolean,
+): string {
+  const orderId = String(orderNumber || "").trim() || "Order";
+  if (!statusChanged) return `${orderId} · updated`;
+  const next = formatOrderStatusLabel(nextStatus);
+  return `${orderId} : ${next}`;
+}
+
 /** Resolve KV row for GET/PUT/DELETE when :id is the canonical key, document id, or orderNumber. */
 async function resolveOrderStorage(orderIdParam: string): Promise<{
   record: any;
@@ -6189,6 +6209,22 @@ app.put("/make-server-16010b6f/orders/:id", async (c) => {
     
     // Clear cache when order is updated
     serverCache.delete('orders_minimal');
+
+    const statusChanged = prevNorm !== newNorm;
+    const actorFromBody = pickValidActorIdFromRecord(body);
+    const actorFromHeader = String(c.req.header("x-actor-user-id") || "").trim();
+    const actorId =
+      actorFromBody || (isValidStaffActorId(actorFromHeader) ? actorFromHeader : "");
+    const orderLabel = String(existingOrder.orderNumber || orderKvId || id).trim();
+    await appendStaffActivity(actorId, {
+      type: "admin_action",
+      action: statusChanged ? "Order status updated" : "Order updated",
+      detail: buildOrderActivityDetail(
+        orderLabel,
+        newStatusRaw,
+        statusChanged,
+      ),
+    });
     
     return c.json({ 
       success: true,

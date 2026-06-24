@@ -39,6 +39,11 @@ function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
+function isMobileOrTabletViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.matchMedia("(max-width: 1023px)").matches;
+}
+
 export function VendorInstallFab({
   storeName,
   storeLogo,
@@ -56,6 +61,7 @@ export function VendorInstallFab({
   }, [pathSlug, hostRootStorePaths]);
 
   const canShowAction = typeof window !== "undefined";
+  const [isMobileOrTablet, setIsMobileOrTablet] = useState(() => isMobileOrTabletViewport());
   const [installing, setInstalling] = useState(false);
   const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -63,6 +69,16 @@ export function VendorInstallFab({
   const [installed, setInstalled] = useState(() => isStandaloneMode());
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 1023px)");
+    const syncViewport = () => setIsMobileOrTablet(media.matches);
+    syncViewport();
+    media.addEventListener("change", syncViewport);
+    return () => media.removeEventListener("change", syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileOrTablet) return;
     if (typeof window === "undefined" || typeof document === "undefined") return;
 
     const iconSrc =
@@ -112,9 +128,10 @@ export function VendorInstallFab({
     return () => {
       URL.revokeObjectURL(manifestBlobUrl);
     };
-  }, [shortcutUrl, storeName, storeLogo]);
+  }, [isMobileOrTablet, shortcutUrl, storeName, storeLogo]);
 
   useEffect(() => {
+    if (!isMobileOrTablet) return;
     if (typeof window === "undefined") return;
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
@@ -123,9 +140,10 @@ export function VendorInstallFab({
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     return () => window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-  }, []);
+  }, [isMobileOrTablet]);
 
   useEffect(() => {
+    if (!isMobileOrTablet) return;
     if (typeof window === "undefined") return;
     const onInstalled = () => {
       setInstalled(true);
@@ -134,9 +152,10 @@ export function VendorInstallFab({
     };
     window.addEventListener("appinstalled", onInstalled);
     return () => window.removeEventListener("appinstalled", onInstalled);
-  }, []);
+  }, [isMobileOrTablet]);
 
   if (!canShowAction) return null;
+  if (!isMobileOrTablet) return null;
   if (installed) return null;
 
   const handleClick = async () => {

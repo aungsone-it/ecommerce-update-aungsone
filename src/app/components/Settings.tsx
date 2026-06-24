@@ -74,6 +74,8 @@ import {
   mergeStaffActivities,
   peekStaffActivitiesCache,
   primeStaffActivitiesCache,
+  clearStaffActivities,
+  invalidateStaffActivitiesCache,
   STAFF_ACTIVITIES_POLL_MS,
   type StaffActivityFeedRow,
 } from "../utils/module-cache";
@@ -377,6 +379,7 @@ export function Settings() {
   const [staffActivities, setStaffActivities] = useState<StaffActivityRow[]>(initialStaffActivities);
   const [activitiesLoading, setActivitiesLoading] = useState(initialStaffActivities.length === 0);
   const [activitiesRefreshing, setActivitiesRefreshing] = useState(false);
+  const [activitiesClearing, setActivitiesClearing] = useState(false);
 
   useEffect(() => {
     if (activeTab === "users" && !isOwnerRole(user?.role)) {
@@ -804,6 +807,30 @@ export function Settings() {
     },
     [user?.role]
   );
+
+  const handleClearStaffActivities = useCallback(async () => {
+    if (!isOwnerRole(user?.role) || !user?.id) return;
+    const confirmed = window.confirm(t("settings.activities.clearConfirm"));
+    if (!confirmed) return;
+
+    setActivitiesClearing(true);
+    try {
+      const ok = await clearStaffActivities(user.id);
+      if (!ok) {
+        toast.error(t("settings.activities.clearFailed"));
+        return;
+      }
+      invalidateStaffActivitiesCache();
+      primeStaffActivitiesCache([]);
+      setStaffActivities([]);
+      toast.success(t("settings.activities.clearSuccess"));
+    } catch (err) {
+      console.warn("Clear staff activities failed:", err);
+      toast.error(t("settings.activities.clearFailed"));
+    } finally {
+      setActivitiesClearing(false);
+    }
+  }, [t, user?.id, user?.role]);
 
   useEffect(() => {
     if (activeTab !== "activities" || !canViewStaffActivities(user?.role)) return;
@@ -2190,17 +2217,38 @@ export function Settings() {
             <div className="bg-white rounded-lg border border-slate-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-slate-900">{t("settings.activities.title")}</h3>
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  {activitiesRefreshing ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>{t("settings.activities.refreshing")}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Activity className="w-5 h-5 text-slate-400" />
-                    </>
-                  )}
+                <div className="flex items-center gap-2">
+                  {isOwnerRole(user?.role) ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-xs hidden"
+                      disabled={activitiesClearing || activitiesLoading || staffActivities.length === 0}
+                      onClick={handleClearStaffActivities}
+                    >
+                      {activitiesClearing ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />
+                          {t("settings.activities.clearing")}
+                        </>
+                      ) : (
+                        t("settings.activities.clearAll")
+                      )}
+                    </Button>
+                  ) : null}
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    {activitiesRefreshing ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>{t("settings.activities.refreshing")}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Activity className="w-5 h-5 text-slate-400" />
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
               <p className="text-xs text-slate-500 mb-4">{t("settings.activities.description")}</p>

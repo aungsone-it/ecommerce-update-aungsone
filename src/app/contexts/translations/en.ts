@@ -36,6 +36,11 @@ export const enTranslations: Record<string, string> = {
     'settings.activities.showingCount': 'Showing all {count} activities',
     'settings.activities.by': 'By',
     'settings.activities.unknownActor': 'Unknown user',
+    'settings.activities.clearAll': 'Clear all',
+    'settings.activities.clearing': 'Clearing...',
+    'settings.activities.clearConfirm': 'Delete all activity logs? This cannot be undone.',
+    'settings.activities.clearSuccess': 'Activity log cleared.',
+    'settings.activities.clearFailed': 'Could not clear activity log.',
 
     // Currency & timezone (Settings selects)
     'currency.MMK': 'Myanmar Kyat (MMK)',

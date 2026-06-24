@@ -6158,13 +6158,15 @@ export function VendorStoreView({
               scrollContainerKey={vendorScrollRebindKey}
               aboveStickyPurchaseBar
             />
-            <VendorInstallFab
-              storeName={storeName}
-              storeLogo={storeLogo}
-              pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
-              hostRootStorePaths={hostRootStorePaths}
-              aboveStickyPurchaseBar
-            />
+            {!showVendorPageFullSkeleton && (
+              <VendorInstallFab
+                storeName={storeName}
+                storeLogo={storeLogo}
+                pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
+                hostRootStorePaths={hostRootStorePaths}
+                aboveStickyPurchaseBar
+              />
+            )}
           </>
         )}
       </>
@@ -6685,12 +6687,14 @@ export function VendorStoreView({
     {!cartOpen && (
       <>
         <BackToTop scrollContainerRef={vendorScrollRootRef} scrollContainerKey={vendorScrollRebindKey} />
-        <VendorInstallFab
-          storeName={storeName}
-          storeLogo={storeLogo}
-          pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
-          hostRootStorePaths={hostRootStorePaths}
-        />
+        {!showVendorPageFullSkeleton && (
+          <VendorInstallFab
+            storeName={storeName}
+            storeLogo={storeLogo}
+            pathSlug={storeLinkSlug || canonicalPathSlug || storeSlug || vendorId}
+            hostRootStorePaths={hostRootStorePaths}
+          />
+        )}
       </>
     )}
     </>

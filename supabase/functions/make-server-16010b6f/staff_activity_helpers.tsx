@@ -187,6 +187,20 @@ export async function getGlobalStaffActivityFeed(
   });
 }
 
+/** Remove all staff activity rows (global feed + per-user logs). Returns deleted KV key count. */
+export async function clearAllStaffActivities(): Promise<number> {
+  const rows = await kv.getByPrefixWithKeys("staff:activity:");
+  const keys = rows
+    .map((row) => row.key)
+    .filter((key) => typeof key === "string" && key.startsWith("staff:activity:"));
+  if (keys.length === 0) {
+    await kv.set(GLOBAL_FEED_KEY, []);
+    return 0;
+  }
+  await kv.mdel(keys);
+  return keys.length;
+}
+
 /** Append audit row for platform staff (Supabase Auth UUID). Best-effort — never throws to caller. */
 export async function appendStaffActivity(
   userId: string | undefined | null,
