@@ -162,6 +162,7 @@ import {
 import { toast } from "sonner";
 import { getEffectiveVariantOptions } from "./ProductVariantChips";
 import { useLoading } from "../contexts/LoadingContext";
+import { useLanguage } from "../contexts/LanguageContext";
 import { applyVendorStoreLogoFavicon } from "../utils/documentFavicon";
 import { buildVendorStorefrontDocumentTitle } from "../utils/vendorStorefrontDocumentTitle";
 import {
@@ -964,7 +965,14 @@ export function VendorStoreView({
 }: VendorStoreViewProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { language, setLanguage, t } = useLanguage();
   const { chatUnreadCount, openFloatingChat } = useChatNotification();
+
+  useEffect(() => {
+    if (language === "zh") {
+      setLanguage("en");
+    }
+  }, [language, setLanguage]);
 
   const [canonicalStoreSlug, setCanonicalStoreSlug] = useState<string | null>(() => {
     const resolved = resolveVendorPathSlug(storeSlug || vendorId);
@@ -1666,7 +1674,7 @@ export function VendorStoreView({
 
   const goToSavedProducts = useCallback(() => {
     if (!user) {
-      toast.error("Please sign in to view your wishlist");
+      toast.error(t("storefront.account.signInRequiredToast"));
       setShowAuthModal(true);
       setAuthMode("login");
       return;
@@ -1705,6 +1713,36 @@ export function VendorStoreView({
     },
     [navigate, categoryPathForName, uncategorizedTabPath]
   );
+
+  const renderStorefrontLanguageMenu = useCallback(() => {
+    const shortLabel = language === "my" ? "မြန်" : "EN";
+    const optionClass = "flex cursor-pointer items-center justify-between gap-3 rounded-md px-3 py-2 text-sm";
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className="h-9 w-10 shrink-0 rounded-full px-0 text-xs font-semibold text-slate-700 hover:bg-slate-100 md:h-10 md:w-auto md:px-3"
+            aria-label={t("storefront.language")}
+            title={t("storefront.language")}
+          >
+            {shortLabel}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44 p-1">
+          <DropdownMenuItem className={optionClass} onClick={() => setLanguage("en")}>
+            <span>{t("language.english")}</span>
+            {language === "en" ? <Check className="h-4 w-4 text-amber-600" /> : null}
+          </DropdownMenuItem>
+          <DropdownMenuItem className={optionClass} onClick={() => setLanguage("my")}>
+            <span>{t("language.burmese")}</span>
+            {language === "my" ? <Check className="h-4 w-4 text-amber-600" /> : null}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }, [language, setLanguage, t]);
 
   /** Desktop-only category subnav — fills the row first, then More when it overflows. */
   const renderVendorStorefrontSubnav = useCallback(() => {
@@ -1826,7 +1864,7 @@ export function VendorStoreView({
   useEffect(() => {
     if (!isVendorProfileProtectedRoute(vendorViewMode, profileOrderId)) return;
     if (hasVendorCustomerSession(user)) return;
-    toast.error("Please sign in to access this page");
+    toast.error(t("storefront.account.signInRequiredToast"));
     setShowAuthModal(true);
     setAuthMode("login");
   }, [vendorViewMode, profileOrderId, user]);
@@ -2053,7 +2091,7 @@ export function VendorStoreView({
         }
       } catch (error) {
         console.error("Failed to load addresses from database:", error);
-        toast.error("Failed to load addresses");
+        toast.error(t("storefront.account.failedToLoadAddresses"));
       } finally {
         setLoadingAddresses(false);
       }
@@ -2106,7 +2144,7 @@ export function VendorStoreView({
           setOrderHistory([]);
         }
         if (vendorViewMode === "order-history") {
-          toast.error("Could not load order history");
+          toast.error(t("storefront.account.errorLoadingOrders"));
         }
       })
       .finally(() => {
@@ -2152,7 +2190,7 @@ export function VendorStoreView({
   // 🔐 Authentication Handlers
   const handleLogin = async () => {
     if (!authForm.email || !authForm.password) {
-      toast.error("Please enter email and password");
+      toast.error(t("storefront.account.loginRequiredFields"));
       return;
     }
 
@@ -2171,12 +2209,12 @@ export function VendorStoreView({
       persistMigooUserSession(sessionUser);
       notifyMigooUserSessionChanged();
 
-      toast.success(`Welcome back, ${userData.name || userData.email}!`);
+      toast.success(t("storefront.account.welcomeBack").replace("{name}", userData.name || userData.email || ""));
       setShowAuthModal(false);
       setAuthForm({ email: '', password: '', name: '', phone: '' });
     } catch (error) {
       console.error("Login failed:", error);
-      toast.error(error instanceof Error ? error.message : "Login failed");
+      toast.error(error instanceof Error ? error.message : t("storefront.account.loginFailed"));
     } finally {
       setIsAuthLoading(false);
     }
@@ -2184,7 +2222,7 @@ export function VendorStoreView({
 
   const handleRegister = async (profileImage?: string) => {
     if (!authForm.password || !authForm.name || !authForm.phone.trim()) {
-      toast.error("Please enter your name, phone number, and password");
+      toast.error(t("storefront.account.registerRequiredFields"));
       return;
     }
 
@@ -2209,12 +2247,16 @@ export function VendorStoreView({
       persistMigooUserSession(sessionUser);
       notifyMigooUserSessionChanged();
 
-      toast.success(`Welcome to ${storeName}, ${userData.name}!`);
+      toast.success(
+        t("storefront.account.welcomeToStore")
+          .replace("{storeName}", storeName)
+          .replace("{name}", userData.name || "")
+      );
       setShowAuthModal(false);
       setAuthForm({ email: '', password: '', name: '', phone: '' });
     } catch (error) {
       console.error("Registration failed:", error);
-      toast.error(error instanceof Error ? error.message : "Registration failed");
+      toast.error(error instanceof Error ? error.message : t("storefront.account.registrationFailed"));
     } finally {
       setIsAuthLoading(false);
     }
@@ -2226,7 +2268,7 @@ export function VendorStoreView({
     localStorage.removeItem('migoo-user');
     notifyMigooUserSessionChanged();
     navigateStoreHome();
-    toast.success("You have been logged out");
+    toast.success(t("storefront.account.logout"));
   };
 
   const getUserProfileImageUrl = (u: any): string => {
@@ -2273,7 +2315,7 @@ export function VendorStoreView({
       e.target.value = "";
       if (!file) return;
 
-      toast.loading("Compressing image...", { id: "compress" });
+      toast.loading(t("storefront.account.compressingImage"), { id: "compress" });
 
       try {
         const compressImage = (f: File, maxSizeKB: number = 400): Promise<string> => {
@@ -2341,7 +2383,7 @@ export function VendorStoreView({
         toast.dismiss("compress");
       } catch (error) {
         console.error("Image compression error:", error);
-        toast.error("Failed to process image. Please try another file.", { id: "compress" });
+      toast.error(t("storefront.account.imageProcessFailed"), { id: "compress" });
       }
     },
     []
@@ -2350,7 +2392,7 @@ export function VendorStoreView({
   const handleSaveProfile = async () => {
     const uid = resolveUserIdFromRecord(user);
     if (!uid) {
-      toast.error("Please log in to update your profile");
+      toast.error(t("storefront.account.signInRequiredToast"));
       return;
     }
 
@@ -2400,7 +2442,7 @@ export function VendorStoreView({
         persistMigooUserSession(mergedUser);
         notifyMigooUserSessionChanged();
         invalidateAdminCustomersCache();
-        toast.success("Profile updated successfully!");
+        toast.success(t("profile.updated"));
         profileSaveCompletedRef.current = true;
         goToProfileMode("view-profile");
       } else {
@@ -2408,7 +2450,7 @@ export function VendorStoreView({
       }
     } catch (error) {
       console.error("Error updating profile:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to update profile. Please try again.");
+      toast.error(error instanceof Error ? error.message : t("storefront.account.updateProfileFailed"));
     } finally {
       setIsProfileSaving(false);
     }
@@ -2417,26 +2459,26 @@ export function VendorStoreView({
   const handleChangePassword = async () => {
     const authEmail = resolveCustomerAuthEmail(user);
     if (!authEmail) {
-      toast.error("Account sign-in email not found. Please log in again.");
+      toast.error(t("storefront.account.signInRequiredToast"));
       return;
     }
     if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
-      toast.error("Please fill in all fields");
+      toast.error(t("storefront.account.requiredFields"));
       return;
     }
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      toast.error("New passwords do not match");
+      toast.error(t("auth.resetPassword.passwordMismatch"));
       return;
     }
     if (passwordForm.newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters long");
+      toast.error(t("storefront.account.passwordTooShort"));
       return;
     }
 
     setIsChangingPassword(true);
     try {
       await authApi.changePassword(authEmail, passwordForm.currentPassword, passwordForm.newPassword);
-      toast.success("Password changed successfully! Please use your new password next time you log in.");
+      toast.success(t("auth.resetPassword.successMessage"));
       setPasswordForm({
         currentPassword: "",
         newPassword: "",
@@ -2445,7 +2487,7 @@ export function VendorStoreView({
       setShowPasswordFields({ current: false, new: false, confirm: false });
     } catch (error) {
       console.error("Failed to change password:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to change password");
+      toast.error(error instanceof Error ? error.message : t("storefront.account.changePasswordFailed"));
     } finally {
       setIsChangingPassword(false);
     }
@@ -2544,7 +2586,7 @@ export function VendorStoreView({
           onClick={(e) => e.stopPropagation()}
           role="dialog"
           aria-modal="true"
-          aria-label="Store menu"
+          aria-label={t("storefront.account.storeMenu")}
         >
           <div className="flex items-center justify-between gap-3 p-4 border-b border-slate-200">
             <div className="min-w-0 flex-1 flex items-center gap-3">
@@ -2569,7 +2611,7 @@ export function VendorStoreView({
               size="icon"
               onClick={closeVendorMobileNav}
               className="hover:bg-slate-100 rounded-full shrink-0"
-              aria-label="Close menu"
+              aria-label={t("storefront.closeMenu")}
             >
               <X className="w-5 h-5" />
             </Button>
@@ -2582,7 +2624,7 @@ export function VendorStoreView({
                 <Search className="w-4 h-4 text-slate-400" />
               </div>
               <Input
-                placeholder="Search products..."
+                placeholder={t("storefront.search.placeholder")}
                 value={searchQuery}
                 onChange={(e) => handleVendorSearchInputChange(e.target.value)}
                 onKeyDown={handleVendorSearchKeyDown}
@@ -2603,7 +2645,7 @@ export function VendorStoreView({
                 }}
               >
                 <User className="w-4 h-4 mr-2 shrink-0" />
-                Login / Register
+                {t("storefront.loginRegister")}
               </Button>
             ) : (
               <div className="space-y-2 pt-1">
@@ -2631,7 +2673,7 @@ export function VendorStoreView({
                   onClick={() => handleProfileAction("view-profile")}
                 >
                   <Eye className="w-4 h-4 mr-2" />
-                  View Profile
+                  {t("storefront.account.viewProfile")}
                 </Button>
               </div>
             )}
@@ -2639,7 +2681,7 @@ export function VendorStoreView({
             {showCategoryNav ? (
               <>
                 <Separator />
-                <p className="text-sm font-semibold text-slate-600">Browse</p>
+                <p className="text-sm font-semibold text-slate-600">{t("storefront.categories.browse")}</p>
                 <Button
                   variant="ghost"
                   className={`w-full justify-start hover:bg-slate-50 ${
@@ -2649,7 +2691,7 @@ export function VendorStoreView({
                   }`}
                   onClick={selectAllProductsNav}
                 >
-                  All products
+                  {t("storefront.categories.all")}
                 </Button>
                 {subnavCategoryItems.map((category) => (
                   <Button
@@ -2679,14 +2721,14 @@ export function VendorStoreView({
                     navigate(uncategorizedTabPath, { replace: true });
                   }}
                 >
-                  Uncategorized
+                  {t("storefront.categories.uncategorized")}
                 </Button>
               </>
             ) : vendorViewMode === "storefront" ? (
               <>
                 <Separator />
                 <Button variant="ghost" className="w-full justify-start" onClick={selectAllProductsNav}>
-                  Back to shop
+                  {t("storefront.backToShop")}
                 </Button>
               </>
             ) : null}
@@ -2713,7 +2755,7 @@ export function VendorStoreView({
                 }}
               >
                 <LogOut className="w-4 h-4 mr-2" />
-                Logout
+                {t("storefront.account.logout")}
               </Button>
             ) : null}
           </div>
@@ -2729,7 +2771,7 @@ export function VendorStoreView({
         className="fixed inset-0 bg-white z-[70] md:hidden flex flex-col"
         role="dialog"
         aria-modal="true"
-        aria-label="Search products"
+        aria-label={t("storefront.searchProducts")}
       >
         <div className="flex items-center gap-2 p-4 border-b border-slate-200 shrink-0">
           <Button
@@ -2737,7 +2779,7 @@ export function VendorStoreView({
             size="icon"
             onClick={() => setVendorMobileSearchOpen(false)}
             className="hover:bg-slate-100 rounded-full shrink-0"
-            aria-label="Close search"
+            aria-label={t("storefront.closeSearch")}
           >
             <X className="w-5 h-5" />
           </Button>
@@ -2746,7 +2788,7 @@ export function VendorStoreView({
               <Search className="w-4 h-4 text-slate-400" />
             </div>
             <Input
-              placeholder="Search products..."
+              placeholder={t("storefront.search.placeholder")}
               value={searchQuery}
               onChange={(e) => handleVendorSearchInputChange(e.target.value)}
               onKeyDown={handleVendorSearchKeyDown}
@@ -2787,13 +2829,13 @@ export function VendorStoreView({
                 ))}
               <p className="text-sm text-slate-500 pt-2">
                 {products.some((p) => productMatchesVendorClientSearch(p, searchQuery))
-                  ? "Press Enter to search the full catalog."
-                  : "No matches in loaded products. Press Enter to search the full catalog."}
+                  ? t("storefront.search.enterHint")
+                  : `${t("storefront.search.noMatches")} ${t("storefront.search.enterHint")}`}
               </p>
             </>
           ) : (
             <p className="text-sm text-slate-500">
-              Type to preview loaded products. Press Enter to search the full catalog.
+              {t("storefront.search.typeHint")}
             </p>
           )}
         </div>
@@ -2811,9 +2853,9 @@ export function VendorStoreView({
             <CardContent className="py-12 text-center space-y-6">
               <UserCircle className="w-16 h-16 text-slate-300 mx-auto" />
               <div>
-                <h2 className="text-xl font-bold text-slate-900">Sign in required</h2>
+                <h2 className="text-xl font-bold text-slate-900">{t("storefront.account.signInRequired")}</h2>
                 <p className="text-slate-600 mt-2 text-sm">
-                  Sign in or create an account to view your profile and orders.
+                  {t("storefront.account.signInRequiredDescription")}
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3 justify-center">
@@ -2824,7 +2866,7 @@ export function VendorStoreView({
                     setAuthMode("login");
                   }}
                 >
-                  Sign In
+                  {t("auth.login.signIn")}
                 </Button>
                 <Button
                   variant="outline"
@@ -2833,12 +2875,12 @@ export function VendorStoreView({
                     setAuthMode("register");
                   }}
                 >
-                  Register
+                  {t("storefront.account.register")}
                 </Button>
               </div>
               <Button variant="ghost" onClick={() => goToProfileMode("storefront")}>
                 <ChevronLeft className="w-4 h-4 mr-2" />
-                Back to store
+                {t("storefront.account.backToStore")}
               </Button>
             </CardContent>
           </Card>
@@ -2892,7 +2934,7 @@ export function VendorStoreView({
             className="mb-6 hover:bg-slate-100"
           >
             <ChevronLeft className="w-4 h-4 mr-2" />
-            Back to Home
+            {t("storefront.account.backToHome")}
           </Button>
 
           <Card className="mb-6">
@@ -2914,7 +2956,7 @@ export function VendorStoreView({
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 text-center md:text-left">
                     <div className="min-w-0">
                       <h1 className="text-base sm:text-lg font-bold text-slate-900 mb-2">
-                        {user?.name || "Guest User"}
+                        {user?.name || t("storefront.account.guestUser")}
                       </h1>
                       <p className="text-slate-600">{getCustomerProfileSubtitle(user)}</p>
                     </div>
@@ -2924,7 +2966,7 @@ export function VendorStoreView({
                       size="icon"
                       className="mx-auto md:mx-0 shrink-0 text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                       onClick={() => goToProfileMode("edit-profile")}
-                      aria-label="Edit profile"
+                      aria-label={t("storefront.account.editProfile")}
                     >
                       <Pencil className="w-5 h-5" />
                     </Button>
@@ -2937,19 +2979,19 @@ export function VendorStoreView({
           <div className="grid md:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm sm:text-base">Personal Information</CardTitle>
+                <CardTitle className="text-sm sm:text-base">{t("storefront.account.personalInformation")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <Label className="text-sm text-slate-600">Full Name</Label>
-                  <p className="font-medium text-slate-900">{user?.name || "Not provided"}</p>
+                  <Label className="text-sm text-slate-600">{t("profile.fullName")}</Label>
+                  <p className="font-medium text-slate-900">{user?.name || t("storefront.account.notProvided")}</p>
                 </div>
                 <div>
-                  <Label className="text-sm text-slate-600">Email Address</Label>
-                  <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? "Not provided"}</p>
+                  <Label className="text-sm text-slate-600">{t("storefront.account.emailAddress")}</Label>
+                  <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? t("storefront.account.notProvided")}</p>
                 </div>
                 <div>
-                  <Label className="text-sm text-slate-600">Phone Number</Label>
+                  <Label className="text-sm text-slate-600">{t("storefront.account.phoneNumber")}</Label>
                   <p className="font-medium text-slate-900">{formatUserPhoneDisplay(user)}</p>
                 </div>
               </CardContent>
@@ -2957,13 +2999,13 @@ export function VendorStoreView({
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm sm:text-base">Account Statistics</CardTitle>
+                <CardTitle className="text-sm sm:text-base">{t("storefront.account.accountStatistics")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <Package className="w-5 h-5 text-amber-600" />
-                    <span className="text-sm font-medium text-slate-700">Total Orders</span>
+                    <span className="text-sm font-medium text-slate-700">{t("storefront.account.totalOrders")}</span>
                   </div>
                   {ordersLoading ? (
                     <div className="h-7 w-10 animate-pulse rounded bg-slate-200" aria-hidden />
@@ -2974,14 +3016,14 @@ export function VendorStoreView({
                 <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <Heart className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-medium text-slate-700">Wishlist Items</span>
+                    <span className="text-sm font-medium text-slate-700">{t("storefront.account.wishlistItems")}</span>
                   </div>
                   <span className="text-lg font-bold text-blue-700">{wishlist.length}</span>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-emerald-50 rounded-lg">
                   <div className="flex items-center gap-3">
                     <ShoppingBag className="w-5 h-5 text-emerald-600" />
-                    <span className="text-sm font-medium text-slate-700">Cart Items</span>
+                    <span className="text-sm font-medium text-slate-700">{t("storefront.account.cartItems")}</span>
                   </div>
                   <span className="text-lg font-bold text-emerald-700">{totalItems}</span>
                 </div>
@@ -2991,25 +3033,25 @@ export function VendorStoreView({
 
           <Card className="mt-6">
             <CardHeader>
-              <CardTitle className="text-lg">Quick Actions</CardTitle>
+              <CardTitle className="text-lg">{t("storefront.account.quickActions")}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("order-history")}>
                   <Package className="w-4 h-4 mr-2" />
-                  View Orders
+                  {t("storefront.account.viewOrders")}
                 </Button>
                 <Button variant="outline" className="justify-start" onClick={() => navigate(`${storeBase}/saved`)}>
                   <Heart className="w-4 h-4 mr-2" />
-                  My Wishlist
+                  {t("storefront.account.myWishlist")}
                 </Button>
                 <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("shipping-addresses")}>
                   <MapPin className="w-4 h-4 mr-2" />
-                  Addresses
+                  {t("storefront.account.addresses")}
                 </Button>
                 <Button variant="outline" className="justify-start" onClick={() => goToProfileMode("security-settings")}>
                   <Shield className="w-4 h-4 mr-2" />
-                  Security
+                  {t("storefront.account.security")}
                 </Button>
               </div>
             </CardContent>
@@ -3023,12 +3065,12 @@ export function VendorStoreView({
         <div className="max-w-2xl mx-auto px-4 py-8">
           <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
             <ChevronLeft className="w-4 h-4 mr-2" />
-            Back to Profile
+            {t("storefront.account.backToProfile")}
           </Button>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base sm:text-lg">Edit Profile</CardTitle>
+              <CardTitle className="text-base sm:text-lg">{t("storefront.account.editProfile")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6 min-w-0">
@@ -3065,7 +3107,7 @@ export function VendorStoreView({
                         variant="default"
                         size="icon"
                         className="absolute bottom-0.5 right-0.5 h-7 w-7 min-h-0 rounded-md border-2 border-white bg-slate-900 p-0 text-white shadow-md hover:bg-slate-800 hover:text-white focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-1 [&_svg]:!size-3.5"
-                        aria-label="Edit profile photo"
+                        aria-label={t("profile.editPhoto")}
                       >
                         <Pencil className="size-3.5" strokeWidth={2.5} />
                       </Button>
@@ -3078,7 +3120,7 @@ export function VendorStoreView({
                         }
                       >
                         <Upload className="mr-2 h-4 w-4" />
-                        Change photo
+                        {t("storefront.account.changePhoto")}
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         className="cursor-pointer text-slate-700 focus:text-slate-900"
@@ -3086,31 +3128,31 @@ export function VendorStoreView({
                         onSelect={() => setProfileForm((prev) => ({ ...prev, profileImage: null }))}
                       >
                         <Trash2 className="mr-2 h-4 w-4" />
-                        Remove photo
+                        {t("storefront.account.removePhoto")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
                 <div className="flex-1 min-w-0 w-full sm:w-auto text-center sm:text-left">
-                  <p className="text-sm font-medium text-slate-900">Profile Picture</p>
-                  <p className="text-xs text-slate-500 mt-1">Tap the pencil — JPG, PNG or WEBP (auto-compressed)</p>
+                  <p className="text-sm font-medium text-slate-900">{t("storefront.account.profilePicture")}</p>
+                  <p className="text-xs text-slate-500 mt-1">{t("storefront.account.profilePictureHint")}</p>
                 </div>
               </div>
 
               <Separator />
 
               <div className="space-y-2">
-                <Label htmlFor="vendor-edit-name">Full Name</Label>
+                <Label htmlFor="vendor-edit-name">{t("profile.fullName")}</Label>
                 <Input
                   id="vendor-edit-name"
                   value={profileForm.name}
                   onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                  placeholder="Enter your full name"
+                  placeholder={t("checkout.fullName.placeholder")}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="vendor-edit-email">Email Address</Label>
+                <Label htmlFor="vendor-edit-email">{t("storefront.account.emailAddress")}</Label>
                 <Input
                   id="vendor-edit-email"
                   type="email"
@@ -3121,14 +3163,14 @@ export function VendorStoreView({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="vendor-edit-phone">Phone Number</Label>
+                <Label htmlFor="vendor-edit-phone">{t("storefront.account.phoneNumber")}</Label>
                 <Input
                   id="vendor-edit-phone"
                   value={profileForm.phone}
                   onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
                   placeholder="+95 9 XXX XXX XXX"
                 />
-                <p className="text-xs text-slate-500">Myanmar phone format</p>
+                <p className="text-xs text-slate-500">{t("storefront.account.myanmarPhoneFormat")}</p>
               </div>
 
               <div className="flex gap-3 pt-4">
@@ -3138,7 +3180,7 @@ export function VendorStoreView({
                   className="flex-1 bg-[#1a1d29] hover:bg-slate-900 text-white font-semibold shadow-lg transition-colors"
                 >
                   <Check className="w-4 h-4 mr-2" />
-                  {isProfileSaving ? "Saving..." : "Save Changes"}
+                  {isProfileSaving ? t("storefront.account.saving") : t("storefront.account.saveChanges")}
                 </Button>
                 <Button
                   variant="outline"
@@ -3146,7 +3188,7 @@ export function VendorStoreView({
                   disabled={isProfileSaving}
                   className="flex-1"
                 >
-                  Cancel
+                  {t("storefront.account.cancel")}
                 </Button>
               </div>
             </CardContent>
@@ -3160,12 +3202,12 @@ export function VendorStoreView({
         <div className="max-w-6xl mx-auto">
           <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
             <ChevronLeft className="w-4 h-4 mr-2" />
-            Back to Profile
+            {t("storefront.account.backToProfile")}
           </Button>
 
           <div className="mb-8">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Order History</h1>
-            <p className="text-slate-600 text-sm">View and track all your orders</p>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">{t("storefront.account.orderHistory")}</h1>
+            <p className="text-slate-600 text-sm">{t("storefront.account.ordersDescription")}</p>
           </div>
 
           {ordersLoading && <VendorOrdersListSkeleton rows={5} />}
@@ -3174,13 +3216,13 @@ export function VendorStoreView({
             <Card>
               <CardContent className="py-16 text-center">
                 <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Error Loading Orders</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">{t("storefront.account.errorLoadingOrders")}</h3>
                 <p className="text-slate-600 mb-6">{ordersError}</p>
                 <Button
                   onClick={() => window.location.reload()}
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
-                  Retry
+                  {t("storefront.account.retry")}
                 </Button>
               </CardContent>
             </Card>
@@ -3190,10 +3232,10 @@ export function VendorStoreView({
             <Card>
               <CardContent className="py-16 text-center">
                 <Package className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">No Orders Yet</h3>
-                <p className="text-slate-600 mb-6">You haven&apos;t placed any orders yet.</p>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">{t("storefront.account.noOrdersYet")}</h3>
+                <p className="text-slate-600 mb-6">{t("storefront.account.noOrdersDescription")}</p>
                 <Button onClick={() => goToProfileMode("storefront")} className="bg-black text-white hover:bg-zinc-900">
-                  Start Shopping
+                  {t("storefront.account.startShopping")}
                 </Button>
               </CardContent>
             </Card>
@@ -3229,13 +3271,13 @@ export function VendorStoreView({
                         <div className="flex items-center gap-1.5">
                           <Package className="w-4 h-4 shrink-0" />
                           <span>
-                            {order.items?.length || 0} {order.items?.length === 1 ? "item" : "items"}
+                            {order.items?.length || 0} {order.items?.length === 1 ? t("cart.item") : t("cart.items")}
                           </span>
                         </div>
                       </div>
                       <div className="pt-3 border-t border-slate-100">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-slate-600">Total Amount</span>
+                          <span className="text-sm text-slate-600">{t("storefront.account.totalAmount")}</span>
                           <span className="text-lg sm:text-xl font-bold text-black">
                             {Math.round(order.total || order.totalAmount || 0)} MMK
                           </span>
@@ -3249,7 +3291,7 @@ export function VendorStoreView({
                         }
                       >
                         <Eye className="w-4 h-4 mr-2" />
-                        View Details
+                        {t("storefront.account.viewDetails")}
                       </Button>
                     </div>
                   </CardContent>
@@ -3267,13 +3309,13 @@ export function VendorStoreView({
         <div className="max-w-4xl mx-auto px-4">
           <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
             <ChevronLeft className="w-4 h-4 mr-2" />
-            Back to Profile
+            {t("storefront.account.backToProfile")}
           </Button>
 
           <div className="mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Shipping Addresses</h1>
-              <p className="text-slate-600 text-sm">Manage your delivery addresses</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">{t("storefront.account.shippingAddresses")}</h1>
+              <p className="text-slate-600 text-sm">{t("storefront.account.manageDeliveryAddresses")}</p>
             </div>
             <Button
               onClick={() => {
@@ -3297,14 +3339,14 @@ export function VendorStoreView({
               className="bg-slate-900 hover:bg-slate-800 text-white shrink-0"
             >
               <Plus className="w-4 h-4 mr-2" />
-              Add Address
+              {t("storefront.account.addAddress")}
             </Button>
           </div>
 
           {showAddressForm && (
             <Card className="mb-6 border-2 border-slate-300">
               <CardHeader>
-                <CardTitle>{editingAddress ? "Edit Address" : "Add New Address"}</CardTitle>
+                <CardTitle>{editingAddress ? t("storefront.account.editAddress") : t("storefront.account.addNewAddress")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <ShippingAddressFormFields
@@ -3317,11 +3359,11 @@ export function VendorStoreView({
                   <Button
                     onClick={async () => {
                       if (!isShippingAddressFormValid(addressForm)) {
-                        toast.error("Please fill in all required fields");
+                        toast.error(t("storefront.account.requiredFields"));
                         return;
                       }
                       if (!addressUserId) {
-                        toast.error("Please sign in to save addresses");
+                        toast.error(t("storefront.account.signInToSaveAddresses"));
                         return;
                       }
 
@@ -3345,11 +3387,11 @@ export function VendorStoreView({
                           addr.id === editingAddress.id ? newAddress : addr
                         );
                         setShippingAddresses(updatedAddresses);
-                        toast.success("Address updated successfully!");
+                        toast.success(t("storefront.account.addressUpdated"));
                       } else {
                         updatedAddresses = [...updatedAddresses, newAddress];
                         setShippingAddresses(updatedAddresses);
-                        toast.success("Address added successfully!");
+                        toast.success(t("storefront.account.addressAdded"));
                       }
 
                       localStorage.setItem(`migoo-shipping-addresses-${addressUserId}`, JSON.stringify(updatedAddresses));
@@ -3376,7 +3418,7 @@ export function VendorStoreView({
                     className="flex-1 bg-slate-900 hover:bg-slate-800 text-white"
                   >
                     <Check className="w-4 h-4 mr-2" />
-                    {editingAddress ? "Update Address" : "Save Address"}
+                    {editingAddress ? t("storefront.account.updateAddress") : t("storefront.account.saveAddress")}
                   </Button>
                   <Button
                     variant="outline"
@@ -3386,7 +3428,7 @@ export function VendorStoreView({
                     }}
                     className="flex-1"
                   >
-                    Cancel
+                    {t("storefront.account.cancel")}
                   </Button>
                 </div>
               </CardContent>
@@ -3399,8 +3441,8 @@ export function VendorStoreView({
             <Card>
               <CardContent className="py-16 text-center">
                 <MapPin className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">No Addresses Yet</h3>
-                <p className="text-slate-600 mb-6">Add a shipping address to make checkout faster</p>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">{t("storefront.account.noAddressesYet")}</h3>
+                <p className="text-slate-600 mb-6">{t("storefront.account.noAddressesDescription")}</p>
                 <Button
                   onClick={() => {
                     setShowAddressForm(true);
@@ -3421,7 +3463,7 @@ export function VendorStoreView({
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
                   <Plus className="w-4 h-4 mr-2" />
-                  Add Your First Address
+                  {t("storefront.account.addFirstAddress")}
                 </Button>
               </CardContent>
             </Card>
@@ -3435,7 +3477,7 @@ export function VendorStoreView({
                         <h3 className="font-bold text-slate-900 mb-1 flex items-center gap-2 flex-wrap">
                           {address.label}
                           {address.isDefault && (
-                            <Badge className="bg-slate-900 hover:bg-slate-900 text-xs">Default</Badge>
+                            <Badge className="bg-slate-900 hover:bg-slate-900 text-xs">{t("storefront.account.default")}</Badge>
                           )}
                         </h3>
                         <p className="text-sm font-medium text-slate-700">{address.recipientName}</p>
@@ -3489,21 +3531,21 @@ export function VendorStoreView({
                         }}
                       >
                         <Settings className="w-4 h-4 mr-2" />
-                        Edit
+                        {t("storefront.account.edit")}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
                         onClick={async () => {
-                          if (!confirm("Are you sure you want to delete this address?")) return;
+                          if (!confirm(t("storefront.account.deleteAddressConfirm"))) return;
                           if (!addressUserId) {
-                            toast.error("Please sign in");
+                            toast.error(t("storefront.account.signInRequiredToast"));
                             return;
                           }
                           const updatedAddresses = shippingAddresses.filter((addr) => addr.id !== address.id);
                           setShippingAddresses(updatedAddresses);
-                          toast.success("Address deleted successfully!");
+                          toast.success(t("storefront.account.addressDeleted"));
                           localStorage.setItem(
                             `migoo-shipping-addresses-${addressUserId}`,
                             JSON.stringify(updatedAddresses)
@@ -3526,7 +3568,7 @@ export function VendorStoreView({
                         }}
                       >
                         <Trash2 className="w-4 h-4 mr-2" />
-                        Delete
+                        {t("storefront.account.delete")}
                       </Button>
                     </div>
                   </CardContent>
@@ -3542,19 +3584,19 @@ export function VendorStoreView({
       <div className="max-w-2xl mx-auto px-4 py-8">
         <Button variant="ghost" onClick={() => goToProfileMode("view-profile")} className="mb-6 hover:bg-slate-100">
           <ChevronLeft className="w-4 h-4 mr-2" />
-          Back to Profile
+          {t("storefront.account.backToProfile")}
         </Button>
 
         <div className="mb-8">
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">Security Settings</h1>
-          <p className="text-slate-600 text-sm">Manage your account security and password</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">{t("storefront.account.securitySettings")}</h1>
+          <p className="text-slate-600 text-sm">{t("storefront.account.securityDescription")}</p>
         </div>
 
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="w-5 h-5 text-slate-700" />
-              Change Password
+              {t("storefront.account.changePassword")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -3566,12 +3608,12 @@ export function VendorStoreView({
               className="space-y-4"
             >
               <div>
-                <Label htmlFor="vendor-cur-pw">Current Password *</Label>
+                <Label htmlFor="vendor-cur-pw">{t("storefront.account.currentPassword")}</Label>
                 <div className="relative">
                   <Input
                     id="vendor-cur-pw"
                     type={showPasswordFields.current ? "text" : "password"}
-                    placeholder="Enter current password"
+                    placeholder={t("storefront.account.currentPasswordPlaceholder")}
                     value={passwordForm.currentPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
                     required
@@ -3584,19 +3626,19 @@ export function VendorStoreView({
                       setShowPasswordFields((prev) => ({ ...prev, current: !prev.current }))
                     }
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    aria-label={showPasswordFields.current ? "Hide password" : "Show password"}
+                    aria-label={showPasswordFields.current ? t("storefront.account.hidePassword") : t("storefront.account.showPassword")}
                   >
                     {showPasswordFields.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
               <div>
-                <Label htmlFor="vendor-new-pw">New Password *</Label>
+                <Label htmlFor="vendor-new-pw">{t("storefront.account.newPassword")}</Label>
                 <div className="relative">
                   <Input
                     id="vendor-new-pw"
                     type={showPasswordFields.new ? "text" : "password"}
-                    placeholder="Enter new password (min. 6 characters)"
+                    placeholder={t("storefront.account.newPasswordPlaceholder")}
                     value={passwordForm.newPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
                     required
@@ -3607,19 +3649,19 @@ export function VendorStoreView({
                     type="button"
                     onClick={() => setShowPasswordFields((prev) => ({ ...prev, new: !prev.new }))}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    aria-label={showPasswordFields.new ? "Hide password" : "Show password"}
+                    aria-label={showPasswordFields.new ? t("storefront.account.hidePassword") : t("storefront.account.showPassword")}
                   >
                     {showPasswordFields.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
               </div>
               <div>
-                <Label htmlFor="vendor-confirm-pw">Confirm New Password *</Label>
+                <Label htmlFor="vendor-confirm-pw">{t("storefront.account.confirmNewPassword")}</Label>
                 <div className="relative">
                   <Input
                     id="vendor-confirm-pw"
                     type={showPasswordFields.confirm ? "text" : "password"}
-                    placeholder="Re-enter new password"
+                    placeholder={t("storefront.account.confirmNewPasswordPlaceholder")}
                     value={passwordForm.confirmPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
                     required
@@ -3632,7 +3674,7 @@ export function VendorStoreView({
                       setShowPasswordFields((prev) => ({ ...prev, confirm: !prev.confirm }))
                     }
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-                    aria-label={showPasswordFields.confirm ? "Hide password" : "Show password"}
+                    aria-label={showPasswordFields.confirm ? t("storefront.account.hidePassword") : t("storefront.account.showPassword")}
                   >
                     {showPasswordFields.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -3644,11 +3686,11 @@ export function VendorStoreView({
                 className="w-full bg-slate-900 hover:bg-slate-800 text-white"
               >
                 {isChangingPassword ? (
-                  "Changing password…"
+                  t("storefront.account.changingPassword")
                 ) : (
                   <>
                     <Check className="w-4 h-4 mr-2" />
-                    Change Password
+                    {t("storefront.account.changePassword")}
                   </>
                 )}
               </Button>
@@ -3660,18 +3702,18 @@ export function VendorStoreView({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="w-5 h-5 text-slate-700" />
-              Account Information
+              {t("storefront.account.accountInformation")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label className="text-sm text-slate-600">Email Address</Label>
-              <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? "Not provided"}</p>
-              <p className="text-xs text-slate-500 mt-1">Your email is used for login and notifications</p>
+              <Label className="text-sm text-slate-600">{t("storefront.account.emailAddress")}</Label>
+              <p className="font-medium text-slate-900">{getCustomerDisplayEmail(user) ?? t("storefront.account.notProvided")}</p>
+              <p className="text-xs text-slate-500 mt-1">{t("storefront.account.emailLoginHint")}</p>
             </div>
             <Separator />
             <div>
-              <Label className="text-sm text-slate-600">Account Created</Label>
+              <Label className="text-sm text-slate-600">{t("storefront.account.accountCreated")}</Label>
               <p className="font-medium text-slate-900">{new Date().toLocaleDateString("en-GB")}</p>
             </div>
           </CardContent>
@@ -4537,7 +4579,7 @@ export function VendorStoreView({
         overrides?.quantity ??
         (selectedProduct?.id === product.id ? quantity : 1);
       if (!canPurchase(product, variantForStock, qtyCheck)) {
-        toast.error("This item is out of stock");
+        toast.error(t("storefront.product.outOfStockTitle"));
         return false;
       }
 
@@ -5229,7 +5271,7 @@ export function VendorStoreView({
 
   const toggleWishlist = (productId: string, productName?: string, optimisticProduct?: Product | null) => {
     if (!user) {
-      toast.error("Please sign in to add items to your wishlist");
+      toast.error(t("storefront.account.signInRequiredToast"));
       setShowAuthModal(true);
       setAuthMode("login");
       return;
@@ -5291,7 +5333,9 @@ export function VendorStoreView({
       return [...prev, optimisticProduct];
     });
     toast.success(
-      wasListed ? `${label} removed from wishlist` : `${label} added to wishlist!`
+      wasListed
+        ? t("storefront.product.removedFromWishlist").replace("{name}", label)
+        : t("storefront.product.addedToWishlist").replace("{name}", label)
     );
   };
 
@@ -5465,7 +5509,7 @@ export function VendorStoreView({
                 <div className="relative w-full max-w-lg">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <Input
-                    placeholder="Search products..."
+                    placeholder={t("storefront.search.placeholder")}
                     value={searchQuery}
                     onChange={(e) => handleVendorSearchInputChange(e.target.value)}
                     onKeyDown={handleVendorSearchKeyDown}
@@ -5503,11 +5547,11 @@ export function VendorStoreView({
                         </ul>
                       ) : (
                         <p className="px-3 py-2.5 text-sm text-slate-500">
-                          No matches in loaded products.
+                          {t("storefront.search.noMatches")}
                         </p>
                       )}
                       <div className="border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
-                        Press Enter to search the full catalog
+                        {t("storefront.search.enterHint")}
                       </div>
                     </div>
                   ) : null}
@@ -5515,12 +5559,14 @@ export function VendorStoreView({
               </div>
 
               <div className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0 md:static md:z-auto md:translate-y-0 md:gap-1">
+                {renderStorefrontLanguageMenu()}
+
                 <Button
                   variant="ghost"
                   size="icon"
                   className="relative hidden md:flex hover:bg-slate-100 rounded-full h-10 w-10 shrink-0"
                   onClick={goToSavedProducts}
-                  title="Saved products"
+                  title={t("storefront.savedProducts")}
                 >
                   <Heart className="w-5 h-5 text-slate-700" />
                   {savedVendorWishlistTotal > 0 && (
@@ -5538,7 +5584,7 @@ export function VendorStoreView({
                     setVendorMobileNavOpen(false);
                     setVendorMobileSearchOpen(true);
                   }}
-                  aria-label="Search"
+                  aria-label={t("storefront.search")}
                 >
                   <Search className="w-[1.15rem] h-[1.15rem] text-slate-700" />
                 </Button>
@@ -5548,7 +5594,7 @@ export function VendorStoreView({
                   size="icon"
                   onClick={() => setCartOpen(true)}
                   className="relative hover:bg-slate-100 rounded-full h-9 w-9 shrink-0 p-0 md:h-10 md:w-10"
-                  aria-label="Cart"
+                  aria-label={t("storefront.cart")}
                 >
                   <ShoppingCart className="w-[1.15rem] h-[1.15rem] md:w-5 md:h-5 text-slate-700" />
                   {totalItems > 0 && (
@@ -5563,7 +5609,7 @@ export function VendorStoreView({
                   size="icon"
                   className="relative hover:bg-slate-100 md:hidden h-9 w-9 shrink-0 p-0"
                   onClick={goToSavedProducts}
-                  aria-label="Saved products"
+                  aria-label={t("storefront.savedProducts")}
                 >
                   <Heart className="w-[1.15rem] h-[1.15rem] text-slate-700" />
                   {savedVendorWishlistTotal > 0 && (
@@ -5586,7 +5632,7 @@ export function VendorStoreView({
                       setAuthMode("login");
                     }}
                   >
-                    Login/Register
+                    {t("storefront.loginRegister")}
                   </Button>
                 )}
 
@@ -5628,28 +5674,28 @@ export function VendorStoreView({
                         </div>
                         <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("view-profile")}>
                           <Eye className="w-4 h-4 mr-3" />
-                          View Profile
+                          {t("storefront.account.viewProfile")}
                         </Button>
                         <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("edit-profile")}>
                           <Pencil className="w-4 h-4 mr-3" />
-                          Edit Profile
+                          {t("storefront.account.editProfile")}
                         </Button>
                         <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("order-history")}>
                           <Package className="w-4 h-4 mr-3" />
-                          Order History
+                          {t("storefront.account.orderHistory")}
                         </Button>
                         <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("shipping-addresses")}>
                           <MapPin className="w-4 h-4 mr-3" />
-                          Shipping Addresses
+                          {t("storefront.account.shippingAddresses")}
                         </Button>
                         <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("security-settings")}>
                           <Shield className="w-4 h-4 mr-3" />
-                          Security Settings
+                          {t("storefront.account.securitySettings")}
                         </Button>
                         <Separator className="my-2" />
                         <Button variant="ghost" className="w-full justify-start text-red-600 hover:bg-red-50" onClick={handleLogout}>
                           <LogOut className="w-4 h-4 mr-3" />
-                          Logout
+                          {t("storefront.account.logout")}
                         </Button>
                       </div>
                     </PopoverContent>
@@ -5664,7 +5710,7 @@ export function VendorStoreView({
                     setVendorMobileSearchOpen(false);
                     setVendorMobileNavOpen(true);
                   }}
-                  aria-label="Open menu"
+                  aria-label={t("storefront.openMenu")}
                 >
                   <Menu className="w-[1.15rem] h-[1.15rem] text-slate-700" />
                 </Button>
@@ -5752,11 +5798,11 @@ export function VendorStoreView({
                         : "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-300 text-xs font-medium px-2.5 py-0.5"
                     }
                   >
-                    {vendorOutOfStock ? "Out of Stock" : "In Stock"}
+                    {vendorOutOfStock ? t("storefront.product.outOfStockTitle") : t("storefront.product.inStock")}
                   </Badge>
                 </div>
                 <h1 className="text-sm sm:text-base font-semibold text-slate-900 mb-2 leading-tight">
-                  {selectedProduct.name || "Product"}
+                  {selectedProduct.name || t("storefront.product.product")}
                 </h1>
                 <div className="flex items-center gap-2 flex-wrap">
                   <div className="flex items-center gap-0.5">
@@ -5768,7 +5814,7 @@ export function VendorStoreView({
                     {(selectedProduct.rating ?? 4.8).toFixed(1)}/5.0
                   </span>
                   <Separator orientation="vertical" className="h-3 hidden sm:block" />
-                  <span className="text-xs text-slate-600">{selectedProduct.reviewCount ?? 0} sold</span>
+                  <span className="text-xs text-slate-600">{selectedProduct.reviewCount ?? 0} {t("storefront.product.sold")}</span>
                 </div>
               </div>
 
@@ -5783,7 +5829,10 @@ export function VendorStoreView({
                       <>
                         <span className="text-sm text-slate-400 line-through">{formatPriceMMK(displayCompareAt)}</span>
                         <Badge className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-0 text-xs">
-                          Save {Math.round(((displayCompareAt - displayPriceVal) / displayCompareAt) * 100)}%
+                          {t("storefront.product.savePercent").replace(
+                            "{percent}",
+                            String(Math.round(((displayCompareAt - displayPriceVal) / displayCompareAt) * 100))
+                          )}
                         </Badge>
                       </>
                     )}
@@ -5859,7 +5908,7 @@ export function VendorStoreView({
                   }}
                 >
                   <span className="block leading-none">
-                    {vendorOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
+                    {vendorOutOfStock ? t("storefront.product.outOfStock") : t("storefront.product.addToCart")}
                   </span>
                 </Button>
                 <Button 
@@ -5875,7 +5924,7 @@ export function VendorStoreView({
                   }}
                 >
                   <span className="block leading-none">
-                    BUY NOW
+                    {t("storefront.product.buyNow")}
                   </span>
                 </Button>
                 <Button 
@@ -5893,45 +5942,45 @@ export function VendorStoreView({
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
                     <Truck className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-700" />
                   </div>
-                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">Free Delivery</p>
+                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">{t("storefront.product.freeDelivery")}</p>
                 </div>
                 <div className="text-center">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
                     <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-blue-700" />
                   </div>
-                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">Buyer Protection</p>
+                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">{t("storefront.product.buyerProtection")}</p>
                 </div>
                 <div className="text-center">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-1 sm:mb-2">
                     <RefreshCw className="w-5 h-5 sm:w-6 sm:h-6 text-amber-700" />
                   </div>
-                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">7-Day Returns</p>
+                  <p className="text-[10px] sm:text-xs font-medium text-slate-700">{t("storefront.product.returns")}</p>
                 </div>
               </div>
 
               {/* Product Details — desktop: above buttons; mobile: below sticky purchase bar */}
               <Card className="order-2 md:order-1 border border-slate-200 shadow-sm">
                 <CardContent className="p-5">
-                  <h3 className="font-semibold text-slate-900 mb-5 text-sm">Product Details</h3>
+                  <h3 className="font-semibold text-slate-900 mb-5 text-sm">{t("storefront.product.details")}</h3>
                   <div className="grid grid-cols-2 gap-x-8 gap-y-5">
                     <div className="flex items-start gap-3">
                       <Package className="w-[18px] h-[18px] text-amber-600 mt-px flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">Condition</p>
-                        <p className="font-medium text-slate-900 text-sm">Brand New</p>
+                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">{t("storefront.product.condition")}</p>
+                        <p className="font-medium text-slate-900 text-sm">{t("storefront.product.brandNew")}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
                       <Store className="w-[18px] h-[18px] text-amber-600 mt-px flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">Sold by</p>
+                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">{t("storefront.product.soldBy")}</p>
                         <p className="font-medium text-slate-900 text-sm truncate">{storeName}</p>
                       </div>
                     </div>
                     <div className="flex items-start gap-3">
                       <TrendingUp className="w-[18px] h-[18px] text-amber-600 mt-px flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">Availability</p>
+                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">{t("storefront.product.availability")}</p>
                         <div className="flex items-center gap-2">
                           <p className={`font-medium text-sm ${
                             vendorOutOfStock
@@ -5940,16 +5989,16 @@ export function VendorStoreView({
                                 ? "text-amber-600"
                                 : "text-emerald-700"
                           }`}>
-                            {getEffectiveInventory(selectedProduct, vendorStockVariant)} units
+                            {getEffectiveInventory(selectedProduct, vendorStockVariant)} {t("storefront.product.units")}
                           </p>
                           {vendorOutOfStock && (
                             <Badge variant="outline" className="bg-red-50 text-red-600 border-red-200 text-xs">
-                              OUT OF STOCK
+                              {t("storefront.product.outOfStock")}
                             </Badge>
                           )}
                           {vendorLowStock && (
                             <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200 text-xs">
-                              LOW STOCK
+                              {t("storefront.product.lowStock")}
                             </Badge>
                           )}
                         </div>
@@ -5958,8 +6007,8 @@ export function VendorStoreView({
                     <div className="flex items-start gap-3">
                       <Truck className="w-[18px] h-[18px] text-amber-600 mt-px flex-shrink-0" />
                       <div className="min-w-0">
-                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">Delivery</p>
-                        <p className="font-medium text-slate-900 text-sm">Complimentary</p>
+                        <p className="text-[10px] text-slate-500 mb-1 font-normal uppercase tracking-wide">{t("storefront.product.delivery")}</p>
+                        <p className="font-medium text-slate-900 text-sm">{t("storefront.product.complimentary")}</p>
                       </div>
                     </div>
                   </div>
@@ -5983,7 +6032,7 @@ export function VendorStoreView({
                 }}
               >
                 <span className="block leading-none truncate">
-                  {vendorOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
+                  {vendorOutOfStock ? t("storefront.product.outOfStock") : t("storefront.product.addToCart")}
                 </span>
               </Button>
               <Button
@@ -5998,7 +6047,7 @@ export function VendorStoreView({
                   handleAddToCart(selectedProduct, { buyNow: true });
                 }}
               >
-                <span className="block leading-none truncate">BUY NOW</span>
+                <span className="block leading-none truncate">{t("storefront.product.buyNow")}</span>
               </Button>
               <Button
                 variant="outline"
@@ -6014,7 +6063,7 @@ export function VendorStoreView({
           <div className="mb-8">
             <Card className="border border-slate-200 shadow-sm">
               <CardContent className="p-6">
-                <h2 className="text-xl font-bold text-slate-900 mb-4">Product Description</h2>
+                <h2 className="text-xl font-bold text-slate-900 mb-4">{t("storefront.product.description")}</h2>
                 <div className="prose prose-slate max-w-none">
                   {/* Description Text */}
                   <div className="text-slate-700 leading-relaxed space-y-3 product-description-wrapper">
@@ -6037,7 +6086,7 @@ export function VendorStoreView({
                           if (imageSrcs.length > 0) {
                             return (
                               <div className="mt-6">
-                                <h3 className="text-sm font-semibold text-slate-700 mb-3">Product Images</h3>
+                                <h3 className="text-sm font-semibold text-slate-700 mb-3">{t("storefront.product.images")}</h3>
                                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                   {imageSrcs.map((src, index) => (
                                     <div 
@@ -6066,7 +6115,7 @@ export function VendorStoreView({
                       </>
                     ) : (
                       <p className="text-sm">
-                        Experience exceptional quality with this premium product. Meticulously crafted with attention to detail, featuring superior materials and elegant design. Perfect for those who appreciate fine craftsmanship and timeless style.
+                        {t("storefront.product.fallbackDescription")}
                       </p>
                     )}
                   </div>
@@ -6109,7 +6158,7 @@ export function VendorStoreView({
             className="fixed inset-0 z-[200] flex items-center justify-center bg-black/85 p-3 sm:p-6"
             role="dialog"
             aria-modal="true"
-            aria-label="Product image gallery"
+            aria-label={t("storefront.product.gallery")}
             onClick={() => setDescLightboxOpen(false)}
           >
             <button
@@ -6119,7 +6168,7 @@ export function VendorStoreView({
                 e.stopPropagation();
                 setDescLightboxOpen(false);
               }}
-              aria-label="Close gallery"
+              aria-label={t("storefront.product.closeGallery")}
             >
               <X className="h-5 w-5" />
             </button>
@@ -6132,7 +6181,7 @@ export function VendorStoreView({
                 e.stopPropagation();
                 setLightboxIndex((i) => Math.max(0, i - 1));
               }}
-              aria-label="Previous image"
+              aria-label={t("storefront.product.previousImage")}
             >
               <ChevronLeft className="h-6 w-6 sm:h-7 sm:w-7" />
             </button>
@@ -6145,7 +6194,7 @@ export function VendorStoreView({
                 e.stopPropagation();
                 setLightboxIndex((i) => Math.min(lightboxImages.length - 1, i + 1));
               }}
-              aria-label="Next image"
+              aria-label={t("storefront.product.nextImage")}
             >
               <ChevronRight className="h-6 w-6 sm:h-7 sm:w-7" />
             </button>
@@ -6281,7 +6330,7 @@ export function VendorStoreView({
               <div className="relative w-full max-w-lg">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                 <Input
-                  placeholder="Search products..."
+                  placeholder={t("storefront.search.placeholder")}
                   value={searchQuery}
                   onChange={(e) => handleVendorSearchInputChange(e.target.value)}
                   onKeyDown={handleVendorSearchKeyDown}
@@ -6291,12 +6340,14 @@ export function VendorStoreView({
             </div>
 
             <div className="absolute right-0 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0 md:static md:z-auto md:translate-y-0 md:gap-1">
+              {renderStorefrontLanguageMenu()}
+
               <Button
                 variant="ghost"
                 size="icon"
                 className="relative hidden md:flex hover:bg-slate-100 rounded-full h-10 w-10 shrink-0"
                 onClick={goToSavedProducts}
-                title="Saved products"
+                title={t("storefront.savedProducts")}
               >
                 <Heart className="w-5 h-5 text-slate-700" />
                 {savedVendorWishlistTotal > 0 && (
@@ -6314,7 +6365,7 @@ export function VendorStoreView({
                   setVendorMobileNavOpen(false);
                   setVendorMobileSearchOpen(true);
                 }}
-                aria-label="Search"
+                aria-label={t("storefront.search")}
               >
                 <Search className="w-[1.15rem] h-[1.15rem] text-slate-700" />
               </Button>
@@ -6324,7 +6375,7 @@ export function VendorStoreView({
                 size="icon"
                 onClick={() => setCartOpen(true)}
                 className="relative hover:bg-slate-100 h-9 w-9 shrink-0 p-0 md:h-10 md:w-10"
-                aria-label="Cart"
+                aria-label={t("storefront.cart")}
               >
                 <ShoppingCart className="w-[1.15rem] h-[1.15rem] md:h-5 md:w-5 text-slate-700" />
                 {totalItems > 0 && (
@@ -6339,7 +6390,7 @@ export function VendorStoreView({
                 size="icon"
                 className="relative hover:bg-slate-100 md:hidden h-9 w-9 shrink-0 p-0"
                 onClick={goToSavedProducts}
-                aria-label="Saved products"
+                aria-label={t("storefront.savedProducts")}
               >
                 <Heart className="w-[1.15rem] h-[1.15rem] text-slate-700" />
                 {savedVendorWishlistTotal > 0 && (
@@ -6362,7 +6413,7 @@ export function VendorStoreView({
                     setAuthMode("login");
                   }}
                 >
-                  Login/Register
+                  {t("storefront.loginRegister")}
                 </Button>
               )}
 
@@ -6404,28 +6455,28 @@ export function VendorStoreView({
                       </div>
                       <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("view-profile")}>
                         <Eye className="w-4 h-4 mr-3" />
-                        View Profile
+                        {t("storefront.account.viewProfile")}
                       </Button>
                       <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("edit-profile")}>
                         <Pencil className="w-4 h-4 mr-3" />
-                        Edit Profile
+                        {t("storefront.account.editProfile")}
                       </Button>
                       <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("order-history")}>
                         <Package className="w-4 h-4 mr-3" />
-                        Order History
+                        {t("storefront.account.orderHistory")}
                       </Button>
                       <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("shipping-addresses")}>
                         <MapPin className="w-4 h-4 mr-3" />
-                        Shipping Addresses
+                        {t("storefront.account.shippingAddresses")}
                       </Button>
                       <Button variant="ghost" className="w-full justify-start text-slate-700 hover:bg-slate-100" onClick={() => handleProfileAction("security-settings")}>
                         <Shield className="w-4 h-4 mr-3" />
-                        Security Settings
+                        {t("storefront.account.securitySettings")}
                       </Button>
                       <Separator className="my-2" />
                       <Button variant="ghost" className="w-full justify-start text-red-600 hover:bg-red-50" onClick={handleLogout}>
                         <LogOut className="w-4 h-4 mr-3" />
-                        Logout
+                        {t("storefront.account.logout")}
                       </Button>
                     </div>
                   </PopoverContent>
@@ -6440,7 +6491,7 @@ export function VendorStoreView({
                   setVendorMobileSearchOpen(false);
                   setVendorMobileNavOpen(true);
                 }}
-                aria-label="Open menu"
+                aria-label={t("storefront.openMenu")}
               >
                 <Menu className="w-[1.15rem] h-[1.15rem] text-slate-700" />
               </Button>
@@ -6470,12 +6521,12 @@ export function VendorStoreView({
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                   <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
                     <Heart className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8 fill-white shrink-0" />
-                    <h1 className="text-xl sm:text-2xl font-serif font-bold">Saved Products</h1>
+                    <h1 className="text-xl sm:text-2xl font-serif font-bold">{t("storefront.savedProducts")}</h1>
                   </div>
                   <p className="text-slate-300 text-sm min-h-[1.375rem]">
                     {(() => {
                       const n = savedVendorWishlistTotal;
-                      return `${n} ${n === 1 ? "item" : "items"} saved for later`;
+                      return t("storefront.savedProducts.count").replace("{count}", String(n));
                     })()}
                   </p>
                 </div>
@@ -6489,14 +6540,14 @@ export function VendorStoreView({
                   return (
                     <Card className="text-center py-16 sm:py-20 border-0 shadow-md">
                       <Heart className="w-16 h-16 mx-auto text-slate-300 mb-4" />
-                      <p className="text-lg text-slate-500 mb-2">No saved products from this store yet</p>
+                      <p className="text-lg text-slate-500 mb-2">{t("storefront.savedProducts.empty")}</p>
                       <p className="text-sm text-slate-400 mb-6">
                         {wishlist.length > 0
-                          ? "Your wishlist has items from other areas — browse this shop and tap the heart on products you like."
-                          : "Start adding products to your wishlist!"}
+                          ? t("storefront.savedProducts.otherAreasHint")
+                          : t("storefront.savedProducts.startHint")}
                       </p>
                       <Button onClick={() => navigateStoreHome()} className="bg-slate-900 text-white hover:bg-black">
-                        Browse products
+                        {t("storefront.browseProducts")}
                       </Button>
                     </Card>
                   );
@@ -6535,8 +6586,8 @@ export function VendorStoreView({
                             if (ok) {
                               toast.success(
                                 opts?.buyNow
-                                  ? `Continue to checkout — ${product.name}`
-                                  : `${product.name} added to cart!`
+                                  ? t("storefront.product.continueToCheckout").replace("{name}", product.name)
+                                  : t("storefront.product.addedToCart").replace("{name}", product.name)
                               );
                             }
                           }}
@@ -6551,7 +6602,9 @@ export function VendorStoreView({
                     </div>
                     {savedVendorWishlistTotal > 0 && (
                       <p className="text-center text-sm text-slate-500 mt-6">
-                        Showing {savedHere.length} of {savedVendorWishlistTotal} saved
+                        {t("storefront.product.showingSaved")
+                          .replace("{shown}", String(savedHere.length))
+                          .replace("{total}", String(savedVendorWishlistTotal))}
                       </p>
                     )}
                     {savedWishlistHasMore && (
@@ -6563,7 +6616,7 @@ export function VendorStoreView({
                           disabled={savedWishlistLoadingMore}
                           onClick={() => void loadMoreSavedWishlist()}
                         >
-                          {savedWishlistLoadingMore ? "Loading…" : "Load more"}
+                          {savedWishlistLoadingMore ? t("storefront.product.loading") : t("storefront.product.loadMore")}
                         </Button>
                       </div>
                     )}
@@ -6582,9 +6635,9 @@ export function VendorStoreView({
                     <X className="w-8 h-8 text-red-600" aria-hidden />
                   </div>
                 </div>
-                <h2 className="text-lg font-bold text-slate-900 mb-2">Connection Timeout</h2>
+                <h2 className="text-lg font-bold text-slate-900 mb-2">{t("storefront.product.connectionTimeout")}</h2>
                 <p className="text-slate-600 text-sm mb-6">
-                  Unable to connect to the server. Please check your internet connection and try again.
+                  {t("storefront.product.connectionTimeoutDescription")}
                 </p>
                 <Button
                   onClick={() => {
@@ -6594,7 +6647,7 @@ export function VendorStoreView({
                   className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white px-8 py-3 rounded-lg"
                 >
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Retry Connection
+                  {t("storefront.product.retryConnection")}
                 </Button>
               </div>
             )}
@@ -6602,9 +6655,9 @@ export function VendorStoreView({
             {serverStatus === 'healthy' && !isCategoryCatalogStale && products.length === 0 && (
               <div className="text-center py-20">
                 <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">No Products Found</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">{t("storefront.product.noProductsFound")}</h3>
                 <p className="text-slate-600">
-                  {searchQuery ? "Try adjusting your search" : "This store hasn't added any products yet"}
+                  {searchQuery ? t("storefront.product.tryAdjustingSearch") : t("storefront.product.noProductsYet")}
                 </p>
               </div>
             )}
@@ -6615,8 +6668,8 @@ export function VendorStoreView({
               filteredProducts.length === 0 && (
               <div className="text-center py-20">
                 <Store className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">No matching products</h3>
-                <p className="text-slate-600">Try adjusting your search or category</p>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">{t("storefront.product.noMatchingProducts")}</h3>
+                <p className="text-slate-600">{t("storefront.product.tryAdjustingSearchOrCategory")}</p>
               </div>
             )}
 
@@ -6650,7 +6703,9 @@ export function VendorStoreView({
                         });
                         if (ok) {
                           toast.success(
-                            opts?.buyNow ? `Continue to checkout — ${product.name}` : `${product.name} added to cart!`
+                            opts?.buyNow
+                              ? t("storefront.product.continueToCheckout").replace("{name}", product.name)
+                              : t("storefront.product.addedToCart").replace("{name}", product.name)
                           );
                         }
                       }}
@@ -6680,7 +6735,7 @@ export function VendorStoreView({
                       disabled={vendorCatalogLoadingMore}
                       onClick={() => void loadMoreVendorCatalog()}
                     >
-                      {vendorCatalogLoadingMore ? "Loading…" : "Load more"}
+                      {vendorCatalogLoadingMore ? t("storefront.product.loading") : t("storefront.product.loadMore")}
                     </Button>
                   </div>
                 )}

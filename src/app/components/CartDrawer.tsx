@@ -5,6 +5,7 @@ import { Separator } from "./ui/separator";
 import { useCart } from "./CartContext";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { useLanguage } from "../contexts/LanguageContext";
 
 interface CartDrawerProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ function formatMmk(amount: number): string {
 /** Matches main marketplace cart sidebar: navy header, white list, slate footer */
 export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal }: CartDrawerProps) {
   const { items, removeFromCart, updateQuantity, totalItems, totalPrice, clearCart } = useCart();
+  const { t } = useLanguage();
 
   useEffect(() => {
     if (isOpen) {
@@ -51,7 +53,9 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
   if (!isOpen) return null;
 
   const itemCountLabel =
-    totalItems === 1 ? "1 item in cart" : `${totalItems} items in cart`;
+    totalItems === 1
+      ? t("cart.itemInCart").replace("{count}", String(totalItems))
+      : t("cart.itemsInCart").replace("{count}", String(totalItems));
 
   return (
     <>
@@ -73,10 +77,10 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
         <div className="flex shrink-0 items-center justify-between border-b border-slate-800/50 bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-4 text-white">
           <div>
             <h2 id="cart-drawer-title" className="text-xl font-semibold">
-              Shopping Cart
+              {t("cart.title")}
             </h2>
             <p className="text-sm text-slate-300">
-              {totalItems} {totalItems === 1 ? "item" : "items"}
+              {totalItems} {totalItems === 1 ? t("cart.item") : t("cart.items")}
             </p>
           </div>
           <Button
@@ -85,7 +89,7 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
             size="icon"
             onClick={onClose}
             className="text-white hover:bg-white/10"
-            aria-label="Close cart"
+            aria-label={t("cart.close")}
           >
             <X className="h-5 w-5" />
           </Button>
@@ -95,10 +99,10 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
         <div className="cart-drawer-content min-h-0 flex-1 overflow-y-auto bg-white p-6">
           {items.length === 0 ? (
             <div className="py-12 text-center">
-              <p className="mb-2 text-slate-500">Your cart is empty</p>
-              <p className="mb-4 text-sm text-slate-400">Start shopping to add items</p>
+              <p className="mb-2 text-slate-500">{t("cart.empty")}</p>
+              <p className="mb-4 text-sm text-slate-400">{t("cart.startShopping")}</p>
               <Button type="button" className="bg-slate-800 hover:bg-slate-900" onClick={onClose}>
-                Continue Shopping
+                {t("cart.continueShopping")}
               </Button>
             </div>
           ) : (
@@ -112,11 +116,11 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
                   className="h-auto gap-1 px-2 text-xs font-medium text-red-600 hover:bg-red-50 hover:text-red-700"
                   onClick={() => {
                     clearCart();
-                    toast.success("Cart cleared");
+                    toast.success(t("cart.cleared"));
                   }}
                 >
                   <Trash2 className="h-3 w-3" />
-                  Clear All
+                  {t("cart.clearAll")}
                 </Button>
               </div>
 
@@ -164,13 +168,13 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
                                 variant="ghost"
                                 className="ml-auto h-6 w-6 p-0 text-slate-500 hover:bg-red-50 hover:text-red-600"
                                 onClick={() => removeFromCart(item.id)}
-                                aria-label="Remove item"
+                                aria-label={t("cart.removeItem")}
                               >
                                 <Trash2 className="h-3 w-3" />
                               </Button>
                             </div>
                             {item.quantity >= item.inventory && item.inventory > 0 && (
-                              <p className="mt-1 text-[10px] text-slate-500">Max stock reached</p>
+                              <p className="mt-1 text-[10px] text-slate-500">{t("cart.maxStockReached")}</p>
                             )}
                           </div>
                         </div>
@@ -187,14 +191,16 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
           <div className="shrink-0 space-y-4 border-t border-slate-200 bg-slate-50 p-6">
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Subtotal ({totalItems} items)</span>
+                <span className="text-slate-600">
+                  {t("cart.subtotalItems").replace("{count}", String(totalItems))}
+                </span>
                 <span className="font-medium text-slate-900">{formatMmk(totalPrice)}</span>
               </div>
 
               <Separator />
 
               <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-900">Total</span>
+                <span className="font-bold text-slate-900">{t("cart.total")}</span>
                 <p className="text-right text-xl font-bold text-slate-900">
                   {formatMmk(totalPrice)}
                 </p>
@@ -208,11 +214,11 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
                 if (onCheckout) {
                   onCheckout();
                 } else {
-                  toast("Checkout is not available");
+                  toast(t("cart.checkoutUnavailable"));
                 }
               }}
             >
-              Proceed to Checkout
+              {t("cart.proceedToCheckout")}
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
 
@@ -221,7 +227,7 @@ export function CartDrawer({ isOpen, onClose, onCheckout, user, onShowAuthModal 
               className="h-11 w-full bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
               onClick={onClose}
             >
-              Continue Shopping
+              {t("cart.continueShopping")}
             </Button>
           </div>
         )}

@@ -7,6 +7,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { isVendorUncategorizedSlug } from "../utils/vendorStoreCategory";
+import { useLanguage } from "../contexts/LanguageContext";
 
 export type VendorSubnavTab =
   | { id: "all" }
@@ -49,9 +50,9 @@ export function vendorSubnavTabKey(tab: VendorSubnavTab): string {
   return tab.id;
 }
 
-function vendorSubnavTabLabel(tab: VendorSubnavTab): string {
-  if (tab.id === "all") return "All Products";
-  if (tab.id === "uncategorized") return "Uncategorized";
+function vendorSubnavTabLabel(tab: VendorSubnavTab, t: (key: string) => string): string {
+  if (tab.id === "all") return t("storefront.categories.all");
+  if (tab.id === "uncategorized") return t("storefront.categories.uncategorized");
   return tab.name;
 }
 
@@ -122,6 +123,7 @@ export function VendorStorefrontSubnav({
   showPhone,
   onTabSelect,
 }: VendorStorefrontSubnavProps) {
+  const { t } = useLanguage();
   const rowRef = useRef<HTMLDivElement>(null);
   const phoneRef = useRef<HTMLDivElement>(null);
   const moreMeasureRef = useRef<HTMLButtonElement>(null);
@@ -190,7 +192,7 @@ export function VendorStorefrontSubnav({
                   onClick={() => onTabSelect(tab)}
                   className={vendorSubnavTabClass(active)}
                 >
-                  {vendorSubnavTabLabel(tab)}
+                  {vendorSubnavTabLabel(tab, t)}
                 </button>
               );
             })}
@@ -202,7 +204,7 @@ export function VendorStorefrontSubnav({
                     className={`${vendorSubnavTabClass(moreActive)} gap-1.5`}
                     aria-haspopup="menu"
                   >
-                    More
+                    {t("storefront.categories.more")}
                     <ChevronDown className="w-4 h-4 shrink-0 opacity-70" />
                   </button>
                 </DropdownMenuTrigger>
@@ -222,7 +224,7 @@ export function VendorStorefrontSubnav({
                           active ? "font-semibold text-amber-800 focus:text-amber-800" : undefined
                         }`}
                       >
-                        {vendorSubnavTabLabel(tab)}
+                        {vendorSubnavTabLabel(tab, t)}
                       </DropdownMenuItem>
                     );
                   })}
@@ -260,11 +262,11 @@ export function VendorStorefrontSubnav({
             tabIndex={-1}
             className={vendorSubnavTabClass(false)}
           >
-            {vendorSubnavTabLabel(tab)}
+            {vendorSubnavTabLabel(tab, t)}
           </button>
         ))}
         <button ref={moreMeasureRef} type="button" tabIndex={-1} className={`${vendorSubnavTabClass(false)} gap-1.5`}>
-          More
+          {t("storefront.categories.more")}
           <ChevronDown className="w-4 h-4 shrink-0 opacity-70" />
         </button>
       </div>

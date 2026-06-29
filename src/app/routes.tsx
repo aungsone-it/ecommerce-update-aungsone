@@ -1,6 +1,6 @@
 // Routes Configuration - Cache bust: 20260307181500
 import { lazy, Suspense, type ReactNode } from "react";
-import { Navigate, type RouteObject } from "react-router";
+import { Navigate, useRouteError, type RouteObject } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
@@ -132,6 +132,10 @@ function LazyBoundary({ children }: { children: ReactNode }) {
 }
 
 function NotFoundBoundary() {
+  const error = useRouteError();
+  if (error) {
+    console.error("[route error]", error);
+  }
   return (
     <LazyBoundary>
       <NotFound />

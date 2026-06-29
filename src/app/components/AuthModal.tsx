@@ -112,12 +112,12 @@ export function AuthModal({
 
         <CardHeader className="pt-8 text-center">
           <CardTitle className="text-xl sm:text-2xl font-extrabold text-slate-900 mb-1">
-            {mode === 'login' ? 'WELCOME' : 'CREATE ACCOUNT'}
+            {mode === 'login' ? t("storefront.auth.welcome") : t("storefront.auth.createAccount")}
           </CardTitle>
           <p className="text-xs sm:text-sm text-slate-500">
-            {mode === 'login' 
-              ? 'Sign in to access your account' 
-              : 'Join SECURE for exclusive benefits'}
+            {mode === 'login'
+              ? t("storefront.auth.signInSubtitle")
+              : t("storefront.auth.registerSubtitle").replace("{storeName}", "MIGOO")}
           </p>
         </CardHeader>
 
@@ -169,7 +169,12 @@ export function AuthModal({
                       >
                         <Upload className="w-6 h-6 sm:w-7 sm:h-7 text-slate-400 mb-1 sm:mb-1.5" />
                         <span className="text-[10px] sm:text-[11px] text-slate-500 text-center leading-tight px-1.5 sm:px-2 font-medium">
-                          Drag & Drop<br />or Click
+                          {t("storefront.auth.dragDropClick").split("\n").map((line, index) => (
+                            <span key={line}>
+                              {index > 0 && <br />}
+                              {line}
+                            </span>
+                          ))}
                         </span>
                       </label>
                     )}
@@ -186,14 +191,14 @@ export function AuthModal({
                 {/* Full Name Field */}
                 <div className="space-y-2">
                   <Label htmlFor="name" className="text-slate-700 font-medium text-xs sm:text-sm">
-                    Full Name *
+                    {t("storefront.auth.fullNameRequired")}
                   </Label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                     <Input
                       id="name"
                       type="text"
-                      placeholder="Enter your full name"
+                      placeholder={t("checkout.fullName.placeholder")}
                       className="pl-10 h-10 sm:h-11 text-sm"
                       value={formData.name}
                       onChange={(e) => onFormChange('name', e.target.value)}
@@ -205,14 +210,14 @@ export function AuthModal({
                 {/* Phone Number Field */}
                 <div className="space-y-2">
                   <Label htmlFor="phone" className="text-slate-700 font-medium text-xs sm:text-sm">
-                    Phone Number *
+                    {t("storefront.auth.phoneRequired")}
                   </Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                     <Input
                       id="phone"
                       type="tel"
-                      placeholder="+959XXXXXXXXX or 09XXXXXXXXX"
+                      placeholder={t("storefront.auth.phonePlaceholder")}
                       className="pl-10 h-10 sm:h-11 text-sm"
                       value={formData.phone}
                       onChange={(e) => onFormChange('phone', e.target.value)}
@@ -226,14 +231,14 @@ export function AuthModal({
                 {/* Email (optional on register) */}
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-slate-700 font-medium text-xs sm:text-sm">
-                    Email Address <span className="text-slate-400 font-normal">(Optional)</span>
+                    {t("storefront.auth.emailOptional")}
                   </Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                     <Input
                       id="email"
                       type="email"
-                      placeholder="your@email.com"
+                      placeholder={t("storefront.auth.emailPlaceholder")}
                       className="pl-10 h-10 sm:h-11 text-sm"
                       value={formData.email}
                       onChange={(e) => onFormChange('email', e.target.value)}
@@ -246,14 +251,14 @@ export function AuthModal({
             {mode === 'login' && (
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-medium text-xs sm:text-sm">
-                Email or Phone Number *
+                {t("storefront.auth.emailOrPhoneRequired")}
               </Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                 <Input
                   id="email"
                   type="text"
-                  placeholder="your@email.com or 09XXXXXXXXX"
+                  placeholder={t("storefront.auth.emailOrPhonePlaceholder")}
                   className="pl-10 h-10 sm:h-11 text-sm"
                   value={formData.email}
                   onChange={(e) => onFormChange('email', e.target.value)}
@@ -266,14 +271,14 @@ export function AuthModal({
 
             <div className="space-y-2">
               <Label htmlFor="password" className="text-slate-700 font-medium text-xs sm:text-sm">
-                Password *
+                {t("storefront.auth.passwordRequired")}
               </Label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  placeholder="Enter your password"
+                  placeholder={t("auth.login.passwordPlaceholder")}
                   className="pl-10 h-10 sm:h-11 text-sm"
                   value={formData.password}
                   onChange={(e) => onFormChange('password', e.target.value)}
@@ -296,7 +301,7 @@ export function AuthModal({
                     checked={keepSignedIn}
                     onCheckedChange={(checked) => setKeepSignedIn(checked as boolean)}
                   />
-                  <span className="text-xs text-slate-600 select-none">Remember me</span>
+                  <span className="text-xs text-slate-600 select-none">{t("storefront.auth.rememberMe")}</span>
                 </label>
                 <button 
                   type="button" 
@@ -312,7 +317,7 @@ export function AuthModal({
                   }}
                   className="text-xs text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
                 >
-                  Forgot Password?
+                  {t("storefront.auth.forgotPassword")}
                 </button>
               </div>
             )}
@@ -325,47 +330,47 @@ export function AuthModal({
               {isLoading ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  {mode === 'login' ? 'Signing In...' : 'Creating Account...'}
+                  {mode === 'login' ? t("storefront.auth.signingIn") : t("storefront.auth.creatingAccount")}
                 </>
               ) : (
-                mode === 'login' ? 'Sign In' : 'Create Account'
+                mode === 'login' ? t("auth.login.signIn") : t("storefront.auth.createAccount")
               )}
             </Button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-xs sm:text-sm text-slate-600">
-              {mode === 'login' ? "Don't have an account?" : "Already have an account?"}
+              {mode === 'login' ? t("storefront.auth.dontHaveAccount") : t("storefront.auth.alreadyHaveAccount")}
               {' '}
               <button
                 type="button"
                 onClick={() => onModeChange(mode === 'login' ? 'register' : 'login')}
                 className="text-xs sm:text-sm text-slate-900 hover:text-amber-600 font-bold transition-colors"
               >
-                {mode === 'login' ? 'Sign Up' : 'Sign In'}
+                {mode === 'login' ? t("storefront.auth.signUp") : t("auth.login.signIn")}
               </button>
             </p>
           </div>
 
           {mode === 'register' && (
             <p className="text-[10px] sm:text-xs text-slate-600 text-center mt-4 leading-relaxed">
-              By creating an account, you agree to our{' '}
+              {t("storefront.auth.termsPrefix")}{' '}
               <Link
                 to={termsPath}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[10px] sm:text-xs text-slate-900 hover:text-amber-600 font-bold transition-colors underline underline-offset-2"
               >
-                Terms of Service
+                {t("storefrontPolicy.termsTitle")}
               </Link>
-              {' '}and{' '}
+              {' '}{t("storefront.auth.and")}{' '}
               <Link
                 to={privacyPath}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[10px] sm:text-xs text-slate-900 hover:text-amber-600 font-bold transition-colors underline underline-offset-2"
               >
-                Privacy Policy
+                {t("storefrontPolicy.privacyTitle")}
               </Link>
             </p>
           )}

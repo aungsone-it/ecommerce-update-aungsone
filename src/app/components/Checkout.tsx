@@ -73,6 +73,7 @@ import {
 } from "../utils/myanmarRegions";
 import { normalizeCheckoutStoragePath } from "../utils/vendorStorePaths";
 import { useIsMobile } from "./ui/use-mobile";
+import { useLanguage } from "../contexts/LanguageContext";
 
 /** KV-backed customer session (authApi / migoo-user) — AuthContext only has Supabase sessions */
 function getMigooCustomerFromStorage(): {
@@ -411,13 +412,13 @@ function pickLatestOrderForVendor(
   return (vendorOrders.length > 0 ? vendorOrders : orders)[0] ?? null;
 }
 
-function summaryPaymentMethodLabel(method: CheckoutPaymentMethod): string {
-  if (method === "None") return "Not selected";
-  if (method === "COD") return "Cash on Delivery";
-  if (method === "KPay") return "KBZPay QR Payment";
-  if (method === "KPay-PWA") return "KBZPay In App Payment";
-  if (method === "BankTransfer") return "Bank Transfer";
-  return "Credit / Debit Card";
+function summaryPaymentMethodLabel(method: CheckoutPaymentMethod, t: (key: string) => string): string {
+  if (method === "None") return t("checkout.selectPaymentMethod");
+  if (method === "COD") return t("checkout.cod");
+  if (method === "KPay") return t("checkout.kpayQr");
+  if (method === "KPay-PWA") return t("checkout.kpayMobile");
+  if (method === "BankTransfer") return t("checkout.bankTransfer");
+  return t("checkout.card");
 }
 
 function normalizeCheckoutPaymentMethod(raw: unknown): "COD" | "Card" | "KPay" | "KPay-PWA" | "BankTransfer" {
@@ -678,6 +679,7 @@ export function Checkout({
 }: CheckoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useLanguage();
   const { items, totalPrice, clearCart } = useCart();
   const checkoutStoragePath = useMemo(
     () => normalizeCheckoutStoragePath(location.pathname),
@@ -1682,17 +1684,17 @@ export function Checkout({
 
   const getMissingRequiredFields = () => {
     const missingFields: string[] = [];
-    if (!shippingInfo.fullName.trim()) missingFields.push("Full Name");
-    if (!shippingInfo.phone.trim()) missingFields.push("Phone Number");
-    if (!shippingInfo.address.trim()) missingFields.push("Address");
-    if (!shippingInfo.state.trim()) missingFields.push("State/Region");
-    if (!shippingInfo.city.trim()) missingFields.push("Township");
+    if (!shippingInfo.fullName.trim()) missingFields.push(t("checkout.fullName"));
+    if (!shippingInfo.phone.trim()) missingFields.push(t("checkout.phoneNumber"));
+    if (!shippingInfo.address.trim()) missingFields.push(t("checkout.address"));
+    if (!shippingInfo.state.trim()) missingFields.push(t("checkout.stateRegion"));
+    if (!shippingInfo.city.trim()) missingFields.push(t("checkout.township"));
     return missingFields;
   };
 
   const checkoutFieldsComplete = useMemo(
     () => getMissingRequiredFields().length === 0,
-    [shippingInfo]
+    [shippingInfo, t]
   );
 
   const handleSelectKPayQr = () => {
@@ -2317,7 +2319,7 @@ export function Checkout({
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-slate-900">{item.sku}</p>
                       <p className="text-xs text-slate-500">
-                        Qty: {item.quantity} × {Math.round(Number(item.price) || 0)} MMK
+                        {t("checkout.qty")}: {item.quantity} × {Math.round(Number(item.price) || 0)} MMK
                       </p>
                     </div>
                     <p className="text-sm font-semibold text-slate-900">{Math.round((Number(item.price) || 0) * item.quantity)} MMK</p>
@@ -2330,7 +2332,7 @@ export function Checkout({
             <div className="px-6 py-4 border-b border-slate-200">
               <div className="space-y-2.5">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Subtotal</span>
+                  <span className="text-slate-600">{t("checkout.subtotal")}</span>
                   <span className="font-medium text-slate-900">{(confirmedTotal + confirmedDiscount).toFixed(0)} MMK</span>
                 </div>
                 
@@ -2338,19 +2340,19 @@ export function Checkout({
                   <div className="flex justify-between text-sm">
                     <span className="text-emerald-600 flex items-center gap-1.5">
                       <Tag className="w-3.5 h-3.5" />
-                      Discount ({confirmedCoupon.campaign?.code})
+                      {t("checkout.discount")} ({confirmedCoupon.campaign?.code})
                     </span>
                     <span className="font-medium text-emerald-600">-{confirmedDiscount.toFixed(0)} MMK</span>
                   </div>
                 )}
                 
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Shipping</span>
-                  <span className="font-bold text-emerald-600">FREE</span>
+                  <span className="text-slate-600">{t("checkout.shipping")}</span>
+                  <span className="font-bold text-emerald-600">{t("checkout.free")}</span>
                 </div>
                 
                 <div className="flex justify-between border-t border-slate-200 pt-2">
-                  <span className="text-base font-semibold text-slate-900">Total</span>
+                  <span className="text-base font-semibold text-slate-900">{t("checkout.total")}</span>
                   <span className="text-xl font-semibold tabular-nums tracking-tight text-slate-900">
                     {confirmedTotal.toFixed(0)} MMK
                   </span>
@@ -2361,7 +2363,7 @@ export function Checkout({
             {/* Coupon Applied Section */}
             {confirmedCoupon && (
               <div className="px-6 py-4 bg-emerald-50 border-b border-slate-200">
-                <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">Coupon Applied</p>
+                <p className="text-xs text-slate-500 uppercase tracking-wider mb-3">{t("checkout.couponApplied")}</p>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
                     <Tag className="w-5 h-5 text-white" strokeWidth={2} />
@@ -2373,7 +2375,7 @@ export function Checkout({
                       {confirmedCoupon.campaign?.discountType === 'percentage' 
                         ? ` ${confirmedCoupon.campaign?.discount}% off` 
                         : ` ${confirmedCoupon.campaign?.discount} MMK off`}
-                      {confirmedDiscount > 0 && ` · Saved ${confirmedDiscount.toFixed(0)} MMK`}
+                      {confirmedDiscount > 0 && ` · ${t("checkout.saved")} ${confirmedDiscount.toFixed(0)} MMK`}
                     </p>
                   </div>
                 </div>
@@ -2382,13 +2384,13 @@ export function Checkout({
             
             {/* Payment Method */}
             <div className="border-b border-slate-200 px-6 py-4">
-              <p className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-500">Payment method</p>
+              <p className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-500">{t("checkout.paymentMethod")}</p>
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
                   <CreditCard className="h-5 w-5 text-slate-600" strokeWidth={2} />
                 </div>
                 <span className="text-sm font-semibold text-slate-900">
-                  {summaryPaymentMethodLabel(paymentMethod)}
+                  {summaryPaymentMethodLabel(paymentMethod, t)}
                 </span>
               </div>
             </div>
@@ -2396,7 +2398,7 @@ export function Checkout({
             {/* Order Notes */}
             {confirmedOrderNote && (
               <div className="border-b border-slate-200 px-6 py-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">Order Note</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">{t("checkout.orderNote")}</p>
                 <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                   <p className="text-sm text-slate-800">{confirmedOrderNote}</p>
                 </div>
@@ -2409,25 +2411,25 @@ export function Checkout({
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white shadow-sm">
                   <MapPin className="h-5 w-5 text-slate-600" strokeWidth={2} />
                 </div>
-                <h3 className="text-base font-semibold text-slate-900">Shipping information</h3>
+                <h3 className="text-base font-semibold text-slate-900">{t("checkout.shippingInformation")}</h3>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Full Name</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{t("checkout.fullName")}</p>
                   <p className="text-sm font-medium text-slate-900">{shippingInfo.fullName}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Phone</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{t("checkout.phone")}</p>
                   <p className="text-sm font-medium text-slate-900">{shippingInfo.phone}</p>
                 </div>
                 {resolveOrderEmail() && (
                   <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Email</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{t("checkout.email")}</p>
                     <p className="text-sm font-medium text-slate-900 truncate">{resolveOrderEmail()}</p>
                   </div>
                 )}
                 <div className="col-span-2">
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Delivery Address</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">{t("checkout.deliveryAddress")}</p>
                   <p className="text-sm font-medium text-slate-900">
                     {[shippingInfo.address, shippingInfo.city, shippingInfo.state, shippingInfo.zipCode, shippingInfo.country]
                       .filter(Boolean)
@@ -2443,13 +2445,12 @@ export function Checkout({
               className="h-11 w-64 rounded-lg bg-[#1a1d29] text-sm font-medium text-white hover:bg-slate-900"
               onClick={handleContinueShopping}
             >
-              Continue Shopping
+              {t("checkout.continueShopping")}
             </Button>
           </div>
 
           <p className="mt-4 text-center text-sm text-slate-600">
-            Thanks for purchasing from{" "}
-            <span className="font-semibold text-slate-900">{displayStoreName}</span>
+            {t("checkout.thanksForPurchasing").replace("{storeName}", displayStoreName)}
           </p>
         </div>
       </div>
@@ -2473,7 +2474,7 @@ export function Checkout({
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
         <Button variant="ghost" className="mb-6 hover:bg-white" onClick={handleContinueShopping}>
           <ChevronLeft className="mr-2 h-4 w-4" />
-          Continue Shopping
+          {t("checkout.continueShopping")}
         </Button>
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-5">
@@ -2483,16 +2484,16 @@ export function Checkout({
               {/* Contact */}
               <div>
                 <h2 className="mb-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
-                  Contact
+                  {t("checkout.contact")}
                 </h2>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="vs-name" className={checkoutLabelClass}>
-                      Full Name
+                      {t("checkout.fullName")}
                     </Label>
                     <Input
                       id="vs-name"
-                      placeholder="Enter your full name"
+                      placeholder={t("checkout.fullNamePlaceholder")}
                       value={shippingInfo.fullName}
                       onChange={(e) => setShippingInfo({ ...shippingInfo, fullName: e.target.value })}
                       className={checkoutInputClass}
@@ -2500,7 +2501,7 @@ export function Checkout({
                   </div>
                   <div>
                     <Label htmlFor="vs-phone" className={checkoutLabelClass}>
-                      Phone Number
+                      {t("checkout.phoneNumber")}
                     </Label>
                     <Input
                       id="vs-phone"
@@ -2517,16 +2518,16 @@ export function Checkout({
               {/* Address */}
               <div>
                 <h2 className="mb-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
-                  Address
+                  {t("checkout.address")}
                 </h2>
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="vs-address" className={checkoutLabelClass}>
-                      Address
+                      {t("checkout.address")}
                     </Label>
                     <Input
                       id="vs-address"
-                      placeholder="No. 123, Main Street"
+                      placeholder={t("checkout.addressPlaceholder")}
                       value={shippingInfo.address}
                       onChange={(e) => setShippingInfo({ ...shippingInfo, address: e.target.value })}
                       className={checkoutInputClass}
@@ -2534,7 +2535,7 @@ export function Checkout({
                   </div>
                   <div>
                     <Label htmlFor="vs-state" className={checkoutLabelClass}>
-                      State/Region
+                      {t("checkout.stateRegion")}
                     </Label>
                     <Select
                       value={shippingInfo.state || undefined}
@@ -2549,7 +2550,7 @@ export function Checkout({
                       }
                     >
                       <SelectTrigger id="vs-state" className={checkoutSelectClass}>
-                        <SelectValue placeholder="Select state/region" />
+                        <SelectValue placeholder={t("checkout.selectStateRegion")} />
                       </SelectTrigger>
                       <SelectContent className="max-h-60">
                         {regionSelectOptions.map((state) => (
@@ -2562,7 +2563,7 @@ export function Checkout({
                   </div>
                   <div>
                     <Label htmlFor="vs-city" className={checkoutLabelClass}>
-                      Township
+                      {t("checkout.township")}
                     </Label>
                     <Select
                       value={shippingInfo.city || undefined}
@@ -2575,8 +2576,8 @@ export function Checkout({
                         <SelectValue
                           placeholder={
                             shippingInfo.state.trim()
-                              ? "Select township"
-                              : "Select state/region first"
+                              ? t("checkout.selectTownship")
+                              : t("checkout.selectStateFirst")
                           }
                         />
                       </SelectTrigger>
@@ -2592,12 +2593,12 @@ export function Checkout({
                   <div>
                     <div className="mb-1.5 flex items-baseline justify-between">
                       <Label htmlFor="vs-notes" className="text-sm font-medium text-slate-800">
-                        Notes
+                        {t("checkout.notes")}
                       </Label>
                     </div>
                     <Textarea
                       id="vs-notes"
-                      placeholder="Add notes..."
+                      placeholder={t("checkout.notesPlaceholder")}
                       value={orderNote}
                       onChange={(e) => setOrderNote(e.target.value)}
                       className="min-h-[80px] resize-none rounded-lg border-slate-200 bg-slate-50 text-sm focus:border-slate-900 focus:ring-0"
@@ -2610,14 +2611,14 @@ export function Checkout({
               {/* Payment */}
               <div>
                 <h2 className="mb-3 text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
-                  Payment
+                  {t("checkout.payment")}
                 </h2>
                 <div className="mb-4 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-3">
                   <div className="flex items-start gap-2">
                     <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" />
                     <div>
-                      <p className="mb-0.5 text-xs font-semibold text-blue-900">Choose how you want to pay</p>
-                      <p className="text-xs text-blue-800">Pay now with KBZPay, or pay in cash when your order is delivered.</p>
+                      <p className="mb-0.5 text-xs font-semibold text-blue-900">{t("checkout.paymentChooseTitle")}</p>
+                      <p className="text-xs text-blue-800">{t("checkout.paymentChooseDescription")}</p>
                     </div>
                   </div>
                 </div>
@@ -2642,8 +2643,8 @@ export function Checkout({
                           {paymentMethod === "COD" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
                         </div>
                         <div>
-                          <span className="text-sm font-medium text-slate-700">Cash on Delivery</span>
-                          <p className="mt-0.5 text-xs text-slate-500">Pay in cash when your order arrives</p>
+                          <span className="text-sm font-medium text-slate-700">{t("checkout.cod")}</span>
+                          <p className="mt-0.5 text-xs text-slate-500">{t("checkout.codDescription")}</p>
                         </div>
                       </div>
                     </div>
@@ -2651,7 +2652,7 @@ export function Checkout({
 
                   {paymentMethod === "COD" && (
                     <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-800">
-                      Your order will be created now. Please prepare the exact amount for delivery.
+                      {t("checkout.codNotice")}
                     </div>
                   )}
 
@@ -2682,7 +2683,7 @@ export function Checkout({
                             className="h-5 w-5 rounded-sm object-cover"
                             loading="lazy"
                           />
-                          <span className="text-sm font-medium text-slate-700">KBZPay (Scan QR)</span>
+                          <span className="text-sm font-medium text-slate-700">{t("checkout.kpayQr")}</span>
                         </div>
                       </div>
                     </div>
@@ -2690,7 +2691,7 @@ export function Checkout({
                   {paymentMethod === "KPay" && checkoutFieldsComplete && (
                     <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                       {kpayLoading && (
-                        <p className="mb-3 text-xs text-slate-500">Generating KBZPay QR automatically...</p>
+                        <p className="mb-3 text-xs text-slate-500">{t("checkout.generatingKpay")}</p>
                       )}
                       <div className="mb-4 flex justify-center">
                         <div className="relative flex h-48 w-48 items-center justify-center overflow-hidden rounded-lg border-2 border-slate-200 bg-white">
@@ -2707,8 +2708,8 @@ export function Checkout({
                           ) : (
                             <div className="px-4 text-center text-sm text-slate-500">
                               {kpaySession?.merchantOrderId
-                                ? "QR not returned by provider for this order"
-                                : "Preparing KBZPay QR for scan and pay..."}
+                                ? t("checkout.qrNotReturned")
+                                : t("checkout.preparingKpayQr")}
                             </div>
                           )}
                           {(kpayWebhookConfirmed || kpaySession?.status === "paid") && (
@@ -2723,7 +2724,7 @@ export function Checkout({
                                 aria-hidden
                               />
                               <span className="mt-2 text-lg font-semibold tracking-wide text-emerald-900 drop-shadow-sm">
-                                Paid
+                                {t("checkout.paid")}
                               </span>
                             </div>
                           )}
@@ -2732,24 +2733,23 @@ export function Checkout({
                       <div className="space-y-2 text-sm">
                         {kpaySession?.merchantOrderId && (
                           <div className="flex justify-between border-b border-slate-200 py-1">
-                            <span className="text-slate-600">Merchant Order ID:</span>
+                            <span className="text-slate-600">{t("checkout.merchantOrderId")}</span>
                             <span className="font-mono font-semibold text-slate-900">{kpaySession.merchantOrderId}</span>
                           </div>
                         )}
                         <div className="flex justify-between border-b border-slate-200 py-1">
-                          <span className="text-slate-600">Amount to Pay:</span>
+                          <span className="text-slate-600">{t("checkout.amountToPay")}</span>
                           <span className="font-semibold text-emerald-700">{finalTotal.toFixed(0)} MMK</span>
                         </div>
                         {kpaySession?.qrContent && !kpaySession?.qrImageUrl && (
                           <div className="rounded border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
                             {kpayWebhookConfirmed || kpaySession?.status === "paid" ? (
                               <span className="text-emerald-800">
-                                Payment received. You can place your order using the button in the order summary.
+                                {t("checkout.paymentReceived")}
                               </span>
                             ) : (
                               <>
-                                Open KBZPay app → tap <span className="font-medium">Scan QR</span> → point at the code above. Once paid, click{" "}
-                                <span className="font-medium">I've Completed Payment</span>.
+                                {t("checkout.kpayInstruction")}
                               </>
                             )}
                           </div>
@@ -2785,11 +2785,11 @@ export function Checkout({
                             className="h-5 w-5 rounded-sm object-cover"
                             loading="lazy"
                           />
-                          <span className="text-sm font-medium text-slate-700">KBZPay (Mobile Browser)</span>
+                          <span className="text-sm font-medium text-slate-700">{t("checkout.kpayMobile")}</span>
                         </div>
                       </div>
                       <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                        Recommended
+                        {t("checkout.recommended")}
                       </span>
                     </div>
                   </button>
@@ -2805,7 +2805,7 @@ export function Checkout({
             <div className="sticky top-24 flex flex-col overflow-visible rounded-xl border border-slate-200 bg-white p-6 shadow-md">
               <div className="mb-5 flex-shrink-0">
                 <h2 className="text-lg font-semibold text-slate-900" style={{ fontFamily: "Rubik, sans-serif" }}>
-                  Order Summary
+                  {t("checkout.orderSummary")}
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-500">{storeName}</p>
               </div>
@@ -2827,7 +2827,7 @@ export function Checkout({
                       <div>
                         <p className="text-sm font-semibold text-slate-900">{item.sku}</p>
                         <p className="mt-1 text-sm font-medium text-slate-500">
-                          Qty: {item.quantity} × {Math.round(parseFloat(String(item.price)))} MMK
+                          {t("checkout.qty")}: {item.quantity} × {Math.round(parseFloat(String(item.price)))} MMK
                         </p>
                       </div>
                       <p className="text-sm font-semibold text-slate-900">
@@ -2840,17 +2840,17 @@ export function Checkout({
 
               <div className="space-y-3 border-t border-slate-200 pt-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Subtotal</span>
+                  <span className="text-slate-600">{t("checkout.subtotal")}</span>
                   <span className="font-semibold text-slate-900">{summaryDisplayTotal.toFixed(0)} MMK</span>
                 </div>
 
                 <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Shipping</span>
-                  <span className="font-bold text-emerald-600">FREE</span>
+                  <span className="text-slate-600">{t("checkout.shipping")}</span>
+                  <span className="font-bold text-emerald-600">{t("checkout.free")}</span>
                 </div>
 
                 <div className="flex items-center justify-between pt-1">
-                  <span className="text-sm font-semibold text-slate-900">Total</span>
+                  <span className="text-sm font-semibold text-slate-900">{t("checkout.total")}</span>
                   <span className="text-base font-bold text-slate-900">{finalTotal.toFixed(0)} MMK</span>
                 </div>
               </div>
@@ -2875,18 +2875,18 @@ export function Checkout({
                 {loading || kpayPwaLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {kpayPwaLoading ? "Redirecting to KBZPay…" : "Processing..."}
+                    {kpayPwaLoading ? t("checkout.redirectingKpay") : t("checkout.processing")}
                   </>
                 ) : paymentMethod === "KPay" ? (
-                  kpayWebhookConfirmed ? "Place Order (Payment Confirmed)" : "I've Completed Payment"
+                  kpayWebhookConfirmed ? t("checkout.placeOrderConfirmed") : t("checkout.completedPayment")
                 ) : paymentMethod === "KPay-PWA" ? (
-                  `Pay with KBZPay · ${finalTotal.toFixed(0)} MMK`
+                  `${t("checkout.payWithKpay")} · ${finalTotal.toFixed(0)} MMK`
                 ) : paymentMethod === "COD" ? (
-                  "Place COD Order"
+                  t("checkout.placeCodOrder")
                 ) : paymentMethod === "None" ? (
-                  "Select a payment method"
+                  t("checkout.selectPaymentMethod")
                 ) : (
-                  `Pay ${finalTotal.toFixed(0)} MMK`
+                  t("checkout.payAmount").replace("{amount}", finalTotal.toFixed(0))
                 )}
               </Button>
               <style>{`

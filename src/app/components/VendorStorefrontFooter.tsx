@@ -24,7 +24,7 @@ export function VendorStorefrontFooter({
     <footer className="border-t mt-auto shrink-0 w-full bg-white">
       <div className="max-w-7xl mx-auto px-4 py-6 sm:py-8 text-center space-y-2">
         <p className="text-xs text-slate-500">
-          © {new Date().getFullYear()} {storeName}. All rights reserved.
+          © {new Date().getFullYear()} {storeName}. {t("storefront.footer.rights")}
         </p>
         <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-slate-500 pt-1">
           <Link
