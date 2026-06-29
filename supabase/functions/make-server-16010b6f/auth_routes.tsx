@@ -629,11 +629,24 @@ authApp.get("/profile/:userId", async (c) => {
       return c.json({ user: out });
     }
 
-    // Storefront customers (Supabase) live in customer:* — same as login payload, not auth:user
+    // Storefront customers (Supabase) live in customer:* — same as login payload, not auth:user.
+    // If auth account no longer exists, force 404 so storefront session is invalidated client-side.
+    let authUserEmail = "";
+    try {
+      const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (authErr || !authData?.user) {
+        console.log(`❌ API Error (/auth/profile/${userId}): Auth account missing`);
+        return c.json({ error: "User not found" }, 404);
+      }
+      authUserEmail = String(authData.user.email || "").trim().toLowerCase();
+    } catch {
+      return c.json({ error: "User not found" }, 404);
+    }
+
     let customer = await findStorefrontCustomerByUserId(userId);
 
     if (customer && typeof customer === "object") {
-      const authEmail = await getSupabaseAuthEmail(userId);
+      const authEmail = authUserEmail || (await getSupabaseAuthEmail(userId));
       customer = await enrichCustomerFromAuthUser(customer, { email: authEmail });
       const { password: __, ...customerRest } = customer as Record<string, unknown> & {
         password?: string;

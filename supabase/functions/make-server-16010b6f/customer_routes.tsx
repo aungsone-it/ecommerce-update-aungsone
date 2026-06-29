@@ -142,6 +142,52 @@ async function removeFromAllVendorAudiences(match: {
   return removed;
 }
 
+async function removeFromAllVendorAudiencesByAny(
+  matches: Array<{ userId?: string; email?: string; phone?: string }>
+): Promise<number> {
+  const normalized = matches.filter(
+    (m) => String(m?.userId || m?.email || m?.phone || "").trim() !== ""
+  );
+  if (normalized.length === 0) return 0;
+  const rows = await withTimeout(kv.getByPrefixWithKeys("vendor:audience:"), 30000).catch(
+    () => [] as { key: string; value: unknown }[]
+  );
+  let removed = 0;
+  for (const { key, value } of rows) {
+    if (!Array.isArray(value)) continue;
+    const next = value.filter(
+      (r: any) => !normalized.some((m) => audienceRowMatches(r, m))
+    );
+    if (next.length !== value.length) {
+      removed += value.length - next.length;
+      await withTimeout(kv.set(key, next), 5000);
+    }
+  }
+  return removed;
+}
+
+async function inferUserIdsFromEmail(email: string | undefined): Promise<string[]> {
+  const em = String(email || "").trim().toLowerCase();
+  if (!em) return [];
+  const rows = await withTimeout(kv.getByPrefixWithKeys("userId:"), 30000).catch(
+    () => [] as { key: string; value: unknown }[]
+  );
+  const out: string[] = [];
+  for (const row of rows) {
+    const key = String(row?.key || "");
+    const value = (row?.value || {}) as { email?: unknown };
+    const rowEmail = String(value?.email || "").trim().toLowerCase();
+    if (!rowEmail || rowEmail !== em) continue;
+    const uid = key.startsWith("userId:") ? key.slice("userId:".length) : "";
+    if (uid) out.push(uid);
+  }
+  return [...new Set(out)];
+}
+
+function isUuidLike(value: string | undefined): boolean {
+  return /^[0-9a-f-]{36}$/i.test(String(value || "").trim());
+}
+
 async function purgeAuthAndUserKv(userId: string): Promise<void> {
   const uid = String(userId || "").trim();
   if (!uid) return;
@@ -414,7 +460,15 @@ function customerMatchesSearchQuery(cust: any, qRaw: string): boolean {
   );
 }
 
+/**
+ * Read-model path can lag behind `vendor:audience:*` writes and cause count drift
+ * versus Vendor Admin customer lists. Keep disabled by default so both panels
+ * read from the same unified live sources.
+ */
+const ENABLE_ADMIN_CUSTOMERS_READ_MODEL = false;
+
 async function jsonAdminCustomersPageFromReadModel(c: any): Promise<Record<string, unknown> | null> {
+  if (!ENABLE_ADMIN_CUSTOMERS_READ_MODEL) return null;
   const pageQ = c.req.query("page");
   if (pageQ === undefined || pageQ === "") return null;
   const page = Math.max(1, parseInt(String(pageQ), 10) || 1);
@@ -824,16 +878,29 @@ customerApp.delete("/customers/:customerId", async (c) => {
 
     const { customer, storageKey } = resolved;
     const userId = String(customer.userId || "").trim();
+    const inferredUserIds = userId ? [] : await inferUserIdsFromEmail(customer.email);
+    const audienceMatchers: Array<{ userId?: string; email?: string; phone?: string }> = [
+      {
+        userId: userId || undefined,
+        email: customer.email,
+        phone: customer.phone,
+      },
+    ];
+    for (const uid of inferredUserIds) {
+      audienceMatchers.push({ userId: uid, email: customer.email, phone: customer.phone });
+    }
+    if (isUuidLike(idParam)) {
+      audienceMatchers.push({ userId: String(idParam).trim() });
+    }
+    if (isUuidLike(storageKey)) {
+      audienceMatchers.push({ userId: String(storageKey).trim() });
+    }
 
     if (userId) {
       await purgeAuthAndUserKv(userId);
     }
 
-    await removeFromAllVendorAudiences({
-      userId: userId || idParam,
-      email: customer.email,
-      phone: customer.phone,
-    });
+    await removeFromAllVendorAudiencesByAny(audienceMatchers);
 
     await withTimeout(kv.del(`customer:${storageKey}`), 5000);
     queueCustomerReadModelDelete(storageKey);

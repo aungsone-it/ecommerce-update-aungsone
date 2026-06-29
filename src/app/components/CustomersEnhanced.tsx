@@ -88,7 +88,7 @@ import { useAdminPortalDebouncedSearch } from "../utils/adminProductSearch";
 import { toast } from "sonner";
 import { MIGOO_USER_SESSION_CHANGED_EVENT } from "../../constants";
 import { useLanguage } from "../contexts/LanguageContext";
-import { subscribeCustomerRealtime } from "../utils/customersRealtime";
+import { broadcastCustomerRealtime, subscribeCustomerRealtime } from "../utils/customersRealtime";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Customer {
@@ -697,6 +697,7 @@ export function CustomersEnhanced({
       console.log(`🗑️ Deleting customer: ${customerId}`);
       await deleteCustomerOnServer(customerId);
       console.log(`✅ Customer deleted from backend: ${customerId}`);
+      void broadcastCustomerRealtime({ event: "audience" });
       toast.success(`${titleCaseName} has been deleted`);
     } catch (error: any) {
       console.error("❌ Error deleting customer:", error);
@@ -791,6 +792,7 @@ export function CustomersEnhanced({
 
       removeAdminCustomersFromCaches(ids, deletedRows);
       console.log(`✅ Bulk deleted ${count} customers from backend`);
+      void broadcastCustomerRealtime({ event: "audience" });
       toast.success(`${count} customer(s) deleted`);
     } catch (error: any) {
       console.error("❌ Error bulk deleting customers:", error);

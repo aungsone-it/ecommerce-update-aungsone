@@ -13018,6 +13018,55 @@ app.get("/make-server-16010b6f/vendor/audience/:vendorId", async (c) => {
       }
     }
 
+    // Keep Vendor Admin aligned with Super Admin Customers: vendor audience rows are only valid
+    // while their canonical customer record still exists. Older deletes could leave audience-only rows.
+    const allCustomersForAudience = await withTimeout(kv.getByPrefix("customer:"), 30000).catch(() => []);
+    const validCustomers = Array.isArray(allCustomersForAudience)
+      ? allCustomersForAudience.filter(
+          (cust: any) =>
+            cust &&
+            typeof cust === "object" &&
+            !Array.isArray(cust) &&
+            String(cust.id || "").trim() !== ""
+        )
+      : [];
+    const audienceHasCustomer = (aud: any): boolean => {
+      const audUid = String(aud?.userId || "").trim();
+      const audEmail = String(aud?.email || "").trim().toLowerCase();
+      const audPhone = normalizeAudiencePhone(aud?.phone);
+      return validCustomers.some((cust: any) => {
+        const custId = String(cust?.id || "").trim();
+        const custUid = String(cust?.userId || "").trim();
+        const custEmail = String(cust?.email || "").trim().toLowerCase();
+        const custPhone = normalizeAudiencePhone(cust?.phone);
+        if (audUid && (audUid === custUid || audUid === custId)) return true;
+        if (audEmail && custEmail && audEmail === custEmail) return true;
+        if (audPhone && custPhone && audPhone === custPhone) return true;
+        return false;
+      });
+    };
+    const audienceBeforeCanonicalFilter = audience.length;
+    audience = audience.filter(audienceHasCustomer);
+    if (audience.length !== audienceBeforeCanonicalFilter) {
+      const canonicalList = (await withTimeout(kv.get(storageKey), 5000).catch(() => [])) || [];
+      if (Array.isArray(canonicalList)) {
+        const cleanedCanonical = canonicalList.filter(audienceHasCustomer);
+        if (cleanedCanonical.length !== canonicalList.length) {
+          await withTimeout(kv.set(storageKey, cleanedCanonical), 5000).catch(() => undefined);
+        }
+      }
+      if (storeSlug && storeSlug !== vid) {
+        const altKey = `vendor:audience:${storeSlug}`;
+        const altList = (await withTimeout(kv.get(altKey), 5000).catch(() => [])) || [];
+        if (Array.isArray(altList)) {
+          const cleanedAlt = altList.filter(audienceHasCustomer);
+          if (cleanedAlt.length !== altList.length) {
+            await withTimeout(kv.set(altKey, cleanedAlt), 5000).catch(() => undefined);
+          }
+        }
+      }
+    }
+
     const allOrders = await withRetry(
       () => kv.getByPrefix("order:"),
       2,

@@ -40,6 +40,7 @@ import {
 import { SearchInput } from "./SearchInput";
 import { CouponInput } from "./CouponInput";
 import { productsApi, authApi, wishlistApi, ordersApi, customersApi, categoriesApi, blogApi, apiClient } from "../../utils/api";
+import { ApiError } from "../../utils/api-client";
 import { toast } from "sonner";
 import { QRCodeCanvas } from "qrcode.react";
 import { notifyAdminOrdersUpdated } from "../utils/adminOrdersRealtime";
@@ -125,7 +126,7 @@ import {
   isOutOfStockDisplay,
   showLowStockBadge,
 } from "../utils/productInventory";
-import { notifyStorefrontCustomerRegistered } from "../utils/customersRealtime";
+import { notifyStorefrontCustomerRegistered, subscribeCustomerRealtime } from "../utils/customersRealtime";
 import {
   readSessionCatalogList,
   ssStorefrontCatalogListKey,
@@ -859,6 +860,28 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  // When admin mutates customers (delete/block), validate current storefront session user.
+  useEffect(() => {
+    if (!orderApiUserId) return;
+    const validateCurrentSession = async () => {
+      try {
+        await authApi.getProfile(orderApiUserId);
+      } catch (error: unknown) {
+        if (error instanceof ApiError && [401, 403, 404].includes(Number(error.statusCode))) {
+          setUser(null);
+          setCart([]);
+          setWishlist([]);
+          localStorage.removeItem("migoo-user");
+          notifyMigooUserSessionChanged();
+        }
+      }
+    };
+    const unsubscribe = subscribeCustomerRealtime(() => {
+      void validateCurrentSession();
+    });
+    return () => unsubscribe();
+  }, [orderApiUserId]);
   
   // 🚀 MODULE-CACHE: Site Settings with fallback to defaults
   // 🔒 STABLE STORE NAME: Capture initial store name ONCE to prevent text flickering during loading
@@ -2510,8 +2533,17 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 markUserProfileRefreshed(uid);
               }
             })
-            .catch(() => {
-              // Continue with stored user if refresh fails
+            .catch((error: unknown) => {
+              // Deleted/invalid users must be signed out from storefront immediately.
+              if (error instanceof ApiError && [401, 403, 404].includes(Number(error.statusCode))) {
+                setUser(null);
+                setCart([]);
+                setWishlist([]);
+                localStorage.removeItem("migoo-user");
+                notifyMigooUserSessionChanged();
+                return;
+              }
+              // Continue with stored user on transient failures.
             });
         }
       } catch (error) {

@@ -4,10 +4,7 @@ import {
   Search,
   TrendingUp,
   CheckCircle2,
-  Star,
-  Clock,
   DollarSign,
-  Activity,
   Package,
   MoreVertical,
   Ban,
@@ -77,26 +74,10 @@ interface VendorAdminUsersProps {
   vendorName: string;
 }
 
-function toKebabTag(label: string): string {
-  return label
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-]/g, "");
-}
-
 function deriveTier(user: User): "new" | "regular" | "vip" {
   if (user.isNew || (user.totalOrders ?? 0) === 0) return "new";
   if ((user.totalSpent ?? 0) >= 500_000 || (user.totalOrders ?? 0) >= 5) return "vip";
   return "regular";
-}
-
-function normalizeDisplayTags(user: User): string[] {
-  const raw = user.tags?.length ? [...user.tags] : [];
-  if (user.isNew && !raw.some((t) => /new/i.test(t))) {
-    raw.push("new-customer");
-  }
-  return raw.map((t) => (t.includes("-") ? t : toKebabTag(t)));
 }
 
 function SegmentCell({ segment }: { segment: string }) {
@@ -131,7 +112,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const [filterTier, setFilterTier] = useState("all");
   const [filterSegment, setFilterSegment] = useState("all");
   const [selectedCustomers, setSelectedCustomers] = useState<string[]>([]);
-  const [currentTab, setCurrentTab] = useState<"list" | "segments" | "analytics">("list");
+  const [currentTab, setCurrentTab] = useState<"list" | "analytics">("list");
   const [listPage, setListPage] = useState(1);
   const [listPageSize, setListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
   const [viewingCustomer, setViewingCustomer] = useState<any | null>(null);
@@ -366,7 +347,6 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
   const championsCount = summary.champions;
   const atRiskCount = summary.atRisk;
   const totalRevenue = summary.totalRevenue;
-  const avgLTV = summary.avgLtv;
   const activePercentage = totalCustomers > 0 ? Math.round((activeCustomers / totalCustomers) * 100) : 0;
 
   if (viewingCustomer) {
@@ -385,47 +365,33 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
         <p className="text-sm text-slate-600">{t("vendorAdmin.users.subtitle")}</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 relative overflow-hidden">
-          <Users className="w-6 h-6 text-blue-600 mb-2" />
-          <div className="text-2xl font-bold text-slate-800">{totalCustomers}</div>
-          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.totalCustomers")}</div>
-          <TrendingUp className="w-4 h-4 text-blue-600 absolute top-3 right-3" />
-        </div>
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 relative">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200 min-w-0">
           <div className="flex items-center justify-between mb-2">
-            <CheckCircle2 className="w-6 h-6 text-green-600" />
-            {activePercentage > 0 && (
-              <span className="text-xs font-bold text-green-700 bg-green-200 px-2 py-0.5 rounded">
-                {activePercentage}%
-              </span>
-            )}
+            <Users className="w-8 h-8 text-blue-600" />
+            <TrendingUp className="w-5 h-5 text-blue-600" />
           </div>
-          <div className="text-2xl font-bold text-slate-800">{activeCustomers}</div>
-          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.active")}</div>
+          <p className="text-2xl font-semibold text-slate-900">{totalCustomers}</p>
+          <p className="text-xs text-slate-600 mt-1">{t("vendorAdmin.users.totalCustomers")}</p>
         </div>
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 relative">
-          <Star className="w-6 h-6 text-purple-600 mb-2" />
-          <div className="text-2xl font-bold text-slate-800">{championsCount}</div>
-          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.champions")}</div>
+        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200 min-w-0">
+          <div className="flex items-center justify-between mb-2">
+            <CheckCircle2 className="w-8 h-8 text-green-600" />
+            <span className="text-xs font-semibold text-green-600">{activePercentage}%</span>
+          </div>
+          <p className="text-2xl font-semibold text-slate-900">{activeCustomers}</p>
+          <p className="text-xs text-slate-600 mt-1">{t("vendorAdmin.users.active")}</p>
         </div>
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 relative">
-          <Clock className="w-6 h-6 text-orange-600 mb-2" />
-          <div className="text-2xl font-bold text-slate-800">{atRiskCount}</div>
-          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.atRisk")}</div>
-          <TrendingUp className="w-4 h-4 text-orange-600 absolute top-3 right-3" />
-        </div>
-        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 relative">
-          <DollarSign className="w-6 h-6 text-emerald-600 mb-2" />
-          <div className="text-2xl font-bold text-slate-800">{totalRevenue.toLocaleString()} MMK</div>
-          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.totalRevenue")}</div>
-          <TrendingUp className="w-4 h-4 text-emerald-600 absolute top-3 right-3" />
-        </div>
-        <div className="bg-gradient-to-br from-violet-50 to-violet-100 rounded-lg p-4 relative">
-          <Activity className="w-6 h-6 text-violet-600 mb-2" />
-          <div className="text-2xl font-bold text-slate-800">{Math.round(avgLTV).toLocaleString()} MMK</div>
-          <div className="text-xs text-slate-600 mt-0.5">{t("vendorAdmin.users.avgLtv")}</div>
-          <Activity className="w-4 h-4 text-violet-600 absolute top-3 right-3" />
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-lg p-4 border border-emerald-200 min-w-0">
+          <div className="flex items-center justify-between mb-2">
+            <DollarSign className="w-8 h-8 text-emerald-600" />
+            <TrendingUp className="w-5 h-5 text-emerald-600" />
+          </div>
+          <p className="text-2xl font-semibold text-slate-900 tabular-nums flex items-baseline gap-1 flex-wrap">
+            <span>{Math.round(totalRevenue).toLocaleString()}</span>
+            <span className="text-[9px] font-medium text-slate-500 leading-none align-baseline">MMK</span>
+          </p>
+          <p className="text-xs text-slate-600 mt-1">{t("vendorAdmin.users.totalRevenue")}</p>
         </div>
       </div>
 
@@ -441,18 +407,6 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
         >
           <Users className="w-4 h-4" />
           {t("customerIntel.customerList")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setCurrentTab("segments")}
-          className={`flex items-center gap-2 pb-3 px-1 text-sm font-medium transition-colors relative ${
-            currentTab === "segments"
-              ? "text-slate-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          <Activity className="w-4 h-4" />
-          {t("vendorAdmin.users.segment")}
         </button>
         <button
           type="button"
@@ -489,6 +443,7 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                   <SelectItem value="all">{t("vendorAdmin.users.allStatus")}</SelectItem>
                   <SelectItem value="active">{t("vendorAdmin.users.active")}</SelectItem>
                   <SelectItem value="inactive">{t("customerIntel.inactive")}</SelectItem>
+                  <SelectItem value="blocked">{t("customerIntel.blocked")}</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={filterTier} onValueChange={setFilterTier}>
@@ -556,18 +511,16 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                         onCheckedChange={toggleSelectAll}
                       />
                     </TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.customer")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.segment")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.orders")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.avgOrder")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.tags")}</TableHead>
-                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("vendorAdmin.users.status")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("customerIntel.customer")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("customerIntel.segment")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("customerIntel.orders")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("customerIntel.avgOrder")}</TableHead>
+                    <TableHead className="text-xs font-semibold text-slate-600 uppercase">{t("customerIntel.status")}</TableHead>
                     <TableHead className="w-12 text-right text-xs font-semibold text-slate-600 uppercase" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {pagedUsers.map((user) => {
-                    const displayTags = normalizeDisplayTags(user);
                     const seg = user.segment || "Other";
                     return (
                       <TableRow key={user.id} className="hover:bg-slate-50/80">
@@ -618,26 +571,8 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
                         </TableCell>
                         <TableCell>
                           <span className="text-sm text-slate-700">
-                            ${(user.avgOrder ?? 0).toFixed(2)}
+                            {Math.round(user.avgOrder ?? 0).toLocaleString()} MMK
                           </span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1 max-w-[200px]">
-                            {displayTags.slice(0, 3).map((tag) => (
-                              <Badge
-                                key={`${user.id}-${tag}`}
-                                variant="outline"
-                                className="text-xs font-normal bg-slate-50 text-slate-700 border-slate-200"
-                              >
-                                {tag}
-                              </Badge>
-                            ))}
-                            {displayTags.length > 3 && (
-                              <Badge variant="outline" className="text-xs bg-slate-50">
-                                +{displayTags.length - 3}
-                              </Badge>
-                            )}
-                          </div>
                         </TableCell>
                         <TableCell>{getStatusBadge(user.status || "active")}</TableCell>
                         <TableCell className="text-right">
@@ -720,14 +655,6 @@ export function VendorAdminUsers({ vendorId, vendorName }: VendorAdminUsersProps
             )}
           </div>
         </>
-      )}
-
-      {currentTab === "segments" && (
-        <div className="bg-white rounded-lg border border-slate-200 p-12 text-center">
-          <Activity className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-800 mb-1">{t("vendorAdmin.users.customerSegments")}</h3>
-          <p className="text-sm text-slate-500">{t("vendorAdmin.users.comingSoon")}</p>
-        </div>
       )}
 
       {currentTab === "analytics" && (

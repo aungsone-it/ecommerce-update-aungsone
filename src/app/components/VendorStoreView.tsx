@@ -46,7 +46,7 @@ import {
   isOutOfStockDisplay,
   showLowStockBadge,
 } from "../utils/productInventory";
-import { notifyStorefrontCustomerRegistered } from "../utils/customersRealtime";
+import { notifyStorefrontCustomerRegistered, subscribeCustomerRealtime } from "../utils/customersRealtime";
 import {
   applyCustomerProfileMerge,
   buildCustomerSessionFromAuthResponse,
@@ -151,6 +151,7 @@ import { VendorInstallFab } from "./VendorInstallFab";
 import { NotificationCenter } from "./NotificationCenter";
 import { useChatNotification } from "../contexts/ChatNotificationContext";
 import { authApi, wishlistApi } from "../../utils/api";
+import { ApiError } from "../../utils/api-client";
 import {
   AMBIENT_AUTH_PROFILE_REFRESH_MIN_MS,
   MIGOO_OPEN_CUSTOMER_AUTH_FOR_CHAT_EVENT,
@@ -1891,7 +1892,14 @@ export function VendorStoreView({
       persistMigooUserSession(updatedUser);
       vendorProfileAmbientLastRef.current = Date.now();
       markVendorUserProfileRefreshed(uid);
-    } catch {
+    } catch (error: unknown) {
+      // Deleted/disabled users must be signed out from storefront account views.
+      if (error instanceof ApiError && [401, 403, 404].includes(Number(error.statusCode))) {
+        setUser(null);
+        localStorage.removeItem("migoo-user");
+        notifyMigooUserSessionChanged();
+        return;
+      }
       /* keep local session if profile refresh fails — do not advance throttle */
     } finally {
       vendorProfileRefreshInFlightRef.current = false;
@@ -1927,6 +1935,27 @@ export function VendorStoreView({
       }
     };
   }, [scheduleVendorProfileRefresh]);
+
+  // Keep storefront account session honest after super-admin customer deletes/blocks.
+  useEffect(() => {
+    const uid = resolveUserIdFromRecord(user);
+    if (!uid) return;
+    const validateCurrentSession = async () => {
+      try {
+        await authApi.getProfile(uid);
+      } catch (error: unknown) {
+        if (error instanceof ApiError && [401, 403, 404].includes(Number(error.statusCode))) {
+          setUser(null);
+          localStorage.removeItem("migoo-user");
+          notifyMigooUserSessionChanged();
+        }
+      }
+    };
+    const unsubscribe = subscribeCustomerRealtime(() => {
+      void validateCurrentSession();
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   useEffect(() => {
     const syncFromStorage = () => {
