@@ -123,7 +123,7 @@ interface CheckoutProps {
   onOrderPlacedSuccess?: (ctx: { userId: string }) => void;
 }
 
-type CheckoutPaymentMethod = "Card" | "KPay" | "KPay-PWA" | "BankTransfer" | "None";
+type CheckoutPaymentMethod = "COD" | "Card" | "KPay" | "KPay-PWA" | "BankTransfer" | "None";
 
 type CheckoutSummarySnapshot = {
   orderNumber: string;
@@ -142,7 +142,7 @@ type CheckoutSummarySnapshot = {
     zipCode: string;
     country: string;
   };
-  paymentMethod: "Card" | "KPay" | "KPay-PWA" | "BankTransfer";
+  paymentMethod: "COD" | "Card" | "KPay" | "KPay-PWA" | "BankTransfer";
   savedAt: string;
 };
 
@@ -413,15 +413,17 @@ function pickLatestOrderForVendor(
 
 function summaryPaymentMethodLabel(method: CheckoutPaymentMethod): string {
   if (method === "None") return "Not selected";
+  if (method === "COD") return "Cash on Delivery";
   if (method === "KPay") return "KBZPay QR Payment";
   if (method === "KPay-PWA") return "KBZPay In App Payment";
   if (method === "BankTransfer") return "Bank Transfer";
   return "Credit / Debit Card";
 }
 
-function normalizeCheckoutPaymentMethod(raw: unknown): "Card" | "KPay" | "KPay-PWA" | "BankTransfer" {
+function normalizeCheckoutPaymentMethod(raw: unknown): "COD" | "Card" | "KPay" | "KPay-PWA" | "BankTransfer" {
   const txt = String(raw || "").trim().toLowerCase();
   if (!txt) return "Card";
+  if (txt === "cod" || txt === "cash" || txt.includes("cash on delivery")) return "COD";
   if (txt.includes("pwa") || txt.includes("mobile browser")) return "KPay-PWA";
   if (
     txt === "kpay" ||
@@ -1972,7 +1974,7 @@ export function Checkout({
       // Webhook from KBZ has confirmed the payment via Supabase Realtime,
       // so we can place the order with paymentStatus: "paid".
       latestKpaySession = { ...(kpaySession || {}), status: "paid" } as any;
-    } else {
+    } else if (paymentMethod !== "COD") {
       toast.info("🚀 Coming Soon! This payment method will be available soon.", { duration: 3000 });
       setLoading(false);
       return;
@@ -2009,6 +2011,8 @@ export function Checkout({
                   ? "pending_verification"
                   : (latestKpaySession?.status === "paid" ? "paid" : "pending")
               )
+            : paymentMethod === "COD"
+            ? "unpaid"
             : "paid",
         paymentMethod:
           paymentMethod === "Card"
@@ -2017,6 +2021,8 @@ export function Checkout({
             ? "KBZPay"
             : paymentMethod === "KPay-PWA"
             ? "KBZPay (PWA)"
+            : paymentMethod === "COD"
+            ? "COD"
             : "Bank Transfer",
         total: finalTotal,
         subtotal: payableSubtotal,
@@ -2610,13 +2616,45 @@ export function Checkout({
                   <div className="flex items-start gap-2">
                     <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600" />
                     <div>
-                      <p className="mb-0.5 text-xs font-semibold text-blue-900">💳 Prepaid Payment Required</p>
-                      <p className="text-xs text-blue-800">All orders require payment completion before processing.</p>
+                      <p className="mb-0.5 text-xs font-semibold text-blue-900">Choose how you want to pay</p>
+                      <p className="text-xs text-blue-800">Pay now with KBZPay, or pay in cash when your order is delivered.</p>
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod("COD")}
+                    className={`w-full rounded-lg border p-4 text-left transition-colors ${
+                      paymentMethod === "COD"
+                        ? "border-slate-900 bg-slate-50"
+                        : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`flex h-4 w-4 items-center justify-center rounded-full border-2 bg-white ${
+                            paymentMethod === "COD" ? "border-slate-900" : "border-slate-200"
+                          }`}
+                        >
+                          {paymentMethod === "COD" && <div className="h-2 w-2 rounded-full bg-slate-900" />}
+                        </div>
+                        <div>
+                          <span className="text-sm font-medium text-slate-700">Cash on Delivery</span>
+                          <p className="mt-0.5 text-xs text-slate-500">Pay in cash when your order arrives</p>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+
+                  {paymentMethod === "COD" && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-800">
+                      Your order will be created now. Please prepare the exact amount for delivery.
+                    </div>
+                  )}
+
                   {!isMobile && (
                   <>
                   <button
@@ -2843,6 +2881,8 @@ export function Checkout({
                   kpayWebhookConfirmed ? "Place Order (Payment Confirmed)" : "I've Completed Payment"
                 ) : paymentMethod === "KPay-PWA" ? (
                   `Pay with KBZPay · ${finalTotal.toFixed(0)} MMK`
+                ) : paymentMethod === "COD" ? (
+                  "Place COD Order"
                 ) : paymentMethod === "None" ? (
                   "Select a payment method"
                 ) : (
