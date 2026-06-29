@@ -75,13 +75,10 @@
 @source not '../app/components/UnifiedKpaySummarySignInGate.tsx';
 @source not '../app/components/SkeletonLoaders.tsx';
 
-/* Legacy marketplace mega-store (no active route) — drop dead CSS from the global bundle. */
-@source not '../app/components/Storefront.tsx';
-@source not '../app/components/StorefrontCached.tsx';
+/* Legacy storefront helpers that are not part of the global bundle. */
 @source not '../app/components/StorefrontFooter.tsx';
 @source not '../app/components/StorefrontAuth.tsx';
 @source not '../app/components/StorefrontProductDetail.tsx';
-@source not '../app/pages/StorefrontPage.tsx';
 @source not '../app/components/SkeletonLoader.tsx';
 
 @import 'tw-animate-css';
