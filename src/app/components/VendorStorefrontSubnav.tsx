@@ -111,6 +111,7 @@ type VendorStorefrontSubnavProps = {
   routeSlug: string;
   storePhone: string;
   telHref: string;
+  viberHref: string;
   showPhone: boolean;
   onTabSelect: (tab: VendorSubnavTab) => void;
 };
@@ -120,6 +121,7 @@ export function VendorStorefrontSubnav({
   routeSlug,
   storePhone,
   telHref,
+  viberHref,
   showPhone,
   onTabSelect,
 }: VendorStorefrontSubnavProps) {
@@ -234,15 +236,41 @@ export function VendorStorefrontSubnav({
           </div>
 
           {showPhone ? (
-            <div ref={phoneRef} className="flex shrink-0 items-center self-stretch border-l border-slate-200 pl-5 ml-1">
-              <a
-                href={telHref}
+            <div
+              ref={phoneRef}
+              className="group/contact relative flex shrink-0 items-center self-stretch border-l border-slate-200 pl-5 ml-1"
+            >
+              <button
+                type="button"
                 title={storePhone}
+                aria-haspopup="menu"
                 className="flex items-center gap-2.5 py-1 text-slate-700 transition-colors hover:text-orange-600 whitespace-nowrap"
               >
                 <Phone className="w-4 h-4 shrink-0" />
                 <span className="text-sm font-medium">{storePhone}</span>
-              </a>
+              </button>
+              <div
+                role="menu"
+                className="invisible absolute right-0 top-full z-50 mt-2 w-56 translate-y-1 rounded-xl border border-slate-200 bg-white p-2 text-sm opacity-0 shadow-xl transition-all duration-150 group-hover/contact:visible group-hover/contact:translate-y-0 group-hover/contact:opacity-100 group-focus-within/contact:visible group-focus-within/contact:translate-y-0 group-focus-within/contact:opacity-100"
+              >
+                <p className="px-3 pb-2 pt-1 text-xs font-medium text-slate-500">
+                  {t("storefront.contact.chooseDestination")}
+                </p>
+                <a
+                  role="menuitem"
+                  href={telHref}
+                  className="block rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-slate-50 hover:text-orange-600"
+                >
+                  {t("storefront.contact.dial")}
+                </a>
+                <a
+                  role="menuitem"
+                  href={viberHref}
+                  className="block rounded-lg px-3 py-2 font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700"
+                >
+                  {t("storefront.contact.viber")}
+                </a>
+              </div>
             </div>
           ) : null}
         </div>

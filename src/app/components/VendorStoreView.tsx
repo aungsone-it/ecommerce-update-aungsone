@@ -470,6 +470,20 @@ function telHrefFromDisplay(phone: string): string {
   return digits.length > 0 ? `tel:${digits}` : "#";
 }
 
+function viberHrefFromDisplay(phone: string): string {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "#";
+  const international =
+    digits.startsWith("959")
+      ? `+${digits}`
+      : digits.startsWith("09")
+        ? `+95${digits.slice(1)}`
+        : digits.startsWith("95")
+          ? `+${digits}`
+          : `+${digits}`;
+  return `viber://chat?number=${encodeURIComponent(international)}`;
+}
+
 function isPlaceholderVendorPhone(phone: string): boolean {
   const t = String(phone || "").trim();
   if (!t) return true;
@@ -1754,6 +1768,7 @@ export function VendorStoreView({
         routeSlug={normalizedCategorySlugFromRoute}
         storePhone={storePhone}
         telHref={telHrefFromDisplay(storePhone)}
+        viberHref={viberHrefFromDisplay(storePhone)}
         showPhone={!isPlaceholderVendorPhone(storePhone)}
         onTabSelect={navigateVendorSubnavTab}
       />
@@ -2736,14 +2751,29 @@ export function VendorStoreView({
           </div>
           <div className="mt-auto border-t border-slate-200 p-4 space-y-2 bg-white">
             {!isPlaceholderVendorPhone(storePhone) ? (
-              <a
-                href={telHrefFromDisplay(storePhone)}
-                className="flex w-full items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                onClick={closeVendorMobileNav}
-              >
-                <Phone className="w-4 h-4 shrink-0 text-amber-600" />
-                <span className="truncate">{storePhone}</span>
-              </a>
+              <div className="rounded-md border border-slate-200 bg-white p-3">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <Phone className="w-4 h-4 shrink-0 text-amber-600" />
+                  <span className="truncate">{storePhone}</span>
+                </div>
+                <p className="mb-2 text-xs text-slate-500">{t("storefront.contact.chooseDestination")}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <a
+                    href={telHrefFromDisplay(storePhone)}
+                    className="rounded-md bg-slate-900 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-slate-800"
+                    onClick={closeVendorMobileNav}
+                  >
+                    {t("storefront.contact.dial")}
+                  </a>
+                  <a
+                    href={viberHrefFromDisplay(storePhone)}
+                    className="rounded-md bg-violet-600 px-3 py-2 text-center text-xs font-semibold text-white hover:bg-violet-700"
+                    onClick={closeVendorMobileNav}
+                  >
+                    {t("storefront.contact.viber")}
+                  </a>
+                </div>
+              </div>
             ) : null}
             {user ? (
               <Button

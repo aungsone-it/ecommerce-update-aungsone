@@ -46,6 +46,9 @@ export const myTranslations: Record<string, string> = {
     'storefront.searchProducts': 'ပစ္စည်းများ ရှာရန်',
     'storefront.search.typeHint': 'ဖွင့်ထားသော ပစ္စည်းများကို ကြိုတင်ကြည့်ရန် စာရိုက်ပါ။ ပစ္စည်းအားလုံးတွင် ရှာရန် Enter နှိပ်ပါ။',
     'storefront.footer.rights': 'မူပိုင်ခွင့်ရှိသည်။',
+    'storefront.contact.chooseDestination': 'ဘယ်ကို သွားချင်ပါသလဲ?',
+    'storefront.contact.dial': 'ဖုန်းခေါ်ရန်',
+    'storefront.contact.viber': 'Viber',
 
     'checkout.continueShopping': 'ဆက်လက်ဝယ်ယူရန်',
     'checkout.contact': 'ဆက်သွယ်ရန်',

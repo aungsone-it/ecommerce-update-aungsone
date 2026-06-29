@@ -84,6 +84,9 @@ export const enTranslations: Record<string, string> = {
     'storefront.searchProducts': 'Search products',
     'storefront.search.typeHint': 'Type to preview loaded products. Press Enter to search the full catalog.',
     'storefront.footer.rights': 'All rights reserved.',
+    'storefront.contact.chooseDestination': 'Where do you want to go?',
+    'storefront.contact.dial': 'Dial',
+    'storefront.contact.viber': 'Viber',
 
     // Vendor Checkout
     'checkout.continueShopping': 'Continue Shopping',
