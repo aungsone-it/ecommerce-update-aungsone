@@ -1348,7 +1348,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
   const [isProcessingOrder, setIsProcessingOrder] = useState(false);
   const [buyNowItem, setBuyNowItem] = useState<CartItem | null>(null); // 🔥 Direct Buy Now item
   const [completedOrder, setCompletedOrder] = useState<any>(null); // 🔥 Store completed order details
-  const [paymentMethod, setPaymentMethod] = useState<"COD" | "Card" | "KPay" | "BankTransfer" | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"Card" | "KPay" | "BankTransfer" | null>(null);
   const [paymentInfo, setPaymentInfo] = useState({
     cardNumber: '',
     cardName: '',
@@ -3953,14 +3953,7 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
             ? (kpaySession?.status === "paid" ? "paid" : "pending")
             : "unpaid",
         vendor: 'SECURE Store',
-        paymentMethod:
-          paymentMethod === "Card"
-            ? "Credit/Debit Card"
-            : paymentMethod === "KPay"
-              ? "KBZPay"
-              : paymentMethod === "COD"
-                ? "COD"
-                : "Bank Transfer",
+        paymentMethod: paymentMethod === "Card" ? "Credit/Debit Card" : paymentMethod === "KPay" ? "KBZPay" : "Bank Transfer",
         shippingAddress: `${customerInfo.address}, ${customerInfo.city}, ${customerInfo.zipCode}, ${customerInfo.country}`,
         notes: customerInfo.notes || ''
       };
@@ -6697,45 +6690,18 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900 mb-3" style={{ fontFamily: 'Rubik, sans-serif' }}>Payment</h2>
                   
-                  {/* Payment Notice Banner */}
+                  {/* Prepaid Notice Banner */}
                   <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-3 mb-4">
                     <div className="flex items-start gap-2">
                       <Shield className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
                       <div>
-                        <p className="text-xs font-semibold text-blue-900 mb-0.5">Choose how you want to pay</p>
-                        <p className="text-xs text-blue-800">Pay now with KBZPay/card/bank transfer, or pay when your order is delivered.</p>
+                        <p className="text-xs font-semibold text-blue-900 mb-0.5">💳 Prepaid Payment Required</p>
+                        <p className="text-xs text-blue-800">All orders require payment completion before processing.</p>
                       </div>
                     </div>
                   </div>
                   
                   <div className="space-y-3">
-                  {/* Cash on Delivery */}
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod("COD")}
-                    className={`w-full text-left border rounded-lg p-4 transition-all ${
-                      paymentMethod === "COD"
-                        ? "border-slate-900 bg-slate-50"
-                        : "border-slate-300 bg-white hover:border-slate-400"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
-                          paymentMethod === "COD" ? "border-slate-900" : "border-slate-300"
-                        }`}>
-                          {paymentMethod === "COD" && (
-                            <div className="w-2 h-2 rounded-full bg-slate-900"></div>
-                          )}
-                        </div>
-                        <div>
-                          <span className="text-sm font-medium text-slate-900">Cash on Delivery</span>
-                          <p className="text-xs text-slate-500 mt-0.5">Pay in cash when your order arrives</p>
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-
                   {/* Credit/Debit Card */}
                   <button
                     type="button"
@@ -6810,17 +6776,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                 </div>
 
                 {/* Payment Detail Forms - Show when payment method selected */}
-                {paymentMethod === "COD" && (
-                  <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <p className="text-sm text-green-900 font-semibold">Cash on Delivery</p>
-                      <p className="text-sm text-green-800 mt-1">
-                        Your order will be created now. Please prepare the exact amount when the delivery arrives.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
                 {paymentMethod === "Card" && (
                   <div className="mt-6 space-y-4 border-t border-slate-200 pt-6">
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
@@ -7294,8 +7249,6 @@ export function Storefront({ onSwitchToAdmin, onOrderPlaced, onOpenVendorApplica
                           ? `Pay ${formatPriceMMK(`$${(getCartTotal() - (appliedCoupon?.discountAmount || 0)).toFixed(2)}`)}` 
                           : paymentMethod === "BankTransfer" || paymentMethod === "KPay"
                           ? "I've Completed Payment"
-                          : paymentMethod === "COD"
-                          ? "Place COD Order"
                           : "PROCEED ORDER"}
                       </>
                     )}
