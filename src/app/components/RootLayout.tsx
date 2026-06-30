@@ -76,19 +76,6 @@ function RootLayoutContent() {
   const isAdminPortal = isAdminPortalRoute(location.pathname);
   const isVendorProductDetailPage = isVendorStorefrontProductDetailPath(location.pathname);
 
-  // Warm vendor storefront chunks on vendor-like hosts to avoid first-visit blink on
-  // routes like /product/:slug, /saved and /profile when code-split chunks are cold.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const host = window.location.hostname;
-    const isVendorLikeHost =
-      subdomainStoreSlug != null ||
-      customHostSlug != null ||
-      shouldResolveCustomDomainHost(host);
-    if (!isVendorLikeHost) return;
-    void import("../pages/VendorStorefrontPage");
-  }, [subdomainStoreSlug, customHostSlug]);
-
   // Start Terms / Privacy fetch as soon as the route matches (before page mount).
   useEffect(() => {
     const { kind, routeStoreSlug, usesHostSlug } = parseStorefrontPolicyRoute(location.pathname);

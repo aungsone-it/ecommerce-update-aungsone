@@ -1,6 +1,6 @@
 // Routes Configuration - Cache bust: 20260307181500
 import { lazy, Suspense, type ReactNode } from "react";
-import { Navigate, type RouteObject } from "react-router";
+import { Navigate, useLocation, type RouteObject } from "react-router";
 import { RootLayout } from "./components/RootLayout";
 import { AnimatedOutlet } from "./components/AnimatedOutlet";
 import { ScrollController } from "./components/ScrollController";
@@ -11,6 +11,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { VendorAuthProvider } from "./contexts/VendorAuthContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import {
+  isAdminPortalRoute,
   resolveVendorSubdomainStoreSlug,
   isOnVendorSubdomainHost,
 } from "./utils/vendorSubdomainHooks";
@@ -131,6 +132,16 @@ function LazyBoundary({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteSuspenseFallback />}>{children}</Suspense>;
 }
 
+function AdminRealtimeBridge() {
+  const location = useLocation();
+  if (!isAdminPortalRoute(location.pathname)) return null;
+  return (
+    <Suspense fallback={null}>
+      <OrderRealtimeBridge />
+    </Suspense>
+  );
+}
+
 function NotFoundBoundary() {
   return (
     <LazyBoundary>
@@ -148,9 +159,7 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           <ErrorBoundary>
             <ScrollController />
             <KPayVendorReturnRedirect />
-            <Suspense fallback={null}>
-              <OrderRealtimeBridge />
-            </Suspense>
+            <AdminRealtimeBridge />
             {children}
           </ErrorBoundary>
         </VendorAuthProvider>

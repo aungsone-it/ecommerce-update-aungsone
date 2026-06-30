@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import path from 'path'
+import fs from 'fs'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 
@@ -20,6 +21,27 @@ const figmaAssetPlugin = () => ({
   }
 });
 
+const inlinePublicHeadScriptsPlugin = () => ({
+  name: 'inline-public-head-scripts',
+  transformIndexHtml(html: string) {
+    const publicScripts = ['platform-branding-head.js', 'vendor-storefront-head.js'];
+    let next = html;
+
+    for (const filename of publicScripts) {
+      const scriptPath = path.resolve(__dirname, 'public', filename);
+      if (!fs.existsSync(scriptPath)) continue;
+      const source = fs.readFileSync(scriptPath, 'utf8');
+      const escaped = source.replace(/<\/script/gi, '<\\/script');
+      next = next.replace(
+        new RegExp(`<script\\s+src="/${filename}"(?:\\s+defer)?><\\/script>`),
+        `<script data-inline-public="${filename}">\n${escaped}\n</script>`
+      );
+    }
+
+    return next;
+  },
+});
+
 export default defineConfig(() => {
   return {
   // Do not use `define` for import.meta.env.VITE_* — it overrides Vite's env injection
@@ -30,6 +52,7 @@ export default defineConfig(() => {
     react(),
     tailwindcss(),
     figmaAssetPlugin(),
+    inlinePublicHeadScriptsPlugin(),
   ],
   resolve: {
     alias: {
@@ -53,6 +76,16 @@ export default defineConfig(() => {
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return;
+          // Tiny shared utilities must stay out of optional heavy chunks. If `clsx`
+          // is captured by the Recharts chunk, Vite modulepreloads all charts on
+          // every storefront visit just to satisfy class-name helpers.
+          if (
+            id.includes('/clsx/') ||
+            id.includes('/class-variance-authority/') ||
+            id.includes('/tailwind-merge/')
+          ) {
+            return 'ui-utils';
+          }
           // Core React — stable caching across route chunks
           if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) {
             return 'react-vendor';
