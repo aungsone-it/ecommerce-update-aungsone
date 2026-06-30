@@ -16,14 +16,20 @@ import {
 } from "./ui/select";
 import { compressImage } from "../../utils/imageCompression";
 import { toast } from "sonner";
-import { categoriesApi, productsApi } from "../../utils/api";
+import { categoriesApi } from "../../utils/api";
 import {
+  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+  adminProductsPageCacheKey,
+  CACHE_KEYS,
   getCachedAdminAllProducts,
+  getCachedAdminProductsPage,
   invalidateAdminAllCategoriesCache,
   invalidateAdminAllProductsCache,
+  moduleCache,
   notifyAdminProductsListChanged,
+  primeAdminProductsPageFromFullCache,
+  type AdminProductsPagePayload,
 } from "../utils/module-cache";
-import { useAuth } from "../contexts/AuthContext";
 
 interface Product {
   id: string;
@@ -52,7 +58,6 @@ interface CategoryFormProps {
 }
 
 export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormProps) {
-  const { user: sessionUser } = useAuth();
   const [categoryName, setCategoryName] = useState("");
   const [description, setDescription] = useState("");
   const [coverPhoto, setCoverPhoto] = useState("");
@@ -60,12 +65,27 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
   const [status, setStatus] = useState<"active" | "hide">("active");
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [productSearchQuery, setProductSearchQuery] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
+  const cachedProducts =
+    moduleCache.peek<Product[]>(CACHE_KEYS.ADMIN_PRODUCTS) ||
+    moduleCache.peek<AdminProductsPagePayload>(
+      adminProductsPageCacheKey({
+        page: 1,
+        pageSize: ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+        q: "",
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: "newest",
+      })
+    )?.products ||
+    [];
+  const [products, setProducts] = useState<Product[]>(() => cachedProducts);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
-    void loadProducts(true);
+    void loadProducts(false);
 
     // If editing, populate the form
     if (editingCategory) {
@@ -95,8 +115,51 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
   }, [editingCategory?.id, editingCategory?.name, products]);
 
   const loadProducts = async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const full = moduleCache.peek<Product[]>(CACHE_KEYS.ADMIN_PRODUCTS);
+      if (Array.isArray(full) && full.length > 0) {
+        setProducts(full);
+        return;
+      }
+
+      const pageParams = {
+        page: 1,
+        pageSize: ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
+        q: "",
+        status: "all",
+        tab: "all",
+        vendor: "all",
+        collaborator: "all",
+        sort: "newest",
+      };
+      const page =
+        moduleCache.peek<AdminProductsPagePayload>(adminProductsPageCacheKey(pageParams)) ||
+        primeAdminProductsPageFromFullCache(pageParams);
+      if (Array.isArray(page?.products) && page.products.length > 0) {
+        setProducts(page.products as Product[]);
+        return;
+      }
+    }
+
     try {
-      const list = await getCachedAdminAllProducts(forceRefresh);
+      const page = await getCachedAdminProductsPage(
+        {
+          page: 1,
+          pageSize: 100,
+          q: "",
+          status: "all",
+          tab: "all",
+          vendor: "all",
+          collaborator: "all",
+          sort: "newest",
+        },
+        forceRefresh
+      );
+      const pageProducts = Array.isArray(page.products) ? (page.products as Product[]) : [];
+      setProducts(pageProducts);
+      if (pageProducts.length > 0) return;
+
+      const list = await getCachedAdminAllProducts(false);
       setProducts(Array.isArray(list) ? (list as Product[]) : []);
     } catch (error) {
       console.error("Failed to load products:", error);
@@ -191,49 +254,6 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
         console.log("✅ Category created successfully");
       }
 
-      const oldCategoryName = String(editingCategory?.name || "").trim();
-      const nameKey = categoryName.trim().toLowerCase();
-      const oldKey = oldCategoryName.toLowerCase();
-
-      const idsToClear = [
-        ...new Set(
-          products
-            .filter((p) => {
-              const pk = String(p.category || "").trim().toLowerCase();
-              const matchesName =
-                (nameKey && pk === nameKey) || (oldKey && pk === oldKey);
-              return matchesName && !selectedProducts.includes(p.id);
-            })
-            .map((p) => p.id)
-        ),
-      ];
-
-      const assignResults = await Promise.allSettled(
-        selectedProducts.map((productId) =>
-          productsApi.update(productId, {
-            category: categoryName,
-            performedByUserId: sessionUser?.id,
-          })
-        )
-      );
-      const assignFailed = assignResults.filter((r) => r.status === "rejected").length;
-      if (assignFailed > 0) {
-        console.warn(
-          `Category saved; ${assignFailed} product row(s) may need a refresh (server sync should still apply).`
-        );
-      }
-
-      if (idsToClear.length > 0) {
-        await Promise.allSettled(
-          idsToClear.map((productId) =>
-            productsApi.update(productId, {
-              category: "",
-              performedByUserId: sessionUser?.id,
-            })
-          )
-        );
-      }
-
       invalidateAdminAllCategoriesCache();
       invalidateAdminAllProductsCache();
       notifyAdminProductsListChanged();
@@ -309,7 +329,7 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
           </Card>
 
           {/* Cover Photo */}
-          <Card className="p-6">
+          <Card className="hidden">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Cover Photo</h2>
             
             {!coverPhotoPreview ? (
@@ -425,6 +445,7 @@ export function CategoryForm({ onBack, onSave, editingCategory }: CategoryFormPr
                     <div className="flex items-center gap-3">
                       <Checkbox
                         checked={selectedProducts.includes(product.id)}
+                        onClick={(e) => e.stopPropagation()}
                         onCheckedChange={() => toggleProductSelection(product.id)}
                       />
                       <img

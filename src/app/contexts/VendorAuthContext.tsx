@@ -66,14 +66,20 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
   const [vendor, setVendor] = useState<VendorUser | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const isVendorSessionStillValid = useCallback(async (candidate: VendorUser): Promise<boolean> => {
+  const revalidateVendorSession = useCallback(async (
+    candidate: VendorUser
+  ): Promise<"valid" | "invalid" | "unknown"> => {
     try {
-      if (!candidate?.vendorId || !candidate?.email) return false;
+      if (!candidate?.vendorId || !candidate?.email) return "invalid";
       const response = await fetch(
         `${API_BASE_URL}/vendor-auth/profile/${encodeURIComponent(candidate.vendorId)}`,
         { headers: { Authorization: `Bearer ${publicAnonKey}` } }
       );
-      if (!response.ok) return false;
+      if (!response.ok) {
+        return response.status === 401 || response.status === 403 || response.status === 404
+          ? "invalid"
+          : "unknown";
+      }
       const data = (await response.json()) as { user?: { id?: string; email?: string } };
       const resolvedId = String(data.user?.id || "").trim();
       const resolvedEmail = String(data.user?.email || "").trim().toLowerCase();
@@ -82,16 +88,18 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
         resolvedId === candidate.vendorId &&
         resolvedEmail.length > 0 &&
         resolvedEmail === candidate.email.toLowerCase()
-      );
+      )
+        ? "valid"
+        : "invalid";
     } catch {
-      return false;
+      return "unknown";
     }
   }, []);
 
   // Check for existing session on mount
   useEffect(() => {
     void checkSession();
-  }, [isVendorSessionStillValid]);
+  }, [revalidateVendorSession]);
 
   const checkSession = async () => {
     try {
@@ -120,13 +128,22 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const valid = await isVendorSessionStillValid(restored);
-      if (!valid) {
+      setVendor(restored);
+      localStorage.setItem('vendorAuth', JSON.stringify(restored));
+      if (fromCookie) {
+        setVendorAuthSessionCookie(restored, fromCookie.rememberMe);
+      }
+
+      const validity = await revalidateVendorSession(restored);
+      if (validity === "invalid") {
         console.warn('⚠️ [VendorAuth] Stored session failed server revalidation, clearing local state');
         setVendor(null);
         localStorage.removeItem('vendorAuth');
         clearVendorAuthSessionCookie();
         return;
+      }
+      if (validity === "unknown") {
+        console.warn('⚠️ [VendorAuth] Session revalidation unavailable; keeping cached vendor session');
       }
 
       const portalContext = resolveVendorAdminPortalContext();
@@ -143,11 +160,6 @@ export function VendorAuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setVendor(restored);
-      localStorage.setItem('vendorAuth', JSON.stringify(restored));
-      if (fromCookie) {
-        setVendorAuthSessionCookie(restored, fromCookie.rememberMe);
-      }
       console.log('✅ [VendorAuth] Session restored after server revalidation:', restored.email);
     } catch (error) {
       console.error('❌ [VendorAuth] Session check error:', error);

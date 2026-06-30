@@ -751,7 +751,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
       normalizeOrderStatusKey(String(status ?? "")) || "pending";
     const variants: Record<string, { color: string; label: string }> = {
       pending: { color: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Pending" },
-      processing: { color: "bg-blue-100 text-blue-700 border-blue-200", label: "Processing" },
+      processing: { color: "bg-slate-100 text-slate-700 border-slate-200", label: "Processing" },
       'ready-to-ship': { color: "bg-cyan-100 text-cyan-700 border-cyan-200", label: "Ready to Ship" },
       fulfilled: { color: "bg-emerald-100 text-emerald-700 border-emerald-200", label: "Fulfilled" },
       shipped: { color: "bg-purple-100 text-purple-700 border-purple-200", label: "Shipped" },
@@ -1028,7 +1028,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               type="button"
               variant="default"
               onClick={() => onLoginAsVendor(vendor)}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white"
+              className="bg-slate-900 hover:bg-slate-800 text-white"
             >
               <Store className="w-4 h-4 mr-2" />
               Login as Vendor
@@ -1038,7 +1038,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
             type="button"
             variant="outline" 
             onClick={() => setActiveTab("storefront")}
-            className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
           >
             <Store className="w-4 h-4 mr-2" />
             Manage Storefront
@@ -1134,8 +1134,8 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
               <p className="text-xl font-semibold text-slate-900 mt-1">{totalOrders}</p>
               <p className="text-xs text-slate-400 mt-0.5">All time</p>
             </div>
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <ShoppingCart className="w-5 h-5 text-blue-600" />
+            <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center">
+              <ShoppingCart className="w-5 h-5 text-slate-600" />
             </div>
           </div>
         </Card>
@@ -1340,7 +1340,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                     variant="outline" 
                     size="sm"
                     onClick={handleSelectProduct}
-                    className="bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                    className="border-slate-300 text-slate-700 hover:bg-slate-50"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Select Product
@@ -1398,7 +1398,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                   <p className="text-sm text-slate-500 mb-4">This vendor hasn't added any products</p>
                   <Button 
                     onClick={handleSelectProduct}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-slate-900 hover:bg-slate-800"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Select Product
@@ -1927,7 +1927,7 @@ export function VendorProfile({ vendor, onBack, onEdit, onPreviewVendorStore, on
                   savingProducts ||
                   (selectedProductIds.length === 0 && pickerAssignedUncheckedIds.length === 0)
                 }
-                className="bg-blue-600 hover:bg-blue-700"
+                className="bg-slate-900 hover:bg-slate-800"
               >
                 {savingProducts ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
