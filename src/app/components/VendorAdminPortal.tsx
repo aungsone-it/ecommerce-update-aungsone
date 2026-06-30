@@ -652,6 +652,7 @@ export function VendorAdminPortal({ vendor, onLogout, onPreviewStore }: VendorAd
             vendorId={vendor.id}
             vendorName={vendor.name}
             reportLoadErrors={currentPage === "categories"}
+            isActive={currentPage === "categories"}
           />
         );
       case "orders":

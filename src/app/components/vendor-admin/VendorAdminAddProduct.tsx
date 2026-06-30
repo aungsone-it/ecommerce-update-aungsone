@@ -105,15 +105,11 @@ export function VendorAdminAddProduct({
   const [barcode, setBarcode] = useState(initialData?.barcode || "");
   const [inventory, setInventory] = useState(initialData?.inventory || 0);
   const [weight, setWeight] = useState(initialData?.weight || "");
-  const [category, setCategory] = useState(initialData?.category || "");
   const [status, setStatus] = useState(initialData?.status || "Active");
   const [trackQuantity, setTrackQuantity] = useState(initialData?.trackQuantity !== undefined ? initialData.trackQuantity : true);
   const [continueSellingOutOfStock, setContinueSellingOutOfStock] = useState(initialData?.continueSellingOutOfStock || false);
   const [commissionRate, setCommissionRate] = useState(initialData?.commissionRate?.toString() || ""); // 🔥 Product commission rate
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Categories
-  const [categories, setCategories] = useState<string[]>([]);
   
   // Variants
   const [hasVariants, setHasVariants] = useState(false);
@@ -153,41 +149,6 @@ export function VendorAdminAddProduct({
 
   // Product organization
   const [productType, setProductType] = useState(initialData?.productType || "");
-
-  // Load categories
-  useEffect(() => {
-    loadCategories();
-  }, [vendorId]);
-
-  const loadCategories = async () => {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-      
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/categories/${vendorId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-          signal: controller.signal,
-        }
-      );
-      
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        const data = await response.json();
-        setCategories(data.categories || []);
-      } else {
-        // Use default categories on error
-        setCategories(["Electronics", "Clothing", "Home & Garden", "Books", "Sports", "Toys"]);
-      }
-    } catch (error) {
-      console.error("Failed to load categories:", error);
-      setCategories(["Electronics", "Clothing", "Home & Garden", "Books", "Sports", "Toys"]);
-    }
-  };
 
   const addTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim())) {
@@ -381,7 +342,7 @@ export function VendorAdminAddProduct({
         barcode: hasVariants ? "" : barcode,
         inventory: hasVariants ? 0 : inventory,
         weight: hasVariants ? "" : weight,
-        category,
+        category: "",
         status,
         images: images.filter(img => img.trim()),
         tags,
@@ -400,7 +361,7 @@ export function VendorAdminAddProduct({
         name: productData.name,
         vendor: productData.vendor,
         vendorId: productData.vendorId,
-        category: productData.category,
+        category: "vendor-owned",
         status: productData.status,
         hasVariants: productData.hasVariants,
         variantCount: productData.variants?.length || 0,
@@ -859,18 +820,8 @@ export function VendorAdminAddProduct({
               <CardTitle>Product Organization</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="category">Category *</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.map(cat => (
-                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
+                Storefront categories are managed from the vendor Categories section. Product saves do not change super-admin categories.
               </div>
               <div>
                 <Label htmlFor="productType">Product Type</Label>

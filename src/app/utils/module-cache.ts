@@ -1217,7 +1217,11 @@ export async function fetchAdminAllCategoriesList(): Promise<any[]> {
     throw new Error(`Failed to fetch admin categories: ${categoriesRes.status}`);
   }
   const data = await categoriesRes.json();
-  const raw = (data.categories || []) as Record<string, unknown>[];
+  const raw = ((data.categories || []) as Record<string, unknown>[]).filter((cat) => {
+    if (!cat || typeof cat !== "object") return false;
+    if ((cat as { vendorId?: unknown }).vendorId) return false;
+    return !String((cat as { id?: unknown }).id || "").startsWith("category:");
+  });
   const productRows = Array.isArray(products) ? products : [];
   const enriched = enrichAdminCategoriesWithProductCounts(raw, productRows);
   return enriched.map((cat) => ({
@@ -1558,6 +1562,69 @@ export async function fetchVendorProducts(
   };
 }
 
+function vendorCreatedCategoryStorageKey(vendorId: string): string {
+  return `migoo-vendor-created-categories:${String(vendorId || "").trim()}`;
+}
+
+const GLOBAL_VENDOR_CREATED_CATEGORY_STORAGE_KEY = "migoo-vendor-created-categories:global";
+
+function readRememberedVendorCategoryRefs(vendorId?: string): Set<string> {
+  const refs = new Set<string>();
+  if (typeof window === "undefined") return refs;
+  try {
+    const keys = [GLOBAL_VENDOR_CREATED_CATEGORY_STORAGE_KEY];
+    if (vendorId) keys.push(vendorCreatedCategoryStorageKey(vendorId));
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("migoo-vendor-created-categories:")) keys.push(key);
+    }
+    for (const key of [...new Set(keys)]) {
+      const raw = localStorage.getItem(key);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        parsed.forEach((value) => {
+          const ref = String(value || "").trim().toLowerCase();
+          if (ref) refs.add(ref);
+        });
+      }
+    }
+  } catch {
+    /* ignore invalid local category memory */
+  }
+  return refs;
+}
+
+export function rememberVendorCreatedCategory(vendorId: string, category: { id?: unknown; name?: unknown }): void {
+  if (typeof window === "undefined" || !vendorId) return;
+  try {
+    const refs = readRememberedVendorCategoryRefs(vendorId);
+    const id = String(category?.id || "").trim().toLowerCase();
+    const name = String(category?.name || "").trim().toLowerCase();
+    if (id) refs.add(`id:${id}`);
+    if (name) refs.add(`name:${name}`);
+    const serialized = JSON.stringify([...refs]);
+    localStorage.setItem(vendorCreatedCategoryStorageKey(vendorId), serialized);
+    localStorage.setItem(GLOBAL_VENDOR_CREATED_CATEGORY_STORAGE_KEY, serialized);
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
+export function isVendorCreatedCategory(category: any, vendorId?: string): boolean {
+  if (!category) return false;
+  if (category.source === "vendor" || category.createdByVendor === true) return true;
+  const refs = readRememberedVendorCategoryRefs(vendorId);
+  const id = String(category?.id || "").trim().toLowerCase();
+  const name = String(category?.name || "").trim().toLowerCase();
+  return (id && refs.has(`id:${id}`)) || (name && refs.has(`name:${name}`));
+}
+
+export function filterVendorCreatedCategories(categories: any[], vendorId?: string): any[] {
+  return Array.isArray(categories)
+    ? categories.filter((category) => isVendorCreatedCategory(category, vendorId))
+    : [];
+}
+
 // Fetch vendor categories (vendor admin/storefront)
 export async function fetchVendorCategories(vendorId: string) {
   const candidates = vendorIdentifierCandidates(vendorId);
@@ -1578,7 +1645,7 @@ export async function fetchVendorCategories(vendorId: string) {
   }
 
   const data = await response.json();
-  return (data.categories || []).filter((c: any) => c.status === 'active');
+  return filterVendorCreatedCategories(data.categories || [], vendorId).filter((c: any) => c.status === 'active');
 }
 
 // Fetch vendor orders (vendor admin)
@@ -1979,6 +2046,33 @@ export function invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(
   const keyList = [...keys];
   for (const k of keyList) {
     invalidateVendorStorefrontCatalogCache(k);
+  }
+  notifyVendorCatalogMutation(keyList);
+}
+
+export function broadcastVendorCategoryAssignmentChanged(
+  vendorId: string,
+  storefrontUrlKeys?: Array<string | undefined | null>
+): void {
+  const keys = new Set<string>();
+  const rawVendorId = String(vendorId || "").trim();
+  if (rawVendorId) keys.add(rawVendorId);
+  for (const key of storefrontUrlKeys || []) {
+    const raw = String(key ?? "").trim();
+    if (!raw) continue;
+    keys.add(raw);
+    keys.add(raw.toLowerCase());
+    const hyphen = raw.toLowerCase().replace(/\s+/g, "-");
+    if (hyphen) keys.add(hyphen);
+    const compact = raw.toLowerCase().replace(/\s+/g, "");
+    if (compact) keys.add(compact);
+  }
+
+  const keyList = [...keys];
+  for (const key of keyList) {
+    invalidateVendorStorefrontCatalogCache(key);
+    moduleCache.invalidate(CACHE_KEYS.vendorCategories(key));
+    removePersistedKey(`migoo-ls-vendor-cats-${encodeURIComponent(key)}-v1`);
   }
   notifyVendorCatalogMutation(keyList);
 }

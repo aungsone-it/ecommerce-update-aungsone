@@ -3614,7 +3614,9 @@ function mapVendorStorefrontProductRow(p: any) {
     compareAtPrice: p.compareAtPrice ? parseFloat(String(p.compareAtPrice).replace(/[$,]/g, "")) : undefined,
     description: p.description || "",
     images: p.images || [],
-    category: String(p.category ?? "").trim(),
+    // Vendor storefront categorization is vendor-owned via category.productIds.
+    // Do not expose the super-admin product category on vendor storefront payloads.
+    category: "",
     inventory: p.inventory || 0,
     trackQuantity: p.trackQuantity !== undefined ? p.trackQuantity : true,
     continueSellingOutOfStock: p.continueSellingOutOfStock || false,
@@ -6339,6 +6341,15 @@ app.delete("/make-server-16010b6f/orders", async (c) => {
 // CATEGORIES ENDPOINTS
 // ============================================
 
+function isVendorOwnedCategoryRecord(cat: any): boolean {
+  if (!cat || typeof cat !== "object") return false;
+  return Boolean(cat.vendorId) || String(cat.id || "").startsWith("category:");
+}
+
+function isPlatformCategoryRecord(cat: any): boolean {
+  return Boolean(cat && typeof cat === "object" && !isVendorOwnedCategoryRecord(cat));
+}
+
 app.get("/make-server-16010b6f/categories", async (c) => {
   try {
     console.log("📂 Fetching PLATFORM categories (for Migoo storefront - vendor categories excluded)...");
@@ -6371,12 +6382,8 @@ app.get("/make-server-16010b6f/categories", async (c) => {
     // Filter OUT vendor categories (only return platform categories for Migoo storefront)
     // Platform categories have key format: category:{id}
     // Vendor categories have key format: category:{vendorId}:{id} and have vendorId field
-    const validCategories = Array.isArray(categoriesData) 
-      ? categoriesData.filter(cat => {
-          if (!cat || typeof cat !== 'object') return false;
-          // Exclude vendor categories by checking if they have vendorId field
-          return !cat.vendorId;
-        })
+    const validCategories = Array.isArray(categoriesData)
+      ? categoriesData.filter(isPlatformCategoryRecord)
       : [];
     
     console.log(`✅ Found ${validCategories.length} PLATFORM categories (vendor categories excluded)`);
@@ -6398,10 +6405,10 @@ app.get("/make-server-16010b6f/categories", async (c) => {
   }
 });
 
-// Get ALL categories including vendor categories (for Migoo Admin)
+// Get platform categories only (for Migoo Admin). Vendor-owned categories are private to vendor storefronts.
 app.get("/make-server-16010b6f/admin/all-categories", async (c) => {
   try {
-    console.log("📂 Fetching ALL categories including vendor categories (for Migoo Admin)...");
+    console.log("📂 Fetching platform categories for Migoo Admin (vendor categories excluded)...");
     
     // Try to get ALL categories
     let categoriesData;
@@ -6416,31 +6423,9 @@ app.get("/make-server-16010b6f/admin/all-categories", async (c) => {
       return c.json({ categories: [], total: 0 }, 200);
     }
     
-    const validCategories = Array.isArray(categoriesData) 
-      ? categoriesData.filter(cat => cat != null && typeof cat === 'object')
+    const validCategories = Array.isArray(categoriesData)
+      ? categoriesData.filter(isPlatformCategoryRecord)
       : [];
-    
-    // Fetch vendor names for categories that have vendorId
-    const categoriesWithVendorNames = await Promise.all(
-      validCategories.map(async (cat) => {
-        if (cat.vendorId) {
-          try {
-            const vendor = await kv.get(`vendor:${cat.vendorId}`);
-            return {
-              ...cat,
-              vendorName: vendor?.name || vendor?.businessName || 'Unknown Vendor'
-            };
-          } catch (error) {
-            console.error(`Failed to fetch vendor name for ${cat.vendorId}:`, error);
-            return {
-              ...cat,
-              vendorName: 'Unknown Vendor'
-            };
-          }
-        }
-        return cat;
-      })
-    );
 
     let productRows: any[] = [];
     try {
@@ -6450,7 +6435,7 @@ app.get("/make-server-16010b6f/admin/all-categories", async (c) => {
     }
     const productsList = Array.isArray(productRows) ? productRows : [];
 
-    const categoriesWithCounts = categoriesWithVendorNames.map((cat: any) => {
+    const categoriesWithCounts = validCategories.map((cat: any) => {
       const catName = String(cat?.name || "").trim().toLowerCase();
       const fromPicker = Array.isArray(cat.productIds)
         ? cat.productIds.map((id: unknown) => String(id).trim()).filter(Boolean)
@@ -6475,7 +6460,7 @@ app.get("/make-server-16010b6f/admin/all-categories", async (c) => {
       };
     });
     
-    console.log(`✅ Found ${categoriesWithCounts.length} total categories (including ${categoriesWithCounts.filter(c => c.vendorId).length} vendor categories)`);
+    console.log(`✅ Found ${categoriesWithCounts.length} platform categories for Migoo Admin`);
     
     return c.json({
       categories: categoriesWithCounts,
@@ -6490,9 +6475,12 @@ app.get("/make-server-16010b6f/admin/all-categories", async (c) => {
 app.get("/make-server-16010b6f/categories/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    if (id.startsWith("category:")) {
+      return c.json({ error: "Category not found" }, 404);
+    }
     const category = await withTimeout(kv.get(`category:${id}`), 5000);
     
-    if (!category) {
+    if (!category || isVendorOwnedCategoryRecord(category)) {
       return c.json({ error: "Category not found" }, 404);
     }
     
@@ -6627,19 +6615,26 @@ app.post("/make-server-16010b6f/categories", async (c) => {
 app.put("/make-server-16010b6f/categories/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    if (id.startsWith("category:")) {
+      return c.json({ error: "Use vendor category endpoints for vendor-owned categories." }, 400);
+    }
     const body = await c.req.json();
     
     const existing = await withTimeout(kv.get(`category:${id}`), 5000);
     if (!existing) {
       return c.json({ error: "Category not found" }, 404);
     }
+    if (isVendorOwnedCategoryRecord(existing)) {
+      return c.json({ error: "Use vendor category endpoints for vendor-owned categories." }, 400);
+    }
     
     const productIds =
       body.productIds !== undefined ? body.productIds || [] : existing.productIds || [];
+    const { vendorId: _ignoredVendorId, vendorName: _ignoredVendorName, ...platformBody } = body;
 
     const updated = {
       ...existing,
-      ...body,
+      ...platformBody,
       id,
       productIds,
       productCount: productIds.length,
@@ -6670,11 +6665,15 @@ app.put("/make-server-16010b6f/categories/:id", async (c) => {
 app.delete("/make-server-16010b6f/categories/:id", async (c) => {
   try {
     const id = c.req.param("id");
+    if (id.startsWith("category:")) {
+      return c.json({ error: "Use vendor category endpoints for vendor-owned categories." }, 400);
+    }
     
-    // 🔧 FIX: Vendor categories already have "category:" prefix in their ID
-    // Platform categories: "cat_123456" -> stored as "category:cat_123456"
-    // Vendor categories: "category:vendor123:123456" -> stored as "category:vendor123:123456"
-    const deleteKey = id.startsWith("category:") ? id : `category:${id}`;
+    const deleteKey = `category:${id}`;
+    const existing = await withTimeout(kv.get(deleteKey), 5000);
+    if (existing?.vendorId) {
+      return c.json({ error: "Use vendor category endpoints for vendor-owned categories." }, 400);
+    }
     
     console.log(`🗑️ Deleting category with key: ${deleteKey}`);
     await withTimeout(kv.del(deleteKey), 5000);
@@ -6682,6 +6681,7 @@ app.delete("/make-server-16010b6f/categories/:id", async (c) => {
     
     // Invalidate categories cache
     serverCache.delete("categories");
+    serverCache.delete("platform_categories");
     
     return c.json({ success: true, message: "Category deleted" });
   } catch (error) {
@@ -6702,13 +6702,19 @@ app.post("/make-server-16010b6f/categories/bulk-delete", async (c) => {
       return c.json({ error: "No category IDs provided" }, 400);
     }
     
-    console.log(`🗑️ Bulk deleting ${ids.length} categories...`);
-    
-    // 🔧 FIX: Handle both platform and vendor category ID formats
-    // Delete all categories
+    const vendorCategoryIds = ids.filter((id: unknown) => String(id || "").startsWith("category:"));
+    if (vendorCategoryIds.length > 0) {
+      return c.json(
+        { error: "Use vendor category endpoints for vendor-owned categories." },
+        400
+      );
+    }
+
+    console.log(`🗑️ Bulk deleting ${ids.length} platform categories...`);
+
     await Promise.all(
       ids.map(id => {
-        const deleteKey = id.startsWith("category:") ? id : `category:${id}`;
+        const deleteKey = `category:${id}`;
         return withTimeout(kv.del(deleteKey), 5000);
       })
     );
@@ -6717,6 +6723,7 @@ app.post("/make-server-16010b6f/categories/bulk-delete", async (c) => {
     
     // Invalidate categories cache
     serverCache.delete("categories");
+    serverCache.delete("platform_categories");
     
     return c.json({ 
       success: true, 
@@ -6734,16 +6741,18 @@ app.delete("/make-server-16010b6f/categories/all", async (c) => {
   const denied = assertDestructiveOperationAllowed(c);
   if (denied) return denied;
   try {
-    console.log(`🗑️ Deleting ALL categories...`);
+    console.log(`🗑️ Deleting all platform categories...`);
     
     const categories = await withTimeout(kv.getByPrefix("category:"), 30000);
-    const validCategories = Array.isArray(categories) ? categories.filter(cat => cat != null) : [];
+    const validCategories = Array.isArray(categories)
+      ? categories.filter(isPlatformCategoryRecord)
+      : [];
     
     if (validCategories.length === 0) {
       return c.json({ success: true, message: "No categories to delete", deletedCount: 0 });
     }
     
-    // Delete all categories
+    // Delete platform categories only; vendor categories are scoped to vendor storefronts.
     await Promise.all(
       validCategories.map(cat => withTimeout(kv.del(`category:${cat.id}`), 25000))
     );
@@ -6752,6 +6761,7 @@ app.delete("/make-server-16010b6f/categories/all", async (c) => {
     
     // Invalidate categories cache
     serverCache.delete("categories");
+    serverCache.delete("platform_categories");
     
     return c.json({ 
       success: true, 
@@ -12104,6 +12114,13 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
       vendorData?.name ||
       "Vendor Store";
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
+    const vendorTokens = vendorMatchTokens(actualVendorId, vendorData, [
+      vendorBusinessName,
+      vendorSettings?.storeName,
+      vendorSettings?.storeSlug,
+      storefrontSettings?.storeName,
+      storefrontSettings?.storeSlug,
+    ]);
     
     if (vendorData && typeof vendorData === "object" && !vendorProfileAllowsPublicStorefront(vendorData)) {
       return c.json(
@@ -12133,17 +12150,6 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
     const searchQ = (c.req.query("q") || "").trim();
     const resolveSlugRaw = (c.req.query("resolveSlug") || "").trim();
     const resolveSlug = resolveSlugRaw ? decodeURIComponent(resolveSlugRaw) : null;
-
-    const rpcData = await kv.rpcVendorStorefrontProductsPage({
-      vendorId: actualVendorId,
-      vendorBusinessName: vendorBusinessName ?? null,
-      page,
-      pageSize,
-      category: categoryQ && categoryQ.toLowerCase() !== "all" ? categoryQ : null,
-      q: searchQ || null,
-      resolveSlug,
-    });
-
     const logo = storefrontSettings?.logo || vendorData?.avatar || "";
     const pickPhone = (v: unknown) =>
       typeof v === "string" && v.trim().length > 0 ? v.trim() : "";
@@ -12160,6 +12166,69 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
         ? String((storefrontSettings as Record<string, unknown>).metaPixelId).trim()
         : "";
     const metaPixelId = /^\d{5,20}$/.test(rawMetaPixelId) ? rawMetaPixelId : "";
+    const hasVendorCategoryFilter = !!categoryQ && categoryQ.toLowerCase() !== "all";
+    let categoryProductIdSet: Set<string> | null = null;
+    let uncategorizedProductIdSet: Set<string> | null = null;
+
+    if (hasVendorCategoryFilter) {
+      const vendorCategoryRows = await withTimeout(
+        kv.getByPrefix(`category:${actualVendorId}:`),
+        15000
+      ).catch(() => []);
+      const activeVendorCategories = (Array.isArray(vendorCategoryRows) ? vendorCategoryRows : []).filter(
+        (cat: any) => {
+          const status = String(cat?.status || "active").trim().toLowerCase();
+          return status !== "hide" && status !== "inactive" && status !== "off";
+        }
+      );
+      const categoryLower = categoryQ.toLowerCase();
+
+      if (categoryLower === "uncategorized" || categoryLower === "__uncategorized__") {
+        uncategorizedProductIdSet = new Set<string>();
+        for (const cat of activeVendorCategories) {
+          if (!Array.isArray(cat?.productIds)) continue;
+          for (const id of cat.productIds) {
+            const productId = String(id || "").trim();
+            if (productId) uncategorizedProductIdSet.add(productId);
+          }
+        }
+      } else {
+        const matchingCategory = activeVendorCategories.find(
+          (cat: any) => String(cat?.name || "").trim().toLowerCase() === categoryLower
+        );
+        categoryProductIdSet = new Set(
+          Array.isArray(matchingCategory?.productIds)
+            ? matchingCategory.productIds.map((id: unknown) => String(id || "").trim()).filter(Boolean)
+            : []
+        );
+        if (!matchingCategory || categoryProductIdSet.size === 0) {
+          return c.json({
+            products: [],
+            storeName,
+            logo,
+            storePhone,
+            metaPixelId: metaPixelId || undefined,
+            resolvedVendorId: actualVendorId,
+            total: 0,
+            page,
+            pageSize,
+            hasMore: false,
+          });
+        }
+      }
+    }
+
+    const rpcData = hasVendorCategoryFilter
+      ? null
+      : await kv.rpcVendorStorefrontProductsPage({
+          vendorId: actualVendorId,
+          vendorBusinessName: vendorBusinessName ?? null,
+          page,
+          pageSize,
+          category: null,
+          q: searchQ || null,
+          resolveSlug,
+        });
 
     if (rpcData && Array.isArray(rpcData.products)) {
       const vendorProducts = (rpcData.products as any[]).map(mapVendorStorefrontProductRow);
@@ -12185,17 +12254,7 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
 
     const vendorMatches = (p: any) => {
       if (!p) return false;
-      let vendorMatch = false;
-      if (Array.isArray(p.selectedVendors)) {
-        vendorMatch = p.selectedVendors.some(
-          (v: string) => v === actualVendorId || (vendorBusinessName && v === vendorBusinessName)
-        );
-      } else {
-        vendorMatch =
-          p.vendorId === actualVendorId ||
-          p.vendor === actualVendorId ||
-          (vendorBusinessName && p.vendor === vendorBusinessName);
-      }
+      const vendorMatch = productBelongsToVendor(p, vendorTokens);
       const statusMatch = p.status && String(p.status).toLowerCase() === "active";
       return vendorMatch && statusMatch;
     };
@@ -12237,14 +12296,14 @@ app.get("/make-server-16010b6f/vendor/products/:vendorId", async (c) => {
     }
 
     if (categoryQ && categoryQ.toLowerCase() !== "all") {
-      const cl = categoryQ.toLowerCase();
-      if (cl === "uncategorized" || cl === "__uncategorized__") {
-        vendorList = vendorList.filter((p: any) => {
-          const cat = String(p.category || "").trim().toLowerCase();
-          return !cat || cat === "uncategorized";
-        });
+      if (uncategorizedProductIdSet) {
+        vendorList = vendorList.filter(
+          (p: any) => !uncategorizedProductIdSet?.has(String(p?.id || "").trim())
+        );
       } else {
-        vendorList = vendorList.filter((p: any) => String(p.category || "").toLowerCase() === cl);
+        vendorList = vendorList.filter(
+          (p: any) => categoryProductIdSet?.has(String(p?.id || "").trim())
+        );
       }
     }
     if (searchQ) {
@@ -12352,7 +12411,8 @@ app.get("/make-server-16010b6f/vendor/products-admin/:vendorId", async (c) => {
         costPerItem: p.costPerItem ? parseFloat(String(p.costPerItem).replace(/[$,]/g, '')) : undefined,
         description: p.description || "",
         images: p.images || [],
-        category: p.category || "Uncategorized",
+        // Vendor admin categorization is managed by vendor-owned categories, not product.category.
+        category: "",
         inventory: p.inventory || 0,
         status: p.status || "Active",
         hasVariants: p.hasVariants || false,
@@ -13286,14 +13346,15 @@ app.get("/make-server-16010b6f/vendor/categories/:vendorId", async (c) => {
       5,
       1000
     );
-    const categoryList = allCategories.map((cat: any) => cat.name);
+    const categoryList = allCategories
+      .filter((cat: any) => cat && String(cat.name || "").trim())
+      .map((cat: any) => String(cat.name).trim());
 
     console.log(`✅ Found ${categoryList.length} categories for vendor ${actualVendorId}`);
     return c.json({ categories: categoryList });
   } catch (error: any) {
     console.error("❌ Failed to load categories:", error);
-    // Return default categories on error
-    return c.json({ categories: ["Electronics", "Clothing", "Home & Garden", "Books", "Sports", "Toys"] });
+    return c.json({ categories: [] });
   }
 });
 
@@ -13324,73 +13385,64 @@ app.get("/make-server-16010b6f/vendor/categories-details/:vendorId", async (c) =
       );
     }
     const vendorBusinessName = vendorData?.businessName || vendorData?.name;
-
-    const [allCategories, allProducts] = await Promise.all([
-      withRetry(
-        () => withTimeout(kv.getByPrefix(`category:${actualVendorId}:`), 30000),
-        5,
-        1500
-      ),
-      withRetry(
-        () => withTimeout(kv.getByPrefix("product:"), 30000),
-        5,
-        1500
-      ),
+    const storefrontSettings = await kv.get(`vendor_storefront_${actualVendorId}`).catch(() => null);
+    const vendorTokens = vendorMatchTokens(actualVendorId, vendorData, [
+      vendorBusinessName,
+      storefrontSettings?.storeName,
+      storefrontSettings?.storeSlug,
     ]);
+    const allCategories = await withRetry(
+      () => withTimeout(kv.getByPrefix(`category:${actualVendorId}:`), 30000),
+      5,
+      1500
+    );
 
     const vendorMatches = (p: any) => {
       if (!p) return false;
-      let vendorMatch = false;
-      if (Array.isArray(p.selectedVendors)) {
-        vendorMatch = p.selectedVendors.some(
-          (v: string) => v === actualVendorId || (vendorBusinessName && v === vendorBusinessName)
-        );
-      } else {
-        vendorMatch =
-          p.vendorId === actualVendorId ||
-          p.vendor === actualVendorId ||
-          (vendorBusinessName && p.vendor === vendorBusinessName);
-      }
+      const vendorMatch = productBelongsToVendor(p, vendorTokens);
       const statusMatch = p.status && String(p.status).toLowerCase() === "active";
       return vendorMatch && statusMatch;
     };
 
-    const productRows = Array.isArray(allProducts) ? allProducts : [];
-    const vendorProducts = productRows.filter(vendorMatches);
+    const kvList: any[] = Array.isArray(allCategories)
+      ? allCategories.filter((cat: any) => cat?.source === "vendor" || cat?.createdByVendor === true)
+      : [];
+    const categoryProductIds = new Set<string>();
+    for (const cat of kvList) {
+      if (!Array.isArray(cat?.productIds)) continue;
+      for (const id of cat.productIds) {
+        const productId = String(id || "").trim();
+        if (productId) categoryProductIds.add(productId);
+      }
+    }
 
-    const kvList: any[] = Array.isArray(allCategories) ? [...allCategories] : [];
-    const namesFromKv = new Set(
-      kvList.map((cat: any) => String(cat?.name || "").trim().toLowerCase()).filter(Boolean)
-    );
-
-    for (const p of vendorProducts) {
-      const raw = String(p?.category || "").trim();
-      if (!raw) continue;
-      const lk = raw.toLowerCase();
-      if (namesFromKv.has(lk)) continue;
-      namesFromKv.add(lk);
-      const slugPart = lk.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cat";
-      kvList.push({
-        id: `derived-category:${actualVendorId}:${slugPart}`,
-        name: raw,
-        description: "",
-        coverPhoto: "",
-        status: "active",
-        vendorId: actualVendorId,
+    let vendorProducts: any[] = [];
+    if (categoryProductIds.size > 0) {
+      const allProducts = await withRetry(
+        () => withTimeout(kv.getByPrefix("product:"), 30000),
+        5,
+        1500
+      );
+      const productRows = Array.isArray(allProducts) ? allProducts : [];
+      vendorProducts = productRows.filter((p: any) => {
+        if (!vendorMatches(p)) return false;
+        return categoryProductIds.has(String(p?.id || "").trim());
       });
     }
 
     const categoriesWithCount = kvList.map((cat: any) => {
-      const catName = String(cat?.name || "").trim();
+      const assignedIds = Array.isArray(cat?.productIds)
+        ? cat.productIds.map((id: unknown) => String(id || "").trim()).filter(Boolean)
+        : [];
+      const assignedSet = new Set(assignedIds);
       const productsInCategory = vendorProducts.filter(
-        (p: any) => String(p?.category || "").trim().toLowerCase() === catName.toLowerCase()
+        (p: any) => assignedSet.has(String(p?.id || "").trim())
       );
-      const productIds = productsInCategory.map((p: any) => p.id);
 
       return {
         ...cat,
         productCount: productsInCategory.length,
-        productIds: cat.productIds || productIds,
+        productIds: assignedIds,
         products: productsInCategory.map((p: any) => ({
           id: p.id,
           name: p.name,
@@ -13404,7 +13456,7 @@ app.get("/make-server-16010b6f/vendor/categories-details/:vendorId", async (c) =
     });
 
     console.log(
-      `✅ categories-details: ${categoriesWithCount.length} categories, ${vendorProducts.length} active products (vendor ${actualVendorId})`
+      `✅ categories-details: ${categoriesWithCount.length} vendor-owned categories (vendor ${actualVendorId})`
     );
     return c.json({ categories: categoriesWithCount });
   } catch (error: any) {
@@ -13413,23 +13465,146 @@ app.get("/make-server-16010b6f/vendor/categories-details/:vendorId", async (c) =
   }
 });
 
+async function sanitizeVendorCategoryProductIds(vendorId: string, productIds: unknown): Promise<string[]> {
+  const requestedIds = Array.isArray(productIds)
+    ? [...new Set(productIds.map((id: unknown) => String(id || "").trim()).filter(Boolean))]
+    : [];
+  if (requestedIds.length === 0) return [];
+
+  const [vendorData, storefrontSettings] = await Promise.all([
+    kv.get(`vendor:${vendorId}`),
+    kv.get(`vendor_storefront_${vendorId}`).catch(() => null),
+  ]);
+  const vendorTokens = vendorMatchTokens(vendorId, vendorData, [
+    storefrontSettings?.storeName,
+    storefrontSettings?.storeSlug,
+  ]);
+  const allowedIds: string[] = [];
+
+  await Promise.all(
+    requestedIds.map(async (id) => {
+      try {
+        const product = await withTimeout(kv.get(`product:${id}`), 5000);
+        if (!product || typeof product !== "object") return;
+        if (productBelongsToVendor(product, vendorTokens)) allowedIds.push(id);
+      } catch {
+        /* Ignore stale product ids in category assignments. */
+      }
+    })
+  );
+
+  const allowedSet = new Set(allowedIds);
+  return requestedIds.filter((id) => allowedSet.has(id));
+}
+
+function assertVendorCategoryOwnership(categoryId: string, vendorId: string, category: any) {
+  const normalizedVendorId = String(vendorId || "").trim();
+  if (!normalizedVendorId) {
+    return "vendorId is required";
+  }
+  if (!String(categoryId || "").startsWith(`category:${normalizedVendorId}:`)) {
+    return "Category does not belong to this vendor";
+  }
+  if (String(category?.vendorId || "").trim() !== normalizedVendorId) {
+    return "Category does not belong to this vendor";
+  }
+  return null;
+}
+
+function vendorMatchTokens(vendorId: string, vendorData?: any, extraTokens: unknown[] = []): Set<string> {
+  const tokens = new Set<string>();
+  const add = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return;
+    tokens.add(raw);
+    tokens.add(raw.toLowerCase());
+  };
+
+  add(vendorId);
+  add(vendorData?.id);
+  add(vendorData?.name);
+  add(vendorData?.businessName);
+  add(vendorData?.storeName);
+  add(vendorData?.storeSlug);
+  for (const token of extraTokens) add(token);
+  return tokens;
+}
+
+function productBelongsToVendor(product: any, vendorTokens: Set<string>): boolean {
+  if (!product || typeof product !== "object" || vendorTokens.size === 0) return false;
+  const matchesToken = (value: unknown) => {
+    const raw = String(value ?? "").trim();
+    return !!raw && (vendorTokens.has(raw) || vendorTokens.has(raw.toLowerCase()));
+  };
+
+  if (Array.isArray(product.selectedVendors) && product.selectedVendors.some(matchesToken)) {
+    return true;
+  }
+  return (
+    matchesToken(product.vendorId) ||
+    matchesToken(product.vendor) ||
+    matchesToken(product.vendorName) ||
+    matchesToken(product.vendorSource)
+  );
+}
+
+app.post("/make-server-16010b6f/vendor/categories/cleanup-imported", async (c) => {
+  try {
+    const { vendorId } = await c.req.json();
+    const actualVendorId = await resolveVendorIdFromSlugOrId(String(vendorId || "").trim());
+    if (!actualVendorId) {
+      return c.json({ error: "vendorId is required" }, 400);
+    }
+
+    const allCategories = await withTimeout(kv.getByPrefix(`category:${actualVendorId}:`), 15000);
+    const rows = Array.isArray(allCategories) ? allCategories : [];
+    const importedRows = rows.filter(
+      (cat: any) => cat && cat.source !== "vendor" && cat.createdByVendor !== true
+    );
+
+    await Promise.all(
+      importedRows.map((cat: any) => {
+        const id = String(cat?.id || "").trim();
+        if (!id.startsWith(`category:${actualVendorId}:`)) return Promise.resolve();
+        return withTimeout(kv.del(id), 5000);
+      })
+    );
+
+    return c.json({ success: true, deletedCount: importedRows.length });
+  } catch (error: any) {
+    console.error("❌ Failed to cleanup imported vendor categories:", error);
+    return c.json({ error: error.message || "Failed to cleanup imported categories" }, 500);
+  }
+});
+
 // Create a new category
 app.post("/make-server-16010b6f/vendor/categories", async (c) => {
   try {
     const { vendorId, name, description, coverPhoto, status, productIds } = await c.req.json();
+    const actualVendorId = await resolveVendorIdFromSlugOrId(String(vendorId || "").trim());
+    if (!actualVendorId) {
+      return c.json({ error: "vendorId is required" }, 400);
+    }
+    const categoryName = String(name || "").trim();
+    if (!categoryName) {
+      return c.json({ error: "Category name is required" }, 400);
+    }
+    const scopedProductIds = await sanitizeVendorCategoryProductIds(actualVendorId, productIds);
     
-    console.log(`📁 Creating category for vendor ${vendorId}: ${name}`);
+    console.log(`📁 Creating category for vendor ${actualVendorId}: ${categoryName}`);
     
-    const categoryId = `category:${vendorId}:${Date.now()}`;
+    const categoryId = `category:${actualVendorId}:${Date.now()}`;
     const category = {
       id: categoryId,
-      name,
+      name: categoryName,
       description: description || "",
       coverPhoto: coverPhoto || "",
       status: status || "active",
-      productIds: productIds || [],
-      productCount: (productIds || []).length,
-      vendorId,
+      productIds: scopedProductIds,
+      productCount: scopedProductIds.length,
+      vendorId: actualVendorId,
+      source: "vendor",
+      createdByVendor: true,
       createdAt: new Date().toISOString().split('T')[0],
       updatedAt: new Date().toISOString()
     };
@@ -13448,8 +13623,9 @@ app.post("/make-server-16010b6f/vendor/categories", async (c) => {
 // Update a category
 app.put("/make-server-16010b6f/vendor/categories/:categoryId", async (c) => {
   try {
-    const categoryId = c.req.param("categoryId");
+    const categoryId = decodeURIComponent(c.req.param("categoryId"));
     const { name, description, coverPhoto, status, productIds, vendorId } = await c.req.json();
+    const actualVendorId = await resolveVendorIdFromSlugOrId(String(vendorId || "").trim());
     
     console.log(`📁 Updating category: ${categoryId}`);
     
@@ -13457,15 +13633,26 @@ app.put("/make-server-16010b6f/vendor/categories/:categoryId", async (c) => {
     if (!existingCategory) {
       return c.json({ error: "Category not found" }, 404);
     }
+    const ownershipError = assertVendorCategoryOwnership(categoryId, actualVendorId, existingCategory);
+    if (ownershipError) {
+      return c.json({ error: ownershipError }, 403);
+    }
+    const nextProductIds =
+      productIds !== undefined
+        ? await sanitizeVendorCategoryProductIds(actualVendorId, productIds)
+        : (existingCategory.productIds || []);
     
     const updatedCategory = {
       ...existingCategory,
-      name,
+      name: String(name || "").trim() || existingCategory.name,
       description: description || "",
       coverPhoto: coverPhoto !== undefined ? coverPhoto : existingCategory.coverPhoto,
       status: status || existingCategory.status || "active",
-      productIds: productIds !== undefined ? productIds : (existingCategory.productIds || []),
-      productCount: productIds !== undefined ? productIds.length : (existingCategory.productIds || []).length,
+      productIds: nextProductIds,
+      productCount: nextProductIds.length,
+      vendorId: actualVendorId,
+      source: "vendor",
+      createdByVendor: true,
       updatedAt: new Date().toISOString()
     };
     
@@ -13483,7 +13670,9 @@ app.put("/make-server-16010b6f/vendor/categories/:categoryId", async (c) => {
 // Delete a category
 app.delete("/make-server-16010b6f/vendor/categories/:categoryId", async (c) => {
   try {
-    const categoryId = c.req.param("categoryId");
+    const categoryId = decodeURIComponent(c.req.param("categoryId"));
+    const body = await c.req.json().catch(() => ({}));
+    const actualVendorId = await resolveVendorIdFromSlugOrId(String(body.vendorId || "").trim());
     
     console.log(`📁 Deleting category: ${categoryId}`);
     
@@ -13491,14 +13680,18 @@ app.delete("/make-server-16010b6f/vendor/categories/:categoryId", async (c) => {
     if (!category) {
       return c.json({ error: "Category not found" }, 404);
     }
+    const ownershipError = assertVendorCategoryOwnership(categoryId, actualVendorId, category);
+    if (ownershipError) {
+      return c.json({ error: ownershipError }, 403);
+    }
     
-    // Check if any products use this category
-    const allProducts = await kv.getByPrefix("product:");
-    const productsInCategory = allProducts.filter((p: any) => p.category === category.name);
+    const assignedProductCount = Array.isArray(category.productIds)
+      ? category.productIds.filter((id: unknown) => String(id || "").trim()).length
+      : 0;
     
-    if (productsInCategory.length > 0) {
+    if (assignedProductCount > 0) {
       return c.json({ 
-        error: `Cannot delete category with ${productsInCategory.length} products. Please move or delete products first.` 
+        error: `Cannot delete category with ${assignedProductCount} assigned products. Please move or remove products first.` 
       }, 400);
     }
     

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ArrowLeft, Upload, X, ImageIcon, Loader2, Search, Package } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -12,13 +12,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
 import { compressImageToDataURLVendor } from "../../../utils/imageCompression";
+import {
+  broadcastVendorCategoryAssignmentChanged,
+  CACHE_KEYS,
+  getCachedVendorProductsAdmin,
+  moduleCache,
+  rememberVendorCreatedCategory,
+} from "../../utils/module-cache";
 
 interface Product {
   id: string;
   name: string;
   price: number | string;
   sku: string;
-  image: string | null;
+  image?: string | null;
+  images?: string[];
   status: string;
   inventory: number;
   category?: string;
@@ -33,6 +41,7 @@ interface Category {
   productIds: string[];
   productCount: number;
   products: Product[];
+  activeProducts?: number;
   createdAt: string;
 }
 
@@ -41,7 +50,19 @@ interface VendorAdminCategoryFormProps {
   vendorName: string;
   editingCategory?: Category | null;
   onBack: () => void;
-  onSave: () => void;
+  onSave: (category?: Category) => void;
+}
+
+const PRODUCT_IMAGE_FALLBACK =
+  "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop";
+
+function getProductImageSrc(product: Product): string {
+  const firstImage = Array.isArray(product.images) ? product.images.find((img) => String(img || "").trim()) : "";
+  return String(firstImage || product.image || "").trim() || PRODUCT_IMAGE_FALLBACK;
+}
+
+function isStorefrontVisibleProduct(product: Product): boolean {
+  return String(product.status || "active").trim().toLowerCase() === "active";
 }
 
 export function VendorAdminCategoryForm({
@@ -58,10 +79,17 @@ export function VendorAdminCategoryForm({
   const [status, setStatus] = useState<"active" | "hide">("active");
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [productSearchQuery, setProductSearchQuery] = useState("");
-  const [products, setProducts] = useState<Product[]>([]);
+  const cachedVendorProductsPayload = moduleCache.peek<{ products?: Product[] }>(
+    CACHE_KEYS.vendorProductsAdmin(vendorId)
+  );
+  const hasWarmProductsCache =
+    cachedVendorProductsPayload != null && Array.isArray(cachedVendorProductsPayload.products);
+  const [products, setProducts] = useState<Product[]>(
+    () => (hasWarmProductsCache ? cachedVendorProductsPayload?.products : undefined) || []
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [loadingProducts, setLoadingProducts] = useState(true);
+  const [loadingProducts, setLoadingProducts] = useState(() => !hasWarmProductsCache);
 
   useEffect(() => {
     loadProducts();
@@ -78,26 +106,23 @@ export function VendorAdminCategoryForm({
     }
   }, [editingCategory, vendorId]);
 
-  const loadProducts = async () => {
-    try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/products-admin/${vendorId}`,
-        {
-          headers: {
-            Authorization: `Bearer ${publicAnonKey}`,
-          },
-        }
-      );
+  const loadProducts = async (forceRefresh = false) => {
+    const cached = moduleCache.peek<{ products?: Product[] }>(
+      CACHE_KEYS.vendorProductsAdmin(vendorId)
+    );
+    if (!forceRefresh && Array.isArray(cached?.products)) {
+      setProducts(cached.products);
+      setLoadingProducts(false);
+      return;
+    }
 
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data.products || []);
-      } else {
-        setProducts([]);
-      }
+    setLoadingProducts(products.length === 0);
+    try {
+      const data = await getCachedVendorProductsAdmin(vendorId, forceRefresh);
+      setProducts(data.products || []);
     } catch (error) {
       console.error("Failed to load products:", error);
-      setProducts([]);
+      if (products.length === 0) setProducts([]);
     } finally {
       setLoadingProducts(false);
     }
@@ -106,6 +131,14 @@ export function VendorAdminCategoryForm({
   const filteredProducts = products.filter(product =>
     product.name?.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
     product.sku?.toLowerCase().includes(productSearchQuery.toLowerCase())
+  );
+  const selectedProductRows = useMemo(
+    () => products.filter((product) => selectedProducts.includes(product.id)),
+    [products, selectedProducts]
+  );
+  const selectedVisibleProducts = useMemo(
+    () => selectedProductRows.filter(isStorefrontVisibleProduct),
+    [selectedProductRows]
   );
 
   const toggleProductSelection = (productId: string) => {
@@ -181,8 +214,8 @@ export function VendorAdminCategoryForm({
   };
 
   const handleSave = async () => {
-    if (!categoryName || !description) {
-      toast.error("Please fill in all required fields");
+    if (!categoryName.trim()) {
+      toast.error("Please enter a category name");
       return;
     }
 
@@ -190,13 +223,16 @@ export function VendorAdminCategoryForm({
     try {
       const categoryData = {
         vendorId,
-        name: categoryName,
-        description: description,
+        name: categoryName.trim(),
+        description: description.trim(),
         coverPhoto: coverPhoto,
         status: status,
         productIds: selectedProducts,
+        source: "vendor",
+        createdByVendor: true,
       };
 
+      let savedCategory: Category | undefined;
       if (editingCategory) {
         // Update existing category
         const response = await fetch(
@@ -214,6 +250,10 @@ export function VendorAdminCategoryForm({
         if (!response.ok) {
           throw new Error("Failed to update category");
         }
+        const data = await response.json().catch(() => ({}));
+        savedCategory = data.category;
+        rememberVendorCreatedCategory(vendorId, savedCategory || { id: editingCategory.id, name: categoryName.trim() });
+        broadcastVendorCategoryAssignmentChanged(vendorId, [vendorName]);
 
         console.log("✅ Category updated successfully");
       } else {
@@ -233,111 +273,34 @@ export function VendorAdminCategoryForm({
         if (!response.ok) {
           throw new Error("Failed to create category");
         }
+        const data = await response.json().catch(() => ({}));
+        savedCategory = data.category;
+        rememberVendorCreatedCategory(vendorId, savedCategory || { name: categoryName.trim() });
+        broadcastVendorCategoryAssignmentChanged(vendorId, [vendorName]);
 
         console.log("✅ Category created successfully");
       }
 
-      // Update products with this category
-      const previouslySelected = editingCategory?.productIds || [];
-      const oldCategoryName = editingCategory?.name || "";
-      
-      // Products to add category to (newly selected)
-      const productsToUpdate = selectedProducts.filter(id => !previouslySelected.includes(id));
-      
-      // Products to remove category from (previously selected but now unselected)
-      const productsToUnassign = previouslySelected.filter(id => !selectedProducts.includes(id));
-      
-      // Products that stayed selected (need to update if category name changed)
-      const productsStillSelected = selectedProducts.filter(id => previouslySelected.includes(id));
-      
-      // Update products with category assignments
-      const updatePromises = [];
-
-      if (productsToUpdate.length > 0) {
-        console.log(`📦 Adding ${productsToUpdate.length} products to category "${categoryName}"`);
-        productsToUpdate.forEach(productId => {
-          updatePromises.push(
-            fetch(
-              `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/${productId}`,
-              {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${publicAnonKey}`,
-                },
-                body: JSON.stringify({ category: categoryName }),
-              }
-            ).then(response => {
-              if (response.ok) {
-                console.log(`✅ Added product ${productId} to category "${categoryName}"`);
-              } else {
-                console.error(`❌ Failed to add product ${productId} to category`);
-              }
-              return response;
-            })
-          );
-        });
-      }
-
-      if (editingCategory && oldCategoryName !== categoryName && productsStillSelected.length > 0) {
-        console.log(`📝 Updating ${productsStillSelected.length} products with new category name "${categoryName}"`);
-        productsStillSelected.forEach(productId => {
-          updatePromises.push(
-            fetch(
-              `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/${productId}`,
-              {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${publicAnonKey}`,
-                },
-                body: JSON.stringify({ category: categoryName }),
-              }
-            ).then(response => {
-              if (response.ok) {
-                console.log(`✅ Updated product ${productId} with category "${categoryName}"`);
-              } else {
-                console.error(`❌ Failed to update product ${productId}`);
-              }
-              return response;
-            })
-          );
-        });
-      }
-
-      if (productsToUnassign.length > 0) {
-        console.log(`🗑️ Removing ${productsToUnassign.length} products from category`);
-        productsToUnassign.forEach(productId => {
-          updatePromises.push(
-            fetch(
-              `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/${productId}`,
-              {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${publicAnonKey}`,
-                },
-                body: JSON.stringify({ category: "" }),
-              }
-            ).then(response => {
-              if (response.ok) {
-                console.log(`✅ Removed product ${productId} from category`);
-              } else {
-                console.error(`❌ Failed to remove product ${productId} from category`);
-              }
-              return response;
-            })
-          );
-        });
-      }
-
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
-        console.log(`✅ Updated product-category assignments`);
-      }
+      console.log(`✅ Saved vendor category assignments for ${selectedProducts.length} products`);
 
       toast.success(editingCategory ? "Category updated successfully!" : "Category created successfully!");
-      onSave();
+      onSave(
+        {
+          ...(savedCategory || editingCategory || {}),
+          ...(savedCategory || {
+            id: editingCategory?.id || "",
+            name: categoryName.trim(),
+            description: description.trim(),
+            coverPhoto,
+            status,
+            createdAt: editingCategory?.createdAt || new Date().toISOString(),
+          }),
+          productIds: selectedProducts,
+          products: selectedVisibleProducts,
+          productCount: selectedVisibleProducts.length,
+          activeProducts: selectedVisibleProducts.length,
+        } as Category
+      );
     } catch (error) {
       console.error("Failed to save category:", error);
       toast.error("Failed to save category");
@@ -387,7 +350,7 @@ export function VendorAdminCategoryForm({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category-description">Description *</Label>
+                <Label htmlFor="category-description">Description</Label>
                 <Textarea
                   id="category-description"
                   placeholder="Describe what products belong in this category..."
@@ -401,7 +364,7 @@ export function VendorAdminCategoryForm({
           </Card>
 
           {/* Cover Photo */}
-          <Card className="p-6">
+          <Card className="hidden">
             <h3 className="text-base font-semibold text-slate-900 mb-4">Cover Photo</h3>
             
             {!coverPhotoPreview ? (
@@ -492,7 +455,9 @@ export function VendorAdminCategoryForm({
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-slate-900">Add Products</h3>
               <Badge variant="secondary" className="bg-purple-100 text-purple-700">
-                {selectedProducts.length} selected
+                {selectedVisibleProducts.length === selectedProducts.length
+                  ? `${selectedProducts.length} selected`
+                  : `${selectedVisibleProducts.length} visible / ${selectedProducts.length} selected`}
               </Badge>
             </div>
             
@@ -536,17 +501,24 @@ export function VendorAdminCategoryForm({
                             onCheckedChange={() => toggleProductSelection(product.id)}
                           />
                           <img
-                            src={product.image || 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop'}
+                            src={getProductImageSrc(product)}
                             alt={product.name}
                             className="w-12 h-12 rounded-lg object-cover border border-slate-200 bg-white"
                             onError={(e) => {
                               const target = e.target as HTMLImageElement;
-                              target.src = 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=100&h=100&fit=crop';
+                              if (target.src !== PRODUCT_IMAGE_FALLBACK) {
+                                target.src = PRODUCT_IMAGE_FALLBACK;
+                              }
                             }}
                           />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-slate-900 truncate">{product.name}</p>
                             <p className="text-sm text-slate-500">SKU: {product.sku}</p>
+                            {!isStorefrontVisibleProduct(product) && (
+                              <p className="text-xs text-amber-600 mt-0.5">
+                                Not visible on storefront until product status is Active
+                              </p>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -592,7 +564,7 @@ export function VendorAdminCategoryForm({
                 <Button 
                   className="w-full bg-slate-900 hover:bg-slate-800" 
                   onClick={handleSave}
-                  disabled={!categoryName || !description || isSaving}
+                  disabled={!categoryName.trim() || isSaving}
                 >
                   {isSaving ? "Saving..." : (editingCategory ? "Update Category" : "Create Category")}
                 </Button>

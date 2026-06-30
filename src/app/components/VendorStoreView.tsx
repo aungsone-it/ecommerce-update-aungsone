@@ -4,6 +4,7 @@ import {
   CACHE_KEYS,
   fetchVendorProducts,
   fetchVendorCategories,
+  filterVendorCreatedCategories,
   fetchVendorWishlistVendorPage,
   wishlistSigFromProductIds,
   invalidateVendorSavedWishlistCaches,
@@ -180,7 +181,6 @@ import {
   VENDOR_STORE_UNCATEGORIZED_SLUG,
   isVendorUncategorizedSlug,
   isVendorUncategorizedFilter,
-  productHasNoCategory,
   vendorCatalogFilterFromRouteSlug,
   vendorCategoryPathSegment,
 } from "../utils/vendorStoreCategory";
@@ -868,8 +868,12 @@ function getVendorHomepageInitialState(
     const catLsKey = lsVendorCategoriesKey(vendorId);
     const fromCatLs = readPersistedJson<any[]>(catLsKey, PERSISTED_CATALOG_TTL_MS);
     if (fromCatLs !== null && Array.isArray(fromCatLs)) {
-      moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), fromCatLs);
-      vendorCategories = fromCatLs;
+      const cleanedCategories = filterVendorCreatedCategories(fromCatLs, vendorId);
+      if (cleanedCategories.length !== fromCatLs.length) {
+        writePersistedJson(catLsKey, cleanedCategories);
+      }
+      moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), cleanedCategories);
+      vendorCategories = cleanedCategories;
     }
   } catch {
     /* ignore */
@@ -1162,7 +1166,38 @@ export function VendorStoreView({
   );
   const [serverStatus, setServerStatus] = useState<'checking' | 'healthy' | 'unhealthy'>(vendorHomeSnapshot.serverStatus);
   const [products, setProducts] = useState<Product[]>(vendorHomeSnapshot.products);
-  const [vendorCategories, setVendorCategories] = useState<any[]>(vendorHomeSnapshot.vendorCategories);
+  const [vendorCategories, setVendorCategories] = useState<any[]>(
+    () => filterVendorCreatedCategories(vendorHomeSnapshot.vendorCategories, vendorId)
+  );
+  const buildVendorCategoryProductIdMap = useCallback((categories: any[]) => {
+    const map = new Map<string, Set<string>>();
+    for (const category of filterVendorCreatedCategories(categories || [], vendorId)) {
+      const name = String(category?.name || "").trim().toLowerCase();
+      if (!name || !Array.isArray(category?.productIds)) continue;
+      const ids = category.productIds
+        .map((id: unknown) => String(id || "").trim())
+        .filter(Boolean);
+      map.set(name, new Set(ids));
+    }
+    return map;
+  }, [vendorId]);
+  const vendorCategoryProductIdsByName = useMemo(
+    () => buildVendorCategoryProductIdMap(vendorCategories),
+    [buildVendorCategoryProductIdMap, vendorCategories]
+  );
+  const vendorCategorizedProductIds = useMemo(() => {
+    const assignedIds = new Set<string>();
+    for (const ids of vendorCategoryProductIdsByName.values()) {
+      for (const id of ids) assignedIds.add(id);
+    }
+    return assignedIds;
+  }, [vendorCategoryProductIdsByName]);
+  const vendorCategoryProductIdsByNameRef = useRef(vendorCategoryProductIdsByName);
+  const vendorCategorizedProductIdsRef = useRef(vendorCategorizedProductIds);
+  useEffect(() => {
+    vendorCategoryProductIdsByNameRef.current = vendorCategoryProductIdsByName;
+    vendorCategorizedProductIdsRef.current = vendorCategorizedProductIds;
+  }, [vendorCategoryProductIdsByName, vendorCategorizedProductIds]);
   const [searchQuery, setSearchQuery] = useState("");
   /** Passed to API as `q` only after debounce + min length; `searchQuery` still drives instant client filter. */
   const [debouncedVendorServerQ, setDebouncedVendorServerQ] = useState("");
@@ -1242,12 +1277,12 @@ export function VendorStoreView({
       const cat = String(category || "all").trim();
       if (!cat || cat === "all") return rows;
       if (isVendorUncategorizedFilter(cat)) {
-        return rows.filter((p) => productHasNoCategory(p));
+        return rows.filter((p) => !vendorCategorizedProductIdsRef.current.has(String(p.id || "").trim()));
       }
       const want = cat.toLowerCase();
-      return rows.filter(
-        (p) => String(p.category || "").trim().toLowerCase() === want
-      );
+      const vendorCategoryProductIds = vendorCategoryProductIdsByNameRef.current.get(want);
+      if (!vendorCategoryProductIds) return [];
+      return rows.filter((p) => vendorCategoryProductIds.has(String(p.id || "").trim()));
     },
     []
   );
@@ -1300,27 +1335,16 @@ export function VendorStoreView({
     [catalogSliceMemoryKey, readCatalogSliceForKey]
   );
 
-  /** Category labels seen in any loaded catalog slice — keeps subnav stable when server filters `products` by category. */
-  const catalogCategoryHintsRef = useRef<Map<string, string>>(new Map());
-  const catalogCategoryHintsVendorRef = useRef<string>(vendorId);
-
   const vendorEffectiveVariantOptions = useMemo(
     () => (selectedProduct ? getEffectiveVariantOptions(selectedProduct as any) : []),
     [selectedProduct]
   );
 
   /**
-   * Subnav: union of (1) active vendor KV categories from `categories-details` and (2) every distinct
-   * `product.category` ever seen for this storefront (accumulated). Without accumulation, choosing a
-   * category refetches a single slice and the subnav would drop other tabs. Product-derived names still
-   * merge with KV so super-admin assignments stay visible.
+   * Subnav: vendor-owned categories only. Super-admin product categories are intentionally not imported
+   * into a vendor storefront after a product is assigned to the vendor.
    */
   const subnavCategoryItems = useMemo(() => {
-    if (catalogCategoryHintsVendorRef.current !== vendorId) {
-      catalogCategoryHintsRef.current = new Map();
-      catalogCategoryHintsVendorRef.current = vendorId;
-    }
-
     const byLower = new Map<string, { id: string; name: string; status?: string }>();
 
     const add = (row: { id?: string; name?: string; status?: string }) => {
@@ -1339,23 +1363,13 @@ export function VendorStoreView({
       });
     };
 
-    for (const c of vendorCategories || []) {
+    for (const c of filterVendorCreatedCategories(vendorCategories || [], vendorId)) {
       add(c as { id?: string; name?: string; status?: string });
     }
-    for (const p of products) {
-      const raw = String(p.category || "").trim();
-      if (!raw) continue;
-      const lk = raw.toLowerCase();
-      catalogCategoryHintsRef.current.set(lk, raw);
-    }
-    for (const [lk, displayName] of catalogCategoryHintsRef.current.entries()) {
-      add({ name: displayName, id: `catalog-cat:${lk}`, status: "active" });
-    }
-
     return [...byLower.values()].sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
     );
-  }, [vendorId, vendorCategories, products]);
+  }, [vendorId, vendorCategories]);
 
   /** Catalog filter for subnav + client-side grid — URL wins over stale React state. */
   const catalogCategoryForFetch = useMemo(
@@ -3760,12 +3774,13 @@ export function VendorStoreView({
       const qRaw = debouncedVendorServerQ.trim();
       const qk = qRaw.toLowerCase();
       const cat = vendorCatalogServerCategory;
-      const pageSize = qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE;
+      const shouldClientFilterVendorCategory = cat !== "all";
+      const pageSize = shouldClientFilterVendorCategory ? VENDOR_SEARCH_PAGE_SIZE : (qRaw ? VENDOR_SEARCH_PAGE_SIZE : VENDOR_BROWSE_PAGE_SIZE);
       const cacheKey = CACHE_KEYS.vendorProductsPage(vendorId, 1, qk, cat, pageSize);
       const persistEligible = !qRaw;
       const lsKey = lsVendorCatalogPage1Key(vendorId, qk, cat, pageSize);
 
-      if (!forceRefresh && persistEligible) {
+      if (!forceRefresh && persistEligible && !shouldClientFilterVendorCategory) {
         const sliceKey = vendorCatalogSliceSessionKey(vendorId, cat);
         const loadedMore =
           catalogSliceByCategoryRef.current.get(sliceKey) ??
@@ -3806,7 +3821,7 @@ export function VendorStoreView({
         }
       }
 
-      if (!forceRefresh && persistEligible) {
+      if (!forceRefresh && persistEligible && !shouldClientFilterVendorCategory) {
         const fromLs = readPersistedJson<any>(lsKey, PERSISTED_CATALOG_TTL_MS);
         if (fromLs && typeof fromLs === "object") {
           // Old persisted catalog omitted `storePhone` — bypass LS once so we pick up `contactPhone` from the API.
@@ -3860,16 +3875,20 @@ export function VendorStoreView({
             page: 1,
             pageSize,
             q: qRaw || undefined,
-            category: cat === "all" ? undefined : cat,
+            category: shouldClientFilterVendorCategory ? undefined : cat,
           }),
         forceRefresh
       );
       if (!isLatest()) return false;
+      const fetchedProducts = productsData.products || [];
+      const displayProducts = shouldClientFilterVendorCategory
+        ? clientFilterProductsForCatalogCategory(fetchedProducts, cat)
+        : fetchedProducts;
       const slice = {
-        products: productsData.products || [],
-        total: productsData.total,
+        products: displayProducts,
+        total: shouldClientFilterVendorCategory ? displayProducts.length : productsData.total,
         page: productsData.page,
-        hasMore: productsData.hasMore,
+        hasMore: shouldClientFilterVendorCategory ? false : productsData.hasMore,
       };
       if (
         !forceRefresh &&
@@ -4008,7 +4027,24 @@ export function VendorStoreView({
     const scheduleRefetch = () => {
       window.clearTimeout(debounce);
       debounce = window.setTimeout(() => {
-        void refetchVendorCatalogPage1(true);
+        void (async () => {
+          try {
+            moduleCache.invalidate(CACHE_KEYS.vendorCategories(vendorId));
+            const categoriesData = await fetchVendorCategories(vendorId);
+            const nextCategoryMap = buildVendorCategoryProductIdMap(categoriesData);
+            const nextAssignedIds = new Set<string>();
+            for (const ids of nextCategoryMap.values()) {
+              for (const id of ids) nextAssignedIds.add(id);
+            }
+            vendorCategoryProductIdsByNameRef.current = nextCategoryMap;
+            vendorCategorizedProductIdsRef.current = nextAssignedIds;
+            setVendorCategories(categoriesData);
+            writePersistedJson(lsVendorCategoriesKey(vendorId), categoriesData);
+          } catch {
+            /* Category refresh is best-effort; catalog refetch still keeps product data fresh. */
+          }
+          void refetchVendorCatalogPage1(true);
+        })();
       }, 320);
     };
 
@@ -4061,7 +4097,7 @@ export function VendorStoreView({
       window.clearTimeout(debounce);
       bc?.close();
     };
-  }, [vendorId, savedPage, refetchVendorCatalogPage1]);
+  }, [vendorId, savedPage, refetchVendorCatalogPage1, buildVendorCategoryProductIdMap]);
 
   // Realtime bridge: central product pulse refreshes storefront catalog without a broad KV subscription here.
   useEffect(() => {
@@ -4145,20 +4181,27 @@ export function VendorStoreView({
         try {
           const catLsKey = lsVendorCategoriesKey(vendorId);
           let categoriesFromLs = false;
+          let shouldForceCategoryFetch = forceRefresh;
           if (!forceRefresh) {
             const fromLs = readPersistedJson<any[]>(catLsKey, PERSISTED_CATALOG_TTL_MS);
             if (fromLs !== null && Array.isArray(fromLs)) {
-              moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), fromLs);
-              categoriesData = fromLs;
-              categoriesFromLs = true;
+              const cleanedCategories = filterVendorCreatedCategories(fromLs, vendorId);
+              if (cleanedCategories.length !== fromLs.length) {
+                writePersistedJson(catLsKey, cleanedCategories);
+              }
+              moduleCache.prime(CACHE_KEYS.vendorCategories(vendorId), cleanedCategories);
+              categoriesData = cleanedCategories;
+              categoriesFromLs = cleanedCategories.length > 0;
+              shouldForceCategoryFetch = cleanedCategories.length === 0;
             }
           }
           if (forceRefresh || !categoriesFromLs) {
             categoriesData = await moduleCache.get(
               CACHE_KEYS.vendorCategories(vendorId),
               () => fetchVendorCategories(vendorId),
-              forceRefresh
+              shouldForceCategoryFetch
             );
+            categoriesData = filterVendorCreatedCategories(categoriesData, vendorId);
             if (!forceRefresh && Array.isArray(categoriesData)) {
               writePersistedJson(catLsKey, categoriesData);
             }
@@ -5125,16 +5168,23 @@ export function VendorStoreView({
       let matchesCategory = true;
       if (catalogCategoryForFetch !== "all") {
         if (isVendorUncategorizedFilter(catalogCategoryForFetch)) {
-          matchesCategory = productHasNoCategory(product);
+          matchesCategory = !vendorCategorizedProductIds.has(String(product.id || "").trim());
         } else {
-          matchesCategory =
-            String(product.category || "").trim().toLowerCase() ===
-            String(catalogCategoryForFetch).trim().toLowerCase();
+          const vendorCategoryProductIds = vendorCategoryProductIdsByName.get(
+            String(catalogCategoryForFetch).trim().toLowerCase()
+          );
+          matchesCategory = !!vendorCategoryProductIds?.has(String(product.id || "").trim());
         }
       }
       return matchesSearch && matchesCategory;
     });
-  }, [products, searchQuery, catalogCategoryForFetch]);
+  }, [
+    products,
+    searchQuery,
+    catalogCategoryForFetch,
+    vendorCategoryProductIdsByName,
+    vendorCategorizedProductIds,
+  ]);
 
   /** Skeleton while category/search catalog refetch is in flight — never flash empty states mid-load. */
   const isCategoryCatalogStale = useMemo(() => {
@@ -5164,11 +5214,12 @@ export function VendorStoreView({
       let matchesCategory = true;
       if (catalogCategoryForFetch !== "all") {
         if (isVendorUncategorizedFilter(catalogCategoryForFetch)) {
-          matchesCategory = productHasNoCategory(product);
+          matchesCategory = !vendorCategorizedProductIds.has(String(product.id || "").trim());
         } else {
-          matchesCategory =
-            String(product.category || "").trim().toLowerCase() ===
-            String(catalogCategoryForFetch).trim().toLowerCase();
+          const vendorCategoryProductIds = vendorCategoryProductIdsByName.get(
+            String(catalogCategoryForFetch).trim().toLowerCase()
+          );
+          matchesCategory = !!vendorCategoryProductIds?.has(String(product.id || "").trim());
         }
       }
       return matchesSearch && matchesCategory;
@@ -5203,6 +5254,8 @@ export function VendorStoreView({
     catalogPageTargetSize,
     readCatalogSliceForKey,
     catalogSliceMemoryKey,
+    vendorCategoryProductIdsByName,
+    vendorCategorizedProductIds,
   ]);
 
   const catalogVisibleProducts = isCategoryCatalogStale

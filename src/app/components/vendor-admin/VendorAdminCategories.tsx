@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { Search, Plus, Edit, Trash2, X, FolderOpen, Info, Eye, RefreshCw } from "lucide-react";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { Search, Plus, Edit, Trash2, FolderOpen, Info, RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Card } from "../ui/card";
@@ -10,13 +10,7 @@ import { VendorAdminCategoryForm } from "./VendorAdminCategoryForm";
 import { cacheManager } from "../../utils/cacheManager";
 import { toast } from "sonner";
 import { projectId, publicAnonKey } from "../../../../utils/supabase/info";
-import {
-  getCachedVendorProductsAdmin,
-  invalidateVendorProductsAdminCache,
-  moduleCache,
-  CACHE_KEYS,
-  ADMIN_PRODUCTS_INITIAL_PAGE_SIZE,
-} from "../../utils/module-cache";
+import { ADMIN_PRODUCTS_INITIAL_PAGE_SIZE, filterVendorCreatedCategories } from "../../utils/module-cache";
 import { VendorAdminListingPagination } from "./VendorAdminListingPagination";
 import { useLanguage } from "../../contexts/LanguageContext";
 
@@ -32,11 +26,16 @@ interface Product {
 }
 
 interface CategoryInfo {
+  id: string;
   name: string;
   productCount: number;
   products: Product[];
   activeProducts: number;
   description: string;
+  coverPhoto?: string;
+  status: "active" | "hide";
+  productIds: string[];
+  createdAt: string;
 }
 
 interface VendorAdminCategoriesProps {
@@ -44,52 +43,49 @@ interface VendorAdminCategoriesProps {
   vendorName: string;
   /** When false, load failures are logged only (avoids toasts while this tab is hidden / preloaded). */
   reportLoadErrors?: boolean;
-}
-
-function buildCategoryInfosFromProducts(products: Product[]): CategoryInfo[] {
-  const categoryMap = new Map<string, Product[]>();
-  products.forEach((product: Product) => {
-    if (!product || !product.id) return;
-    const categoryName = product.category?.trim() || "Uncategorized";
-    if (!categoryMap.has(categoryName)) {
-      categoryMap.set(categoryName, []);
-    }
-    categoryMap.get(categoryName)?.push(product);
-  });
-  const categoriesArray: CategoryInfo[] = Array.from(categoryMap.entries()).map(([name, prods]) => ({
-    name,
-    productCount: prods.length,
-    products: prods,
-    activeProducts: prods.filter(
-      (p) => p?.status && (p.status === "active" || p.status === "Active")
-    ).length,
-    description: name,
-  }));
-  categoriesArray.sort((a, b) => a.name.localeCompare(b.name));
-  return categoriesArray;
+  isActive?: boolean;
 }
 
 export function VendorAdminCategories({
   vendorId,
   vendorName,
   reportLoadErrors = true,
+  isActive = true,
 }: VendorAdminCategoriesProps) {
   const { t } = useLanguage();
   const [categories, setCategories] = useState<CategoryInfo[]>([]);
-  const [loading, setLoading] = useState(
-    () => !moduleCache.peek(CACHE_KEYS.vendorProductsAdmin(vendorId))
-  );
+  const [loading, setLoading] = useState(true);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<CategoryInfo | null>(null);
   const [listPage, setListPage] = useState(1);
   const [listPageSize, setListPageSize] = useState(ADMIN_PRODUCTS_INITIAL_PAGE_SIZE);
+  const wasActiveRef = useRef(false);
+
+  const cleanupImportedCategories = async () => {
+    try {
+      await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/categories/cleanup-imported`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({ vendorId }),
+        }
+      );
+    } catch (error) {
+      console.warn("Imported vendor category cleanup skipped:", error);
+    }
+  };
 
   // Register cache invalidation
   useEffect(() => {
     const clearCache = () => {
       console.log("🗑️ Clearing categories cache for vendor:", vendorId);
-      invalidateVendorProductsAdminCache(vendorId);
       loadCategories(true);
     };
 
@@ -109,28 +105,51 @@ export function VendorAdminCategories({
     };
   }, [vendorId]);
 
-  const loadCategories = async (forceRefresh = false) => {
-    if (!forceRefresh) {
-      const peeked = moduleCache.peek<{ products?: Product[] }>(
-        CACHE_KEYS.vendorProductsAdmin(vendorId)
-      );
-      if (peeked != null && Array.isArray(peeked.products)) {
-        console.log("📦 Categories from session cache (vendor products) for vendor:", vendorId);
-        setCategories(buildCategoryInfosFromProducts(peeked.products));
-        setLoading(false);
-        setListRefreshing(false);
-        return;
-      }
-    }
+  const normalizeCategory = (cat: any): CategoryInfo => {
+    const productIds = Array.isArray(cat?.productIds)
+      ? cat.productIds.map((id: unknown) => String(id || "").trim()).filter(Boolean)
+      : [];
+    const products = Array.isArray(cat?.products) ? cat.products : [];
+    const activeProducts = products.length
+      ? products.filter((p: Product) => String(p?.status || "").toLowerCase() === "active").length
+      : Number(cat?.activeProducts ?? cat?.productCount ?? productIds.length ?? 0);
+    return {
+      id: String(cat?.id || ""),
+      name: String(cat?.name || ""),
+      description: String(cat?.description || ""),
+      coverPhoto: typeof cat?.coverPhoto === "string" ? cat.coverPhoto : "",
+      status: cat?.status === "hide" ? "hide" : "active",
+      productIds,
+      products,
+      productCount: activeProducts,
+      activeProducts,
+      createdAt: String(cat?.createdAt || ""),
+    };
+  };
 
+  const loadCategories = async (forceRefresh = false, showFullLoading = categories.length === 0) => {
     setListRefreshing(forceRefresh);
-    setLoading(true);
+    if (showFullLoading) setLoading(true);
     try {
-      console.log("🔄 Loading categories via cached vendor products for vendor:", vendorId);
-      const data = await getCachedVendorProductsAdmin(vendorId, forceRefresh);
-      const products = data.products || [];
-      setCategories(buildCategoryInfosFromProducts(products));
-      console.log(`✅ Derived ${products.length} products into categories for vendor ${vendorId}`);
+      console.log("🔄 Loading vendor-owned categories for vendor:", vendorId);
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/categories-details/${vendorId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+        }
+      );
+      if (!response.ok) {
+        throw new Error("Failed to load categories");
+      }
+      const data = await response.json();
+      const rows: CategoryInfo[] = filterVendorCreatedCategories(data.categories || [], vendorId)
+        .map(normalizeCategory)
+        .filter((cat: CategoryInfo) => cat.id && cat.name);
+      rows.sort((a, b) => a.name.localeCompare(b.name));
+      setCategories(rows);
+      console.log(`✅ Loaded ${rows.length} vendor-owned categories for vendor ${vendorId}`);
     } catch (error: any) {
       console.error("Failed to load categories:", error);
       if (!reportLoadErrors) return;
@@ -146,9 +165,15 @@ export function VendorAdminCategories({
   };
 
   useEffect(() => {
-    loadCategories(false);
+    if (!isActive) {
+      wasActiveRef.current = false;
+      return;
+    }
+    const isRevisit = wasActiveRef.current;
+    wasActiveRef.current = true;
+    loadCategories(isRevisit, categories.length === 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vendorId]);
+  }, [vendorId, isActive]);
 
   const filteredCategories = useMemo(
     () =>
@@ -192,6 +217,78 @@ export function VendorAdminCategories({
         : [...prev, categoryName]
     );
   };
+
+  const handleCreateCategory = () => {
+    setEditingCategory(null);
+    setIsFormOpen(true);
+  };
+
+  const handleEditCategory = (category: CategoryInfo) => {
+    setEditingCategory(category);
+    setIsFormOpen(true);
+  };
+
+  const handleCategorySaved = (savedCategory?: any) => {
+    setIsFormOpen(false);
+    setEditingCategory(null);
+    if (savedCategory?.id) {
+      const nextCategory = normalizeCategory(savedCategory);
+      setCategories((prev) => {
+        const exists = prev.some((cat) => cat.id === nextCategory.id);
+        const next = exists
+          ? prev.map((cat) => (cat.id === nextCategory.id ? { ...cat, ...nextCategory } : cat))
+          : [nextCategory, ...prev];
+        return next.sort((a, b) => a.name.localeCompare(b.name));
+      });
+      return;
+    }
+    loadCategories(true, false);
+  };
+
+  const handleDeleteCategory = async (category: CategoryInfo) => {
+    if (category.productIds.length > 0) {
+      toast.error("Move or remove products from this category before deleting it.");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/vendor/categories/${encodeURIComponent(category.id)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({ vendorId }),
+        }
+      );
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete category");
+      }
+      toast.success("Category deleted successfully");
+      loadCategories(true);
+    } catch (error: any) {
+      console.error("Failed to delete category:", error);
+      toast.error(error.message || "Failed to delete category");
+    }
+  };
+
+  if (isFormOpen) {
+    return (
+      <VendorAdminCategoryForm
+        vendorId={vendorId}
+        vendorName={vendorName}
+        editingCategory={editingCategory}
+        onBack={() => {
+          setIsFormOpen(false);
+          setEditingCategory(null);
+        }}
+        onSave={handleCategorySaved}
+      />
+    );
+  }
 
   if (loading) {
     return (
@@ -247,28 +344,38 @@ export function VendorAdminCategories({
         <div>
           <h1 className="text-3xl font-bold text-slate-900">{t("categories.title")}</h1>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="border-slate-300"
-          disabled={listRefreshing || loading}
-          onClick={() => loadCategories(true)}
-        >
-          <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
-          {t("common.refresh")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="border-slate-300"
+            disabled={listRefreshing || loading}
+            onClick={() => loadCategories(true)}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${listRefreshing ? "animate-spin" : ""}`} />
+            {t("common.refresh")}
+          </Button>
+          <Button
+            type="button"
+            className="bg-slate-900 hover:bg-slate-800"
+            onClick={handleCreateCategory}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Category
+          </Button>
+        </div>
       </div>
 
       {/* Info Banner */}
-      <Card className="p-4 bg-blue-50 border-blue-200">
+      <Card className="p-4 bg-slate-50 border-slate-200">
         <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <Info className="w-5 h-5 text-slate-500 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm text-blue-900 font-medium">
-              {t("categories.autoPopulated")}
+            <p className="text-sm text-slate-900 font-medium">
+              Vendor-owned categories
             </p>
-            <p className="text-sm text-blue-700 mt-1">
-              {t("categories.autoPopulatedDesc")}
+            <p className="text-sm text-slate-600 mt-1">
+              Products assigned to this vendor are available to organize, but super-admin product categories are no longer imported here.
             </p>
           </div>
         </div>
@@ -296,8 +403,14 @@ export function VendorAdminCategories({
           <p className="text-slate-600">
             {searchQuery 
               ? t("products.tryAdjustSearch")
-              : t("categories.appearAutomatically")}
+              : "Create your first category and assign your vendor products to organize your storefront."}
           </p>
+          {!searchQuery && (
+            <Button className="mt-6 bg-slate-900 hover:bg-slate-800" onClick={handleCreateCategory}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create Category
+            </Button>
+          )}
         </Card>
       ) : (
         <Card className="overflow-hidden">
@@ -348,7 +461,14 @@ export function VendorAdminCategories({
                       <span className="text-sm text-blue-600">{category.description}</span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className="text-sm text-slate-700">{category.productCount}</span>
+                      <div className="text-sm text-slate-700">
+                        <span>{category.activeProducts}</span>
+                        {category.productIds.length > category.activeProducts && (
+                          <span className="ml-1 text-xs text-slate-500">
+                            visible / {category.productIds.length} selected
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
@@ -361,9 +481,19 @@ export function VendorAdminCategories({
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                          title={t("categories.viewReadOnly")}
+                          title="Edit category"
+                          onClick={() => handleEditCategory(category)}
                         >
-                          <Eye className="w-4 h-4" />
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                          title="Delete category"
+                          onClick={() => handleDeleteCategory(category)}
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </td>
