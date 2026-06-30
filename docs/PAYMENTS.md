@@ -4,6 +4,7 @@ This is the canonical payment reference for this repo.
 
 ## Active payment flows (production)
 
+- **Cash on Delivery (COD)** order creation on vendor storefront checkout
 - **KBZPay QR** checkout on vendor storefront (`Checkout.tsx`)
 - **KBZPay PWA** (mobile browser / app return)
 - KBZPay return-page handling (`/kpay/return`)
@@ -19,6 +20,7 @@ This is the canonical payment reference for this repo.
 | Stage | Where |
 |-------|--------|
 | Customer checks out | Vendor storefront host (subdomain, custom domain, or `/vendor/:slug/checkout`) |
+| Customer chooses COD | Order is created immediately; customer pays cash on delivery |
 | KBZ app completes payment | Browser opens with `merch_order_id` / `prepay_id` query params |
 | Order summary UI | **Platform apex** `/summary` (redirect from vendor hosts when needed) |
 | Continue Shopping | Back to `storefrontOrigin` stored on the checkout draft (the vendor where payment started) |

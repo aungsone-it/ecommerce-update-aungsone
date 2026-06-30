@@ -113,7 +113,8 @@ Use **preview / open store** from vendor admin to verify:
 
 - catalog visibility and category tabs (`/`, `/{category-slug}`)
 - pricing and stock
-- checkout and KBZPay readiness
+- checkout readiness: Cash on Delivery, KBZPay QR, and KBZPay PWA
+- storefront contact: phone menu offers native Dial and Viber chat
 - **Add to Home** button (floating, above chat) — test on Android Chrome over HTTPS; verify home-screen icon uses store name/logo
 
 Share the **vendor URL** (subdomain or custom domain), not a generic marketplace `/products` link.
@@ -149,6 +150,7 @@ Before release windows, confirm:
 - **Settings → Activities** updates after vendor approve/delete and staff user changes
 - **Landing page** carousel logos load; cards link to correct vendor store URL
 - **Vendor application** form accepts `+959…` / `09…` phones and rejects duplicate emails
+- Storefront language menu shows English/Burmese; admin language controls stay English/Chinese
 - after backend deploy: run read-model validation (`docs/READ_MODEL_ROLLOUT.md`)
 
 ## 6) Related docs

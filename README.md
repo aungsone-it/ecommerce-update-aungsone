@@ -22,16 +22,17 @@ There is **no multi-vendor marketplace catalog** (no shared `/products` shopping
 | **DB migrations** | Schema split into focused migration files under `supabase/migrations/` (catalog RPCs, read-model tables, pulse triggers, backfill) |
 | **Frontend performance** | Smaller route bundles, debounced admin search, `vendor-storefront-head.js` for sync branding before React paint |
 | **Cart & catalog** | Cart sync hardening, product listing and order section fixes, caching/reload race fixes |
-| **i18n / URLs** | Burmese text in URL segments handled correctly on category and product routes |
+| **i18n / URLs** | Burmese text in URL segments handled correctly on category and product routes; storefront UI supports English/Burmese |
 | **Deployment** | Tencent Cloud custom-domain middleware adjustments; read-model validation script (`npm run validate:read-model`) |
 | **Legal pages** | Per-vendor Terms and Privacy from vendor settings; `/terms` and `/privacy` on vendor hosts |
-| **Languages** | English + Simplified Chinese via `LanguageContext` on vendor storefront, vendor login/setup, and admin surfaces |
+| **Languages** | Vendor storefront language menu is English + Burmese; admin/vendor-admin surfaces remain English + Simplified Chinese |
 | **KBZPay returns** | Unified post-payment summary on the platform apex (`walwal.online/summary`); vendor-scoped checkout paths |
-| **Payments** | KBZPay QR + PWA checkout, webhook sync, refund/cancel flow (production refunds need gateway mTLS/certs) |
+| **Payments** | Cash on Delivery, KBZPay QR + PWA checkout, webhook sync, refund/cancel flow (production refunds need gateway mTLS/certs) |
 | **Settings & audit** | **Activities** tab — global platform audit timeline (vendor approve/delete, users, products); **Appearance** tab hidden (branding stays under General) |
 | **Landing page** | Vendor partner **carousel** (logos, revenue-sorted, click opens store); **FloatingChat** on apex homepage |
 | **Vendor onboarding** | Application form: Myanmar phone (`+959…` / `09…`), store description ≥10 characters, live email availability check |
 | **Add to Home** | Vendor storefront **Add to Home** FAB (above chat) — Android Chrome native install when eligible; iOS/manual fallback; uses vendor name + logo |
+| **Storefront contact** | Store phone link offers **Dial** or **Viber**; mobile menu shows both actions directly |
 | **Admin UI polish** | Vendors added via **Review applications** only (no manual Add Vendor button); thinner scrollbars platform-wide |
 
 ## Current Product Surface
@@ -46,7 +47,8 @@ Implemented in `VendorStorefrontPage` → `VendorStoreView` (not a shared market
   - **Vendor subdomain / custom domain** — clean URLs at host root (`/`, `/product/:sku`, `/checkout`, `/:categorySlug`, `/saved`, `/profile/*`)
   - **Path-based (local dev / apex)** — `/vendor/:storeSlug/*`
 - Terms and privacy: `/terms`, `/privacy` on vendor hosts; `/vendor/:slug/terms` on path-based URLs
-- Bilingual UI: English / 简体中文
+- Bilingual storefront UI: English / Burmese. Admin language switching remains English / Simplified Chinese.
+- Store phone contact: desktop hover menu asks whether to **Dial** or open **Viber**; mobile menu shows both actions.
 - **Add to Home** — floating button above chat; Android Chrome can show native install prompt; iOS uses Safari Share → Add to Home Screen (see [docs/VENDOR_ADD_TO_HOME.md](docs/VENDOR_ADD_TO_HOME.md))
 
 ### Platform apex (non-shopping)
@@ -59,12 +61,12 @@ Implemented in `VendorStorefrontPage` → `VendorStoreView` (not a shared market
 
 ### Payments
 
-- **KBZPay QR** and **KBZPay PWA** at vendor checkout — **this is the production payment path**
+- **Cash on Delivery**, **KBZPay QR**, and **KBZPay PWA** at vendor checkout — these are the active customer payment paths
 - Return landing: `/kpay/return`, `/summary`, `/checkout/success`, `/order-confirmation` (vendor-host or path-based)
 - Post-PWA summary consolidates on **`https://walwal.online/summary`** (Continue Shopping returns to the vendor where checkout started)
 - KBZPay webhook + Realtime on `kpay_txn:{orderId}` (+ HTTP polling fallback during checkout)
 - Refund/cancel logic in code; production refund success depends on gateway mTLS/client certificate setup
-- **Stripe:** helper code exists (`stripe_routes.tsx`, `StripePayment.tsx`) but is **not wired** to vendor `Checkout.tsx` — do not treat as live
+- **Stripe/Card/Bank transfer:** helper or legacy code may exist, but these are **not wired as live vendor checkout payment paths** — do not treat as production options
 
 ### Super Admin
 
@@ -152,7 +154,7 @@ Edge middleware (`middleware.ts`) maps vendor subdomains to the SPA; KBZ return 
 - **Primary datastore:** Postgres KV table `kv_store_16010b6f` (JSON documents) + **SQL read-model tables** (`app_products`, `app_orders`, etc.) synced on write
 - **Supabase binding:** `utils/supabase/info.tsx` (`projectId`, `publicAnonKey`) — not `VITE_SUPABASE_*` for most API calls
 - **Routing:** React Router — public vendor tree, super-admin, vendor-admin, vendor-host-specific routes
-- **Legacy note:** `Storefront.tsx` remains in the repo for reference but is **not mounted** in the current router
+- **Legacy note:** the old shared marketplace storefront components have been removed; customer shopping is only through `VendorStorefrontPage` / `VendorStoreView`
 
 Full backend reference: [docs/ARCHITECTURE_AND_BACKEND.md](docs/ARCHITECTURE_AND_BACKEND.md)
 
@@ -276,4 +278,4 @@ Proprietary — all rights reserved.
 
 ---
 
-**Built for the Burmese market** — MMK/CNY/USD, Myanmar phone formats, bilingual vendor storefront support.
+**Built for the Burmese market** — MMK pricing, Myanmar phone formats, English/Burmese vendor storefront support.

@@ -171,8 +171,9 @@ KV writes bump the appropriate pulse row (via DB triggers in migrations). The br
 
 ### Production path (Myanmar / vendor checkout)
 
-**KBZPay only** in `Checkout.tsx`:
+**Active customer payment choices** in `Checkout.tsx`:
 
+- Cash on Delivery (order is created immediately; customer pays on delivery)
 - QR and PWA flows
 - Webhook: `supabase/functions/kpay-webhook/index.ts`
 - Return/summary: apex `/summary`, vendor `/kpay/return`

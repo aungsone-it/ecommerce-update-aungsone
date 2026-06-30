@@ -23,10 +23,10 @@ This file is the evergreen technical reference for the **current** app structure
   - **Super admin:** `src/app/pages/AdminPage.tsx`
   - **Vendor admin:** `src/app/pages/VendorAdminPage.tsx`
 
-### Legacy / not routed
+### Removed legacy storefront
 
-- `src/app/components/Storefront.tsx` — former multi-vendor marketplace UI; **not mounted** in `routes.tsx`. Do not add new customer features here.
-- `src/app/pages/StorefrontPage.tsx` — wrapper for legacy `Storefront`; not used by the router.
+- The old shared marketplace storefront files (`Storefront.tsx`, `StorefrontPage.tsx`, and related cached helper) have been removed.
+- Do not add customer-shopping features to a shared marketplace page. Current customer shopping lives only in `VendorStorefrontPage` / `VendorStoreView`.
 
 ## 3) Host model
 
@@ -95,6 +95,8 @@ Guarded by `VendorHostOrMarketplaceRoutes.tsx` — routes return **404** on the 
 - Product grid, categories, search, and pagination live in **`VendorStoreView`**.
 - Category tabs use **server-side category filtering** (`fetchVendorProducts` with `category` param) — not client-only filtering of the first loaded page.
 - Module cache keys include vendor id, page, query, and category (`CACHE_KEYS.vendorProductsPage`).
+- Storefront language menu exposes **English + Burmese** only; admin/vendor-admin language controls expose **English + Simplified Chinese**.
+- Storefront phone contact supports both native dial (`tel:`) and Viber chat (`viber://chat?number=...`).
 
 ## 6) Auth model
 
@@ -105,6 +107,7 @@ Guarded by `VendorHostOrMarketplaceRoutes.tsx` — routes return **404** on the 
 ## 7) Payments / KBZPay routing
 
 - Checkout starts on the **vendor storefront** host where the customer is shopping.
+- Active payment choices are **Cash on Delivery**, **KBZPay QR**, and **KBZPay PWA**. Card/bank/Stripe helpers are not production checkout paths.
 - PWA return URL targets unified apex summary: `walwal.online/summary` (see `vendorCheckoutPaths.ts`, `kpayUnifiedSummaryRedirect.ts`, `index.html` inline redirect, edge `middleware.ts`).
 - `storefrontOrigin` on the checkout draft drives **Continue Shopping** back to the vendor host.
 

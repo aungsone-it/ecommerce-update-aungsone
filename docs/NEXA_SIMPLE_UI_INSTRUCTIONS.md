@@ -50,8 +50,9 @@ At `/vendor/application`:
 - Shop at a **vendor’s store URL** (subdomain or custom domain), not on a central marketplace catalog.
 - On the **platform homepage**, click a vendor logo in the carousel to open that shop (best-selling vendors appear first).
 - Use the **chat bubble** (bottom-right) on the homepage or any vendor store for support.
+- Use the store phone contact to choose **Dial** or **Viber**. On desktop the choice appears on hover; on mobile both buttons are shown in the menu.
 - Tap **Add to Home** (above the chat bubble) to save a vendor store shortcut on your phone. On Android Chrome you may get an install prompt; on iPhone use Safari → Share → Add to Home Screen.
-- After KBZPay app payment, order summary may open on `walwal.online/summary`; use Continue Shopping to return to the vendor store.
+- Checkout supports **Cash on Delivery** and **KBZPay**. After KBZPay app payment, order summary may open on `walwal.online/summary`; use Continue Shopping to return to the vendor store.
 
 ## Quick troubleshooting
 

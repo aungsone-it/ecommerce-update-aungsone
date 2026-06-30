@@ -47,8 +47,9 @@ These files are kept for history but **should not** be used for deployment or ar
 
 | Path | Status |
 |------|--------|
-| `src/app/components/Storefront.tsx` | Former marketplace UI — **not mounted** in `routes.tsx` |
-| `src/app/pages/StorefrontPage.tsx` | Legacy wrapper — not used by router |
+| `src/app/components/Storefront.tsx` | Former marketplace UI — removed from the repo |
+| `src/app/pages/StorefrontPage.tsx` | Legacy wrapper — removed from the repo |
+| `src/app/components/StorefrontCached.tsx` | Legacy storefront helper — removed from the repo |
 | `src/app/components/StripePayment.tsx` | Exists; **not used** in vendor checkout |
 
 When in doubt, verify against `src/app/routes.tsx` and `docs/ARCHITECTURE_AND_BACKEND.md`.
