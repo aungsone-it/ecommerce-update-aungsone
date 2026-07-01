@@ -231,7 +231,7 @@ export const myTranslations: Record<string, string> = {
     'storefront.product.soldBy': 'ရောင်းချသူ',
     'storefront.product.availability': 'လက်ကျန်',
     'storefront.product.delivery': 'ပို့ဆောင်မှု',
-    'storefront.product.complimentary': 'အခမဲ့',
+    'storefront.product.complimentary': 'အိမ်ရောက်မှငွေချေ',
     'storefront.product.outOfStock': 'လက်ကျန်မရှိပါ',
     'storefront.product.outOfStockTitle': 'လက်ကျန်မရှိပါ',
     'storefront.product.inStock': 'လက်ကျန်ရှိသည်',

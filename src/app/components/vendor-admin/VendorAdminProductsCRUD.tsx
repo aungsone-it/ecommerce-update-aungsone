@@ -20,6 +20,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Store,
+  X,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
@@ -152,6 +154,8 @@ export function VendorAdminProductsCRUD({
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "off-shelf">("all");
   const [sortBy, setSortBy] = useState("newest");
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
+  const [removingFromStore, setRemovingFromStore] = useState(false);
   
   const [showProductSelectModal, setShowProductSelectModal] = useState(false);
   const [allPlatformProducts, setAllPlatformProducts] = useState<any[]>([]);
@@ -683,6 +687,61 @@ export function VendorAdminProductsCRUD({
     }
   };
 
+  const handleBulkRemoveFromStore = async () => {
+    const toRemove = [...new Set(selectedProducts)];
+    if (toRemove.length === 0) return;
+
+    setRemovingFromStore(true);
+    try {
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-16010b6f/products/bulk-assign-vendor`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({
+            vendorId,
+            productIds: [],
+            removeProductIds: toRemove,
+          }),
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          typeof data?.error === "string" ? data.error : `Update failed (${res.status})`
+        );
+      }
+      const removed = typeof data.removed === "number" ? data.removed : toRemove.length;
+      const removeFailed = typeof data.removeFailed === "number" ? data.removeFailed : 0;
+
+      if (removeFailed > 0) {
+        toast.warning(
+          `Removed ${removed} product(s) from your store. ${removeFailed} could not be removed.`
+        );
+      } else {
+        toast.success(`Removed ${removed} product(s) from your store`);
+      }
+
+      setShowRemoveConfirm(false);
+      setSelectedProducts([]);
+      invalidateAdminAllProductsCache();
+      invalidateVendorProductsAdminCache(vendorId);
+      invalidateVendorStorefrontCatalogCachesAfterProductLinkChange(vendorId, [
+        vendorStoreSlug,
+        routeStoreName,
+      ]);
+      await loadProducts(true);
+    } catch (error) {
+      console.error("Error removing products from store:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to remove products from store");
+    } finally {
+      setRemovingFromStore(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -813,6 +872,39 @@ export function VendorAdminProductsCRUD({
           </SelectContent>
         </Select>
       </div>
+
+      {selectedProducts.length > 0 && (
+        <Card className="p-4 bg-amber-50 border-amber-200">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-sm font-medium text-amber-900">
+              {selectedProducts.length} {t("products.selectedCount")}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedProducts([])}
+                disabled={removingFromStore}
+              >
+                <X className="w-4 h-4 mr-1.5" />
+                {t("products.clearSelection")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-amber-800 border-amber-300 hover:bg-amber-100 hover:text-amber-900"
+                onClick={() => setShowRemoveConfirm(true)}
+                disabled={removingFromStore}
+              >
+                <Store className="w-4 h-4 mr-1.5" />
+                {t("products.removeFromStore")}
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Products Table */}
       {sortedProducts.length === 0 ? (
@@ -946,6 +1038,39 @@ export function VendorAdminProductsCRUD({
           )}
         </Card>
       )}
+
+      <Dialog open={showRemoveConfirm} onOpenChange={setShowRemoveConfirm}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("products.removeFromStoreTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("products.removeFromStoreConfirm").replace(
+                "{count}",
+                String(selectedProducts.length)
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowRemoveConfirm(false)}
+              disabled={removingFromStore}
+            >
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="default"
+              onClick={handleBulkRemoveFromStore}
+              disabled={removingFromStore}
+              className="bg-amber-700 hover:bg-amber-800 text-white"
+            >
+              {removingFromStore ? t("products.removingFromStore") : t("products.removeFromStore")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={showProductSelectModal}

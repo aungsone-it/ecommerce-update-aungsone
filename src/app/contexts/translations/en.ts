@@ -761,6 +761,12 @@ export const enTranslations: Record<string, string> = {
     'products.allAssigned': 'All catalog products are already assigned to your store',
     'products.commission': 'Commission',
     'products.searchFullCatalogPlaceholder': 'Search by name or SKU — Press Search Button to Search',
+    'products.selectedCount': 'product(s) selected',
+    'products.clearSelection': 'Clear selection',
+    'products.removeFromStore': 'Remove from store',
+    'products.removeFromStoreTitle': 'Remove from store?',
+    'products.removeFromStoreConfirm': 'This will unassign {count} product(s) from your store. They will no longer appear on your storefront.',
+    'products.removingFromStore': 'Removing...',
     
     // Add Product
     'addProduct.back': 'Back',
@@ -1703,7 +1709,7 @@ export const enTranslations: Record<string, string> = {
     'storefront.product.soldBy': 'Sold by',
     'storefront.product.availability': 'Availability',
     'storefront.product.delivery': 'Delivery',
-    'storefront.product.complimentary': 'Complimentary',
+    'storefront.product.complimentary': 'Cash on Delivery available',
     'storefront.product.outOfStock': 'OUT OF STOCK',
     'storefront.product.outOfStockTitle': 'Out of Stock',
     'storefront.product.inStock': 'In Stock',
